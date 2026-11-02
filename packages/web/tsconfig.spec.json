@@ -1,0 +1,12 @@
+/*
+ * TypeScript settings for the web UI's unit tests: the *.spec.ts files and
+ * their helpers, with Vitest's globals.
+ */
+
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vitest/globals"]
+  },
+  "include": ["src/**/*.d.ts", "src/**/*.spec.ts", "src/testing/**/*.ts"]
+}

@@ -1,0 +1,25 @@
+# Paths kept out of git: local-only folders, dependencies, build outputs, local
+# environment and secrets, OS files.
+
+# Local-only folders (scratch, test outputs, research)
+__*/
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+out/
+build/
+*.tsbuildinfo
+.angular/
+coverage/
+packages/cli/src/generated/
+
+# Local environment and secrets
+.env
+.env.*
+*.local
+
+# OS and editor files
+.DS_Store

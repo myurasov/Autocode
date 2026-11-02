@@ -1,0 +1,9 @@
+# Paths Docker leaves out of the build context when ci/run.sh and ci/dist.sh
+# build images from the source root: dependencies and build outputs (the images
+# install and build their own), local-only __* folders, and git data.
+**/node_modules
+**/dist
+**/__*
+**/.angular
+.git
+packages/cli/src/generated

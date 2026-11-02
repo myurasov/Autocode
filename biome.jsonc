@@ -1,0 +1,59 @@
+/*
+ * Biome, the formatter and linter of the TypeScript code (`bun run lint`;
+ * `ci/dev.sh fmt` formats): 2-space indents, 80 columns, double quotes and no
+ * semicolons. The web UI (single quotes and semicolons) and the browser test
+ * are formatted but not linted; generated files and HTML are left out.
+ */
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/__*",
+      "!**/*.md",
+      "!**/*.html",
+      "!**/package-lock.json",
+      "!packages/web/*.json",
+      "!packages/cli/src/generated"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 80
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "asNeeded"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        "noNonNullAssertion": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/web/**", "tests/web/**"],
+      "linter": { "enabled": false },
+      "assist": { "enabled": false }
+    },
+    {
+      "includes": ["packages/web/**"],
+      "javascript": {
+        "formatter": { "quoteStyle": "single", "semicolons": "always" }
+      }
+    }
+  ]
+}

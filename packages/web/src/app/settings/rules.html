@@ -1,0 +1,149 @@
+<!--
+  The Settings section for pattern rules: the ordered list (Edit, move, Remove)
+  and the editor of one rule.
+-->
+
+<h2>Rules</h2>
+<p class="muted">
+  A rule sets values for the agents whose ID matches its pattern (<code>*</code>
+  matches anything; separate several patterns with commas). The first matching
+  rule counts; an agent's own values count more.
+</p>
+<app-settings-message where="rules" />
+<table class="rules">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Match</th>
+      <th>Settings</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (
+      rule of rules();
+      track $index;
+      let i = $index, first = $first, last = $last
+    ) {
+      <tr [attr.data-rule]="i + 1">
+        <td class="num">{{ i + 1 }}</td>
+        <td class="match"><code>{{ rule.match }}</code></td>
+        <td class="pairs">
+          @for (entry of entries(rule); track entry[0]) {
+            <span class="pair"
+              ><code>{{ entry[0] }}</code> = {{ valueText(entry[1]) }}</span>
+          } @empty {
+            <span class="muted">no settings</span>
+          }
+        </td>
+        <td class="actions">
+          <button
+            type="button"
+            [disabled]="state.busy() || draft() !== null"
+            (click)="edit(i)"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            title="Move up"
+            [attr.aria-label]="'Move rule ' + (i + 1) + ' up'"
+            [disabled]="state.busy() || draft() !== null || first"
+            (click)="move(i, -1)"
+          >
+            &uarr;
+          </button>
+          <button
+            type="button"
+            title="Move down"
+            [attr.aria-label]="'Move rule ' + (i + 1) + ' down'"
+            [disabled]="state.busy() || draft() !== null || last"
+            (click)="move(i, 1)"
+          >
+            &darr;
+          </button>
+          <button
+            type="button"
+            [disabled]="state.busy() || draft() !== null"
+            (click)="remove(i)"
+          >
+            Remove
+          </button>
+        </td>
+      </tr>
+    } @empty {
+      <tr>
+        <td class="muted" colspan="4">No rules.</td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+@if (draft(); as d) {
+  <div class="editor">
+    <h3>{{ d.index === null ? 'New Rule' : 'Rule ' + (d.index + 1) }}</h3>
+    <label for="rule-match">Match</label>
+    <input
+      id="rule-match"
+      type="text"
+      spellcheck="false"
+      placeholder="for example kaggle:* or a:b,c:*"
+      [value]="d.match"
+      (input)="setMatch($any($event.target).value)"
+    />
+    <label>Settings</label>
+    <table class="items">
+      <tbody>
+        @for (item of d.items; track $index; let n = $index) {
+          <tr>
+            <td>
+              <select
+                [attr.aria-label]="'Setting ' + (n + 1)"
+                (change)="setItemKey(n, $any($event.target).value)"
+              >
+                @for (key of keysFor(n); track key) {
+                  <option [value]="key" [selected]="key === item.key">
+                    {{ key }}
+                  </option>
+                }
+              </select>
+            </td>
+            <td>
+              <app-value-input
+                [def]="state.def(item.key)"
+                [value]="item.value"
+                (valueChange)="setItemValue(n, $event)"
+                [label]="'Value ' + (n + 1)"
+              />
+            </td>
+            <td>
+              <button type="button" class="small" (click)="removeItem(n)">
+                Remove
+              </button>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td class="muted" colspan="3">No settings yet.</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+    <div class="buttons">
+      <button type="button" class="small" (click)="addItem()">
+        Add a Setting
+      </button>
+      <span class="spacer"></span>
+      <button type="button" [disabled]="state.busy()" (click)="save()">
+        Save Rule
+      </button>
+      <button type="button" (click)="cancel()">Cancel</button>
+    </div>
+  </div>
+} @else {
+  <div class="buttons">
+    <button type="button" [disabled]="state.busy()" (click)="add()">
+      Add a Rule
+    </button>
+  </div>
+}

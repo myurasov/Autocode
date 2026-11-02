@@ -1,0 +1,40 @@
+# The web UI: the server, with the UI built into its binary, and a browser that
+# runs the smoke test (tests/web) against it. ci/run.sh builds the browser image
+# from ci/images/web-smoke/Dockerfile. Images are local only (localhost/...,
+# never pulled), here and in every suite.
+name: autocode-ci-web
+
+services:
+  server:
+    extends: { file: common.yml, service: server }
+    command:
+      [
+        "/src/dist/autocode",
+        "serve",
+        "--listen",
+        "0.0.0.0:4848",
+        "--id",
+        "web-smoke",
+      ]
+
+  browser:
+    image: localhost/autocode-ci/web-smoke:latest
+    pull_policy: never
+    init: true
+    shm_size: 1gb
+    # The CI user, so that the failure traces it writes to $CI_OUT are the
+    # user's own files.
+    user: "${CI_UID:-1000}:${CI_GID:-1000}"
+    environment:
+      HOME: /tmp
+      BASE_URL: http://server:4848
+      ADMIN_TOKEN: aca_ci_admin_token_for_tests_only_0000000000
+      CONSUMER_TOKEN: acc_ci_consumer_token_for_tests_only_000000
+      OUT_DIR: /out
+    volumes:
+      - ${CI_OUT:-/tmp/autocode-ci-out}:/out
+    depends_on:
+      server: { condition: service_healthy }
+
+volumes:
+  server-data:

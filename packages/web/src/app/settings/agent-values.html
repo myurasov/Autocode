@@ -1,0 +1,116 @@
+<!--
+  The Settings section for agents' own values: a table of them (Change, Remove)
+  and a row that adds one.
+-->
+
+<h2>Agents' Own Values</h2>
+<p class="muted">
+  Values set for one agent ID. They count more than the rules and the
+  server-wide values.
+</p>
+<app-settings-message where="agents" />
+<table class="agent-values">
+  <thead>
+    <tr>
+      <th>Agent</th>
+      <th>Setting</th>
+      <th>Value</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (row of rows(); track row.agent + ' ' + row.key) {
+      <tr [attr.data-agent]="row.agent" [attr.data-key]="row.key">
+        <td class="id"><code>{{ row.agent }}</code></td>
+        <td class="key"><code>{{ row.key }}</code></td>
+        <td class="value">
+          @let e = editing();
+          @if (e && isEditing(row)) {
+            <div class="inline-edit">
+              <app-value-input
+                [def]="state.def(row.key)"
+                [value]="e.value"
+                (valueChange)="setEditValue($event)"
+                (enter)="saveEdit()"
+                [label]="'New value of ' + row.key + ' for ' + row.agent"
+              />
+              <button
+                type="button"
+                class="small"
+                [disabled]="state.busy()"
+                (click)="saveEdit()"
+              >
+                Save
+              </button>
+              <button type="button" class="small" (click)="editing.set(null)">
+                Cancel
+              </button>
+            </div>
+          } @else {
+            {{ valueText(row.value) }}
+          }
+        </td>
+        <td class="actions">
+          <button
+            type="button"
+            [disabled]="state.busy() || isEditing(row)"
+            (click)="startEdit(row)"
+          >
+            Change
+          </button>
+          <button type="button" [disabled]="state.busy()" (click)="remove(row)">
+            Remove
+          </button>
+        </td>
+      </tr>
+    } @empty {
+      <tr>
+        <td class="muted" colspan="4">No agent has its own values.</td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<div class="add-row">
+  <div>
+    <label for="agent-value-id">Agent ID</label>
+    <input
+      id="agent-value-id"
+      type="text"
+      spellcheck="false"
+      list="known-agents"
+      placeholder="for example kaggle:lead"
+      [value]="newAgent()"
+      (input)="newAgent.set($any($event.target).value)"
+    />
+    <datalist id="known-agents">
+      @for (id of known(); track id) {
+        <option [value]="id"></option>
+      }
+    </datalist>
+  </div>
+  <div>
+    <label for="agent-value-key">Setting</label>
+    <select
+      id="agent-value-key"
+      (change)="newKey.set($any($event.target).value)"
+    >
+      @for (key of state.agentKeys(); track key) {
+        <option [value]="key" [selected]="key === newKey()">{{ key }}</option>
+      }
+    </select>
+  </div>
+  <div>
+    <label>Value</label>
+    <app-value-input
+      [def]="state.def(newKey())"
+      [value]="newValue()"
+      (valueChange)="newValue.set($event)"
+      (enter)="add()"
+      label="Value for the agent"
+    />
+  </div>
+  <div class="go">
+    <button type="button" [disabled]="state.busy()" (click)="add()">Add</button>
+  </div>
+</div>

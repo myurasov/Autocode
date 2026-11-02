@@ -1,0 +1,22 @@
+# `autocode install` on a machine that boots systemd (user `ac`, lingering on).
+# The container gets its own cgroup namespace, so its systemd sees only its own
+# cgroup tree, never the host's.
+services:
+  host:
+    image: localhost/autocode-ci/systemd:latest
+    pull_policy: never
+    hostname: install-host
+    privileged: true
+    cgroup: private
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+    stop_grace_period: 5s
+  runner:
+    extends: { file: common.yml, service: runner }
+    environment:
+      INSTALL_CONTAINER: ${COMPOSE_PROJECT_NAME:-autocode-ci-install}-host-1
+    command: ["bun", "test", "--timeout", "300000", "tests/install"]
+    depends_on:
+      - host

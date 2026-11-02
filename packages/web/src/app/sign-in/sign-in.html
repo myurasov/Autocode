@@ -1,0 +1,40 @@
+<!--
+  The sign-in form: the admin token, "Stay signed in", and why a token was
+  refused or stopped working.
+-->
+
+<section id="frame" class="sign-in">
+  <h2>Sign In</h2>
+  <p class="muted">
+    Paste the admin token. The server keeps it in its data folder
+    (<code>~/.autocode/admin.token</code>); treat it as a password. The consumer
+    token, which the plugins connect with, does not sign in here.
+  </p>
+  <form (submit)="submit($event)">
+    <label for="token">Token</label>
+    <div class="row">
+      <input
+        id="token"
+        type="password"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="aca_..."
+        [value]="token()"
+        (input)="token.set($any($event.target).value)"
+      />
+      <button type="submit" [disabled]="auth.busy()">Sign In</button>
+    </div>
+    <label class="check">
+      <input
+        type="checkbox"
+        [checked]="remember()"
+        (change)="remember.set($any($event.target).checked)"
+      />
+      Stay signed in on this browser (otherwise you are signed out when this tab
+      closes)
+    </label>
+  </form>
+  @if (auth.message()) {
+    <p class="errmsg" role="alert">{{ auth.message() }}</p>
+  }
+</section>

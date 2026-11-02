@@ -1,0 +1,5 @@
+# API tests: each test starts its own server in-process on an empty data folder.
+services:
+  runner:
+    extends: { file: common.yml, service: runner }
+    command: ["bun", "test", "--timeout", "30000", "tests/api"]

@@ -1,0 +1,51 @@
+<!--
+  The app shell: a header with the Autocode version, Sign Out and the
+  light/dark switch, then the sign-in form or, once signed in, the Hosts,
+  Agents and Settings tabs with the page they open.
+-->
+
+<header class="top">
+  <h1>
+    Autocode
+    @if (info(); as i) {
+      <small class="server" title="Autocode version">{{
+        versionText(i.version)
+      }}</small>
+    } @else if (infoError()) {
+      <small class="server errmsg">{{ infoError() }}</small>
+    }
+  </h1>
+  <span class="spacer"></span>
+  @if (auth.signedIn()) {
+    <span class="who" title="signed in with the admin token">admin</span>
+    <button type="button" class="small" (click)="signOut()">Sign Out</button>
+  }
+  <button
+    type="button"
+    class="theme"
+    (click)="theme.toggle()"
+    title="Light or dark"
+    aria-label="Light or dark"
+  >
+    &#9681;
+  </button>
+</header>
+
+@switch (auth.state()) {
+  @case ('checking') {
+    <p class="muted">Checking the saved token...</p>
+  }
+  @case ('signed-out') {
+    <app-sign-in />
+  }
+  @default {
+    <nav>
+      <a routerLink="/hosts" routerLinkActive="on">Hosts</a>
+      <a routerLink="/agents" routerLinkActive="on">Agents</a>
+      <a routerLink="/settings" routerLinkActive="on">Settings</a>
+    </nav>
+    <main id="frame">
+      <router-outlet />
+    </main>
+  }
+}

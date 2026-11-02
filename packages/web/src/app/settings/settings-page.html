@@ -1,0 +1,76 @@
+<!--
+  The Settings page: the server-wide values, each in its edit control with Save
+  and Reset, then the rules, agents' own values and the values resolved for one
+  agent ID.
+-->
+
+@if (state.loadError()) {
+  <p class="errmsg" role="alert">{{ state.loadError() }}</p>
+}
+
+<h2 class="first">Server Settings</h2>
+<p class="muted">
+  Each value applies to the whole server. Settings with scope "agent" can be
+  changed further by the rules and by an agent's own values below.
+</p>
+<app-settings-message where="server" />
+@if (state.view(); as view) {
+  <table class="settings">
+    <thead>
+      <tr>
+        <th>Setting</th>
+        <th>Value</th>
+        <th>From</th>
+        <th>Scope</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (key of state.keys(); track key) {
+        <tr [attr.data-key]="key">
+          <td class="key"><code>{{ key }}</code></td>
+          <td class="value">
+            <div class="inline-edit">
+              <app-value-input
+                [def]="state.def(key)"
+                [value]="drafts()[key] ?? ''"
+                (valueChange)="setDraft(key, $event)"
+                (enter)="save(key)"
+                [label]="'Value of ' + key"
+              />
+              <button
+                type="button"
+                class="small"
+                [disabled]="state.busy() || !changed(key)"
+                (click)="save(key)"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                class="small"
+                title="Back to the built-in default"
+                [disabled]="state.busy() || !isSet(key)"
+                (click)="reset(key)"
+              >
+                Reset
+              </button>
+            </div>
+          </td>
+          <td class="from" [class.set]="isSet(key)">
+            {{ isSet(key) ? 'set server-wide' : 'built-in default' }}
+          </td>
+          <td class="scope">{{ state.def(key).scope }}</td>
+          <td class="help">{{ state.def(key).help }}</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+
+  <app-rules />
+  <app-agent-values />
+} @else if (!state.loadError()) {
+  <p class="muted">Loading...</p>
+}
+
+<app-resolved-lookup />

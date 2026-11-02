@@ -1,0 +1,35 @@
+# Across machines: the server and two OpenCode machines, each its own container
+# with its own host name and file system, on one Docker network. Runs the same
+# end-to-end suite as `one`, plus the multi-machine cases.
+services:
+  fake-model:
+    extends: { file: common.yml, service: fake-model }
+  server:
+    extends: { file: common.yml, service: server }
+  node-a:
+    extends: { file: common.yml, service: node }
+    hostname: node-a
+    environment:
+      FAKE_MODEL_URL: http://fake-model:9000/node-a/v1
+    depends_on:
+      fake-model: { condition: service_healthy }
+      server: { condition: service_healthy }
+  node-b:
+    extends: { file: common.yml, service: node }
+    hostname: node-b
+    environment:
+      FAKE_MODEL_URL: http://fake-model:9000/node-b/v1
+    depends_on:
+      fake-model: { condition: service_healthy }
+      server: { condition: service_healthy }
+  runner:
+    extends: { file: common.yml, service: runner }
+    environment:
+      NODES: node-a,node-b
+    command: ["bun", "test", "--timeout", "180000", "tests/e2e"]
+    depends_on:
+      node-a: { condition: service_healthy }
+      node-b: { condition: service_healthy }
+
+volumes:
+  server-data:

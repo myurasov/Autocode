@@ -1,0 +1,28 @@
+{
+  "name": "autocode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/plugin",
+    "packages/cli"
+  ],
+  "scripts": {
+    "build": "bun run packages/plugin/build.ts && bun run packages/cli/build.ts",
+    "typecheck": "bun packages/cli/build.ts --generate && tsc -p tsconfig.json",
+    "lint": "biome check .",
+    "test:unit": "bun test tests/unit",
+    "test:api": "bun test tests/api"
+  },
+  "devDependencies": {
+    "@autocode/cli": "workspace:*",
+    "@autocode/plugin": "workspace:*",
+    "@autocode/server": "workspace:*",
+    "@autocode/shared": "workspace:*",
+    "@biomejs/biome": "2.6.3",
+    "@types/bun": "1.4.4",
+    "typescript": "7.0.2"
+  }
+}

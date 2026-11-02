@@ -1,0 +1,47 @@
+<!--
+  The Settings section that looks up one agent ID: each setting's resolved value
+  and where it comes from.
+-->
+
+<h2>Resolved for an Agent</h2>
+<p class="muted">
+  The values an agent ID gets from all of the above, and where each one comes
+  from.
+</p>
+<div class="toolbar">
+  <label for="resolve-agent">Agent ID</label>
+  <input
+    id="resolve-agent"
+    type="text"
+    spellcheck="false"
+    list="known-agents"
+    placeholder="for example kaggle:lead"
+    [value]="agent()"
+    (input)="agent.set($any($event.target).value)"
+    (keydown.enter)="lookup()"
+  />
+  <button type="button" [disabled]="busy()" (click)="lookup()">Show</button>
+</div>
+@if (error()) {
+  <p class="errmsg" role="alert">{{ error() }}</p>
+}
+@if (result(); as r) {
+  <table class="resolved" [attr.data-agent]="r.agent">
+    <thead>
+      <tr>
+        <th>Setting</th>
+        <th>Value for <code>{{ r.agent }}</code></th>
+        <th>From</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (key of keys(); track key) {
+        <tr [attr.data-key]="key">
+          <td class="key"><code>{{ key }}</code></td>
+          <td class="value">{{ valueText(r.values[key]) }}</td>
+          <td class="from">{{ sourceText(r.sources[key]) }}</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+}

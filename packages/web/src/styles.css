@@ -1,0 +1,403 @@
+/*
+ * The look of AISee's console: its colors for light and dark, system fonts,
+ * compact tables, simple tabs.
+ */
+:root {
+  --bg: #fff;
+  --panel: #fff;
+  --soft: #f5f5f5;
+  --softer: #fafafa;
+  --code: #f2f2f2;
+  --fg: #222;
+  --fg-strong: #111;
+  --fg-dim: #666;
+  --fg-label: #444;
+  --fg-faint: #999;
+  --border: #ccc;
+  --border-soft: #e0e0e0;
+  --border-softer: #e4e4e4;
+  --tab-bg: #f0f0f0;
+  --btn-border: #aaa;
+  --link: #369;
+  --sel: #eef4ff;
+  --ok: #2a7;
+  --warn: #b80;
+  --err: #c33;
+  --accent-soft: #f3f9e8;
+  /* The favicon's pink-red, for checkboxes too. */
+  --tint: #e8436e;
+  /* The dropdowns' arrow. */
+  --chevron: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23666' stroke-width='1.5'/></svg>");
+}
+html.dark {
+  --bg: #14181c;
+  --panel: #1d2227;
+  --soft: #262d34;
+  --softer: #21272d;
+  --code: #2a3138;
+  --fg: #d5dbe1;
+  --fg-strong: #fff;
+  --fg-dim: #9aa4ae;
+  --fg-label: #aeb7c0;
+  --fg-faint: #6d7883;
+  --border: #3b444d;
+  --border-soft: #2e363e;
+  --border-softer: #2e363e;
+  --tab-bg: #21272d;
+  --btn-border: #4a545e;
+  --link: #6cb1e0;
+  --sel: #24344a;
+  --ok: #4c9;
+  --warn: #d9a03c;
+  --err: #e77;
+  --accent-soft: #22301a;
+  --chevron: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%239aa4ae' stroke-width='1.5'/></svg>");
+  color-scheme: dark;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+body {
+  font:
+    15px / 1.45 system-ui,
+    sans-serif;
+  margin: 1.5rem 2rem;
+  color: var(--fg);
+  background: var(--bg);
+}
+h1 {
+  font-size: 1.43rem;
+}
+h1 small {
+  color: var(--fg-faint);
+  font-weight: normal;
+  font-size: 15px;
+}
+h2 {
+  font-size: 1.16rem;
+  margin: 1.6rem 0 0.3rem;
+}
+h2.first {
+  margin-top: 0.6rem;
+}
+h3 {
+  font-size: 1.05rem;
+  margin: 0.2rem 0 0.4rem;
+}
+p {
+  margin: 0.3rem 0;
+}
+label {
+  display: block;
+  margin: 0.45rem 0 0.1rem;
+  color: var(--fg-label);
+}
+input[type="text"],
+input[type="password"],
+select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  font: inherit;
+  background: var(--panel);
+  color: var(--fg);
+}
+/*
+ * Dropdowns draw their own arrow, the same on every browser: its right end
+ * 9 px from the border, 5 px further in than the native one (about 4 px in
+ * Chromium), which sat too far right on the Mac.
+ */
+select {
+  appearance: none;
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px 6px;
+  padding-right: calc(9px + 10px + 0.5rem);
+}
+input[type="checkbox"] {
+  accent-color: var(--tint);
+  width: 1rem;
+  height: 1rem;
+  margin: 0.2rem 0;
+}
+button {
+  padding: 0.35rem 1.1rem;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--btn-border);
+  background: var(--soft);
+  color: var(--fg);
+}
+button:hover {
+  background: var(--softer);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.small,
+td button {
+  padding: 0.1rem 0.5rem;
+}
+td button {
+  margin-right: 0.25rem;
+  white-space: nowrap;
+}
+/* A row's buttons: when they wrap, a little space between their lines. */
+.row-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(0.3rem - 1px) 0.25rem;
+}
+.row-buttons button {
+  margin-right: 0;
+}
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+a {
+  color: var(--link);
+}
+.muted {
+  color: var(--fg-faint);
+}
+.errmsg {
+  color: var(--err);
+  word-break: break-word;
+}
+/* Hosts: a host whose shells get no Autocode values, under its process. */
+.no-shell {
+  display: block;
+  color: var(--warn);
+  cursor: help;
+}
+.notice {
+  color: var(--ok);
+}
+.spacer {
+  flex: 1;
+}
+
+/* tabs + frame */
+nav {
+  display: flex;
+  gap: 0;
+  margin-bottom: -1px;
+  align-items: flex-end;
+}
+nav a {
+  border: 1px solid var(--border);
+  background: var(--tab-bg);
+  color: var(--fg-dim);
+  padding: 0.45rem 1rem;
+  margin-right: 0.25rem;
+  position: relative;
+  text-decoration: none;
+}
+nav a.on {
+  background: var(--panel);
+  color: var(--fg-strong);
+  border-bottom: 1px solid var(--panel);
+  z-index: 2;
+}
+#frame {
+  display: block;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  padding: 1.25rem;
+  min-height: 14rem;
+  overflow-x: auto;
+}
+/* A page's first item starts at the top of its frame. */
+#frame > :first-child,
+#frame > router-outlet + * > :first-child {
+  margin-top: 0;
+}
+
+/* tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 0.8rem;
+}
+th,
+td {
+  border: 1px solid var(--border-soft);
+  padding: calc(0.25rem + 2px) calc(0.5rem + 2px);
+  text-align: left;
+  vertical-align: middle;
+  overflow-wrap: break-word;
+}
+th {
+  background: var(--soft);
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+td.status,
+td.key,
+td.num,
+td.from,
+td.scope {
+  white-space: nowrap;
+}
+td.help {
+  color: var(--fg-dim);
+}
+/*
+ * So that a table fits its frame: long IDs, folders and sessions wrap after
+ * ":", "/" or "_" (the page marks those places), a session anywhere if it must
+ * but no narrower than 10 characters, and a time between its date and clock.
+ */
+td.session code {
+  display: inline-block;
+  min-width: 10ch;
+  overflow-wrap: anywhere;
+}
+td.time > span {
+  white-space: nowrap;
+}
+/* A group's heading row in a table: the Agents table's machines. */
+tr.group th {
+  background: var(--softer);
+  color: var(--fg-strong);
+}
+td.from.set {
+  color: var(--fg-strong);
+  font-weight: 600;
+}
+/* 1.5 times its earlier width (the owner's choice). */
+table.settings td.value {
+  box-sizing: border-box;
+  width: 28.5rem;
+}
+.dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  background: var(--warn);
+  vertical-align: baseline;
+}
+.dot.ok {
+  background: var(--ok);
+}
+.dot.off {
+  background: var(--err);
+}
+.pair {
+  display: inline-block;
+  margin-right: 0.9rem;
+}
+
+/* forms */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+.toolbar label {
+  margin: 0;
+}
+.toolbar input[type="text"] {
+  width: 22rem;
+  max-width: 100%;
+}
+.row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+.row > input {
+  flex: 1;
+}
+.inline-edit {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+/*
+ * Buttons beside a field: as tall as the field, as close together as a row's
+ * buttons.
+ */
+.inline-edit button {
+  padding: 0.35rem 0.5rem;
+  margin-right: 0;
+}
+.inline-edit > input[type="text"] {
+  flex: 1;
+  min-width: 10rem;
+}
+app-value-input {
+  display: block;
+  flex: 1;
+  min-width: 9rem;
+}
+.editor {
+  border: 1px solid var(--border-soft);
+  background: var(--softer);
+  padding: 0.7rem 0.9rem;
+  margin-top: 0.7rem;
+  max-width: 46rem;
+}
+.editor table.items {
+  margin-top: 0.2rem;
+}
+.editor table.items td {
+  border: none;
+  padding: 0.15rem 0.3rem 0.15rem 0;
+}
+.buttons {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-top: 0.6rem;
+}
+.add-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+.add-row > div {
+  flex: 1;
+  min-width: 11rem;
+}
+.add-row > div.go {
+  flex: none;
+  min-width: 0;
+}
+#frame.sign-in {
+  max-width: 44rem;
+  min-height: 0;
+}
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+/* phones: wrap rows, shrink chrome */
+@media (max-width: 700px) {
+  body {
+    margin: 0.6rem 0.7rem;
+  }
+  nav a {
+    padding: 0.35rem 0.6rem;
+  }
+  #frame {
+    padding: 0.7rem;
+  }
+  .row,
+  .inline-edit {
+    flex-wrap: wrap;
+  }
+}

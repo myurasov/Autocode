@@ -1,0 +1,8 @@
+# Unit tests, type checks and lint: the runner alone.
+services:
+  runner:
+    extends: { file: common.yml, service: runner }
+    command:
+      - sh
+      - -c
+      - bun run typecheck && bun run lint && bun test --timeout 30000 tests/unit

@@ -1,0 +1,145 @@
+<!--
+  The Agents page: a filter by ID pattern and the agents by machine (Edit, New
+  token, Unregister).
+-->
+
+<div class="toolbar">
+  <button type="button" (click)="applyFilter()">Refresh</button>
+  <app-updated class="muted" [at]="updatedAt()" />
+  <span class="spacer"></span>
+  <label for="match">Filter</label>
+  <input
+    id="match"
+    type="text"
+    spellcheck="false"
+    placeholder="for example kaggle:* or a:b,c:* (empty shows all)"
+    [value]="pattern()"
+    (input)="typed($any($event.target).value)"
+    (keydown.enter)="applyFilter()"
+  />
+  @if (applied()) {
+    <button type="button" (click)="clearFilter()">Show All</button>
+  }
+</div>
+
+@if (error()) {
+  <p class="errmsg" role="alert">{{ error() }}</p>
+}
+@if (notice()) {
+  <p class="notice" role="status">{{ notice() }}</p>
+}
+
+<table class="agents">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Description</th>
+      <th>Status</th>
+      <th>Folder</th>
+      <th>Session</th>
+      <th>Registered</th>
+      <th>Last Active</th>
+      <th></th>
+    </tr>
+  </thead>
+  @for (m of machines(); track m.machine) {
+    <tbody [attr.data-machine]="m.machine">
+      <tr class="group">
+        <th colspan="8" scope="rowgroup">
+          {{ m.machine || 'unknown machine' }}
+        </th>
+      </tr>
+      @for (a of m.agents; track a.id) {
+        <tr [attr.data-agent]="a.id">
+          <td class="id"><code [appBreaks]="a.id"></code></td>
+          <td class="desc">
+            @if (editing() === a.id) {
+              <div class="inline-edit">
+                <input
+                  type="text"
+                  aria-label="Description"
+                  [value]="draft()"
+                  (input)="draft.set($any($event.target).value)"
+                  (keydown.enter)="saveDescription(a)"
+                  (keydown.escape)="cancelEdit()"
+                />
+                <button
+                  type="button"
+                  class="small"
+                  [disabled]="busy()"
+                  (click)="saveDescription(a)"
+                >
+                  Save
+                </button>
+                <button type="button" class="small" (click)="cancelEdit()">
+                  Cancel
+                </button>
+              </div>
+            } @else {
+              {{ a.description }}
+            }
+          </td>
+          <td class="status">
+            <span
+              class="dot"
+              [class.ok]="a.status === 'idle'"
+              [class.off]="a.status === 'offline'"
+            ></span>{{ a.status }}
+          </td>
+          <td class="folder"><code [appBreaks]="a.directory"></code></td>
+          <td class="session"><code [appBreaks]="a.session"></code></td>
+          <td
+            class="time"
+            [title]="a.registered_at ?? ''"
+            [appTime]="a.registered_at"
+          ></td>
+          <td
+            class="time"
+            [title]="a.last_active"
+            [appTime]="a.last_active"
+          ></td>
+          <td class="actions">
+            <div class="row-buttons">
+              <button
+                type="button"
+                [disabled]="busy() || editing() === a.id"
+                (click)="startEdit(a)"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                [disabled]="busy()"
+                (click)="rotate(a)"
+                title="Give the agent a new token"
+              >
+                New Token
+              </button>
+              <button
+                type="button"
+                [disabled]="busy()"
+                (click)="unregister(a)"
+              >
+                Unregister
+              </button>
+            </div>
+          </td>
+        </tr>
+      }
+    </tbody>
+  } @empty {
+    <tbody>
+      <tr>
+        <td class="muted" colspan="8">
+          @if (!loaded()) {
+            Loading...
+          } @else if (applied()) {
+            No agent matches {{ applied() }}.
+          } @else {
+            No agents yet.
+          }
+        </td>
+      </tr>
+    </tbody>
+  }
+</table>

@@ -1,0 +1,25 @@
+# Restarts: the server (on its persistent volume) and OpenCode are killed and
+# started again by the tests.
+services:
+  fake-model:
+    extends: { file: common.yml, service: fake-model }
+  server:
+    extends: { file: common.yml, service: server }
+  node-a:
+    extends: { file: common.yml, service: node }
+    hostname: node-a
+    environment:
+      FAKE_MODEL_URL: http://fake-model:9000/node-a/v1
+    depends_on:
+      fake-model: { condition: service_healthy }
+      server: { condition: service_healthy }
+  runner:
+    extends: { file: common.yml, service: runner }
+    environment:
+      NODES: node-a
+    command: ["bun", "test", "--timeout", "300000", "tests/restart"]
+    depends_on:
+      node-a: { condition: service_healthy }
+
+volumes:
+  server-data:

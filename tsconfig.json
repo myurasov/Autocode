@@ -1,0 +1,36 @@
+/*
+ * TypeScript settings for Autocode's Bun code (packages, CI helpers, tests),
+ * which tsc checks in `bun run typecheck`. Nothing is emitted: Bun runs the
+ * sources itself. The Angular web UI and tests/web are left out.
+ */
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext", "DOM"],
+    "types": ["bun"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "packages/shared/src",
+    "packages/server/src",
+    "packages/plugin/src",
+    "packages/plugin/build.ts",
+    "packages/cli/src",
+    "packages/cli/build.ts",
+    "ci/fake-model",
+    "ci/live-check.ts",
+    "tests"
+  ],
+  "exclude": ["tests/web"]
+}

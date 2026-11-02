@@ -1,0 +1,98 @@
+# Service templates the suites extend. Images are built by ci/run.sh before any
+# suite starts.
+x-test-tokens: &tokens
+  AUTOCODE_ADMIN_TOKEN: aca_ci_admin_token_for_tests_only_0000000000
+  AUTOCODE_CONSUMER_TOKEN: acc_ci_consumer_token_for_tests_only_000000
+
+services:
+  fake-model:
+    image: localhost/autocode-ci/build:latest
+    pull_policy: never
+    command: ["bun", "ci/fake-model/server.ts"]
+    stop_grace_period: 2s
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-fsS",
+          "--max-time",
+          "2",
+          "http://127.0.0.1:9000/_health",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+  server:
+    image: localhost/autocode-ci/build:latest
+    pull_policy: never
+    command:
+      [
+        "/src/dist/autocode",
+        "serve",
+        "--listen",
+        "0.0.0.0:4848",
+        "--id",
+        "ci-server",
+        "--poll-wait",
+        "2",
+        "--offline-after",
+        "6",
+      ]
+    environment:
+      <<: *tokens
+    volumes:
+      - server-data:/root/.autocode
+    stop_grace_period: 5s
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-fsS",
+          "--max-time",
+          "2",
+          "http://127.0.0.1:4848/v1/info",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+  node:
+    image: localhost/autocode-ci/node:latest
+    pull_policy: never
+    environment:
+      OPENCODE_SERVER_PASSWORD: test-password
+      OPENCODE_DISABLE_FREE_MODELS: "1"
+      AUTOCODE_URL: http://server:4848
+      AUTOCODE_CONSUMER_TOKEN: acc_ci_consumer_token_for_tests_only_000000
+    stop_grace_period: 5s
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-fsS",
+          "--max-time",
+          "2",
+          "-u",
+          "opencode:test-password",
+          "http://127.0.0.1:4096/api/info",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 90
+
+  runner:
+    image: localhost/autocode-ci/build:latest
+    pull_policy: never
+    environment:
+      <<: *tokens
+      COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-autocode-ci}
+      FAKE_MODEL_URL: http://fake-model:9000
+      AUTOCODE_URL: http://server:4848
+      OPENCODE_PASSWORD: test-password
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CI_OUT:-/tmp/autocode-ci-out}:/out

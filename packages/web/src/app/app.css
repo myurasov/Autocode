@@ -1,0 +1,41 @@
+/*
+ * The app shell's own styles: the top bar with the title, the "admin" badge and
+ * the light/dark button.
+ */
+
+header.top {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+/* The title and the version, centered on one line. */
+header.top h1 {
+  margin: 0;
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.spacer {
+  flex: 1;
+}
+/* 3 px more space before Sign Out than after it (the owner's choice). */
+.who {
+  font-size: 15px;
+  color: var(--fg-dim);
+  margin-right: 3px;
+}
+/* No side padding: the icon sits as far from Sign Out as "admin" does. */
+button.theme {
+  border: none;
+  background: none;
+  color: var(--fg-dim);
+  padding: 0.2rem 0;
+  font-size: 1.38rem;
+  line-height: 1;
+}
+button.theme:hover {
+  background: none;
+  color: var(--fg);
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<!--
+  The web UI's only page, served by the Autocode server; the Angular app
+  (main.ts) renders into app-root.
+-->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Autocode</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link
+    rel="icon"
+    href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="%23e8436e" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M8 2 14.5 13.5 1.5 13.5Z"/></svg>'
+  >
+  <!--
+    The saved light/dark choice is applied before the app starts, so the page
+    does not flash.
+  -->
+  <script>
+    try {
+      if (localStorage.getItem("autocode.theme") !== "light")
+        document.documentElement.classList.add("dark")
+    } catch {}
+  </script>
+</head>
+<body>
+  <app-root></app-root>
+</body>
+</html>

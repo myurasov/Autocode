@@ -1,0 +1,4 @@
+# Bun's settings for this repository: `bun add` writes exact versions into
+# package.json, not ^ ranges.
+[install]
+exact = true

@@ -1,0 +1,172 @@
+#!/usr/bin/env bun
+/*
+ * The `autocode` command, one binary for the server (`autocode serve`) and the
+ * owner's CLI: reads the command line, runs the command, and turns errors into
+ * exit codes (1 refused or failed, 2 wrong usage, 3 the server cannot be
+ * reached).
+ */
+import { join } from "node:path"
+import { startServer } from "@autocode/server"
+import {
+  ApiError,
+  AutocodeError,
+  shownVersion,
+  Unreachable,
+  VERSION,
+} from "@autocode/shared"
+import { CliError, type Parsed, parseArgs } from "./args.ts"
+import { agents, history, hosts, info, settings, token } from "./commands.ts"
+import { autocodeHome } from "./connect.ts"
+import webFiles from "./generated/web.ts"
+import { install, uninstall } from "./install.ts"
+import { pluginInstall, pluginUninstall } from "./plugin.ts"
+
+const USAGE = `usage: autocode <command> [flags]
+
+owner:
+  serve [--id ID] [--listen localhost,tailscale:4848] [--data DIR]
+                                         run the server
+  install [--listen ...] [--id ...]      install the server as a
+                                         systemd user service (Linux)
+  uninstall                              remove the service (binary, data stay)
+  plugin install --url URL --consumer-token T [--server-id ID]
+      [--admin-token T] [--opencode-config-dir DIR]
+  plugin uninstall [--opencode-config-dir DIR]
+  info                                   the server's ID and version
+  agents [PATTERN] | agents rm AGENT     list agents, or unregister one
+  agents register AGENT --session SES [--force]
+                                         bind an ID to a session
+                                         (--force moves it from a live one)
+  hosts                                  the plugin instances (machine, folder)
+                                         and whether they are online
+  token rotate AGENT                     replace an agent's session token
+  settings [--agent ID] | settings set|unset KEY [VALUE]
+      [--agent ID | --match PATTERN]
+  history [--agent ID] [--kind KIND] [--since TIME] [--limit N]
+
+flags everywhere: --json, --url URL, --token TOKEN,
+                  --server-id ID (refuse a server with another ID)`
+
+async function serve(args: Parsed): Promise<number> {
+  const f = args.flags
+  const server = await startServer({
+    web: f["web-dir"]
+      ? { dir: f["web-dir"] }
+      : Object.keys(webFiles).length
+        ? { files: webFiles }
+        : undefined,
+    dataDir: f.data ?? autocodeHome(),
+    id: f.id,
+    listen: f.listen ? [f.listen] : undefined,
+    pollWait: f["poll-wait"] ? Number(f["poll-wait"]) : undefined,
+    offlineAfter: f["offline-after"] ? Number(f["offline-after"]) : undefined,
+    presetTokens: {
+      admin: process.env.AUTOCODE_ADMIN_TOKEN || undefined,
+      consumer: process.env.AUTOCODE_CONSUMER_TOKEN || undefined,
+    },
+  })
+  console.log(
+    `autocode ${shownVersion(VERSION)}, server ${server.id}, listening on ` +
+      `${server.urls.join(", ") || "(no address yet)"}`,
+  )
+  const made = server.firstStartTokens
+  if (made) {
+    const dir = f.data ?? autocodeHome()
+    const files = [
+      made.admin && join(dir, "admin.token"),
+      made.consumer && join(dir, "consumer.token"),
+    ]
+      .filter(Boolean)
+      .join(" and ")
+    // Shown once, and only on a terminal: a service's output goes to a log that
+    // keeps it.
+    if (process.stdout.isTTY) {
+      console.log(
+        "first start: the owner's new tokens, shown once " +
+          `(also saved 0600 in ${files}):`,
+      )
+      if (made.admin) console.log(`  admin token:    ${made.admin}`)
+      if (made.consumer) console.log(`  consumer token: ${made.consumer}`)
+    } else
+      console.log(
+        `first start: the owner's new tokens are saved 0600 in ${files}`,
+      )
+  }
+  const stop = async () => {
+    await server.stop()
+    process.exit(0)
+  }
+  process.on("SIGTERM", stop)
+  process.on("SIGINT", stop)
+  await new Promise(() => {})
+  return 0
+}
+
+async function main(argv: string[]): Promise<number> {
+  const [command, ...rest] = argv
+  if (
+    !command ||
+    command === "--help" ||
+    command === "-h" ||
+    command === "help"
+  ) {
+    console.log(USAGE)
+    return 0
+  }
+  if (command === "--version" || command === "-v" || command === "version") {
+    console.log(shownVersion(VERSION))
+    return 0
+  }
+  const args = parseArgs(rest)
+  switch (command) {
+    case "serve":
+      return serve(args)
+    case "install":
+      return install(args)
+    case "uninstall":
+      return uninstall()
+    case "plugin": {
+      const [sub] = args.words
+      if (sub === "install") return pluginInstall(args)
+      if (sub === "uninstall") return pluginUninstall(args)
+      throw new CliError("usage: autocode plugin install|uninstall ...", 2)
+    }
+    case "info":
+      return info(args)
+    case "agents":
+      return agents(args)
+    case "hosts":
+      return hosts(args)
+    case "token":
+      return token(args)
+    case "settings":
+      return settings(args)
+    case "history":
+      return history(args)
+    default:
+      throw new CliError(`unknown command: ${command}\n\n${USAGE}`, 2)
+  }
+}
+
+try {
+  process.exit(await main(process.argv.slice(2)))
+} catch (err) {
+  if (err instanceof CliError) {
+    console.error(err.message)
+    process.exit(err.code)
+  }
+  if (err instanceof Unreachable) {
+    console.error(err.message)
+    process.exit(3)
+  }
+  if (err instanceof ApiError) {
+    console.error(`refused (${err.code}): ${err.message}`)
+    process.exit(1)
+  }
+  if (err instanceof AutocodeError) {
+    console.error(err.message)
+    process.exit(1)
+  }
+  console.error(String((err as Error)?.stack ?? err))
+  process.exit(1)
+}
