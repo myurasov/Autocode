@@ -1,12 +1,34 @@
 <!--
-  The Agents page: a filter by ID pattern and the agents by machine (Edit, New
-  token, Unregister).
+  The Agents page: Stop All and Resume All (an action's result beside them), a
+  filter by ID pattern, the agents by machine (Edit, Pause or Resume, New
+  Token, Unregister), and when the list last loaded.
 -->
 
 <div class="toolbar">
   <button type="button" (click)="applyFilter()">Refresh</button>
-  <app-updated class="muted" [at]="updatedAt()" />
-  <span class="spacer"></span>
+  <button
+    type="button"
+    [disabled]="busy()"
+    (click)="stopAll()"
+    title="Pause every agent and interrupt every running turn"
+  >
+    Stop All
+  </button>
+  <button
+    type="button"
+    [disabled]="busy()"
+    (click)="resumeAll()"
+    title="Resume the agents that Stop All paused"
+  >
+    Resume All
+  </button>
+  <span class="result">
+    @if (failed()) {
+      <span class="errmsg" role="alert">{{ failed() }}</span>
+    } @else if (notice()) {
+      <span class="notice" role="status">{{ notice() }}</span>
+    }
+  </span>
   <label for="match">Filter</label>
   <input
     id="match"
@@ -24,9 +46,6 @@
 
 @if (error()) {
   <p class="errmsg" role="alert">{{ error() }}</p>
-}
-@if (notice()) {
-  <p class="notice" role="status">{{ notice() }}</p>
 }
 
 <table class="agents">
@@ -79,10 +98,11 @@
               {{ a.description }}
             }
           </td>
-          <td class="status">
+          <td class="status" [attr.title]="pausedText(a) || null">
             <span
               class="dot"
-              [class.ok]="a.status === 'idle'"
+              [class.ok]="a.status === 'idle' || a.status === 'working'"
+              [class.warn]="a.status === 'paused'"
               [class.off]="a.status === 'offline'"
             ></span>{{ a.status }}
           </td>
@@ -107,6 +127,25 @@
               >
                 Edit
               </button>
+              @if (a.paused) {
+                <button
+                  type="button"
+                  [disabled]="busy()"
+                  (click)="resume(a)"
+                  title="Let wakes and messages reach the agent again"
+                >
+                  Resume
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  [disabled]="busy()"
+                  (click)="pause(a)"
+                  title="Type nothing into the agent's session for now"
+                >
+                  Pause
+                </button>
+              }
               <button
                 type="button"
                 [disabled]="busy()"
@@ -143,3 +182,5 @@
     </tbody>
   }
 </table>
+
+<footer class="muted"><app-updated [at]="updatedAt()" /></footer>

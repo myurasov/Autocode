@@ -5,8 +5,11 @@
  */
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
-import { homedir, hostname } from "node:os"
+import { homedir } from "node:os"
 import { basename, join } from "node:path"
+import { machineName, slug } from "@autocode/shared"
+
+export { machineName }
 
 /*
  * The machine's client config, written by `autocode plugin install`: the server
@@ -52,20 +55,6 @@ export function readClientConfig(
   } catch {
     return undefined
   }
-}
-
-function slug(text: string, max: number): string {
-  return (
-    text
-      .replace(/[^A-Za-z0-9._-]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, max) || "x"
-  )
-}
-
-export function machineName(): string {
-  return slug(hostname().split(".")[0] ?? "machine", 63)
 }
 
 /*

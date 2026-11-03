@@ -2,7 +2,12 @@
  * Agents register with autocode_me on every machine and see each other.
  */
 import { describe, expect, test } from "bun:test"
-import { admin, callTool, readySession } from "../helpers/autocode.ts"
+import {
+  admin,
+  agentStatus,
+  callTool,
+  readySession,
+} from "../helpers/autocode.ts"
 import { nodes } from "../helpers/env.ts"
 import { OpenCode } from "../helpers/opencode.ts"
 
@@ -21,13 +26,14 @@ describe("registration through autocode_me", () => {
         id: idFor(node),
         description: `lead on ${node}`,
       })
-      expect(out).toBe(`Registered as ${idFor(node)} (status idle).`)
+      // it registers during its own turn: working (tier 0b turn status)
+      expect(out).toBe(`Registered as ${idFor(node)} (status working).`)
       const status = await callTool(oc, s.id, "autocode_me", {
         action: "status",
       })
       expect(status).toContain(`Registered as ${idFor(node)}: lead on ${node}.`)
       expect(status).toContain(`machine ${node}`)
-      const agent = (await admin("GET", `/v1/agents/${idFor(node)}`)).agent
+      const agent = await agentStatus(idFor(node), "idle")
       expect(agent).toMatchObject({
         machine: node,
         session: s.id,

@@ -1,8 +1,10 @@
 /*
  * Unit tests of the Agents page against a mocked server: the agents by machine,
  * where long values may wrap, the filter and a bad pattern, the 10 s refresh
- * (one at a time), editing a description, and New token and Unregister, each
- * after a confirmation.
+ * (one at a time), editing a description, New token and Unregister, each after
+ * a confirmation, each status's dot, Pause and Resume, and Stop All (after a
+ * confirmation) and Resume All, with each action's result in the toolbar and
+ * "Updated" in the footer.
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -75,9 +77,10 @@ describe('AgentsPage', () => {
     const page = await open();
     expect(page.querySelector('h2')).toBeNull();
     expect(page.querySelector('td.machine')).toBeNull();
-    expect(text(page.querySelector('.toolbar app-updated'))).toBe(
-      'Updated 0s ago.',
-    );
+    // When the list last loaded: in the footer, the page's last item.
+    expect(page.querySelector('.toolbar app-updated')).toBeNull();
+    expect(page.lastElementChild!.tagName).toBe('FOOTER');
+    expect(text(page.querySelector('footer'))).toBe('Updated 0s ago.');
     expect(text(page)).not.toContain('refreshes every');
     const machines = [
       ...page.querySelectorAll('table.agents tbody[data-machine]'),
@@ -220,7 +223,7 @@ describe('AgentsPage', () => {
     expect(
       text(page.querySelector('tr[data-agent="kaggle:lead"] td.desc')),
     ).toBe('runs the show');
-    expect(text(page.querySelector('.notice'))).toBe(
+    expect(text(page.querySelector('.toolbar .notice'))).toBe(
       'Saved the description of kaggle:lead.',
     );
   });
@@ -241,7 +244,7 @@ describe('AgentsPage', () => {
     expect(rotate.request.method).toBe('POST');
     rotate.flush({ rotated: true, agent: 'kaggle:lead', session: 'ses_lead' });
     await settle(fixture);
-    expect(text(page.querySelector('.notice'))).toBe(
+    expect(text(page.querySelector('.toolbar .notice'))).toBe(
       'kaggle:lead has a new token.',
     );
 
@@ -251,9 +254,172 @@ describe('AgentsPage', () => {
     del.flush({ unregistered: 'kaggle:lead' });
     await settle(fixture);
     expect(page.querySelector('tr[data-agent="kaggle:lead"]')).toBeNull();
-    expect(text(page.querySelector('.notice'))).toBe(
+    expect(text(page.querySelector('.toolbar .notice'))).toBe(
       'Unregistered kaggle:lead.',
     );
     confirm.mockRestore();
+  });
+
+  it('shows each status with its dot: idle and working green, paused amber, offline red', async () => {
+    signedIn();
+    fixture = TestBed.createComponent(AgentsPage);
+    const statuses = ['idle', 'working', 'paused', 'offline'];
+    load(
+      statuses.map((status) => ({
+        ...AGENTS[0]!,
+        id: `s:${status}`,
+        status,
+        paused: status === 'paused' ? 'owner' : '',
+      })),
+    );
+    await settle(fixture);
+    const row = (status: string) =>
+      el(fixture).querySelector(`tr[data-agent="s:${status}"]`)!;
+    const dots = statuses.map((s) => [
+      ...row(s).querySelector('td.status .dot')!.classList,
+    ]);
+    expect(dots).toEqual([
+      ['dot', 'ok'],
+      ['dot', 'ok'],
+      ['dot', 'warn'],
+      ['dot', 'off'],
+    ]);
+    expect(
+      statuses.map((s) => text(row(s).querySelector('td.status'))),
+    ).toEqual(statuses);
+    expect(
+      row('paused').querySelector('td.status')!.getAttribute('title'),
+    ).toBe('Paused by the owner');
+    expect(row('idle').querySelector('td.status')!.getAttribute('title')).toBe(
+      null,
+    );
+  });
+
+  it('admin pauses and resumes an agent, and the list refreshes after each', async () => {
+    const page = await open();
+    const lead = () => page.querySelector('tr[data-agent="kaggle:lead"]')!;
+    expect(button(lead(), 'Resume')).toBeUndefined();
+    button(lead(), 'Pause')!.click();
+    const pause = http.expectOne('/v1/agents/kaggle%3Alead/pause');
+    expect(pause.request.method).toBe('POST');
+    const paused = { ...AGENTS[0]!, status: 'paused', paused: 'owner' };
+    pause.flush({ agent: paused });
+    await settle(fixture);
+    load([paused, AGENTS[1]!]);
+    await settle(fixture);
+    expect(text(lead().querySelector('td.status'))).toBe('paused');
+    expect(button(lead(), 'Pause')).toBeUndefined();
+    // The result shows in the toolbar, right after its buttons, not on a line
+    // of its own.
+    const toolbar = page.querySelector('.toolbar')!;
+    const notice = toolbar.querySelector('.notice')!;
+    expect(text(notice)).toBe('Paused kaggle:lead.');
+    expect(
+      button(toolbar, 'Resume All')!.nextElementSibling!.contains(notice),
+    ).toBe(true);
+    expect(page.querySelector('p.notice')).toBeNull();
+
+    button(lead(), 'Resume')!.click();
+    const resume = http.expectOne('/v1/agents/kaggle%3Alead/resume');
+    expect(resume.request.method).toBe('POST');
+    resume.flush({ agent: AGENTS[0] });
+    await settle(fixture);
+    load();
+    await settle(fixture);
+    expect(text(lead().querySelector('td.status'))).toBe('idle');
+    expect(button(lead(), 'Pause')).toBeDefined();
+    expect(text(page.querySelector('.toolbar .notice'))).toBe(
+      'Resumed kaggle:lead.',
+    );
+  });
+
+  it('an offline agent that is paused offers Resume', async () => {
+    signedIn();
+    fixture = TestBed.createComponent(AgentsPage);
+    load([{ ...AGENTS[1]!, paused: 'stop-all' }]);
+    await settle(fixture);
+    const row = el(fixture).querySelector('tr[data-agent="kaggle:worker"]')!;
+    expect(text(row.querySelector('td.status'))).toBe('offline');
+    expect(row.querySelector('td.status')!.getAttribute('title')).toBe(
+      'Paused by Stop All',
+    );
+    expect(button(row, 'Resume')).toBeDefined();
+    expect(button(row, 'Pause')).toBeUndefined();
+  });
+
+  it('admin stops all after a confirmation and resumes all, and the list refreshes after each', async () => {
+    const page = await open();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    button(page.querySelector('.toolbar')!, 'Stop All')!.click();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0]![0]).toContain('interrupt');
+    http.expectNone('/v1/stop-all');
+
+    confirm.mockReturnValue(true);
+    button(page, 'Stop All')!.click();
+    const stop = http.expectOne('/v1/stop-all');
+    expect(stop.request.method).toBe('POST');
+    stop.flush({
+      paused: ['kaggle:lead', 'kaggle:worker'],
+      interrupted: ['kaggle:lead'],
+    });
+    await settle(fixture);
+    load(
+      AGENTS.map((a) => ({
+        ...a,
+        status: a.status === 'offline' ? 'offline' : 'paused',
+        paused: 'stop-all',
+      })),
+    );
+    await settle(fixture);
+    expect(text(page.querySelector('.toolbar .notice'))).toBe(
+      'Stop All paused 2 agents and interrupted 1 session.',
+    );
+    const lead = page.querySelector('tr[data-agent="kaggle:lead"]')!;
+    expect(lead.querySelector('td.status')!.getAttribute('title')).toBe(
+      'Paused by Stop All',
+    );
+
+    button(page.querySelector('.toolbar')!, 'Resume All')!.click();
+    expect(confirm).toHaveBeenCalledTimes(2);
+    const resume = http.expectOne('/v1/resume-all');
+    expect(resume.request.method).toBe('POST');
+    resume.flush({ resumed: ['kaggle:lead', 'kaggle:worker'] });
+    await settle(fixture);
+    load();
+    await settle(fixture);
+    expect(text(page.querySelector('.toolbar .notice'))).toBe(
+      'Resumed 2 agents.',
+    );
+
+    button(page, 'Resume All')!.click();
+    http.expectOne('/v1/resume-all').flush({ resumed: [] });
+    await settle(fixture);
+    load();
+    await settle(fixture);
+    expect(text(page.querySelector('.toolbar .notice'))).toBe(
+      'No agent was paused by Stop All.',
+    );
+    confirm.mockRestore();
+  });
+
+  it('shows why a pause failed', async () => {
+    const page = await open();
+    button(
+      page.querySelector('tr[data-agent="kaggle:lead"]')!,
+      'Pause',
+    )!.click();
+    apiError(
+      http.expectOne('/v1/agents/kaggle%3Alead/pause'),
+      404,
+      'not_registered',
+      'no agent kaggle:lead',
+    );
+    await settle(fixture);
+    expect(text(page.querySelector('.toolbar .errmsg'))).toBe(
+      'no agent kaggle:lead',
+    );
+    expect(page.querySelector('p.errmsg')).toBeNull();
+    http.expectNone((r) => r.url === '/v1/agents');
   });
 });

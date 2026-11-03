@@ -8,8 +8,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -188,13 +190,17 @@ interface Fake {
   tools: any[]
   hooks: Record<string, (event: any) => any>
   emit: (event: any) => void
+  // ctx.session.prompt and ctx.session.interrupt calls, oldest first
+  calls: { kind: string; input: any }[]
+  // the skills the plugin's skill transforms add now
+  skills: () => any[]
 }
 
 /*
- * A plugin context with what the plugin uses: sessions (get, list), tool and
- * shell hooks, and an event stream that carries every folder's events, as
- * OpenCode's does. OpenCode runs as `opencode serve` with the fake local API
- * unless told otherwise.
+ * A plugin context with what the plugin uses: sessions (get, list, prompt,
+ * interrupt, hooks), tool and shell hooks, skills, and an event stream that
+ * carries every folder's events, as OpenCode's does. OpenCode runs as
+ * `opencode serve` with the fake local API unless told otherwise.
  */
 async function startPlugin(
   directory: string,
@@ -205,6 +211,8 @@ async function startPlugin(
   startedAs(how)
   const tools: any[] = []
   const hooks: Record<string, (event: any) => any> = {}
+  const calls: { kind: string; input: any }[] = []
+  const skillTransforms: ((editor: any) => void)[] = []
   const queue: any[] = []
   let wake: (() => void) | undefined
   const ctx = {
@@ -241,6 +249,23 @@ async function startPlugin(
           .map((s) => ({ id: s.id, location: { directory: s.directory } })),
         cursor: {},
       }),
+      prompt: async (input: any) => {
+        calls.push({ kind: "prompt", input })
+        return { id: input.id }
+      },
+      interrupt: async (input: any) => {
+        calls.push({ kind: "interrupt", input })
+        return { interrupted: true }
+      },
+      hook: async (name: string, fn: any) => {
+        hooks[`session.${name}`] = fn
+      },
+    },
+    skill: {
+      transform: async (fn: (editor: any) => void) => {
+        skillTransforms.push(fn)
+      },
+      reload: async () => {},
     },
     tool: {
       transform: async (fn: (registry: any) => void) =>
@@ -278,6 +303,12 @@ async function startPlugin(
   return {
     tools,
     hooks,
+    calls,
+    skills: () => {
+      const added: any[] = []
+      for (const fn of skillTransforms) fn({ add: (x: any) => added.push(x) })
+      return added
+    },
     emit: (event) => {
       queue.push(event)
       wake?.()
@@ -535,5 +566,311 @@ describe("the plugin in-process", () => {
       (await call(t.url, t.admin, "GET", "/v1/agents/inproc:gone")).body.agent
         .status,
     ).toBe("offline")
+  })
+})
+
+/*
+ * Tier 0b in the plugin: the server's instructions (inject, interrupt, check,
+ * registration), turn events, the agent guide (the autocode skill and the line
+ * for registered sessions), and the wake and message tools with files.
+ */
+describe("the plugin in-process, tier 0b", () => {
+  const tool = (fake: Fake, name: string) =>
+    fake.tools.find((x) => x.name === name)
+  const hostOf = async (dir: string) =>
+    (await call(t.url, t.admin, "GET", "/v1/hosts")).body.hosts.find(
+      (h: any) => h.directory === dir && h.online,
+    ).id as string
+  // Sends an instruction to the plugin and waits for its acknowledgement.
+  const instruct = async (host: string, type: string, payload: unknown) => {
+    const id = t.server.enqueue(host, type, payload)
+    return until(
+      () => {
+        const state = t.server.instruction(id)
+        return state?.acked ? state : undefined
+      },
+      { timeoutMs: 15_000, what: `the plugin to answer ${type}` },
+    )
+  }
+  const agentOf = async (id: string) =>
+    (await call(t.url, t.admin, "GET", `/v1/agents/${id}`)).body.agent
+
+  test("inject and interrupt reach the session; inject waits behind a running turn", async () => {
+    const dir = join(root, "work-0b-inject")
+    const fake = await connected(() =>
+      startPlugin(dir, [{ id: "ses_inj", directory: dir }]),
+    )
+    const host = await hostOf(dir)
+    const done = await instruct(host, "inject", {
+      session: "ses_inj",
+      prompt_id: "msg_0123456789abcdef01234567",
+      text: '[autocode] wake "w"\n\nWake "w":\nGo.',
+    })
+    expect(done.ok).toBe(true)
+    expect(fake.calls).toContainEqual({
+      kind: "prompt",
+      input: {
+        sessionID: "ses_inj",
+        id: "msg_0123456789abcdef01234567",
+        text: '[autocode] wake "w"\n\nWake "w":\nGo.',
+        delivery: "queue",
+      },
+    })
+    await instruct(host, "interrupt", { session: "ses_inj" })
+    expect(fake.calls).toContainEqual({
+      kind: "interrupt",
+      input: { sessionID: "ses_inj", resume: false },
+    })
+  })
+
+  test("a check runs in the folder with the session's values, a time limit and an output limit", async () => {
+    const dir = join(root, "work-0b-check")
+    await connected(() => startPlugin(dir, [{ id: "ses_chk", directory: dir }]))
+    const host = await hostOf(dir)
+    const ran = await instruct(host, "check", {
+      session: "ses_chk",
+      directory: dir,
+      command: 'echo "in $(pwd)"; echo "as $AUTOCODE_SESSION" >&2; exit 3',
+      timeout_ms: 10_000,
+      output_limit: 1000,
+    })
+    expect(ran.result).toEqual({
+      exit: 3,
+      output: `in ${dir}\nas ses_chk\n`,
+      timed_out: false,
+    })
+    const started = Date.now()
+    const slow = await instruct(host, "check", {
+      session: "ses_chk",
+      directory: dir,
+      command: "echo started; sleep 30.4321 & sleep 30.4321",
+      timeout_ms: 500,
+      output_limit: 1000,
+    })
+    expect(slow.result).toMatchObject({ exit: null, timed_out: true })
+    expect(Date.now() - started).toBeLessThan(10_000)
+    // the time limit killed all of it, the background child too (Linux: the
+    // command lines in /proc)
+    const running = () =>
+      readdirSync("/proc")
+        .filter((d) => /^\d+$/.test(d))
+        .some((d) => {
+          try {
+            return readFileSync(`/proc/${d}/cmdline`, "utf8").includes(
+              "30.4321",
+            )
+          } catch {
+            return false
+          }
+        })
+    await until(() => !running(), { timeoutMs: 3000, what: "no sleep left" })
+    // a child left in the background does not keep a finished check waiting
+    const quick = Date.now()
+    const done = await instruct(host, "check", {
+      session: "ses_chk",
+      directory: dir,
+      command: "(sleep 5.4321 &); echo ok; exit 0",
+      timeout_ms: 10_000,
+      output_limit: 1000,
+    })
+    expect(done.result).toEqual({ exit: 0, output: "ok\n", timed_out: false })
+    expect(Date.now() - quick).toBeLessThan(4000)
+    const cut = await instruct(host, "check", {
+      session: "ses_chk",
+      directory: dir,
+      command: "seq 1 1000",
+      timeout_ms: 10_000,
+      output_limit: 10,
+    })
+    expect(cut.result).toEqual({
+      exit: 0,
+      output: "1\n2\n3\n4\n5\n",
+      timed_out: false,
+    })
+  })
+
+  test("turn events of this folder's top-level sessions are reported; other folders' and Subagents' are not", async () => {
+    const dir = join(root, "work-0b-turns")
+    const other = join(root, "work-0b-elsewhere")
+    const sessions: Session[] = [
+      { id: "ses_turn", directory: dir },
+      { id: "ses_turn_child", directory: dir, parentID: "ses_turn" },
+      { id: "ses_turn_other", directory: other },
+    ]
+    const fake = await connected(() => startPlugin(dir, sessions))
+    await tool(fake, "autocode_me").execute(
+      { action: "register", id: "inproc:turns" },
+      { sessionID: "ses_turn" },
+    )
+    const event = (type: string, session: string, at = dir, data = {}) => ({
+      type,
+      location: { directory: at },
+      data: { sessionID: session, ...data },
+    })
+    fake.emit(event("session.execution.started", "ses_turn"))
+    await until(
+      async () => (await agentOf("inproc:turns")).status === "working",
+      { what: "the agent to be working" },
+    )
+    // a Subagent's turn ending, and another folder's, change nothing
+    fake.emit(event("session.execution.succeeded", "ses_turn_child"))
+    fake.emit(event("session.execution.succeeded", "ses_turn_other", other))
+    await Bun.sleep(500)
+    expect((await agentOf("inproc:turns")).status).toBe("working")
+    fake.emit(
+      event("session.execution.failed", "ses_turn", dir, {
+        error: { type: "rate_limit", message: "slow down" },
+      }),
+    )
+    await until(async () => (await agentOf("inproc:turns")).status === "idle", {
+      what: "the agent to be idle",
+    })
+    expect((await agentOf("inproc:turns")).last_outcome).toBe("failed")
+  })
+
+  test("the agent guide: the autocode skill for every session, the line only for registered ones and their Subagents", async () => {
+    const dir = join(root, "work-0b-guide")
+    const sessions: Session[] = [
+      { id: "ses_guide", directory: dir },
+      { id: "ses_guide_child", directory: dir, parentID: "ses_guide" },
+      { id: "ses_guide_free", directory: dir },
+    ]
+    const fake = await connected(() => startPlugin(dir, sessions))
+    const [skill, ...more] = fake.skills()
+    expect(more).toEqual([])
+    expect(skill).toMatchObject({ id: "autocode", name: "Autocode" })
+    expect(skill.description).toContain("[autocode]")
+    expect(skill.path).toMatch(/^\/.*SKILL\.md$/)
+    expect(skill.content).toContain("`api-test`")
+    for (const name of ["autocode_me", "autocode_wake", "autocode_message"])
+      expect(skill.content).toContain(`\`${name}\``)
+    const context = (session: string) => {
+      const event = { sessionID: session, system: [] as any[], tools: {} }
+      return fake.hooks["session.context"]!(event).then(() => event.system)
+    }
+    expect(await context("ses_guide")).toEqual([])
+    await tool(fake, "autocode_me").execute(
+      { action: "register", id: "inproc:guide" },
+      { sessionID: "ses_guide" },
+    )
+    const line = {
+      type: "text",
+      text:
+        "This session is Autocode agent `inproc:guide` on server `api-test`; " +
+        "the `autocode` skill says how to use Autocode.",
+    }
+    await until(async () => (await context("ses_guide")).length === 1, {
+      what: "the registration to reach the plugin",
+    })
+    expect(await context("ses_guide")).toEqual([line])
+    expect(await context("ses_guide_child")).toEqual([line])
+    expect(await context("ses_guide_free")).toEqual([])
+    await tool(fake, "autocode_me").execute(
+      { action: "unregister" },
+      { sessionID: "ses_guide" },
+    )
+    await until(async () => (await context("ses_guide")).length === 0, {
+      what: "the unregistration to reach the plugin",
+    })
+  })
+
+  test("the wake and message tools, with files inside the agent's folder only", async () => {
+    const dir = join(root, "work-0b-tools")
+    const fake = await connected(() =>
+      startPlugin(dir, [
+        { id: "ses_tool_a", directory: dir },
+        { id: "ses_tool_b", directory: dir },
+      ]),
+    )
+    const run = async (name: string, input: any, session: string) =>
+      (await tool(fake, name).execute(input, { sessionID: session })).content
+    await run(
+      "autocode_me",
+      { action: "register", id: "tools:a" },
+      "ses_tool_a",
+    )
+    await run(
+      "autocode_me",
+      { action: "register", id: "tools:b" },
+      "ses_tool_b",
+    )
+    expect(
+      await run(
+        "autocode_wake",
+        { action: "set", name: "daily", trigger: "every 1h", text: "Look." },
+        "ses_tool_a",
+      ),
+    ).toMatch(/^Wake "daily" set: every 1h; next \S+Z\.$/)
+    expect(
+      await run("autocode_wake", { action: "list" }, "ses_tool_a"),
+    ).toContain("daily  every 1h")
+    expect(
+      await run(
+        "autocode_wake",
+        { action: "fire", agent: "tools:a", name: "daily", text: "now" },
+        "ses_tool_b",
+      ),
+    ).toBe('Fired wake "daily" of tools:a.')
+    writeFileSync(join(dir, "notes.txt"), "plain words")
+    writeFileSync(join(dir, "plot.png"), Buffer.from([137, 80, 78, 71, 0, 1]))
+    expect(
+      await run(
+        "autocode_message",
+        { action: "send", to: "tools:b", file: "notes.txt" },
+        "ses_tool_a",
+      ),
+    ).toMatch(/^Sent to tools:b \(m_\w+\)\.$/)
+    const sent = await run(
+      "autocode_message",
+      { action: "send", to: "tools:b", subject: "plot", file: "plot.png" },
+      "ses_tool_a",
+    )
+    const binary = /\((m_\w+)\)/.exec(sent)![1]!
+    expect(
+      await run(
+        "autocode_message",
+        { action: "send", to: "tools:b", file: "../outside.txt" },
+        "ses_tool_a",
+      ),
+    ).toContain("outside your folder")
+    const list = await run("autocode_message", { action: "list" }, "ses_tool_b")
+    expect(list).toContain("from tools:a")
+    expect(list).toContain('"plot"  image/png')
+    const unsaved = await run(
+      "autocode_message",
+      { action: "read", id: binary },
+      "ses_tool_b",
+    )
+    expect(unsaved).toContain("Read it again with a path")
+    const saved = await run(
+      "autocode_message",
+      { action: "read", id: binary, path: "in/plot-copy.png" },
+      "ses_tool_b",
+    )
+    expect(saved).toContain(
+      `saved image/png to ${join(dir, "in/plot-copy.png")}`,
+    )
+    expect([...readFileSync(join(dir, "in/plot-copy.png"))]).toEqual([
+      137, 80, 78, 71, 0, 1,
+    ])
+    expect(
+      await run(
+        "autocode_message",
+        { action: "read", id: binary, path: "/tmp/x.png" },
+        "ses_tool_b",
+      ),
+    ).toContain("outside your folder")
+    // a link in the folder that leads outside is never written through
+    const outside = join(root, "outside-target.txt")
+    writeFileSync(outside, "keep me")
+    symlinkSync(outside, join(dir, "link.png"))
+    expect(
+      await run(
+        "autocode_message",
+        { action: "read", id: binary, path: "link.png" },
+        "ses_tool_b",
+      ),
+    ).toContain("is a link")
+    expect(readFileSync(outside, "utf8")).toBe("keep me")
   })
 })

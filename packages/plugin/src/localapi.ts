@@ -133,3 +133,23 @@ export async function setEnvironment(
         `to setting ${session}'s environment`,
     )
 }
+
+// The sessions running a turn now (GET /api/session/active: a map from
+// session ID to its state).
+export async function activeSessions(
+  api: LocalApi,
+  timeoutMs = 5000,
+): Promise<string[]> {
+  const res = await fetch(`${api.url}/api/session/active`, {
+    headers: api.authorization ? { authorization: api.authorization } : {},
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  if (!res.ok)
+    throw new Error(`OpenCode's local API answered ${res.status} for active`)
+  const body: any = await res.json()
+  const map =
+    body && typeof body === "object" && "data" in body ? body.data : body
+  if (Array.isArray(map))
+    return map.filter((s): s is string => typeof s === "string")
+  return map && typeof map === "object" ? Object.keys(map) : []
+}

@@ -8,6 +8,7 @@
     "./*": "./src/*.ts"
   },
   "dependencies": {
-    "@autocode/shared": "workspace:*"
+    "@autocode/shared": "workspace:*",
+    "@opencode/client": "2.2.0"
   }
 }

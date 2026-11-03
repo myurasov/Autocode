@@ -1,0 +1,348 @@
+/*
+ * Unit tests of the Wakes page against a mocked server: every wake by agent
+ * with its trigger, next time, text, check, end, setter and last firing; Fire,
+ * and Cancel after a confirmation (the list refreshes after each), with the
+ * result in the toolbar; the Set a Wake form, collapsed until opened, for any
+ * agent (and the server's message when it refuses); "Updated" in the footer;
+ * and the 10 s refresh (one at a time).
+ */
+
+import type { HttpTestingController } from '@angular/common/http/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import {
+  apiError,
+  button,
+  el,
+  settle,
+  setup,
+  signedIn,
+  text,
+  type,
+} from '../../testing/helpers';
+import { REFRESH_MS } from '../agents/agents-page';
+import type { Wake } from '../api';
+import { localTime } from '../format';
+import { triggerText, WakesPage } from './wakes-page';
+
+const BASE = {
+  created_at: '2026-10-28T09:00:00.000Z',
+  updated_at: '2026-10-28T09:00:00.000Z',
+  check_failures: 0,
+};
+
+const WAKES: Wake[] = [
+  {
+    ...BASE,
+    agent: 'kaggle:lead',
+    name: 'standup',
+    text: 'Report your progress.\nThen go on.',
+    trigger: 'every 30m',
+    check: 'test -f /tmp/go',
+    end: '2026-12-31T08:00:00.000Z',
+    next: '2026-10-28T12:00:00.000Z',
+    set_by: 'owner',
+    last_fired_at: '2026-10-28T11:30:00.000Z',
+  },
+  {
+    ...BASE,
+    agent: 'kaggle:lead',
+    name: 'nightly',
+    text: 'Clean up.',
+    trigger: 'cron "0 2 * * *" UTC',
+    check: null,
+    end: null,
+    next: '2026-10-29T02:00:00.000Z',
+    set_by: 'kaggle:lead',
+    last_fired_at: null,
+  },
+  {
+    ...BASE,
+    agent: 'alpha:one',
+    name: 'ping',
+    text: 'Ping.',
+    trigger: 'fire-only',
+    check: null,
+    end: null,
+    next: null,
+    set_by: 'alpha:one',
+    last_fired_at: null,
+  },
+];
+
+// What a field of the page holds.
+const value = (page: HTMLElement, selector: string) =>
+  (page.querySelector(selector) as HTMLInputElement).value;
+
+describe('WakesPage', () => {
+  let http: HttpTestingController;
+  let fixture: ComponentFixture<WakesPage>;
+
+  beforeEach(() => {
+    http = setup();
+  });
+
+  afterEach(() => http.verify());
+
+  function load(wakes = WAKES): void {
+    http.expectOne('/v1/wakes').flush({ wakes });
+  }
+
+  async function open(wakes = WAKES): Promise<HTMLElement> {
+    signedIn();
+    fixture = TestBed.createComponent(WakesPage);
+    load(wakes);
+    await settle(fixture);
+    return el(fixture);
+  }
+
+  const row = (page: HTMLElement, agent: string, name: string) =>
+    page.querySelector(
+      `table.wakes tbody[data-agent="${agent}"] tr[data-wake="${name}"]`,
+    )!;
+
+  it('lists every wake by agent with its trigger, times, text, check and setter', async () => {
+    const page = await open();
+    // When the list last loaded: in the footer, the page's last item.
+    expect(page.querySelector('.toolbar app-updated')).toBeNull();
+    expect(page.lastElementChild!.tagName).toBe('FOOTER');
+    expect(text(page.querySelector('footer'))).toBe('Updated 0s ago.');
+    expect(
+      [...page.querySelectorAll('table.wakes thead th')].map((th) => text(th)),
+    ).toEqual([
+      'Name',
+      'Trigger',
+      'Next',
+      'Text',
+      'Check',
+      'End',
+      'Set By',
+      'Last Fired',
+      '',
+    ]);
+    // Agents in alphabetical order, each with a header row, wakes in the
+    // server's order.
+    const groups = [...page.querySelectorAll('table.wakes tbody[data-agent]')];
+    expect(groups.map((g) => g.getAttribute('data-agent'))).toEqual([
+      'alpha:one',
+      'kaggle:lead',
+    ]);
+    expect(text(groups[1]!.querySelector('tr.group'))).toBe('kaggle:lead');
+    expect(
+      [...groups[1]!.querySelectorAll('tr[data-wake]')].map((r) =>
+        r.getAttribute('data-wake'),
+      ),
+    ).toEqual(['standup', 'nightly']);
+
+    const standup = row(page, 'kaggle:lead', 'standup');
+    const cell = (r: Element, c: string) => text(r.querySelector(`td.${c}`));
+    expect(cell(standup, 'name')).toBe('standup');
+    expect(cell(standup, 'trigger')).toBe('every 30m');
+    expect(cell(standup, 'next')).toBe(localTime('2026-10-28T12:00:00.000Z'));
+    expect(standup.querySelector('td.next')!.getAttribute('title')).toBe(
+      '2026-10-28T12:00:00.000Z',
+    );
+    // The text's first line; all of it in the tooltip.
+    expect(cell(standup, 'text')).toBe('Report your progress. …');
+    expect(standup.querySelector('td.text')!.getAttribute('title')).toBe(
+      'Report your progress.\nThen go on.',
+    );
+    expect(cell(standup, 'check')).toBe('test -f /tmp/go');
+    expect(cell(standup, 'end')).toBe(localTime('2026-12-31T08:00:00.000Z'));
+    expect(cell(standup, 'by')).toBe('owner');
+    expect(standup.querySelector('td.by code')).toBeNull();
+    expect(cell(standup, 'fired')).toBe(localTime('2026-10-28T11:30:00.000Z'));
+    expect(button(standup, 'Fire')).toBeDefined();
+    expect(button(standup, 'Cancel')).toBeDefined();
+
+    // What is not there shows as a dash.
+    const ping = row(page, 'alpha:one', 'ping');
+    expect(cell(ping, 'next')).toBe('—');
+    expect(cell(ping, 'check')).toBe('—');
+    expect(cell(ping, 'end')).toBe('—');
+    expect(cell(ping, 'fired')).toBe('—');
+    expect(cell(ping, 'text')).toBe('Ping.');
+    expect(ping.querySelector('td.by code')!.innerHTML).toBe('alpha:<wbr>one');
+  });
+
+  it('shows a one-time trigger at its local time', () => {
+    expect(triggerText('at 2026-10-28T12:00:00.000Z')).toBe(
+      `at ${localTime('2026-10-28T12:00:00.000Z')}`,
+    );
+    expect(triggerText('every 30m from 09:00')).toBe('every 30m from 09:00');
+    expect(triggerText('idle 30m repeat')).toBe('idle 30m repeat');
+  });
+
+  it('says when there are no wakes yet', async () => {
+    const page = await open([]);
+    expect(text(page.querySelector('table.wakes tbody'))).toBe('No wakes yet.');
+  });
+
+  it('admin fires a wake, and the list refreshes', async () => {
+    const page = await open();
+    button(row(page, 'kaggle:lead', 'standup'), 'Fire')!.click();
+    const req = http.expectOne('/v1/agents/kaggle%3Alead/wakes/standup/fire');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({});
+    req.flush({ fired: 'standup', agent: 'kaggle:lead' });
+    await settle(fixture);
+    load();
+    await settle(fixture);
+    // The result shows in the toolbar, right after Refresh.
+    const toolbar = page.querySelector('.toolbar')!;
+    const notice = toolbar.querySelector('.notice')!;
+    expect(text(notice)).toBe("Fired kaggle:lead's wake standup.");
+    expect(
+      button(toolbar, 'Refresh')!.nextElementSibling!.contains(notice),
+    ).toBe(true);
+    expect(page.querySelector('p.notice')).toBeNull();
+  });
+
+  it('admin cancels a wake after a confirmation, and the list refreshes', async () => {
+    const page = await open();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const standup = row(page, 'kaggle:lead', 'standup');
+    button(standup, 'Cancel')!.click();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0]![0]).toContain(
+      "Cancel kaggle:lead's wake standup?",
+    );
+    http.expectNone('/v1/agents/kaggle%3Alead/wakes/standup');
+
+    confirm.mockReturnValue(true);
+    button(standup, 'Cancel')!.click();
+    const req = http.expectOne('/v1/agents/kaggle%3Alead/wakes/standup');
+    expect(req.request.method).toBe('DELETE');
+    req.flush({ cancelled: 'standup' });
+    await settle(fixture);
+    load(WAKES.slice(1));
+    await settle(fixture);
+    expect(page.querySelector('tr[data-wake="standup"]')).toBeNull();
+    expect(text(page.querySelector('.toolbar .notice'))).toBe(
+      "Cancelled kaggle:lead's wake standup.",
+    );
+    confirm.mockRestore();
+  });
+
+  it('shows why a firing failed', async () => {
+    const page = await open();
+    button(row(page, 'alpha:one', 'ping'), 'Fire')!.click();
+    apiError(
+      http.expectOne('/v1/agents/alpha%3Aone/wakes/ping/fire'),
+      404,
+      'no_wake',
+      'alpha:one has no wake ping',
+    );
+    await settle(fixture);
+    expect(text(page.querySelector('.toolbar .errmsg'))).toBe(
+      'alpha:one has no wake ping',
+    );
+    expect(page.querySelector('p.errmsg')).toBeNull();
+  });
+
+  it('admin sets a wake for any agent; the optional fields go only when filled', async () => {
+    const page = await open();
+    // The form starts collapsed, its title a line that opens it.
+    const form = page.querySelector('details.panel') as HTMLDetailsElement;
+    expect(form.open).toBe(false);
+    const title = form.querySelector('summary') as HTMLElement;
+    expect(form.firstElementChild).toBe(title);
+    expect(text(title)).toBe('Set a Wake');
+    expect(form.querySelector('h3')).toBeNull();
+    title.click();
+    await settle(fixture);
+    expect(form.open).toBe(true);
+    expect(
+      (page.querySelector('#wake-trigger') as HTMLInputElement).placeholder,
+    ).toBe('every 30m, at 09:00, cron "0 9 * * 1-5", idle 30m, fire-only');
+    const set = () => button(form, 'Set Wake')!;
+    expect(set().disabled).toBe(true);
+    type(page.querySelector('#wake-agent'), ' kaggle:worker ');
+    type(page.querySelector('#wake-name'), 'standup');
+    type(page.querySelector('#wake-trigger'), 'every 1h');
+    type(page.querySelector('#wake-text'), 'Report.');
+    await settle(fixture);
+    expect(set().disabled).toBe(false);
+    set().click();
+    const req = http.expectOne('/v1/agents/kaggle%3Aworker/wakes/standup');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ text: 'Report.', trigger: 'every 1h' });
+    req.flush(
+      { wake: { ...WAKES[0]!, agent: 'kaggle:worker' } },
+      { status: 201, statusText: 'Created' },
+    );
+    await settle(fixture);
+    load();
+    await settle(fixture);
+    // The result shows in the form, which stays open.
+    expect(text(form.querySelector('.notice'))).toBe(
+      "Set kaggle:worker's wake standup.",
+    );
+    expect(form.open).toBe(true);
+    expect(page.querySelector('.toolbar .notice')).toBeNull();
+    // The agent stays for the next wake; the rest goes.
+    expect(value(page, '#wake-agent')).toBe(' kaggle:worker ');
+    expect(value(page, '#wake-name')).toBe('');
+    expect(value(page, '#wake-text')).toBe('');
+
+    type(page.querySelector('#wake-name'), 'until');
+    type(page.querySelector('#wake-trigger'), 'idle 30m');
+    type(page.querySelector('#wake-text'), 'Go on.');
+    type(page.querySelector('#wake-check'), 'test -f go');
+    type(page.querySelector('#wake-end'), '2026-12-31 18:00');
+    await settle(fixture);
+    set().click();
+    const full = http.expectOne('/v1/agents/kaggle%3Aworker/wakes/until');
+    expect(full.request.body).toEqual({
+      text: 'Go on.',
+      trigger: 'idle 30m',
+      check: 'test -f go',
+      end: '2026-12-31 18:00',
+    });
+    full.flush({ wake: WAKES[0] });
+    await settle(fixture);
+    load();
+    await settle(fixture);
+  });
+
+  it('shows why a wake was not set, and keeps what was typed', async () => {
+    const page = await open();
+    type(page.querySelector('#wake-agent'), 'kaggle:lead');
+    type(page.querySelector('#wake-name'), 'bad');
+    type(page.querySelector('#wake-trigger'), 'sometimes');
+    type(page.querySelector('#wake-text'), 'Go.');
+    await settle(fixture);
+    button(page, 'Set Wake')!.click();
+    apiError(
+      http.expectOne('/v1/agents/kaggle%3Alead/wakes/bad'),
+      400,
+      'bad_trigger',
+      'a trigger looks like every 30m',
+    );
+    await settle(fixture);
+    expect(text(page.querySelector('details.panel .errmsg'))).toBe(
+      'a trigger looks like every 30m',
+    );
+    expect(value(page, '#wake-trigger')).toBe('sometimes');
+  });
+
+  it('refreshes every 10 seconds, one refresh at a time', async () => {
+    vi.useFakeTimers();
+    try {
+      signedIn();
+      fixture = TestBed.createComponent(WakesPage);
+      load();
+      await vi.advanceTimersByTimeAsync(REFRESH_MS - 1);
+      http.expectNone('/v1/wakes');
+      await vi.advanceTimersByTimeAsync(1);
+      const req = http.expectOne('/v1/wakes');
+      await vi.advanceTimersByTimeAsync(REFRESH_MS);
+      http.expectNone('/v1/wakes');
+      req.flush({ wakes: WAKES });
+      await vi.advanceTimersByTimeAsync(REFRESH_MS);
+      load();
+    } finally {
+      fixture.destroy();
+      vi.useRealTimers();
+    }
+  });
+});

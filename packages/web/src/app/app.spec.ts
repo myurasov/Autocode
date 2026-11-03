@@ -1,7 +1,7 @@
 /*
- * Unit tests of the app shell: the server ID and version, admin sign-in kept
- * for the tab or the browser, refused consumer and session tokens, sign out,
- * and the light/dark switch.
+ * Unit tests of the app shell: the server ID and version, the favicon before
+ * the title, admin sign-in kept for the tab or the browser, refused consumer
+ * and session tokens, sign out, and the light/dark switch.
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -61,6 +61,50 @@ describe('App (shell)', () => {
     expect(text(page.querySelector('h1'))).toBe('Autocode v0.1.0-build12');
     expect(page.querySelector('#token')).not.toBeNull();
     expect(page.querySelector('nav')).toBeNull();
+    // The form's texts (the owner, 2026-11-02): only its heading above the
+    // field, no visible label on it (its name stays Token), a short checkbox
+    // label.
+    expect(page.querySelector('.sign-in p')).toBeNull();
+    expect(page.querySelector('label[for=token]')).toBeNull();
+    expect(page.querySelector('#token')!.getAttribute('aria-label')).toBe(
+      'Token',
+    );
+    expect(page.querySelector('#token')!.getAttribute('placeholder')).toBe(
+      'admin token',
+    );
+    expect(text(page.querySelector('.sign-in label.check'))).toBe(
+      'Stay signed in',
+    );
+  });
+
+  it('the header shows the favicon before "Autocode", hidden from assistive tech', async () => {
+    const page = await start();
+    const title = page.querySelector('header h1')!;
+    const icon = title.querySelector('svg.logo')!;
+    expect(icon).not.toBeNull();
+    expect(icon.getAttribute('aria-hidden')).toBe('true');
+    // First in the title, before the word Autocode.
+    expect(title.firstElementChild).toBe(icon);
+    const word = [...title.childNodes].find(
+      (n) =>
+        n.nodeType === Node.TEXT_NODE && n.textContent!.includes('Autocode'),
+    )!;
+    expect(
+      icon.compareDocumentPosition(word) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The favicon's triangle: a 16 px grid, a 2 px outline, round corners.
+    expect(icon.getAttribute('viewBox')).toBe('0 0 16 16');
+    expect(icon.getAttribute('fill')).toBe('none');
+    expect(icon.getAttribute('stroke-width')).toBe('2');
+    expect(icon.getAttribute('stroke-linejoin')).toBe('round');
+    expect(icon.getAttribute('stroke-linecap')).toBe('round');
+    const paths = [...icon.querySelectorAll('path')];
+    expect(paths.map((p) => p.getAttribute('d'))).toEqual([
+      'M8 2 14.5 13.5 1.5 13.5Z',
+    ]);
+    // It adds no text: the title still reads Autocode and its version.
+    expect(icon.textContent).toBe('');
+    expect(text(title)).toBe('Autocode v0.1.0-build12');
   });
 
   it('an admin token opens the pages with full control', async () => {
@@ -70,7 +114,20 @@ describe('App (shell)', () => {
     expect([...page.querySelectorAll('nav a')].map((a) => text(a))).toEqual([
       'Hosts',
       'Agents',
+      'Inbox',
+      'Messages',
+      'Wakes',
       'Settings',
+    ]);
+    expect(
+      [...page.querySelectorAll('nav a')].map((a) => a.getAttribute('href')),
+    ).toEqual([
+      '/hosts',
+      '/agents',
+      '/inbox',
+      '/messages',
+      '/wakes',
+      '/settings',
     ]);
     expect(text(page.querySelector('.who'))).toBe('admin');
     // kept for this tab only

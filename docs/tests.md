@@ -254,3 +254,159 @@ a host whose shells get no Autocode values shows "no shell values" (amber, with 
 process; `autocode hosts` keeps its column. The browser fixture's long host is now an `opencode serve` without shell
 values, so the layout checks cover the mark. Red first (run `20261102T100344Z`), then web run `20261102T100415Z`:
 `web-unit` 56, `web` 29; screenshots looked at. Live as build 2.
+
+## Tier 0b (2026-11-02)
+
+**What was added and how it is tested.** Wakes and their triggers (`every`, `at`, `cron` with time zones and
+daylight-saving changes, `idle` with `repeat`, `fire-only`), firing and checks; the injection queue (one prompt per
+`min_interval`, only while idle, merging by name or text, the `[autocode]` header, what others wrote quoted with
+`> `); messages (direct, group, list, owner, files, inline or listed, states, waiting); the owner's inbox, pause,
+resume, stop-all and resume-all; turn status from the plugin (working, idle, paused, offline); the agent guide (the
+`autocode` skill and the line for registered sessions); reloading a folder the background service unloaded; the
+CLI's tier 0b commands; the Inbox, Messages and Wakes pages and the Agents page's controls.
+
+- `unit`: `triggers.test.ts` (parsing, formatting, next runs, cron on fixed dates both ways around the 2026
+  daylight-saving changes in Los Angeles); `store.test.ts` (migration 4 on schema-3 data, cascades).
+- `api`: `wakes.test.ts`, `messages.test.ts`, `owner.test.ts`, `loader.test.ts`, `cli-0b.test.ts`,
+  `review-0b.test.ts` (the adversarial review's findings), and the tier 0b block of `plugin-inprocess.test.ts` (the
+  real plugin with a fake OpenCode context: instructions, checks with time and output limits, turn events, the
+  guide, the tools with files kept inside the folder).
+- `plugin`: spike check 11 (`spike-11-guide.test.ts`): on OpenCode 2.2.0 the skill is listed in the system text's
+  skill guidance (not in the `skill` tool's description; the spec was corrected), its body loads through the `skill`
+  tool though its path names no file, and the line reaches a registered session's requests and its Subagents' (a
+  Subagent's request names the parent session in OpenCode's session header), the same text request after request.
+- `one`, `two`: `wakes-messages.test.ts` on real sessions with the fake model: a fired and a scheduled wake arrive with
+  the header; a check that exits 1 skips its wake with no model call (counted), one that exits 0 brings its output;
+  wakes fired while paused merge; a message crosses machines; a message to the owner is answered back; turn status
+  follows a real turn. The tier 0a registration test now expects `working` while the agent registers in its turn.
+- `web`: Vitest specs for each page and the browser smoke test (each tab, Pause/Resume, Stop All, answering, sending,
+  setting, firing and cancelling a wake).
+
+**Red first, and where not.** Red before the code: the API tests of wakes, messages and the owner's controls (38 of
+39 failed), the loader's, the review's (22 of 23), the web pages' (34 of 89 web unit tests, run `20261102T110134Z`),
+and the CLI's version/`v` checks. Written before the code but not run red: `triggers.test.ts` and `cli-0b.test.ts`.
+Written after the code: the tier 0b block of `plugin-inprocess.test.ts`, the migration-4 store test, spike check 11
+and the end-to-end tests (spike 11 failed first on real OpenCode, which is how the skill listing's place was found).
+
+**Runs.** Plugin suite `20261102T104936Z` (spike 11: 2 of 3 failed: the listing, the Subagent); `one two plugin` from
+a snapshot (the web worker's red specs stopped the shared run) `20261102T110007Z` (the 0a registration test now saw
+`working`; the Subagent check) and `20261102T111055Z`: `one` 23, `two` 29, `plugin` 28. Web worker:
+`20261102T110657Z` and `20261102T111002Z`, `web-unit` 89, `web` 34. After the review's fixes, full run
+`20261102T113027Z`: `web-unit` 89, `unit` 94, `api` 191 + 1 failed (the test used `pgrep`, which the image lacks; it
+reads `/proc` now: api run `20261102T114013Z`, 192), `plugin` 28, `one` 23, `two` 29, `restart` 4, `install` 3, `web`
+34.
+
+**Adversarial review** (a separate reviewer, report only): 2 high, 11 medium, 13 low findings. Fixed test first: a
+check's time limit now counts from when it was sent; turn events carry OpenCode's time and an older one changes
+nothing, the plugin sends its running turns every minute and after a gap in its event stream, and an injection that
+starts no turn frees its session after two minutes; agents' text, fired text and check output are quoted; a pause
+takes back an injection or check not yet fetched; stop-all interrupts every online agent session, and an interrupt
+expires after two minutes; a failed injection brings its wakes back; merging keeps a fire's text and skipped check;
+one check at a time per wake, and messages wait behind it at most its limit; waits are cut at 240 s (the HTTP idle
+limit is 255 s) and the plugin and CLI wait again; old injections and closed inbox items go with the history; the
+owner reads any message; files are never written through a link; a check always runs as its session; checks run as
+their own process group; one alert per streak; past times refused; prompt IDs grow with time; the loader checks
+`/api/info`, backs off and records a failure once per streak; one bad agent or wake never stops the scheduler. Left:
+a resync from `ctx.session.get` for hosts without OpenCode's local API (the watchdog and the running-turns list cover
+the common cases), re-sending the very same injection once after an explicit failure, and loading a folder for
+pending instructions (only queued wakes and messages trigger it).
+
+**Deployed** on myspark3 as build 3 (04:4x PT): database schema 3 to 4 (backup
+`~/.autocode-dev/backup/autocode-schema3-20261102.db`), plugin reinstalled; both live hosts on `0.1.0-build3`.
+
+**Live checks** (`ci/live-check-0b.ts`, 04:4x–05:00 PT; the server as build 4 on myspark3, the sessions in myspark3's
+OpenCode background service, each model in a scratch folder under `~/.autocode-dev/live/`; variant `high`). Steps:
+the folder's plugin connects; two sessions on the model; agent A registers and sets a fire-only wake through the
+tools; agent B registers and messages A, and the injection wakes A; the owner fires A's wake and A answers; B's
+message to the owner reaches the inbox and the answer reaches B; B loads the `autocode` skill; the agents' turns
+were reported; the folder, unloaded through OpenCode's debug route, is loaded again by the server for a fired wake
+and A answers.
+
+| Model | Agents | Result | Cost |
+|---|---|---|---|
+| `nvidia-ih/nvidia/moonshotai/kimi-k3` | `live:0b:kimi-k3:{a,b}:20261102T1153` | 9 of 9 | $0.0806 |
+| `nvidia-ih/nvidia/zai-org/glm-5.3` | `live:0b:glm-5.3:{a,b}:20261102T1157` | 9 of 9 | $0.0355 |
+
+A first kimi-k3 run (build 3, $0.0796) passed 7 of 9 and found a bug: the server loaded a folder with
+`?directory=`, which OpenCode ignores (a folder goes as `location[directory]=`, as its published client sends it);
+fixed test first in the loader (and in the test helper), deployed as build 4. Its other failure was the script's
+own: it unloaded the folder while a turn still ran there. Total tier 0b live-check spend: $0.196. The scratch sessions
+were deleted afterwards. After the fix: `unit api one` run `20261102T120303Z`: `unit` 94, `api` 192, `one` 23.
+
+**Web UI changes after the tier report** (owner, 2026-11-02 afternoon), by the web worker in its own CI copy, tests
+first. Round 1 (the owner's four changes: "Updated Ns ago." in a footer at the bottom left; action results in the
+toolbar where it was; Send a Message and Set a Wake full width and collapsed; table cells padded 0.5rem on all four
+sides): red `20261102T224918Z` (`web-unit` 21 of 89 failed) and `20261102T225103Z` (`web` 4 of 37 failed: the CSS),
+green `20261102T225415Z` (`web-unit` 89, `web` 37). Round 2 (the favicon's triangle before "Autocode" in the header),
+under the owner's new rule of running only the tests of what changed: the web suite now takes `CI_GREP` (Playwright's
+test-name filter); runs with `CI_GREP="header"` (6 browser checks; the unit specs all run in the image build): red
+`20261102T225922Z` (`web-unit` 1 of 90 failed) and `20261102T225939Z` (`web` 1 of 6), green `20261102T230021Z`; the
+check tightened to the letters' baseline and height after the screenshots, red `20261102T230400Z`, green
+`20261102T230422Z` and `20261102T230534Z` (`web-unit` 90, `web` 6). The full CI did not run (the owner's rule).
+Screenshots of both rounds looked at by eye (the worker's and mine). **Deployed** as build 5 (no schema change),
+plugin reinstalled; the live UI on myspark3 looked at in a read-only screenshot run.
+Round 3 (the owner: the header triangle 2.5 times bigger): the header browser check now wants it about 1.7 em tall
+and centered on the capitals (it stood on the baseline before); red `20261102T231830Z` (0.69 em, with `CI_GREP`
+on that one check), green `20261102T231848Z` (`web-unit` 90, `web` 1), then the six header checks
+`20261102T231949Z` (6 pass), since the header grew taller. Screenshots looked at in both themes. Deployed as build 6;
+the live UI looked at again (read-only).
+Round 4 (the owner: the triangle 15% smaller, 2.05em to 1.74em, about 1.47 em drawn): red `20261102T232342Z`
+(1.73 em against at most 1.55), green `20261102T232400Z` (`web-unit` 90, the six header checks pass). Screenshots
+looked at in both themes. Deployed as build 7; the live UI looked at again (read-only).
+Round 5 (the owner: the triangle 1.25rem with no shift or margin of its own; the title 1.25rem, was 17 px; the
+version 3 px lower; after a 1.5rem and a -0.05rem step on the way): the header checks now pin those values (the
+version sits about 1.5 px below the header's middle by its margin): red `20261102T235814Z` (3 of 6) and
+`20261102T235938Z` (the 1.25rem step), green `20261102T235849Z` (the 1.5rem step) and `20261103T000000Z` (6 pass,
+final). Deployed as build 8. Round 6 (the owner: a checked checkbox in a neutral color): checkboxes take the theme's dim
+grey (`--fg-dim`), checked on the sign-in form, Settings and the Inbox in both themes: red `20261103T000124Z` (still
+pink-red), green `20261103T000154Z`. Screenshots of both rounds looked at in both themes. Deployed as build 9; the live
+UI looked at (read-only). The full CI did not run (the owner's rule).
+Rounds 7–10 (the owner, 16:0x–16:1x PT), each check first, only its own tests: font weight 500 for the title and
+every bold text, one `--bold` variable (red `20261103T000427Z`, green `20261103T000459Z`; the CI font draws 500
+like 400, so the computed weights are what the check tests); tables' top margin 1rem (red `20261103T000553Z`, green
+`20261103T000615Z` with the weight and footer checks); the Send a Message result, or its error, beside the Send button
+and the "Sent as the owner." note gone (unit red `20261103T000824Z`, green `20261103T000853Z`); the forms' titles in
+the text color and 2 px after their fold marker (a span's margin: browsers ignore margins on `::marker`; red
+`20261103T001000Z`, green `20261103T001035Z` with the Title Case and 15 px checks); the Messages table's ID column and
+a click (or Enter) on a row opening its text below it, read through the owner's `GET /v1/messages/{id}` (unit red
+`20261103T001307Z`: 4 of 93; green `20261103T001403Z`: `web-unit` 93, 9 browser checks with the page-fit ones).
+Screenshots of each looked at in both themes. Deployed as builds 10 (weights, margin) and 11 (the rest); the live UI
+looked at (read-only). The full CI did not run (the owner's rule).
+Round 11 (the owner: h2 1rem, was 1.16rem): a new check of every h2's size on the sign-in form and Settings, red
+`20261103T055435Z` (18.56 px), green `20261103T055454Z` (with the weight and first-item checks). Screenshots looked at.
+Deployed as build 12. h3 (the rule editor's) stays 1.05rem, now a little above h2: left to the owner.
+Round 12 (the owner: the sign-in form centered on the page): a check of its center at 1280×800 and 1024×700, clear of
+the header whose light/dark button still works, and on a 1024×420 window below the header, centered across and
+reachable: red `20261103T060928Z` (256 px off), green `20261103T060947Z` (the theme check then read the class before
+Angular set it: it waits now, `20261103T061111Z`), the short window's centering red `20261103T061201Z`, green
+`20261103T061207Z` with the other sign-in checks. Screenshots in both themes and the short window. Deployed as build 13
+on myspark3 only (myspark2 keeps build 12: the owner's rule); the live sign-in page looked at.
+Round 13 (the owner: the sign-in form's texts): one line above the field ("Paste the admin token below."), no visible
+"Token" label (the field keeps the name Token for assistive tech), the checkbox "Stay signed in": unit red
+`20261103T062707Z`, green `20261103T062730Z` (with the other sign-in checks) and `20261103T062805Z` (Title Case,
+button heights, frame padding). Screenshots in both themes. Deployed as build 14 on myspark3 only; the live page
+looked at.
+Round 14 (the owner: the token field's placeholder "admin token", the field 30% shorter): unit red
+`20261103T063212Z` (the placeholder), the width check red `20261103T063230Z` (570 px), green `20261103T063257Z` (8
+checks: sign-in, page fit, button heights). The field is 25rem (400 px), Sign In right after it. Screenshots in both
+themes. Deployed as build 15 on myspark3 only (myspark2 stays on build 14); the live page looked at.
+Round 15 (the owner: the sign-in form just as wide as its content): a check that the frame is the token row plus
+its padding and border, at 1280 and 1024: red `20261103T063522Z` (704 px), then `fit-content`, which made the field
+shrink to its natural width (a flex basis does not count toward fit-content; the field takes a width now): red
+`20261103T063547Z`, green `20261103T063628Z` (8 sign-in and layout checks). Screenshots in both themes, with a refused
+token's message (it widens the form, still centered) and in a short window. Deployed as build 16 on myspark3 only.
+Round 16 (the owner: the sign-in intro line removed): unit red `20261103T063800Z`, green `20261103T063833Z` (5 sign-in
+and layout checks). Screenshots in both themes. Deployed as build 17 on myspark3, and on myspark2 on the owner's word
+("deploy to myspark2": server reinstalled and restarted, schema 4, plugin reinstalled, every online folder on plugin
+build 17); both live sign-in pages looked at.
+Round 17 (the owner: the sign-in heading's bottom margin 0.6rem): red `20261103T064420Z` (4.8 px), green
+`20261103T064453Z` (6 sign-in and layout checks). Screenshots in both themes. Deployed as build 18 on myspark3 and, on
+the owner's word, myspark2 (every online folder on plugin build 18); both live sign-in pages looked at.
+
+**Before the tier 0b commit** (the owner's go, 2026-11-02 22:5x PT): typecheck and Biome clean; every changed line of
+code within 80 columns (test titles and the dropdown arrow's data URL excepted, as in tier 0a); `unit` and `api`
+without Docker, 286 pass (some lines of the server and plugin were re-wrapped); the whole `web` suite, since every
+change since the last full run was the web UI: run `20261103T065905Z` found one browser check left behind by the
+Messages table's new ID column (never matched by the per-round filters), fixed; run `20261103T070015Z`: `web-unit` 93,
+`web` 46, all pass. The other Docker suites (`plugin`, `one`, `two`, `restart`, `install`) last ran on
+`20261102T113027Z` and `20261102T120303Z`; nothing of theirs changed since but line wrapping.

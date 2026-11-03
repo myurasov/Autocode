@@ -36,6 +36,10 @@ export async function testServer(
     offlineAfter?: number
     takeoverGraceMs?: number
     presets?: boolean
+    machine?: string
+    findService?: () => Promise<
+      { url: string; authorization?: string } | undefined
+    >
   } = {},
 ): Promise<TestServer> {
   const dataDir =
@@ -50,6 +54,10 @@ export async function testServer(
     offlineAfter: options.offlineAfter ?? 3,
     takeoverGraceMs: options.takeoverGraceMs,
     maintenanceEvery: 0,
+    tickEvery: 0,
+    // no background service unless a test gives one
+    machine: options.machine ?? "api-test-machine",
+    findService: options.findService ?? (async () => undefined),
     presetTokens:
       options.presets === false
         ? undefined
@@ -147,4 +155,60 @@ export async function sessionToken(
       `token request failed: ${res.status} ${JSON.stringify(res.body)}`,
     )
   return res.body.token
+}
+
+const enc = encodeURIComponent
+
+// Plays a plugin: the instructions waiting for a host, without a long wait.
+export async function instructions(
+  t: TestServer,
+  host: string,
+): Promise<any[]> {
+  const res = await call(
+    t.url,
+    t.consumer,
+    "GET",
+    `/v1/hosts/${enc(host)}/next?wait=0&instance=${enc(`inst-${host}`)}`,
+  )
+  if (res.status !== 200)
+    throw new Error(`next failed: ${res.status} ${JSON.stringify(res.body)}`)
+  return res.body.instructions
+}
+
+// Plays a plugin: reports events (turns, acknowledgements) for a host.
+export async function report(
+  t: TestServer,
+  host: string,
+  events: unknown[],
+): Promise<Reply> {
+  return call(t.url, t.consumer, "POST", `/v1/hosts/${enc(host)}/events`, {
+    instance: `inst-${host}`,
+    events,
+  })
+}
+
+export function ack(
+  t: TestServer,
+  host: string,
+  id: string,
+  result: unknown = null,
+  ok = true,
+): Promise<Reply> {
+  return report(t, host, [{ type: "ack", id, ok, result }])
+}
+
+// A session on a host registered as an agent; returns the session's token.
+export async function registered(
+  t: TestServer,
+  host: string,
+  session: string,
+  id: string,
+): Promise<string> {
+  const token = await sessionToken(t, host, session)
+  const res = await call(t.url, token, "POST", "/v1/agents", { id })
+  if (res.status >= 300)
+    throw new Error(
+      `register failed: ${res.status} ${JSON.stringify(res.body)}`,
+    )
+  return token
 }

@@ -29,6 +29,7 @@ export interface WhoAmI {
 export interface Agent {
   id: string;
   description: string;
+  // idle, working, paused or offline
   status: string;
   last_active: string;
   session?: string;
@@ -36,6 +37,10 @@ export interface Agent {
   machine?: string;
   directory?: string;
   registered_at?: string;
+  // Who paused its injections: '' (nobody), 'owner' or 'stop-all'.
+  paused?: string;
+  idle_since?: string | null;
+  last_outcome?: string | null;
 }
 
 export interface Host {
@@ -55,6 +60,74 @@ export interface Host {
   shell_values: boolean | null;
   first_seen: string;
   last_seen: string;
+}
+
+export interface Wake {
+  agent: string;
+  name: string;
+  text: string;
+  trigger: string;
+  check: string | null;
+  end: string | null;
+  next: string | null;
+  set_by: string;
+  created_at: string;
+  updated_at: string;
+  last_fired_at: string | null;
+  check_failures: number;
+}
+
+export interface WakeInput {
+  text: string;
+  trigger: string;
+  check?: string;
+  end?: string;
+}
+
+export interface Message {
+  id: string;
+  send_id: string;
+  from: string;
+  to: string;
+  subject: string;
+  reply_to: string | null;
+  kind: 'text' | 'binary';
+  mime: string | null;
+  size: number;
+  state: 'queued' | 'delivered' | 'read';
+  created_at: string;
+  delivered_at: string | null;
+  read_at: string | null;
+}
+
+// A message whole, as the owner reads it: its text, or a file's base64 data.
+export interface FullMessage extends Message {
+  text?: string;
+  data?: string;
+}
+
+export interface Outgoing {
+  to: string | string[];
+  subject?: string;
+  text: string;
+}
+
+export interface Sent {
+  send_id: string;
+  recipients: string[];
+  messages: { id: string; to: string }[];
+}
+
+export interface InboxItem {
+  id: string;
+  kind: 'message' | 'alert';
+  agent: string | null;
+  message_id: string | null;
+  title: string;
+  body: string;
+  created_at: string;
+  closed_at: string | null;
+  answer: string | null;
 }
 
 export interface SettingDef {
@@ -224,5 +297,124 @@ export class Api {
 
   changeSettings(change: SettingsChange): Promise<SettingsView> {
     return this.call(this.http.patch<SettingsView>('/v1/settings', change));
+  }
+
+  async pause(id: string): Promise<Agent> {
+    return (
+      await this.call(
+        this.http.post<{ agent: Agent }>(`/v1/agents/${path(id)}/pause`, {}),
+      )
+    ).agent;
+  }
+
+  async resume(id: string): Promise<Agent> {
+    return (
+      await this.call(
+        this.http.post<{ agent: Agent }>(`/v1/agents/${path(id)}/resume`, {}),
+      )
+    ).agent;
+  }
+
+  // Pauses every agent and interrupts every running turn.
+  stopAll(): Promise<{ paused: string[]; interrupted: string[] }> {
+    return this.call(
+      this.http.post<{ paused: string[]; interrupted: string[] }>(
+        '/v1/stop-all',
+        {},
+      ),
+    );
+  }
+
+  // Resumes the agents that Stop All paused.
+  resumeAll(): Promise<{ resumed: string[] }> {
+    return this.call(
+      this.http.post<{ resumed: string[] }>('/v1/resume-all', {}),
+    );
+  }
+
+  async wakes(): Promise<Wake[]> {
+    return (await this.call(this.http.get<{ wakes: Wake[] }>('/v1/wakes')))
+      .wakes;
+  }
+
+  async setWake(agent: string, name: string, wake: WakeInput): Promise<Wake> {
+    return (
+      await this.call(
+        this.http.put<{ wake: Wake }>(
+          `/v1/agents/${path(agent)}/wakes/${path(name)}`,
+          wake,
+        ),
+      )
+    ).wake;
+  }
+
+  fireWake(
+    agent: string,
+    name: string,
+  ): Promise<{ fired: string; agent: string }> {
+    return this.call(
+      this.http.post<{ fired: string; agent: string }>(
+        `/v1/agents/${path(agent)}/wakes/${path(name)}/fire`,
+        {},
+      ),
+    );
+  }
+
+  cancelWake(agent: string, name: string): Promise<{ cancelled: string }> {
+    return this.call(
+      this.http.delete<{ cancelled: string }>(
+        `/v1/agents/${path(agent)}/wakes/${path(name)}`,
+      ),
+    );
+  }
+
+  // Every message, newest first.
+  async messages(): Promise<Message[]> {
+    return (
+      await this.call(this.http.get<{ messages: Message[] }>('/v1/messages'))
+    ).messages;
+  }
+
+  // Any message whole; the owner's read leaves its state as it was.
+  async message(id: string): Promise<FullMessage> {
+    return (
+      await this.call(
+        this.http.get<{ message: FullMessage }>(`/v1/messages/${path(id)}`),
+      )
+    ).message;
+  }
+
+  // Sends a message as the owner.
+  send(message: Outgoing): Promise<Sent> {
+    return this.call(this.http.post<Sent>('/v1/messages', message));
+  }
+
+  // The open items, or with all every item.
+  async inbox(all = false): Promise<InboxItem[]> {
+    const params = all ? new HttpParams().set('all', '1') : undefined;
+    return (
+      await this.call(
+        this.http.get<{ items: InboxItem[] }>('/v1/inbox', { params }),
+      )
+    ).items;
+  }
+
+  // Answers a message to the owner: the answer goes back to its agent.
+  async answer(id: string, text: string): Promise<InboxItem> {
+    return (
+      await this.call(
+        this.http.post<{ item: InboxItem }>(`/v1/inbox/${path(id)}/answer`, {
+          text,
+        }),
+      )
+    ).item;
+  }
+
+  async closeItem(id: string): Promise<InboxItem> {
+    return (
+      await this.call(
+        this.http.post<{ item: InboxItem }>(`/v1/inbox/${path(id)}/close`, {}),
+      )
+    ).item;
   }
 }

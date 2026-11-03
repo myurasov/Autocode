@@ -1,12 +1,12 @@
 <!--
   The Hosts page: one row per OpenCode server folder that the Autocode plugin
   connects from, by machine: its status, OpenCode process (marked when its
-  shells get no Autocode values), and its versions.
+  shells get no Autocode values), and its versions; then when the list last
+  loaded.
 -->
 
 <p class="muted">
   One per OpenCode server folder that the Autocode plugin connects from.
-  <app-updated [at]="updatedAt()" />
 </p>
 
 @if (error()) {
@@ -67,3 +67,5 @@
     </tbody>
   }
 </table>
+
+<footer class="muted"><app-updated [at]="updatedAt()" /></footer>

@@ -1,7 +1,9 @@
 /*
  * The agent registry: registers an agent ID to a session, lists agents (the
  * owner's view or the discover view), changes their descriptions, unregisters
- * them and rotates their session tokens; each change goes into the history.
+ * them, rotates their session tokens, and pauses and resumes them (one, or all
+ * at once with stop-all); each change goes into the history, and each
+ * registration change is told to the session's plugin (for the agent guide).
  */
 
 import type { Database } from "bun:sqlite"
@@ -26,7 +28,8 @@ import { type Caller, revokeSessionTokens } from "./tokens.ts"
 
 const SELECT = `
   SELECT a.id, a.description, a.session_id, a.registered_at, a.last_active,
-         s.host_id, s.directory, s.deleted_at, h.machine, h.online
+         a.paused, s.host_id, s.directory, s.deleted_at, s.busy,
+         s.idle_since, s.last_outcome, h.machine, h.online
   FROM agents a
   JOIN sessions s ON s.id = a.session_id
   JOIN hosts h ON h.id = s.host_id`
@@ -41,6 +44,9 @@ export interface AgentView {
   machine?: string
   directory?: string
   registered_at?: string
+  paused?: string
+  idle_since?: string | null
+  last_outcome?: string | null
 }
 
 export class Agents {
@@ -49,12 +55,22 @@ export class Agents {
     private readonly history: History,
     private readonly hosts: Hosts,
     private readonly now: () => number,
+    private readonly onUnregister: (agent: string) => void = () => {},
+    // A pause takes back what the plugin has not fetched yet.
+    private readonly onPause: (agent: string) => void = () => {},
   ) {}
 
-  // Tier 0a: idle while the session's host is online and the session exists,
-  // else offline.
+  // offline (its host gone or its session deleted), paused, working (a turn
+  // runs), else idle. Tier 0d adds waiting and 0e retrying.
   private status(row: any): string {
-    return row.online && !row.deleted_at ? "idle" : "offline"
+    if (!row.online || row.deleted_at) return "offline"
+    if (row.paused) return "paused"
+    return row.busy ? "working" : "idle"
+  }
+
+  // The plugin of the session's host keeps the agent guide's line from these.
+  private notice(host: string | null, session: string, agent: string | null) {
+    if (host) this.hosts.enqueue(host, "registration", { session, agent })
   }
 
   ownerView(row: any): AgentView {
@@ -68,6 +84,11 @@ export class Agents {
       directory: row.directory,
       registered_at: new Date(row.registered_at).toISOString(),
       last_active: new Date(row.last_active).toISOString(),
+      paused: row.paused ?? "",
+      idle_since: row.idle_since
+        ? new Date(row.idle_since).toISOString()
+        : null,
+      last_outcome: row.last_outcome ?? null,
     }
   }
 
@@ -174,6 +195,9 @@ export class Agents {
         ...fields,
         data: { from: holder.session_id, forced: force && !holder.deleted_at },
       })
+      if (!holder.deleted_at)
+        this.notice(holder.host_id, holder.session_id, null)
+      this.notice(fields.host, session, id)
       return { status: 200, agent: this.ownerView(this.byId(id)) }
     }
     const now = this.now()
@@ -187,6 +211,7 @@ export class Agents {
       ...fields,
       data: { description },
     })
+    this.notice(fields.host, session, id)
     return { status: 201, agent: this.ownerView(this.byId(id)) }
   }
 
@@ -200,6 +225,8 @@ export class Agents {
       host: row.host_id,
       data: { by },
     })
+    this.onUnregister(id)
+    if (!row.deleted_at) this.notice(row.host_id, row.session_id, null)
     return { unregistered: id }
   }
 
@@ -265,6 +292,78 @@ export class Agents {
       host: row.host_id,
     })
     return { rotated: true, agent: id, session: row.session_id }
+  }
+
+  pause(idInput: string, by: "owner" | "stop-all" = "owner"): AgentView {
+    const id = checkId(idInput, "agent ID")
+    const row = this.byId(id)
+    if (!row) throw new AutocodeError("not_registered", `no agent ${id}`, 404)
+    // the owner's own pause outlasts stop-all's (resume-all leaves it)
+    if (!row.paused || (by === "owner" && row.paused === "stop-all")) {
+      this.db.query("UPDATE agents SET paused = ? WHERE id = ?").run(by, id)
+      this.history.record("agent.paused", {
+        agent: id,
+        session: row.session_id,
+        data: { by },
+      })
+    }
+    this.onPause(id)
+    return this.get(id)
+  }
+
+  resume(idInput: string): AgentView {
+    const id = checkId(idInput, "agent ID")
+    const row = this.byId(id)
+    if (!row) throw new AutocodeError("not_registered", `no agent ${id}`, 404)
+    if (row.paused) {
+      this.db.query("UPDATE agents SET paused = '' WHERE id = ?").run(id)
+      this.history.record("agent.resumed", {
+        agent: id,
+        session: row.session_id,
+        data: { was: row.paused },
+      })
+    }
+    return this.get(id)
+  }
+
+  /*
+   * Pauses every agent that is not paused yet and interrupts the session of
+   * every agent whose host is online (the server may not know of every turn);
+   * an interrupt not fetched within two minutes is dropped, so a host that
+   * returns later never cuts an unrelated turn.
+   */
+  stopAll() {
+    const rows = this.db.query(`${SELECT} ORDER BY a.id`).all() as any[]
+    const paused: string[] = []
+    const interrupted: string[] = []
+    for (const r of rows) {
+      if (!r.paused) {
+        this.pause(r.id, "stop-all")
+        paused.push(r.id)
+      } else this.onPause(r.id)
+      if (r.online && !r.deleted_at) {
+        this.hosts.enqueue(
+          r.host_id,
+          "interrupt",
+          { session: r.session_id },
+          120_000,
+        )
+        interrupted.push(r.session_id)
+      }
+    }
+    this.history.record("stop_all", { data: { paused, interrupted } })
+    return { paused, interrupted }
+  }
+
+  // Resumes the agents stop-all paused; the owner's own pauses stay.
+  resumeAll() {
+    const rows = this.db
+      .query("SELECT id FROM agents WHERE paused = 'stop-all' ORDER BY id")
+      .all() as { id: string }[]
+    for (const r of rows) this.resume(r.id)
+    const resumed = rows.map((r) => r.id)
+    this.history.record("resume_all", { data: { resumed } })
+    return { resumed }
   }
 
   agentOfSession(session: string): string | undefined {

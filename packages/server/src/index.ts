@@ -1,19 +1,30 @@
 /*
  * Starts the Autocode server: opens the database in the data folder, defines
  * the API routes, serves the API and the web UI on the listen addresses, and
- * runs maintenance on a timer.
+ * runs the scheduler (wakes and injections) and maintenance on timers.
  */
 
 import type { Database } from "bun:sqlite"
 import { chmodSync, existsSync, writeFileSync } from "node:fs"
 import { hostname as osHostname } from "node:os"
 import { join } from "node:path"
-import { AutocodeError, checkId, parseListen, VERSION } from "@autocode/shared"
+import {
+  AutocodeError,
+  checkId,
+  machineName,
+  parseDuration,
+  parseListen,
+  resolveSettings,
+  VERSION,
+} from "@autocode/shared"
 import { Agents } from "./agents.ts"
 import { ensureDataDir, resolveServerId, tailscaleAddress } from "./config.ts"
+import { Delivery } from "./delivery.ts"
 import { History } from "./history.ts"
 import { Hosts } from "./hosts.ts"
 import { json, openapi, type Route, router } from "./http.ts"
+import { type FindService, findService, Loader } from "./loader.ts"
+import { Inbox, Messages } from "./messages.ts"
 import { SettingsStore } from "./settings-store.ts"
 import { openStore } from "./store.ts"
 import {
@@ -22,6 +33,7 @@ import {
   issueSessionToken,
   pruneTokens,
 } from "./tokens.ts"
+import { notRegistered, Wakes } from "./wakes.ts"
 import { type WebFiles, webHandler } from "./web.ts"
 
 export interface Clock {
@@ -42,6 +54,12 @@ export interface ServerOptions {
   offlineAfter?: number
   takeoverGraceMs?: number
   maintenanceEvery?: number
+  // How often the scheduler runs (ms; 0: never, tests call tick()).
+  tickEvery?: number
+  // This machine's name (hosts on it get unloaded folders loaded again), and
+  // how to find its background service (tests replace both).
+  machine?: string
+  findService?: FindService
   presetTokens?: { admin?: string; consumer?: string }
   hostname?: string
   web?: WebFiles
@@ -62,8 +80,14 @@ export interface RunningServer {
   db: Database
   stop(): Promise<void>
   maintenance(): void
+  // One scheduler run: due wakes, checks, injections.
+  tick(): void
   enqueue(host: string, type: string, payload: unknown): string
-  instruction(id: string): { acked: boolean; result: unknown } | undefined
+  instruction(
+    id: string,
+  ):
+    | { acked: boolean; ok: boolean; result: unknown; error: string | null }
+    | undefined
   checkpoint(): Promise<void>
 }
 
@@ -107,8 +131,58 @@ export async function startServer(
     redeliverAfter: 30,
     takeoverGraceMs: options.takeoverGraceMs,
   })
-  const agents = new Agents(db, history, hosts, now)
+  const tz = () => String(settings.value("timezone")) || "UTC"
+  const wakes = new Wakes(db, history, now, tz)
+  let messages: Messages
+  const inbox = new Inbox(db, history, now, () => messages)
+  const delivery = new Delivery(
+    db,
+    history,
+    hosts,
+    settings,
+    wakes,
+    () => messages,
+    inbox,
+    now,
+    new Loader(
+      history,
+      options.machine ?? machineName(options.hostname ?? osHostname()),
+      options.findService ?? findService,
+      now,
+    ),
+  )
+  messages = new Messages(
+    db,
+    history,
+    now,
+    delivery.enqueueMessage,
+    () => inbox,
+  )
+  const agents = new Agents(
+    db,
+    history,
+    hosts,
+    now,
+    (agent) => inbox.closeForAgent(agent),
+    (agent) => delivery.cancelPending(agent),
+  )
   history.record("server.started", { data: { id, version: VERSION } })
+
+  // The calling session's agent ID; a session that is not registered has no
+  // wakes or messages.
+  const me = (caller: { session?: string } | undefined): string => {
+    const agent = caller?.session ? agents.agentOfSession(caller.session) : ""
+    if (!agent) throw notRegistered()
+    return agent
+  }
+  // Who acts: the owner (admin token) or the calling agent.
+  const actor = (caller: any): string =>
+    caller?.kind === "admin" ? "owner" : me(caller)
+  const agentParam = (value: string | undefined): string => {
+    const agent = checkId(value, "agent ID")
+    agents.get(agent)
+    return agent
+  }
 
   const sessionDeleted = (session: string) => {
     const row = db
@@ -329,6 +403,208 @@ export async function startServer(
         }
       },
     },
+    // wakes
+    {
+      method: "GET",
+      path: "/v1/me/wakes",
+      access: ["session"],
+      summary: "the calling agent's wakes",
+      handler: ({ caller }) => ({ wakes: wakes.list(me(caller)) }),
+    },
+    {
+      method: "PUT",
+      path: "/v1/me/wakes/:name",
+      access: ["session"],
+      summary: "set (or replace) one of the calling agent's wakes",
+      handler: async ({ caller, params, body }) => {
+        const agent = me(caller)
+        const res = wakes.set(agent, params.name, await body(), agent)
+        return json({ wake: res.wake }, res.status)
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/v1/me/wakes/:name",
+      access: ["session"],
+      summary: "cancel one of the calling agent's wakes",
+      handler: ({ caller, params }) => {
+        const agent = me(caller)
+        return wakes.cancel(agent, params.name, agent)
+      },
+    },
+    {
+      method: "GET",
+      path: "/v1/wakes",
+      access: ["admin"],
+      summary: "every agent's wakes",
+      handler: () => ({ wakes: wakes.list() }),
+    },
+    {
+      method: "GET",
+      path: "/v1/agents/:id/wakes",
+      access: ["admin"],
+      summary: "an agent's wakes",
+      handler: ({ params }) => ({ wakes: wakes.list(agentParam(params.id)) }),
+    },
+    {
+      method: "PUT",
+      path: "/v1/agents/:id/wakes/:name",
+      access: ["admin"],
+      summary: "set (or replace) an agent's wake",
+      handler: async ({ params, body }) => {
+        const res = wakes.set(
+          agentParam(params.id),
+          params.name,
+          await body(),
+          "owner",
+        )
+        return json({ wake: res.wake }, res.status)
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/v1/agents/:id/wakes/:name",
+      access: ["admin"],
+      summary: "cancel an agent's wake",
+      handler: ({ params }) =>
+        wakes.cancel(agentParam(params.id), params.name, "owner"),
+    },
+    {
+      method: "POST",
+      path: "/v1/agents/:id/wakes/:name/fire",
+      access: ["session", "admin"],
+      summary: "fire an agent's wake now (it skips its check)",
+      handler: async ({ caller, params, body }) => {
+        const by = actor(caller)
+        const input = await body().catch(() => ({}))
+        return wakes.fire(
+          checkId(params.id, "agent ID"),
+          params.name,
+          by,
+          input?.text,
+          delivery.enqueueWake,
+        )
+      },
+    },
+    // messages
+    {
+      method: "POST",
+      path: "/v1/messages",
+      access: ["session", "admin"],
+      summary: "send a message to an agent, a pattern, a list or the owner",
+      handler: async ({ caller, body }) =>
+        json(messages.send(actor(caller), await body()), 201),
+    },
+    {
+      method: "GET",
+      path: "/v1/me/messages",
+      access: ["session"],
+      summary:
+        "the calling agent's unread messages (?all=1 for every one; " +
+        "?wait=seconds waits for one, up to max_tool_wait)",
+      handler: async ({ caller, url, req }) => {
+        const agent = me(caller)
+        const q = url.searchParams
+        const all = q.get("all") === "1" || q.get("all") === "true"
+        const wait = Number(q.get("wait") ?? 0)
+        if (!Number.isFinite(wait) || wait < 0)
+          throw new AutocodeError("bad_request", "wait must be seconds")
+        if (!wait || all) return { messages: messages.list(agent, all) }
+        const values = resolveSettings(settings.layers(), agent).values
+        const most = parseDuration(String(values.max_tool_wait)) / 1000
+        return {
+          messages: await messages.wait(
+            agent,
+            Math.min(wait, most),
+            req.signal,
+          ),
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/v1/me/messages/:id",
+      access: ["session"],
+      summary: "read one of the calling agent's messages (marks it read)",
+      handler: ({ caller, params }) => ({
+        message: messages.read(me(caller), String(params.id)),
+      }),
+    },
+    {
+      method: "GET",
+      path: "/v1/messages",
+      access: ["admin"],
+      summary: "every message, newest first (?agent=, ?limit=)",
+      handler: ({ url }) => ({
+        messages: messages.all({
+          agent: url.searchParams.get("agent") ?? undefined,
+          limit: Number(url.searchParams.get("limit")) || undefined,
+        }),
+      }),
+    },
+    {
+      method: "GET",
+      path: "/v1/messages/:id",
+      access: ["admin"],
+      summary: "any message, whole (the owner's read; its state stays)",
+      handler: ({ params }) => ({
+        message: messages.ownerRead(String(params.id)),
+      }),
+    },
+    // the owner: inbox, pause, stop all
+    {
+      method: "GET",
+      path: "/v1/inbox",
+      access: ["admin"],
+      summary: "the owner's open inbox items (?all=1 for closed ones too)",
+      handler: ({ url }) => ({
+        items: inbox.list(url.searchParams.get("all") === "1"),
+      }),
+    },
+    {
+      method: "POST",
+      path: "/v1/inbox/:id/answer",
+      access: ["admin"],
+      summary: "answer a message to the owner (the reply goes to the agent)",
+      handler: async ({ params, body }) => ({
+        item: inbox.answer(String(params.id), await body()),
+      }),
+    },
+    {
+      method: "POST",
+      path: "/v1/inbox/:id/close",
+      access: ["admin"],
+      summary: "close an inbox item",
+      handler: ({ params }) => ({ item: inbox.close(String(params.id)) }),
+    },
+    {
+      method: "POST",
+      path: "/v1/agents/:id/pause",
+      access: ["admin"],
+      summary: "pause an agent's injections",
+      handler: ({ params }) => ({ agent: agents.pause(String(params.id)) }),
+    },
+    {
+      method: "POST",
+      path: "/v1/agents/:id/resume",
+      access: ["admin"],
+      summary: "resume an agent's injections",
+      handler: ({ params }) => ({ agent: agents.resume(String(params.id)) }),
+    },
+    {
+      method: "POST",
+      path: "/v1/stop-all",
+      access: ["admin"],
+      summary: "pause every agent and interrupt every running turn",
+      handler: () => agents.stopAll(),
+    },
+    {
+      method: "POST",
+      path: "/v1/resume-all",
+      access: ["admin"],
+      summary: "resume the agents stop-all paused",
+      handler: () => agents.resumeAll(),
+    },
   ]
   routes.push({
     method: "GET",
@@ -417,13 +693,28 @@ export async function startServer(
     hosts.sweep()
     hosts.prune()
     pruneTokens(db, now())
-    history.trim(Number(settings.value("history_days")) || 30)
+    const days = Number(settings.value("history_days")) || 30
+    history.trim(days)
+    messages.trim(days)
+    delivery.trim(days)
+    inbox.trim(days)
   }
   maintenance()
   const timer =
     options.maintenanceEvery === 0
       ? undefined
       : setInterval(maintenance, options.maintenanceEvery ?? 5000)
+  const tick = () => {
+    try {
+      delivery.tick()
+    } catch (err) {
+      log(`scheduler: ${(err as Error).message}`)
+    }
+  }
+  const ticker =
+    options.tickEvery === 0
+      ? undefined
+      : setInterval(tick, options.tickEvery ?? 1000)
 
   return {
     id,
@@ -433,6 +724,7 @@ export async function startServer(
     firstStartTokens,
     db,
     maintenance,
+    tick: () => delivery.tick(),
     enqueue: (host, type, payload) => hosts.enqueue(host, type, payload),
     instruction: (instructionId) => hosts.instruction(instructionId),
     checkpoint: async () => {
@@ -440,8 +732,10 @@ export async function startServer(
     },
     stop: async () => {
       if (timer) clearInterval(timer)
+      if (ticker) clearInterval(ticker)
       if (rebind) clearInterval(rebind)
       hosts.close()
+      messages.close()
       await Promise.all(servers.map((s) => s.stop(true)))
       db.close()
     },

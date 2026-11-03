@@ -31,6 +31,7 @@ services:
       ADMIN_TOKEN: aca_ci_admin_token_for_tests_only_0000000000
       CONSUMER_TOKEN: acc_ci_consumer_token_for_tests_only_000000
       OUT_DIR: /out
+      CI_GREP: ${CI_GREP:-}
     volumes:
       - ${CI_OUT:-/tmp/autocode-ci-out}:/out
     depends_on:

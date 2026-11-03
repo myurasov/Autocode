@@ -39,6 +39,11 @@ export interface ChannelOptions {
   // The top-level sessions OpenCode holds in this folder, reported with each
   // hello.
   sessions?: () => Promise<{ id: string; directory?: string }[]>
+  // The sessions running a turn now (reported with each hello; undefined when
+  // the plugin cannot tell).
+  active?: () => Promise<string[] | undefined>
+  // The hello's answer (the server's ID, the registered sessions).
+  onHello?: (reply: any) => void
   log?: (line: string) => void
   backoffMs?: { min: number; max: number }
   supersededWaitMs?: number
@@ -58,6 +63,8 @@ export class Channel {
   pollWait = 50
   private readonly abort = new AbortController()
   private outbox: unknown[] = []
+  // One send at a time, so events reach the server in the order they happened.
+  private flushing?: Promise<void>
   private looping?: Promise<void>
   // After being superseded, the instance only takes the host back once the
   // newer instance is gone.
@@ -136,19 +143,31 @@ export class Channel {
     for (const wake of this.connectedWaiters.splice(0)) wake()
   }
 
-  // Sent while connected, and while superseded too: what only this process sees
-  // (its sessions' deletions) still counts.
-  private async flush() {
-    if (!this.reachable || !this.outbox.length) return
-    const events = this.outbox.splice(0)
-    try {
-      await this.call("POST", `${this.base}/events`, {
-        instance: this.options.instance,
-        events,
-      })
-    } catch (err) {
-      this.outbox.unshift(...events)
-      this.log(`events not sent yet: ${(err as Error).message}`)
+  /*
+   * Sent while connected, and while superseded too: what only this process
+   * sees (its sessions' deletions) still counts. One send at a time; a failed
+   * one goes back to the front, ahead of anything that came meanwhile.
+   */
+  private flush(): Promise<void> {
+    this.flushing ??= this.send().finally(() => {
+      this.flushing = undefined
+    })
+    return this.flushing
+  }
+
+  private async send() {
+    while (this.reachable && this.outbox.length) {
+      const events = this.outbox.splice(0)
+      try {
+        await this.call("POST", `${this.base}/events`, {
+          instance: this.options.instance,
+          events,
+        })
+      } catch (err) {
+        this.outbox.unshift(...events)
+        this.log(`events not sent yet: ${(err as Error).message}`)
+        return
+      }
     }
   }
 
@@ -187,6 +206,9 @@ export class Channel {
     const sessions = this.options.sessions
       ? await this.options.sessions().catch(() => undefined)
       : undefined
+    const active = this.options.active
+      ? await this.options.active().catch(() => undefined)
+      : undefined
     const res = await this.call("POST", `${this.base}/hello`, {
       instance: this.options.instance,
       machine: this.options.machine,
@@ -199,12 +221,18 @@ export class Channel {
         : { shell_values: this.options.shellValues }),
       takeover: this.takeover,
       ...(sessions ? { sessions } : {}),
+      ...(active ? { active } : {}),
     })
     this.takeover = true
     this.serverId = res.server.id
     this.pollWait = Number(res.poll?.wait) || 50
     this.setConnected()
     this.log(`connected to ${res.server.id} as ${this.options.host}`)
+    try {
+      this.options.onHello?.(res)
+    } catch (err) {
+      this.log(`hello: ${(err as Error).message}`)
+    }
     if (
       this.options.goneSessions &&
       Array.isArray(res.sessions) &&

@@ -24,8 +24,10 @@
   --warn: #b80;
   --err: #c33;
   --accent-soft: #f3f9e8;
-  /* The favicon's pink-red, for checkboxes too. */
+  /* The favicon's pink-red. */
   --tint: #e8436e;
+  /* The weight of every bold text (the owner, 2026-11-02). */
+  --bold: 500;
   /* The dropdowns' arrow. */
   --chevron: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23666' stroke-width='1.5'/></svg>");
 }
@@ -70,13 +72,24 @@ body {
 h1 {
   font-size: 1.43rem;
 }
+h1,
+h2,
+h3,
+h4,
+strong,
+b {
+  font-weight: var(--bold);
+}
+/* The version after the title, 3 px lower (the owner, 2026-11-02). */
 h1 small {
   color: var(--fg-faint);
   font-weight: normal;
   font-size: 15px;
+  margin-top: 3px;
 }
+/* Section headings: 1rem (the owner, 2026-11-02). */
 h2 {
-  font-size: 1.16rem;
+  font-size: 1rem;
   margin: 1.6rem 0 0.3rem;
 }
 h2.first {
@@ -96,13 +109,18 @@ label {
 }
 input[type="text"],
 input[type="password"],
-select {
+select,
+textarea {
   width: 100%;
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--border);
   font: inherit;
   background: var(--panel);
   color: var(--fg);
+}
+textarea {
+  display: block;
+  resize: vertical;
 }
 /*
  * Dropdowns draw their own arrow, the same on every browser: its right end
@@ -117,8 +135,9 @@ select {
   background-size: 10px 6px;
   padding-right: calc(9px + 10px + 0.5rem);
 }
+/* A checked checkbox is a neutral grey (the owner, 2026-11-02). */
 input[type="checkbox"] {
-  accent-color: var(--tint);
+  accent-color: var(--fg-dim);
   width: 1rem;
   height: 1rem;
   margin: 0.2rem 0;
@@ -222,12 +241,12 @@ nav a.on {
 table {
   border-collapse: collapse;
   width: 100%;
-  margin-top: 0.8rem;
+  margin-top: 1rem;
 }
 th,
 td {
   border: 1px solid var(--border-soft);
-  padding: calc(0.25rem + 2px) calc(0.5rem + 2px);
+  padding: 0.5rem;
   text-align: left;
   vertical-align: middle;
   overflow-wrap: break-word;
@@ -235,7 +254,7 @@ td {
 th {
   background: var(--soft);
   color: var(--fg-dim);
-  font-weight: 600;
+  font-weight: var(--bold);
 }
 td.status,
 td.key,
@@ -267,7 +286,7 @@ tr.group th {
 }
 td.from.set {
   color: var(--fg-strong);
-  font-weight: 600;
+  font-weight: var(--bold);
 }
 /* 1.5 times its earlier width (the owner's choice). */
 table.settings td.value {
@@ -286,8 +305,63 @@ table.settings td.value {
 .dot.ok {
   background: var(--ok);
 }
+.dot.warn {
+  background: var(--warn);
+}
 .dot.off {
   background: var(--err);
+}
+/*
+ * Inbox: an item's title, then its body and answer with their lines kept;
+ * the field for an answer under them.
+ */
+table.inbox .title {
+  font-weight: var(--bold);
+  overflow-wrap: anywhere;
+}
+table.inbox .body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+table.inbox .answer,
+table.inbox textarea {
+  margin-top: 0.35rem;
+}
+table.inbox tr.closed .title {
+  font-weight: normal;
+}
+/*
+ * Wakes: a trigger stays on one line; a text or a check as long as a sentence
+ * wraps anywhere it must.
+ */
+table.wakes td.trigger {
+  white-space: nowrap;
+}
+table.wakes td.text,
+table.wakes td.check code {
+  overflow-wrap: anywhere;
+}
+/*
+ * Messages: a message's row opens its text in a row below it (the owner,
+ * 2026-11-02): it reads as clickable, and an open one stays marked; the text
+ * keeps its lines and wraps anywhere it must.
+ */
+table.messages tr[data-message] {
+  cursor: pointer;
+}
+table.messages tr[data-message]:hover > td,
+table.messages tr[aria-expanded="true"] > td {
+  background: var(--sel);
+}
+table.messages td.id {
+  white-space: nowrap;
+}
+table.messages tr.detail > td {
+  background: var(--softer);
+}
+table.messages tr.detail .body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .pair {
   display: inline-block;
@@ -308,6 +382,19 @@ table.settings td.value {
 .toolbar input[type="text"] {
   width: 22rem;
   max-width: 100%;
+}
+/*
+ * An action's result in the toolbar, right after its buttons: it takes the
+ * room up to the items at the right, and wraps when it must.
+ */
+.toolbar .result {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* A page's footer, under its table: when its data last loaded. */
+#frame footer {
+  margin-top: 0.8rem;
 }
 .row {
   display: flex;
@@ -374,15 +461,102 @@ app-value-input {
   flex: none;
   min-width: 0;
 }
+.add-row > div.wide {
+  flex: 2;
+}
+/*
+ * A form that opens from its title line (Send a Message, Set a Wake): the
+ * frame's full width, collapsed at first; the title in the text color (the
+ * owner, 2026-11-02), its fold marker, pointer and hover say it opens.
+ */
+details.panel {
+  border: 1px solid var(--border-soft);
+  background: var(--softer);
+  margin-top: 0.8rem;
+}
+details.panel > summary {
+  padding: 0.5rem;
+  background: var(--soft);
+  color: var(--fg);
+  font-weight: var(--bold);
+  cursor: pointer;
+}
+/* 2 px more after the fold marker (browsers ignore margins on ::marker). */
+details.panel > summary > span {
+  margin-left: 2px;
+}
+details.panel > summary:hover {
+  background: var(--sel);
+}
+details.panel[open] > summary {
+  border-bottom: 1px solid var(--border-soft);
+}
+details.panel > .panel-body {
+  padding: 0.3rem 0.9rem 0.8rem;
+}
+/* Its rows of fields are as far apart as its other fields. */
+details.panel .add-row {
+  margin-top: 0;
+}
+/*
+ * The sign-in form, centered on the page across and down (the owner,
+ * 2026-11-02): a layer over the whole window that lets clicks through to the
+ * header, kept 4.5rem clear of it at the top (and as much at the bottom, so
+ * the form stays centered). A window too short for that keeps the form in the
+ * flow below the header, centered across, where the page scrolls.
+ */
+app-sign-in {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4.5rem 1rem;
+  pointer-events: none;
+}
+/* Just as wide as its content (the owner, 2026-11-02), at most 44rem. */
 #frame.sign-in {
+  width: fit-content;
   max-width: 44rem;
   min-height: 0;
+  pointer-events: auto;
+}
+/* Its heading: 0.6rem down to the token field (the owner, 2026-11-02). */
+#frame.sign-in h2 {
+  margin-bottom: 0.6rem;
+}
+/* The token field: 30% shorter than the row it filled (the owner,
+   2026-11-02), Sign In right after it; narrower windows shrink it. A width,
+   not a flex basis, so that the form's fit-content width counts it. */
+#frame.sign-in .row > input {
+  flex: 0 1 auto;
+  width: 25rem;
+  min-width: 0;
+}
+@media (max-height: 32rem) {
+  app-sign-in {
+    position: static;
+    display: block;
+    padding: 0;
+  }
+  #frame.sign-in {
+    margin: 0 auto;
+  }
 }
 label.check {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   margin-top: 0.6rem;
+}
+.toolbar label.check {
+  margin: 0;
+}
+/* The note, or the result of its action, beside a form's button. */
+.buttons .muted,
+.buttons .notice,
+.buttons .errmsg {
+  margin-left: 0.3rem;
 }
 
 /* phones: wrap rows, shrink chrome */

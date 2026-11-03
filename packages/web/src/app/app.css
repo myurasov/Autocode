@@ -1,6 +1,6 @@
 /*
- * The app shell's own styles: the top bar with the title, the "admin" badge and
- * the light/dark button.
+ * The app shell's own styles: the top bar with the favicon's triangle, the
+ * title, the "admin" badge and the light/dark button.
  */
 
 header.top {
@@ -12,10 +12,24 @@ header.top {
 /* The title and the version, centered on one line. */
 header.top h1 {
   margin: 0;
-  font-size: 17px;
+  font-size: 1.25rem;
   display: flex;
   align-items: center;
   gap: 0.45rem;
+}
+/*
+ * The favicon's triangle before the title: its pink-red in light and dark,
+ * 1.25rem, centered in the line, the title's gap from the word (the owner,
+ * 2026-11-02).
+ */
+header.top h1 .logo {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--tint);
+  margin-right: 0;
+  position: relative;
+  top: 0;
 }
 .spacer {
   flex: 1;

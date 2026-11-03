@@ -88,6 +88,104 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE hosts ADD COLUMN shell_values INTEGER;
   `,
+  /*
+   * 4 (tier 0b): turn status, pauses, wakes, the injection queue, injections,
+   * messages and the owner's inbox.
+   */
+  `
+  ALTER TABLE sessions ADD COLUMN busy INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE sessions ADD COLUMN turn_started_at INTEGER;
+  ALTER TABLE sessions ADD COLUMN idle_since INTEGER;
+  ALTER TABLE sessions ADD COLUMN last_outcome TEXT;
+  ALTER TABLE sessions ADD COLUMN last_error TEXT;
+  ALTER TABLE sessions ADD COLUMN turn_event_at INTEGER;
+  ALTER TABLE sessions ADD COLUMN inject_pending_at INTEGER;
+  ALTER TABLE instructions ADD COLUMN expires_at INTEGER;
+  ALTER TABLE agents ADD COLUMN paused TEXT NOT NULL DEFAULT '';
+  ALTER TABLE agents ADD COLUMN last_injection_at INTEGER;
+  CREATE TABLE wakes (
+    agent_id TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    text TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    check_cmd TEXT,
+    end_at INTEGER,
+    anchor INTEGER NOT NULL,
+    next_at INTEGER,
+    idle_fired_for INTEGER,
+    idle_last_at INTEGER,
+    check_failures INTEGER NOT NULL DEFAULT 0,
+    set_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_fired_at INTEGER,
+    PRIMARY KEY (agent_id, name)
+  );
+  CREATE INDEX wakes_next ON wakes (next_at);
+  CREATE TABLE queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('wake', 'message')),
+    wake TEXT,
+    text TEXT,
+    check_cmd TEXT,
+    fired_by TEXT,
+    extra TEXT,
+    message_id TEXT,
+    created_at INTEGER NOT NULL,
+    check_instruction TEXT,
+    check_sent_at INTEGER,
+    check_output TEXT
+  );
+  CREATE INDEX queue_agent ON queue (agent_id, id);
+  CREATE TABLE injections (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    host_id TEXT NOT NULL,
+    reasons TEXT NOT NULL,
+    items TEXT NOT NULL DEFAULT '[]',
+    text TEXT NOT NULL,
+    instruction_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    settled_at INTEGER,
+    error TEXT
+  );
+  CREATE INDEX injections_open ON injections (created_at)
+    WHERE settled_at IS NULL;
+  CREATE INDEX injections_agent ON injections (agent_id, created_at);
+  CREATE TABLE messages (
+    id TEXT PRIMARY KEY,
+    send_id TEXT NOT NULL,
+    from_id TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    to_spec TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    reply_to TEXT,
+    body TEXT NOT NULL,
+    mime TEXT,
+    size INTEGER NOT NULL,
+    state TEXT NOT NULL DEFAULT 'queued'
+      CHECK (state IN ('queued', 'delivered', 'read')),
+    created_at INTEGER NOT NULL,
+    delivered_at INTEGER,
+    read_at INTEGER
+  );
+  CREATE INDEX messages_to ON messages (to_id, state, created_at);
+  CREATE INDEX messages_at ON messages (created_at);
+  CREATE TABLE inbox (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('message', 'alert')),
+    agent_id TEXT,
+    message_id TEXT,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    closed_at INTEGER,
+    answer TEXT
+  );
+  CREATE INDEX inbox_open ON inbox (closed_at, created_at);
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

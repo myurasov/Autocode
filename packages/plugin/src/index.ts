@@ -4,15 +4,42 @@
  * config.
  */
 import { Channel, type Instruction } from "./channel.ts"
+import { runCheck } from "./checks.ts"
 import { request, ServerError } from "./client.ts"
 import { hostId, machineName, processOf, readClientConfig } from "./config.ts"
 import { sessionIsGone } from "./errors.ts"
-import { findLocalApi, setEnvironment, shellVariables } from "./localapi.ts"
+import { folderFiles } from "./files.ts"
+import { agentLine, guideText, SKILL_DESCRIPTION, SKILL_ID } from "./guide.ts"
+import {
+  activeSessions,
+  findLocalApi,
+  setEnvironment,
+  shellVariables,
+} from "./localapi.ts"
 import { log } from "./log.ts"
 import { SessionTokens } from "./sessions.ts"
-import { ME_TOOL, type MeInput, runMe } from "./tools.ts"
+import {
+  type Call,
+  ME_TOOL,
+  MESSAGE_TOOL,
+  type MeInput,
+  type MessageInput,
+  runMe,
+  runMessage,
+  runWake,
+  TOOLS,
+  WAKE_TOOL,
+  type WakeInput,
+} from "./tools.ts"
 
 type Ctx = any
+
+const TURN_EVENTS = {
+  "session.execution.started": "started",
+  "session.execution.succeeded": "succeeded",
+  "session.execution.failed": "failed",
+  "session.execution.interrupted": "interrupted",
+} as const
 
 export default {
   id: "autocode",
@@ -31,7 +58,12 @@ export default {
     // shell values; none when the plugin cannot reach it (spec, Shell values).
     const api = await findLocalApi()
 
-    const channel = new Channel({
+    // This folder's top-level sessions the plugin knows of, and the registered
+    // ones with their agent IDs (the server tells it).
+    const mine = new Set<string>()
+    const registered = new Map<string, string>()
+
+    const channel: Channel = new Channel({
       config,
       host,
       instance,
@@ -41,19 +73,7 @@ export default {
       process: processOf(),
       shellValues: api !== undefined,
       log,
-      onInstruction: async (instruction: Instruction) => {
-        if (instruction.type === "token") {
-          // The owner rotated the session's token: the old one is dead; get a
-          // new one now, and put it into the shells that had the old one.
-          const session = String(instruction.payload?.session ?? "")
-          tokens.drop(session)
-          await tokens.token(session)
-          await renewShellValues(session)
-          return { renewed: true }
-        }
-        if (instruction.type === "ping") return { pong: true }
-        throw new Error(`unknown instruction ${instruction.type}`)
-      },
+      onInstruction: (instruction: Instruction) => handle(instruction),
       goneSessions: async (sessions) => {
         const gone: string[] = []
         for (const sessionID of sessions) {
@@ -73,12 +93,24 @@ export default {
           parentID: null,
           limit: 200,
         })
-        return (Array.isArray(page?.data) ? page.data : [])
+        const list = (Array.isArray(page?.data) ? page.data : [])
           .filter((s: any) => typeof s?.id === "string" && !s.parentID)
           .map((s: any) => ({
             id: s.id as string,
             directory: String(s.location?.directory ?? directory),
           }))
+        for (const s of list) mine.add(s.id)
+        return list
+      },
+      active: async () => (api ? activeSessions(api) : undefined),
+      onHello: (reply) => {
+        registered.clear()
+        for (const [session, agent] of Object.entries(reply?.registered ?? {}))
+          if (typeof agent === "string") {
+            registered.set(session, agent)
+            mine.add(session)
+          }
+        void ctx.skill?.reload?.().catch?.(() => {})
       },
     })
 
@@ -119,12 +151,13 @@ export default {
       method: string,
       path: string,
       body?: unknown,
+      timeoutMs = 10_000,
     ) => {
       const root = await tokens.root(sessionID)
       for (let attempt = 0; ; attempt++) {
         const token = await tokens.token(root)
         try {
-          return await request(config.url, token, method, path, body, 10_000)
+          return await request(config.url, token, method, path, body, timeoutMs)
         } catch (err) {
           if (
             err instanceof ServerError &&
@@ -139,6 +172,14 @@ export default {
       }
     }
 
+    // The values a session's shells (and its checks) carry.
+    const valuesFor = async (root: string) => ({
+      AUTOCODE_URL: config.url,
+      AUTOCODE_TOKEN: await tokens.token(root),
+      AUTOCODE_SERVER_ID: channel.serverId ?? "",
+      AUTOCODE_SESSION: root,
+    })
+
     /*
      * Shell values: each session's environment holds its top-level session's
      * values on top of OpenCode's own environment, set before the session's
@@ -149,19 +190,10 @@ export default {
     const shellPending = new Map<string, Promise<void>>()
     const putShellValues = async (session: string, root: string) => {
       if (!api) return
-      const token = await tokens.token(root)
-      if (shellSet.get(session)?.token === token) return
-      await setEnvironment(
-        api,
-        session,
-        shellVariables(process.env, {
-          AUTOCODE_URL: config.url,
-          AUTOCODE_TOKEN: token,
-          AUTOCODE_SERVER_ID: channel.serverId ?? "",
-          AUTOCODE_SESSION: root,
-        }),
-      )
-      shellSet.set(session, { root, token })
+      const values = await valuesFor(root)
+      if (shellSet.get(session)?.token === values.AUTOCODE_TOKEN) return
+      await setEnvironment(api, session, shellVariables(process.env, values))
+      shellSet.set(session, { root, token: values.AUTOCODE_TOKEN })
     }
     // Once per session at a time; a failure leaves the shell as it was.
     const shellValuesFor = (session: string, root: string) => {
@@ -190,23 +222,108 @@ export default {
       )
     }
 
-    await ctx.tool.transform((tools: any) => {
-      tools.add({
-        ...ME_TOOL,
-        options: { codemode: false },
-        execute: async (input: MeInput, tctx: any) => {
-          try {
-            const text = await runMe(input, (method, path, body) =>
-              callAs(tctx.sessionID, method, path, body),
-            )
-            return { content: text }
-          } catch (err) {
-            const e = err as ServerError
-            const code = e instanceof ServerError ? ` (${e.code})` : ""
-            return { content: `error${code}: ${e.message}` }
+    // The server's instructions for this host's sessions.
+    const handle = async (instruction: Instruction): Promise<unknown> => {
+      const p = instruction.payload ?? {}
+      const session = String(p.session ?? "")
+      switch (instruction.type) {
+        case "token":
+          // The owner rotated the session's token: the old one is dead; get a
+          // new one now, and put it into the shells that had the old one.
+          tokens.drop(session)
+          await tokens.token(session)
+          await renewShellValues(session)
+          return { renewed: true }
+        case "inject": {
+          // queue: a prompt that meets a running turn waits for its end
+          await ctx.session.prompt({
+            sessionID: session,
+            id: String(p.prompt_id),
+            text: String(p.text),
+            delivery: "queue",
+          })
+          return { injected: true }
+        }
+        case "interrupt":
+          return await ctx.session.interrupt({
+            sessionID: session,
+            resume: false,
+          })
+        case "check": {
+          // always the session's shell: the CLI there never uses the owner's
+          // token, even when the session's values could not be had
+          const env: Record<string, string | undefined> = {
+            ...process.env,
+            AUTOCODE_SESSION: session,
           }
-        },
-      })
+          try {
+            Object.assign(env, await valuesFor(session))
+          } catch {}
+          return await runCheck({
+            command: String(p.command),
+            directory: String(p.directory || directory),
+            timeoutMs: Number(p.timeout_ms) || 60_000,
+            outputLimit: Number(p.output_limit) || 0,
+            env,
+          })
+        }
+        case "registration":
+          if (typeof p.agent === "string") {
+            registered.set(session, p.agent)
+            mine.add(session)
+          } else registered.delete(session)
+          return { ok: true }
+        case "ping":
+          return { pong: true }
+        default:
+          throw new Error(`unknown instruction ${instruction.type}`)
+      }
+    }
+
+    const files = folderFiles(() => directory)
+    const asTool = (
+      tool: { name: string; description: string; input: unknown },
+      run: (input: any, call: Call, sessionID: string) => Promise<string>,
+    ) => ({
+      ...tool,
+      options: { codemode: false },
+      execute: async (input: any, tctx: any) => {
+        try {
+          const call: Call = (method, path, body) =>
+            callAs(tctx.sessionID, method, path, body)
+          return { content: await run(input, call, tctx.sessionID) }
+        } catch (err) {
+          const e = err as ServerError
+          const code = e instanceof ServerError ? ` (${e.code})` : ""
+          return { content: `error${code}: ${e.message}` }
+        }
+      },
+    })
+    await ctx.tool.transform((tools: any) => {
+      tools.add(asTool(ME_TOOL, (input: MeInput, call) => runMe(input, call)))
+      tools.add(
+        asTool(WAKE_TOOL, (input: WakeInput, call) => runWake(input, call)),
+      )
+      tools.add(
+        asTool(MESSAGE_TOOL, (input: MessageInput, call, sessionID) =>
+          runMessage(input, call, files, async (seconds) => {
+            // the server answers within 240 s; wait again until the end
+            const end = Date.now() + seconds * 1000
+            for (;;) {
+              const left = Math.ceil((end - Date.now()) / 1000)
+              const chunk = Math.max(1, Math.min(left, 240))
+              const res = await callAs(
+                sessionID,
+                "GET",
+                `/v1/me/messages?wait=${chunk}`,
+                undefined,
+                (chunk + 15) * 1000,
+              )
+              if (res.messages?.length || Date.now() >= end - 1000) return res
+            }
+          }),
+        ),
+      )
     })
 
     // OpenCode awaits this before it builds the shell's environment, so the
@@ -225,37 +342,109 @@ export default {
     })
 
     /*
-     * New top-level sessions of this folder and deleted sessions are reported
-     * to the server; the subscription is renewed if its stream ends. (It
-     * carries every folder's events: only this folder's new sessions are this
-     * host's.)
+     * The agent guide (spec, Agent Tools): the `autocode` skill for every
+     * session, and one line of system text in each model call of a registered
+     * session (a Subagent gets its top-level session's).
+     */
+    try {
+      await ctx.skill?.transform?.((editor: any) => {
+        editor.add({
+          id: SKILL_ID,
+          name: "Autocode",
+          description: SKILL_DESCRIPTION,
+          // the plugin's own folder: nothing is written there
+          path: `${import.meta.dir}/SKILL.md`,
+          content: guideText({
+            serverId: channel.serverId,
+            url: config.url,
+            shellValues: api !== undefined,
+            tools: TOOLS,
+          }),
+        })
+      })
+    } catch (err) {
+      log(`no autocode skill: ${(err as Error).message}`)
+    }
+    await ctx.session.hook("context", async (event: any) => {
+      if (typeof event?.sessionID !== "string" || !registered.size) return
+      let agent = registered.get(event.sessionID)
+      if (!agent) {
+        const root = await tokens.root(event.sessionID).catch(() => "")
+        agent = root ? registered.get(root) : undefined
+      }
+      if (agent && Array.isArray(event.system))
+        event.system.push({
+          type: "text",
+          text: agentLine(agent, channel.serverId),
+        })
+    })
+
+    /*
+     * New top-level sessions of this folder, deleted sessions and turns are
+     * reported to the server; the subscription is renewed if its stream ends.
+     * (It carries every folder's events: only this folder's are this host's.)
      */
     const events = new AbortController()
+    const ours = (event: any, session: string) => {
+      const dir = event?.location?.directory
+      return dir ? dir === directory : mine.has(session)
+    }
+    // The sessions running a turn now, when the local API can tell: after a
+    // gap in the event stream, and every minute, so no lost event leaves a
+    // session busy (or idle) for long.
+    const reportActive = async () => {
+      if (!api) return
+      const sessions = await activeSessions(api).catch(() => undefined)
+      if (sessions) channel.report({ type: "turns.active", sessions })
+    }
+    const activeTimer = api
+      ? setInterval(() => void reportActive(), 60_000)
+      : undefined
+    let subscribed = 0
     const watch = async () => {
       while (!events.signal.aborted) {
+        if (subscribed++) void reportActive()
         try {
-          const types = ["session.created", "session.deleted"]
+          const types = [
+            "session.created",
+            "session.deleted",
+            ...Object.keys(TURN_EVENTS),
+          ]
           for await (const event of ctx.event.subscribe({
             types,
             signal: events.signal,
           })) {
             const data = event?.data
             if (typeof data?.sessionID !== "string") continue
+            const session = data.sessionID as string
             if (event.type === "session.deleted")
-              channel.report({
-                type: "session.deleted",
-                session: data.sessionID,
-              })
-            else if (
-              event.type === "session.created" &&
-              !data.parentID &&
-              data.location?.directory === directory
-            )
-              channel.report({
-                type: "session.created",
-                session: data.sessionID,
-                directory,
-              })
+              channel.report({ type: "session.deleted", session })
+            else if (event.type === "session.created") {
+              if (!data.parentID && data.location?.directory === directory) {
+                mine.add(session)
+                channel.report({ type: "session.created", session, directory })
+              }
+            } else if (event.type in TURN_EVENTS) {
+              if (!ours(event, session)) continue
+              // a Subagent's turn is part of its session's turn
+              if ((await tokens.root(session).catch(() => session)) !== session)
+                continue
+              const outcome =
+                TURN_EVENTS[event.type as keyof typeof TURN_EVENTS]
+              // OpenCode's own time of the event orders them at the server
+              const at = Number(event.created) || Date.now()
+              channel.report(
+                outcome === "started"
+                  ? { type: "turn.started", session, at }
+                  : {
+                      type: "turn.ended",
+                      session,
+                      outcome,
+                      at,
+                      ...(data.error?.type ? { error: data.error.type } : {}),
+                    },
+              )
+            }
           }
         } catch (err) {
           if (!events.signal.aborted)
@@ -270,6 +459,7 @@ export default {
     log(`started for ${directory} as ${host}`)
     return async () => {
       events.abort()
+      if (activeTimer) clearInterval(activeTimer)
       await channel.stop()
     }
   },

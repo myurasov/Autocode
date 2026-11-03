@@ -88,6 +88,47 @@ describe("store", () => {
     }
   })
 
+  test("migration 4 (tier 0b) keeps a schema-3 agent; its wakes and queue go with it", () => {
+    const path = tempDb()
+    const old = openStore(path, MIGRATIONS.slice(0, 3))
+    old.run(
+      "INSERT INTO hosts (id, machine, directory, instance, first_seen, " +
+        "last_seen) VALUES ('m:1', 'm', '/w', 'i', 1, 1)",
+    )
+    old.run(
+      "INSERT INTO sessions (id, host_id, created_at, last_seen) " +
+        "VALUES ('ses_1', 'm:1', 1, 1)",
+    )
+    old.run(
+      "INSERT INTO agents (id, session_id, registered_at, last_active) " +
+        "VALUES ('a:b', 'ses_1', 1, 1)",
+    )
+    old.close()
+    const db = openStore(path)
+    expect(db.query("SELECT busy, idle_since FROM sessions").get()).toEqual({
+      busy: 0,
+      idle_since: null,
+    })
+    expect(db.query("SELECT id, paused FROM agents").get()).toEqual({
+      id: "a:b",
+      paused: "",
+    })
+    db.run(
+      "INSERT INTO wakes (agent_id, name, text, trigger, anchor, set_by, " +
+        "created_at, updated_at) " +
+        "VALUES ('a:b', 'w', 'x', '{}', 1, 'a:b', 1, 1)",
+    )
+    db.run(
+      "INSERT INTO queue (agent_id, kind, wake, created_at) " +
+        "VALUES ('a:b', 'wake', 'w', 1)",
+    )
+    db.run("DELETE FROM agents WHERE id = 'a:b'")
+    const n = (table: string) =>
+      (db.query(`SELECT COUNT(*) AS n FROM ${table}`).get() as any).n
+    expect([n("wakes"), n("queue")]).toEqual([0, 0])
+    db.close()
+  })
+
   test("a failing migration leaves the database at the version before it", () => {
     const path = tempDb()
     openStore(path, ["CREATE TABLE t (a TEXT)"]).close()

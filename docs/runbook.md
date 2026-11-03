@@ -113,6 +113,21 @@ ID before it sends a token. Every command takes `--json`.
 | `autocode token rotate AGENT` | replace an agent's session token |
 | `autocode settings ...` | see [Settings](#settings) |
 | `autocode history [--agent ID] [--kind KIND] [--since TIME] [--limit N]` | the history, newest first |
+| `autocode inbox [--all]` | the owner's inbox: messages to `owner` and alerts (three failed checks in a row) |
+| `autocode answer ITEM TEXT...` | answer a message in the inbox: the reply goes to the agent as a message from the owner |
+| `autocode inbox close ITEM` | close an inbox item (an alert, or a message you will not answer) |
+| `autocode pause AGENT` / `resume AGENT` | stop or restart an agent's injections (wakes and messages keep queuing) |
+| `autocode stop-all` / `resume-all` | pause every agent and interrupt every running turn; resume what stop-all paused (your own pauses stay) |
+| `autocode wakes [AGENT]` | every wake (agent, name, trigger, next run, check, text), or one agent's |
+| `autocode wake set AGENT NAME --trigger T --text TEXT [--check CMD] [--end TIME]` | set or replace an agent's wake |
+| `autocode wake cancel AGENT NAME` | cancel a wake |
+| `autocode fire AGENT WAKE [--text TEXT]` | deliver a wake now (it skips its check); the prompt says the owner fired it |
+| `autocode send TO TEXT...` (or `--file PATH`) | send a message as the owner to an ID, a pattern or a list |
+| `autocode messages` | every message, newest first, with its state (queued, delivered, read) |
+
+In an agent's shell the same binary acts as that agent: `autocode me`, `autocode wakes`, `autocode wake set me ...`,
+`autocode fire me WAKE`, `autocode send`, `autocode messages [--wait SECONDS]` and `autocode messages read ID [--out
+FILE]` (see `howto.md`).
 
 Exit codes: 0 done, 1 refused or failed, 2 wrong usage, 3 the server cannot be reached.
 
@@ -125,14 +140,16 @@ Exit codes: 0 done, 1 refused or failed, 2 wrong usage, 3 the server cannot be r
   over everything. `autocode settings unset KEY [...]` clears it.
 - Server-wide only: `history_days`, `keep_failed`, `restart_opencode`, `timezone`, `listen` (`listen` takes effect
   at the next start).
-- Tier 0a uses `history_days` (history trimming); the other settings are stored and resolved now and used by the
-  tiers that add their features.
+- In use: `history_days` (history trimming, with message bodies, settled injections and closed inbox items),
+  `min_interval`, `inline_limit`, `check_timeout`, `check_output`, `max_tool_wait` (a single wait is cut at 240 s
+  and waited again) and `timezone` (the default zone of `cron` and `at` wakes; a cron wake keeps the zone it was set
+  with). The other settings are stored and resolved now and used by the tiers that add their features.
 
 ## Web UI
 
 Open `http://<server address>:4848/` and sign in with the admin token; the consumer token and an agent's session
 token are refused. The token is kept for that browser tab, or on that browser with **Stay signed in**, until **Sign
-Out**; a token the server stops accepting sends you back to sign-in. Other sites cannot frame the UI. Tier 0a pages:
+Out**; a token the server stops accepting sends you back to sign-in. Other sites cannot frame the UI. Pages:
 
 - **Hosts:** each OpenCode server folder the plugin connects from, by machine (folder, status, the OpenCode process
   it runs in, OpenCode and plugin versions, last seen), refreshed every 10 s;
@@ -142,10 +159,19 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   by default, so its folders stay online after the TUI exits, until OpenCode unloads a folder after an hour unused.
   **no shell values** under the process: that server's shells get no Autocode values, because the plugin cannot
   reach its local API (see Troubleshooting; `autocode hosts` shows a SHELL VALUES column).
-- **Agents:** the agents by machine (status, folder, session, times), refreshed every 10 s, with a pattern filter
-  that applies a second after the last key (Enter or **Refresh** at once; **Show All** clears it); edit a
-  description, **New Token** (the same as `autocode token rotate`), **Unregister**. Like Hosts, it says how many
-  seconds ago it last loaded.
+- **Agents:** the agents by machine (status: idle, working, paused or offline; folder, session, times), refreshed
+  every 10 s, with a pattern filter that applies a second after the last key (Enter or **Refresh** at once; **Show
+  All** clears it); edit a description, **Pause** or **Resume** an agent's injections, **New Token** (the same as
+  `autocode token rotate`), **Unregister**; **Stop All** (pause every agent and interrupt its session, after you
+  confirm) and **Resume All** (what Stop All paused). Like Hosts, it says how many seconds ago it last loaded.
+- **Inbox:** messages to `owner` and alerts (a wake whose check failed three times in a row); **Answer** a message
+  (the reply goes to the agent as a message from the owner) or **Close** an item; **Show Closed** shows the answered
+  and closed ones.
+- **Messages:** every message, newest first, with its ID and state (queued, delivered, read); a click on a message
+  opens its text below it (your read leaves its state); **Send a Message** (it opens from its title) as the owner,
+  to an ID, a pattern or a list.
+- **Wakes:** every agent's wakes (trigger, next run, text, check, end, who set it, last fired), **Fire** one now or
+  **Cancel** it; **Set a Wake** for any agent.
 - **Settings:** the server-wide values (each shown in its edit box: change it and **Save**, or **Reset** to the
   built-in default), the pattern rules, the agents' own values, and **Resolved for an Agent** (an agent's values
   with where each comes from).

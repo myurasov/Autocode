@@ -1,0 +1,130 @@
+<!--
+  The Messages page: the form to send a message as the owner (collapsed until
+  its title is clicked), every message, newest first (a click on one opens its
+  text in a row below it), and when the list last loaded.
+-->
+
+<div class="toolbar">
+  <button type="button" (click)="refresh()">Refresh</button>
+</div>
+
+@if (error()) {
+  <p class="errmsg" role="alert">{{ error() }}</p>
+}
+
+<details class="panel">
+  <summary><span>Send a Message</span></summary>
+  <div class="panel-body">
+    <div class="add-row">
+      <div>
+        <label for="send-to">To</label>
+        <input
+          id="send-to"
+          type="text"
+          spellcheck="false"
+          placeholder="an agent ID, a pattern like team:* or a list a:b,c:d"
+          [value]="to()"
+          (input)="to.set($any($event.target).value)"
+        />
+      </div>
+      <div>
+        <label for="send-subject">Subject</label>
+        <input
+          id="send-subject"
+          type="text"
+          placeholder="optional"
+          [value]="subject()"
+          (input)="subject.set($any($event.target).value)"
+        />
+      </div>
+    </div>
+    <label for="send-text">Text</label>
+    <textarea
+      id="send-text"
+      rows="3"
+      [value]="text()"
+      (input)="text.set($any($event.target).value)"
+    ></textarea>
+    <!-- The result of a send, or why it failed, beside the button. -->
+    <div class="buttons">
+      <button type="button" [disabled]="!canSend()" (click)="send()">
+        Send
+      </button>
+      @if (sendError()) {
+        <span class="errmsg" role="alert">{{ sendError() }}</span>
+      } @else if (sent()) {
+        <span class="notice" role="status">{{ sent() }}</span>
+      }
+    </div>
+  </div>
+</details>
+
+<table class="messages">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Time</th>
+      <th>From</th>
+      <th>To</th>
+      <th>Subject</th>
+      <th>Kind</th>
+      <th>Size</th>
+      <th>State</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (m of messages(); track m.id) {
+      <tr
+        [attr.data-message]="m.id"
+        tabindex="0"
+        [attr.aria-expanded]="isOpen(m.id)"
+        (click)="toggle(m)"
+        (keydown.enter)="toggle(m)"
+      >
+        <td class="id"><code>{{ m.id }}</code></td>
+        <td class="time" [title]="m.created_at" [appTime]="m.created_at"></td>
+        <td class="sender">
+          @if (m.from === 'owner') {
+            owner
+          } @else {
+            <code [appBreaks]="m.from"></code>
+          }
+        </td>
+        <td class="recipient">
+          @if (m.to === 'owner') {
+            owner
+          } @else {
+            <code [appBreaks]="m.to"></code>
+          }
+        </td>
+        <td class="subject">{{ m.subject }}</td>
+        <td class="kind">{{ kindText(m) }}</td>
+        <td class="num size">{{ sizeText(m) }}</td>
+        <td class="state">{{ m.state }}</td>
+      </tr>
+      @if (isOpen(m.id)) {
+        <tr class="detail" [attr.data-detail]="m.id">
+          <td colspan="8">
+            @if (bodyOf(m.id); as b) {
+              @if (b.error) {
+                <span class="errmsg" role="alert">{{ b.error }}</span>
+              } @else {
+                <div class="body" [class.muted]="b.file">{{ b.text }}</div>
+              }
+            } @else {
+              <span class="muted">Loading...</span>
+            }
+          </td>
+        </tr>
+      }
+    } @empty {
+      <tr>
+        <td class="muted" colspan="8">
+          {{ loaded() ? 'No messages yet.' : 'Loading...' }}
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<footer class="muted"><app-updated [at]="updatedAt()" /></footer>

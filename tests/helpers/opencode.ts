@@ -41,14 +41,13 @@ export class OpenCode {
   }
 
   // OpenCode loads a workspace folder's plugins lazily: creating a session does
-  // not, a location request does.
+  // not, a location request does (a folder as the published client sends it:
+  // location[directory]=).
   loadLocation(directory?: string) {
-    return this.api(
-      "GET",
-      directory
-        ? `/api/location?directory=${encodeURIComponent(directory)}`
-        : "/api/location",
-    )
+    const query = directory
+      ? `?${new URLSearchParams({ "location[directory]": directory })}`
+      : ""
+    return this.api("GET", `/api/location${query}`)
   }
 
   createSession(

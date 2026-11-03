@@ -5,20 +5,16 @@
 
 <section id="frame" class="sign-in">
   <h2>Sign In</h2>
-  <p class="muted">
-    Paste the admin token. The server keeps it in its data folder
-    (<code>~/.autocode/admin.token</code>); treat it as a password. The consumer
-    token, which the plugins connect with, does not sign in here.
-  </p>
   <form (submit)="submit($event)">
-    <label for="token">Token</label>
     <div class="row">
+      <!-- No visible label (the owner's choice); named for assistive tech. -->
       <input
         id="token"
+        aria-label="Token"
         type="password"
         autocomplete="off"
         spellcheck="false"
-        placeholder="aca_..."
+        placeholder="admin token"
         [value]="token()"
         (input)="token.set($any($event.target).value)"
       />
@@ -30,8 +26,7 @@
         [checked]="remember()"
         (change)="remember.set($any($event.target).checked)"
       />
-      Stay signed in on this browser (otherwise you are signed out when this tab
-      closes)
+      Stay signed in
     </label>
   </form>
   @if (auth.message()) {

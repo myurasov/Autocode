@@ -1,11 +1,26 @@
 <!--
-  The app shell: a header with the Autocode version, Sign Out and the
-  light/dark switch, then the sign-in form or, once signed in, the Hosts,
-  Agents and Settings tabs with the page they open.
+  The app shell: a header with the favicon's triangle, the Autocode version,
+  Sign Out and the light/dark switch, then the sign-in form or, once signed in,
+  the Hosts, Agents, Inbox, Messages, Wakes and Settings tabs with the page they
+  open.
 -->
 
 <header class="top">
   <h1>
+    <!-- The favicon's triangle (index.html), only for the eye. -->
+    <svg
+      class="logo"
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linejoin="round"
+      stroke-linecap="round"
+    >
+      <path d="M8 2 14.5 13.5 1.5 13.5Z" />
+    </svg>
     Autocode
     @if (info(); as i) {
       <small class="server" title="Autocode version">{{
@@ -42,6 +57,9 @@
     <nav>
       <a routerLink="/hosts" routerLinkActive="on">Hosts</a>
       <a routerLink="/agents" routerLinkActive="on">Agents</a>
+      <a routerLink="/inbox" routerLinkActive="on">Inbox</a>
+      <a routerLink="/messages" routerLinkActive="on">Messages</a>
+      <a routerLink="/wakes" routerLinkActive="on">Wakes</a>
       <a routerLink="/settings" routerLinkActive="on">Settings</a>
     </nav>
     <main id="frame">

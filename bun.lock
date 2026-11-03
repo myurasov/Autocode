@@ -38,6 +38,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@autocode/shared": "workspace:*",
+        "@opencode/client": "2.2.0",
       },
     },
     "packages/shared": {

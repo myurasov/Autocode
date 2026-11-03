@@ -1,0 +1,113 @@
+<!--
+  The Inbox page: Show Closed (an action's result before it), the items with
+  their kind, agent, title and body (an open message has a field for the
+  answer and Answer, every open item Close, a closed one shows the answer it
+  got), and when the list last loaded.
+-->
+
+<div class="toolbar">
+  <button type="button" (click)="refresh()">Refresh</button>
+  <span class="result">
+    @if (failed()) {
+      <span class="errmsg" role="alert">{{ failed() }}</span>
+    } @else if (notice()) {
+      <span class="notice" role="status">{{ notice() }}</span>
+    }
+  </span>
+  <label class="check" for="show-closed">
+    <input
+      id="show-closed"
+      type="checkbox"
+      [checked]="showClosed()"
+      (change)="toggleClosed($any($event.target).checked)"
+    />
+    Show Closed
+  </label>
+</div>
+
+@if (error()) {
+  <p class="errmsg" role="alert">{{ error() }}</p>
+}
+
+<table class="inbox">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Kind</th>
+      <th>Agent</th>
+      <th>Item</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (item of items(); track item.id) {
+      <tr [attr.data-item]="item.id" [class.closed]="!!item.closed_at">
+        <td
+          class="time"
+          [title]="item.created_at"
+          [appTime]="item.created_at"
+        ></td>
+        <td class="kind">{{ item.kind }}</td>
+        <td class="agent">
+          @if (item.agent) {
+            <code [appBreaks]="item.agent"></code>
+          }
+        </td>
+        <td class="item">
+          <div class="title">{{ item.title }}</div>
+          @if (item.body) {
+            <div class="body">{{ item.body }}</div>
+          }
+          @if (item.answer !== null) {
+            <div class="answer">
+              <span class="muted">Answer: </span>
+              <span class="body">{{ item.answer }}</span>
+            </div>
+          } @else if (!item.closed_at && item.kind === 'message') {
+            <textarea
+              rows="2"
+              aria-label="Answer"
+              placeholder="The answer goes back to the agent as a message"
+              [value]="draft(item)"
+              (input)="setDraft(item, $any($event.target).value)"
+            ></textarea>
+          }
+        </td>
+        <td class="actions">
+          @if (item.closed_at) {
+            <span class="muted" [title]="localTime(item.closed_at)"
+              >closed</span
+            >
+          } @else {
+            <div class="row-buttons">
+              @if (item.kind === 'message') {
+                <button
+                  type="button"
+                  [disabled]="busy() || !draft(item).trim()"
+                  (click)="answer(item)"
+                >
+                  Answer
+                </button>
+              }
+              <button
+                type="button"
+                [disabled]="busy()"
+                (click)="close(item)"
+              >
+                Close
+              </button>
+            </div>
+          }
+        </td>
+      </tr>
+    } @empty {
+      <tr>
+        <td class="muted" colspan="5">
+          {{ loaded() ? 'Nothing in the inbox.' : 'Loading...' }}
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<footer class="muted"><app-updated [at]="updatedAt()" /></footer>

@@ -1,7 +1,7 @@
 /*
  * Unit tests of the Hosts page against a mocked server: the hosts table, where
- * long IDs and folders may wrap, a failed load, and the 10 s refresh (one at a
- * time).
+ * long IDs and folders may wrap, "Updated" in the footer, a failed load, and
+ * the 10 s refresh (one at a time).
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -87,9 +87,12 @@ describe('HostsPage', () => {
       'Last Seen',
     ]);
     expect(text(page.querySelector('p.muted'))).toBe(
-      'One per OpenCode server folder that the Autocode plugin connects ' +
-        'from. Updated 0s ago.',
+      'One per OpenCode server folder that the Autocode plugin connects from.',
     );
+    // When the list last loaded: in the footer, the page's last item.
+    expect(page.querySelector('p.muted app-updated')).toBeNull();
+    expect(page.lastElementChild!.tagName).toBe('FOOTER');
+    expect(text(page.querySelector('footer'))).toBe('Updated 0s ago.');
     expect(page.querySelector('td.machine')).toBeNull();
     // machines in alphabetical order, each with a header row
     const machines = [

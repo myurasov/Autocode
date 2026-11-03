@@ -1,8 +1,10 @@
 /*
  * The Agents page: the agents (optionally filtered by an ID pattern) by
  * machine, refreshed every 10 s. The owner can edit an agent's description,
- * give it a new token or unregister it; the last two ask for a confirmation
- * first.
+ * pause or resume its injections, give it a new token or unregister it (the
+ * last two ask for a confirmation first), and stop all agents (after a
+ * confirmation) or resume the ones Stop All paused; each action's result shows
+ * in the toolbar.
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
@@ -13,6 +15,19 @@ import { Updated } from '../updated';
 export const REFRESH_MS = 10_000;
 // How long after the last key the typed filter applies.
 export const FILTER_DELAY_MS = 1000;
+
+// Who paused an agent, for its status's tooltip ('' when it is not paused).
+export function pausedText(agent: Agent): string {
+  if (!agent.paused) return '';
+  return agent.paused === 'stop-all'
+    ? 'Paused by Stop All'
+    : 'Paused by the owner';
+}
+
+// "1 agent", "2 agents".
+function count(n: number, thing: string): string {
+  return `${n} ${thing}${n === 1 ? '' : 's'}`;
+}
 
 @Component({
   selector: 'app-agents-page',
@@ -36,8 +51,11 @@ export class AgentsPage {
       .map(([machine, agents]) => ({ machine, agents }));
   });
   protected readonly loaded = signal(false);
+  // Why the list did not load.
   protected readonly error = signal('');
+  // How the last action went, shown in the toolbar.
   protected readonly notice = signal('');
+  protected readonly failed = signal('');
   protected readonly updatedAt = signal<number | null>(null);
   protected readonly busy = signal(false);
 
@@ -48,6 +66,7 @@ export class AgentsPage {
 
   protected readonly editing = signal<string | null>(null);
   protected readonly draft = signal('');
+  protected readonly pausedText = pausedText;
 
   private inFlight = 0;
   private typing?: ReturnType<typeof setTimeout>;
@@ -92,6 +111,7 @@ export class AgentsPage {
     clearTimeout(this.typing);
     this.applied.set(this.pattern().trim());
     this.notice.set('');
+    this.failed.set('');
     void this.refresh();
   }
 
@@ -147,14 +167,60 @@ export class AgentsPage {
     });
   }
 
-  private async act(work: () => Promise<string>): Promise<void> {
+  protected async pause(agent: Agent): Promise<void> {
+    const done = await this.act(async () => {
+      await this.api.pause(agent.id);
+      return `Paused ${agent.id}.`;
+    });
+    if (done) await this.refresh();
+  }
+
+  protected async resume(agent: Agent): Promise<void> {
+    const done = await this.act(async () => {
+      await this.api.resume(agent.id);
+      return `Resumed ${agent.id}.`;
+    });
+    if (done) await this.refresh();
+  }
+
+  protected async stopAll(): Promise<void> {
+    const ok = confirm(
+      'Stop all agents?\n\n' +
+        'Every agent is paused (nothing is typed into its session) and ' +
+        'every running turn is interrupted. Resume All resumes them.',
+    );
+    if (!ok) return;
+    const done = await this.act(async () => {
+      const { paused, interrupted } = await this.api.stopAll();
+      return (
+        `Stop All paused ${count(paused.length, 'agent')} and ` +
+        `interrupted ${count(interrupted.length, 'session')}.`
+      );
+    });
+    if (done) await this.refresh();
+  }
+
+  protected async resumeAll(): Promise<void> {
+    const done = await this.act(async () => {
+      const { resumed } = await this.api.resumeAll();
+      return resumed.length
+        ? `Resumed ${count(resumed.length, 'agent')}.`
+        : 'No agent was paused by Stop All.';
+    });
+    if (done) await this.refresh();
+  }
+
+  // Runs an action and shows how it went; true when it worked.
+  private async act(work: () => Promise<string>): Promise<boolean> {
     this.busy.set(true);
     this.notice.set('');
+    this.failed.set('');
     try {
       this.notice.set(await work());
-      this.error.set('');
+      return true;
     } catch (err) {
-      this.error.set(errorText(err));
+      this.failed.set(errorText(err));
+      return false;
     } finally {
       this.busy.set(false);
     }

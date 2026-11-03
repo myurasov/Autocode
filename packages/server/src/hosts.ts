@@ -215,6 +215,7 @@ export class Hosts {
         now,
       )
     this.noteSessions(id, sessions)
+    if (Array.isArray(body.active)) this.noteActive(id, body.active)
     if (!before?.online)
       this.history.record("host.online", {
         host: id,
@@ -226,7 +227,101 @@ export class Hosts {
       host: id,
       poll: { wait: this.options.pollWait },
       sessions: this.sessionsOf(id),
+      registered: this.registeredOf(id),
     }
+  }
+
+  // The host's registered sessions and their agent IDs (for the agent guide).
+  registeredOf(id: string): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const r of this.db
+      .query(
+        `SELECT a.session_id, a.id FROM agents a
+         JOIN sessions s ON s.id = a.session_id
+         WHERE s.host_id = ? AND s.deleted_at IS NULL ORDER BY a.id`,
+      )
+      .all(id) as any[])
+      out[r.session_id] = r.id
+    return out
+  }
+
+  /*
+   * After a reconnect the plugin says which of its sessions run a turn now:
+   * those are busy, the host's others idle (from now, when they were busy).
+   */
+  private noteActive(id: string, active: unknown[]) {
+    const busy = new Set(active.filter((s) => typeof s === "string"))
+    const now = this.now()
+    for (const r of this.db
+      .query(
+        "SELECT id, busy FROM sessions " +
+          "WHERE host_id = ? AND deleted_at IS NULL",
+      )
+      .all(id) as any[]) {
+      if (busy.has(r.id) && !r.busy) this.turnStarted(r.id)
+      else if (!busy.has(r.id) && r.busy)
+        this.db
+          .query(
+            "UPDATE sessions SET busy = 0, idle_since = ?, " +
+              "inject_pending_at = NULL WHERE id = ?",
+          )
+          .run(now, r.id)
+    }
+  }
+
+  /*
+   * An event older than the last one applied to the session (by the plugin's
+   * own clock, `at`) is out of order and changes nothing; one without a time
+   * always applies.
+   */
+  private fresh(session: string, at: unknown): boolean {
+    if (typeof at !== "number" || !Number.isFinite(at)) return true
+    const row = this.db
+      .query("SELECT turn_event_at FROM sessions WHERE id = ?")
+      .get(session) as any
+    if (row?.turn_event_at && row.turn_event_at > at) return false
+    this.db
+      .query("UPDATE sessions SET turn_event_at = ? WHERE id = ?")
+      .run(at, session)
+    return true
+  }
+
+  private turnStarted(session: string, at?: unknown) {
+    if (!this.fresh(session, at)) return
+    this.db
+      .query(
+        "UPDATE sessions SET busy = 1, turn_started_at = ?, " +
+          "inject_pending_at = NULL WHERE id = ? AND deleted_at IS NULL",
+      )
+      .run(this.now(), session)
+  }
+
+  private turnEnded(
+    session: string,
+    outcome: string,
+    error: string | null,
+    at?: unknown,
+  ) {
+    if (!this.fresh(session, at)) return
+    const res = this.db
+      .query(
+        `UPDATE sessions SET busy = 0, idle_since = ?, last_outcome = ?,
+           last_error = ?, inject_pending_at = NULL
+         WHERE id = ? AND deleted_at IS NULL`,
+      )
+      .run(this.now(), outcome, error, session)
+    if (!res.changes) return
+    const agent = (
+      this.db
+        .query("SELECT id FROM agents WHERE session_id = ?")
+        .get(session) as any
+    )?.id
+    if (agent)
+      this.history.record("turn.ended", {
+        agent,
+        session,
+        data: { outcome, ...(error ? { error } : {}) },
+      })
   }
 
   sessionsOf(id: string): string[] {
@@ -248,9 +343,14 @@ export class Hosts {
         `SELECT * FROM instructions
          WHERE host_id = ? AND acked_at IS NULL
            AND (sent_at IS NULL OR sent_at <= ?)
+           AND (expires_at IS NULL OR expires_at > ?)
          ORDER BY rowid`,
       )
-      .all(id, this.now() - this.options.redeliverAfter * 1000) as any[]
+      .all(
+        id,
+        this.now() - this.options.redeliverAfter * 1000,
+        this.now(),
+      ) as any[]
     if (!rows.length) return []
     const mark = this.db.prepare(
       "UPDATE instructions SET sent_at = ?, attempts = attempts + 1 " +
@@ -346,6 +446,25 @@ export class Hosts {
             id,
           )
       } else if (
+        event.type === "turn.started" &&
+        typeof event.session === "string"
+      ) {
+        this.turnStarted(event.session, event.at)
+      } else if (
+        event.type === "turn.ended" &&
+        typeof event.session === "string"
+      ) {
+        const outcome =
+          typeof event.outcome === "string" ? event.outcome.slice(0, 40) : ""
+        const error =
+          typeof event.error === "string" ? event.error.slice(0, 500) : null
+        this.turnEnded(event.session, outcome, error, event.at)
+      } else if (
+        event.type === "turns.active" &&
+        Array.isArray(event.sessions)
+      ) {
+        this.noteActive(id, event.sessions)
+      } else if (
         event.type === "session.created" &&
         typeof event.session === "string"
       ) {
@@ -385,28 +504,72 @@ export class Hosts {
           "WHERE (acked_at IS NOT NULL AND acked_at < ?) OR created_at < ?",
       )
       .run(now - DAY, now - 7 * DAY)
+    this.db
+      .query(
+        "DELETE FROM instructions WHERE acked_at IS NULL AND expires_at < ?",
+      )
+      .run(now)
   }
 
-  enqueue(id: string, type: string, payload: unknown): string {
+  // An instruction for a host; one with `expiresInMs` is not sent after that.
+  enqueue(
+    id: string,
+    type: string,
+    payload: unknown,
+    expiresInMs?: number,
+  ): string {
     const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 20)
     const instructionId = `in_${suffix}`
     this.db
       .query(
-        "INSERT INTO instructions (id, host_id, type, payload, created_at) " +
-          "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO instructions (id, host_id, type, payload, created_at, " +
+          "expires_at) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .run(instructionId, id, type, JSON.stringify(payload ?? {}), this.now())
+      .run(
+        instructionId,
+        id,
+        type,
+        JSON.stringify(payload ?? {}),
+        this.now(),
+        expiresInMs === undefined ? null : this.now() + expiresInMs,
+      )
     this.wake(id)
     return instructionId
   }
 
-  instruction(id: string): { acked: boolean; result: unknown } | undefined {
+  // Takes back an instruction the plugin has not fetched; false once it has.
+  cancel(instructionId: string): boolean {
+    return (
+      this.db
+        .query("DELETE FROM instructions WHERE id = ? AND sent_at IS NULL")
+        .run(instructionId).changes > 0
+    )
+  }
+
+  // When the plugin fetched an instruction (null: not yet).
+  sentAt(instructionId: string): number | null {
+    const row = this.db
+      .query("SELECT sent_at FROM instructions WHERE id = ?")
+      .get(instructionId) as any
+    return row?.sent_at ?? null
+  }
+
+  instruction(
+    id: string,
+  ):
+    | { acked: boolean; ok: boolean; result: unknown; error: string | null }
+    | undefined {
     const row = this.db
       .query("SELECT acked_at, result FROM instructions WHERE id = ?")
       .get(id) as any
     if (!row) return undefined
     const stored = row.result ? JSON.parse(row.result) : null
-    return { acked: row.acked_at !== null, result: stored?.result ?? null }
+    return {
+      acked: row.acked_at !== null,
+      ok: stored ? stored.ok !== false : false,
+      result: stored?.result ?? null,
+      error: stored?.error ?? null,
+    }
   }
 
   sweep() {

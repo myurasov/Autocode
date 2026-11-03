@@ -179,7 +179,12 @@ describe("owner tokens", () => {
     expect(
       count("SELECT COUNT(*) AS n FROM tokens WHERE revoked_at IS NOT NULL"),
     ).toBe(1)
-    expect(count("SELECT COUNT(*) AS n FROM instructions")).toBe(1)
+    // the rotation's instruction, and the registration's notice (tier 0b)
+    expect(polled.body.instructions.map((i: any) => i.type).sort()).toEqual([
+      "registration",
+      "token",
+    ])
+    expect(count("SELECT COUNT(*) AS n FROM instructions")).toBe(2)
     t.clock.advance(25 * 3600_000)
     t.server.maintenance()
     expect(

@@ -65,7 +65,12 @@ export function writeClientConfig(update: ClientConfigFile): string {
 export interface Connection {
   url: string
   token?: string
-  call: (method: string, path: string, body?: unknown) => Promise<any>
+  call: (
+    method: string,
+    path: string,
+    body?: unknown,
+    timeoutMs?: number,
+  ) => Promise<any>
 }
 
 // OpenCode names the session in its shells, and the plugin adds
@@ -119,7 +124,7 @@ export function connect(args: Parsed): Connection {
   return {
     url,
     token,
-    call: async (method, path, body) => {
+    call: async (method, path, body, timeoutMs) => {
       if (!token && agentShell)
         throw new CliError(
           "this shell belongs to an OpenCode session but has no " +
@@ -130,7 +135,7 @@ export function connect(args: Parsed): Connection {
         )
       checked ??= check()
       await checked
-      return apiCall(url, token, method, path, body)
+      return apiCall(url, token, method, path, body, timeoutMs)
     },
   }
 }

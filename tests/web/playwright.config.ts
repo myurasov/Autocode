@@ -6,8 +6,10 @@
 import { defineConfig, devices } from "@playwright/test"
 
 // BASE_URL is the Autocode server that serves the UI; OUT_DIR (optional) keeps
-// traces and screenshots of failures.
+// traces and screenshots of failures; CI_GREP (optional) runs only the tests
+// whose names match it (a regular expression).
 const out = process.env.OUT_DIR ?? "test-results"
+const only = process.env.CI_GREP
 
 export default defineConfig({
   testDir: ".",
@@ -19,6 +21,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   forbidOnly: true,
+  ...(only ? { grep: new RegExp(only) } : {}),
   reporter: [["list"]],
   outputDir: `${out}/web-smoke`,
   use: {

@@ -20,6 +20,19 @@ import { autocodeHome } from "./connect.ts"
 import webFiles from "./generated/web.ts"
 import { install, uninstall } from "./install.ts"
 import { pluginInstall, pluginUninstall } from "./plugin.ts"
+import {
+  answer,
+  fire,
+  inbox,
+  me,
+  messages,
+  pause,
+  resumeAll,
+  send,
+  stopAll,
+  wake,
+  wakes,
+} from "./tier0b.ts"
 
 const USAGE = `usage: autocode <command> [flags]
 
@@ -43,6 +56,24 @@ owner:
   settings [--agent ID] | settings set|unset KEY [VALUE]
       [--agent ID | --match PATTERN]
   history [--agent ID] [--kind KIND] [--since TIME] [--limit N]
+  inbox [--all] | inbox close ID         the owner's inbox
+  answer ID TEXT...                      answer a message to the owner
+  pause AGENT | resume AGENT             pause or resume an agent's injections
+  stop-all | resume-all                  pause every agent and interrupt every
+                                         turn; resume what stop-all paused
+  wakes [AGENT]                          every wake, or one agent's
+  messages [--all]                       every message (the owner's view)
+
+agents (scripts in an agent's shell; the owner names any AGENT):
+  me                                     this agent's registration and status
+  wakes                                  this agent's wakes
+  wake set AGENT|me NAME --trigger T --text TEXT [--check CMD] [--end TIME]
+  wake cancel AGENT|me NAME
+  fire AGENT|me WAKE [--text TEXT]       deliver a wake now
+  send TO TEXT... | send TO --file PATH [--subject S] [--reply-to ID]
+                                         TO: an ID, a pattern, a list or owner
+  messages [--all] [--wait SECONDS]      this agent's unread messages
+  messages read ID [--out FILE]          read one (save a file with --out)
 
 flags everywhere: --json, --url URL, --token TOKEN,
                   --server-id ID (refuse a server with another ID)`
@@ -143,6 +174,30 @@ async function main(argv: string[]): Promise<number> {
       return settings(args)
     case "history":
       return history(args)
+    case "me":
+      return me(args)
+    case "wakes":
+      return wakes(args)
+    case "wake":
+      return wake(args)
+    case "fire":
+      return fire(args)
+    case "send":
+      return send(args)
+    case "messages":
+      return messages(args)
+    case "inbox":
+      return inbox(args)
+    case "answer":
+      return answer(args)
+    case "pause":
+      return pause(args, false)
+    case "resume":
+      return pause(args, true)
+    case "stop-all":
+      return stopAll(args)
+    case "resume-all":
+      return resumeAll(args)
     default:
       throw new CliError(`unknown command: ${command}\n\n${USAGE}`, 2)
   }

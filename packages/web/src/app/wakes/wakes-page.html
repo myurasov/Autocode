@@ -1,0 +1,193 @@
+<!--
+  The Wakes page: Refresh (an action's result beside it), the Set a Wake form
+  (collapsed until its title is clicked), every wake by agent (Fire, Cancel),
+  and when the list last loaded.
+-->
+
+<div class="toolbar">
+  <button type="button" (click)="refresh()">Refresh</button>
+  <span class="result">
+    @if (failed()) {
+      <span class="errmsg" role="alert">{{ failed() }}</span>
+    } @else if (notice()) {
+      <span class="notice" role="status">{{ notice() }}</span>
+    }
+  </span>
+</div>
+
+@if (error()) {
+  <p class="errmsg" role="alert">{{ error() }}</p>
+}
+
+<details class="panel">
+  <summary><span>Set a Wake</span></summary>
+  <div class="panel-body">
+    <div class="add-row">
+      <div>
+        <label for="wake-agent">Agent ID</label>
+        <input
+          id="wake-agent"
+          type="text"
+          spellcheck="false"
+          placeholder="for example kaggle:lead"
+          [value]="form.agent()"
+          (input)="form.agent.set($any($event.target).value)"
+        />
+      </div>
+      <div>
+        <label for="wake-name">Name</label>
+        <input
+          id="wake-name"
+          type="text"
+          spellcheck="false"
+          placeholder="for example standup"
+          [value]="form.name()"
+          (input)="form.name.set($any($event.target).value)"
+        />
+      </div>
+      <div class="wide">
+        <label for="wake-trigger">Trigger</label>
+        <input
+          id="wake-trigger"
+          type="text"
+          spellcheck="false"
+          [placeholder]="triggerHint"
+          [value]="form.trigger()"
+          (input)="form.trigger.set($any($event.target).value)"
+        />
+      </div>
+    </div>
+    <label for="wake-text">Text</label>
+    <textarea
+      id="wake-text"
+      rows="2"
+      placeholder="what the agent is told when the wake fires"
+      [value]="form.text()"
+      (input)="form.text.set($any($event.target).value)"
+    ></textarea>
+    <div class="add-row">
+      <div class="wide">
+        <label for="wake-check">Check</label>
+        <input
+          id="wake-check"
+          type="text"
+          spellcheck="false"
+          placeholder="optional: a command; exit 0 wakes, 1 skips"
+          [value]="form.check()"
+          (input)="form.check.set($any($event.target).value)"
+        />
+      </div>
+      <div>
+        <label for="wake-end">End</label>
+        <input
+          id="wake-end"
+          type="text"
+          spellcheck="false"
+          placeholder="optional: for example 2026-12-31 18:00"
+          [value]="form.end()"
+          (input)="form.end.set($any($event.target).value)"
+        />
+      </div>
+    </div>
+    <div class="buttons">
+      <button type="button" [disabled]="!canSet()" (click)="setWake()">
+        Set Wake
+      </button>
+      <span class="muted">A wake of the same name is replaced.</span>
+    </div>
+    @if (setError()) {
+      <p class="errmsg" role="alert">{{ setError() }}</p>
+    }
+    @if (set()) {
+      <p class="notice" role="status">{{ set() }}</p>
+    }
+  </div>
+</details>
+
+<table class="wakes">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Trigger</th>
+      <th>Next</th>
+      <th>Text</th>
+      <th>Check</th>
+      <th>End</th>
+      <th>Set By</th>
+      <th>Last Fired</th>
+      <th></th>
+    </tr>
+  </thead>
+  @for (g of agents(); track g.agent) {
+    <tbody [attr.data-agent]="g.agent">
+      <tr class="group">
+        <th colspan="9" scope="rowgroup">{{ g.agent }}</th>
+      </tr>
+      @for (w of g.wakes; track w.name) {
+        <tr [attr.data-wake]="w.name">
+          <td class="name"><code [appBreaks]="w.name"></code></td>
+          <td class="trigger">{{ triggerText(w.trigger) }}</td>
+          @if (w.next) {
+            <td class="time next" [title]="w.next" [appTime]="w.next"></td>
+          } @else {
+            <td class="time next muted">—</td>
+          }
+          <td class="text" [title]="w.text">{{ firstLine(w.text) }}</td>
+          <td class="check">
+            @if (w.check) {
+              <code [appBreaks]="w.check"></code>
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
+          @if (w.end) {
+            <td class="time end" [title]="w.end" [appTime]="w.end"></td>
+          } @else {
+            <td class="time end muted">—</td>
+          }
+          <td class="by">
+            @if (w.set_by === 'owner') {
+              owner
+            } @else {
+              <code [appBreaks]="w.set_by"></code>
+            }
+          </td>
+          @if (w.last_fired_at) {
+            <td
+              class="time fired"
+              [title]="w.last_fired_at"
+              [appTime]="w.last_fired_at"
+            ></td>
+          } @else {
+            <td class="time fired muted">—</td>
+          }
+          <td class="actions">
+            <div class="row-buttons">
+              <button
+                type="button"
+                [disabled]="busy()"
+                (click)="fire(w)"
+                title="Fire the wake now (its check is skipped)"
+              >
+                Fire
+              </button>
+              <button type="button" [disabled]="busy()" (click)="cancel(w)">
+                Cancel
+              </button>
+            </div>
+          </td>
+        </tr>
+      }
+    </tbody>
+  } @empty {
+    <tbody>
+      <tr>
+        <td class="muted" colspan="9">
+          {{ loaded() ? 'No wakes yet.' : 'Loading...' }}
+        </td>
+      </tr>
+    </tbody>
+  }
+</table>
+
+<footer class="muted"><app-updated [at]="updatedAt()" /></footer>
