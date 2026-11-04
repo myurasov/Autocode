@@ -159,19 +159,24 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   by default, so its folders stay online after the TUI exits, until OpenCode unloads a folder after an hour unused.
   **no shell values** under the process: that server's shells get no Autocode values, because the plugin cannot
   reach its local API (see Troubleshooting; `autocode hosts` shows a SHELL VALUES column).
-- **Agents:** the agents by machine (status: idle, working, paused or offline; folder, session, times), refreshed
+- **Agents:** the agents by machine (status: idle, working, paused or offline; host, folder, session, times), refreshed
   every 10 s, with a pattern filter that applies a second after the last key (Enter or **Refresh** at once; **Show
   All** clears it); edit a description, **Pause** or **Resume** an agent's injections, **New Token** (the same as
   `autocode token rotate`), **Unregister**; **Stop All** (pause every agent and interrupt its session, after you
   confirm) and **Resume All** (what Stop All paused). Like Hosts, it says how many seconds ago it last loaded.
+- **Links:** an agent's ID anywhere else (Inbox, Messages, Wakes, Settings) opens the Agents page with that agent's
+  row highlighted; a host's ID (on Agents) opens the Hosts page with that host's row highlighted.
 - **Inbox:** messages to `owner` and alerts (a wake whose check failed three times in a row); **Answer** a message
   (the reply goes to the agent as a message from the owner) or **Close** an item; **Show Closed** shows the answered
   and closed ones.
-- **Messages:** every message, newest first, with its ID and state (queued, delivered, read); a click on a message
-  opens its text below it (your read leaves its state); **Send a Message** (it opens from its title) as the owner,
-  to an ID, a pattern or a list.
-- **Wakes:** every agent's wakes (trigger, next run, text, check, end, who set it, last fired), **Fire** one now or
-  **Cancel** it; **Set a Wake** for any agent.
+- **Messages:** every message, newest first, with its ID, the first 200 characters of its text (a click shows it
+  whole, another folds it; your read leaves its state) and its state (queued, delivered, read); **Send a Message**
+  (it opens from its title) as the owner, to an ID, a pattern or a list.
+- **Wakes:** every agent's wakes (trigger, next run, text and check (each the first 200 characters; a click
+  anywhere in the cell shows it whole, another folds it; the check in a fixed-width font), end, who set it, when it
+  was last set (its schedule counts from then), last fired), **Fire** one now or **Cancel** it; **Set a Wake** for
+  any agent. `autocode wakes` shows the same, with a LAST SET column.
+- **Help:** how to use Autocode from OpenCode, the CLI and the web UI, with a numbered table of contents.
 - **Settings:** the server-wide values (each shown in its edit box: change it and **Save**, or **Reset** to the
   built-in default), the pattern rules, the agents' own values, and **Resolved for an Agent** (an agent's values
   with where each comes from).

@@ -410,3 +410,111 @@ change since the last full run was the web UI: run `20261103T065905Z` found one 
 Messages table's new ID column (never matched by the per-round filters), fixed; run `20261103T070015Z`: `web-unit` 93,
 `web` 46, all pass. The other Docker suites (`plugin`, `one`, `two`, `restart`, `install`) last ran on
 `20261102T113027Z` and `20261102T120303Z`; nothing of theirs changed since but line wrapping.
+
+## Tier 0b2 (2026-11-02/03)
+
+**Why.** An agent on myspark2 (`co-sa:update-loop:myspark2`, Opus 5.5) could not tell from the guide when an idle
+wake falls due, what an injected turn or a skipped check does to it, whether wakes merge, the `end` format or a
+check's environment; it read the plugin's bundled code and the binary to find out, and moved its scheduling into
+check scripts that use the CLI. Tier 0b2 makes the guide an exact reference and the tools usable first.
+
+**What was added and how it is tested.** The guide (`autocode` skill and `autocode_me action=help [topic]`): use the
+tools, how delivery works, every trigger exactly, checks, recipes, messages, prompts, scripts, trouble; longer tool
+descriptions (every action, the triggers, how a job fires its wake), `autocode_wake show`, `status`/`set`/`list` that
+say when things happen in the server's zone and from now; the `in <duration>` trigger; idle wakes counted from the
+later of the idle start and the time they were set; cancelling drops waiting runs; injected wakes that say what they
+are and when they run next, and a footer on every injection; `/v1/me` with the server's time and zone, the delivery
+settings, the wakes and unread messages; migration 5 (a waiting run keeps its trigger); the owner's message list with
+a 100-character preview; the CLI's no-token message points to the tools. Web (the web worker): a Help tab with a
+numbered table of contents, wake and message texts shortened to 100 characters that expand on a click.
+
+- `unit`: `triggers.test.ts` (`in`, `localTime`, the help text), `agent-guide.test.ts` (descriptions, status, set,
+  list, show, help, the guide answers the co-sa agent's questions, the line), `agents-schedule.test.ts` (the agents
+  suite's work-hours check).
+- `api`: `agent-info.test.ts` (status, `due`, idle from the set time, cancel drops waiting runs, prompt sections and
+  footer), `messages.test.ts` (preview), `cli-0b.test.ts` (no token: use the tools); older tests pinned old texts and
+  were updated.
+- `web`: Help (contents, anchors, layout), shortened texts on Wakes and Messages; the per-tab layout loops include
+  Help.
+- **`agents`** (new, real models, `ci/agents/run.ts`; only on the owner's word or in a full run): Opus 5.5, Sol 6.1,
+  Kimi K3, GLM 5.3, Haiku 5.5 and Luna (`ci/agents/models.json`), six scenarios each from a plain request: register;
+  a reminder in 10 minutes, then the wake fired and acted on; every 30 minutes in work hours on weekdays, only when
+  there are new files (the cron schedule checked over a week, every check run with and without a new file); a
+  background job that wakes the agent (the job's own command fires the wake); a loop spaced 20 minutes from the end
+  of each run (re-armed after a run, or an idle wake); asking the owner and following the answer. Each fails if the
+  agent ran the CLI instead of a tool (but in the job's command) or read the plugin's code. It runs on the host,
+  isolated (its own Autocode server from the source, its own `opencode serve` with scratch config, data and state
+  folders; the provider's key copied to a 0600 file and deleted after), all pairs in parallel; transcripts are kept.
+- `ci/run.sh` runs suites in parallel (`CI_PARALLEL`, default 4): a full run took about 6 minutes, build included.
+
+**Red first, and where not.** Red before the code: `in` and the help text, `agent-info` (8 of 8), the preview, the
+CLI message, `agent-guide` (the file failed to load, then the job pattern 2 of 15), the web worker's (14 of 102 unit,
+6 of 24 browser). Written with the code: the agents suite and its schedule check.
+
+**Agents suite, finding by finding.** First runs on GLM 5.3 failed two scenarios through the harness, not the model
+(it waited for the asking turn before answering, and read only the last message); then a transcript showed GLM
+passing the job scenario by checking on the job and firing the wake by hand: the job scenario now requires the fire
+in the job's own command. The first full run (`20261103T081558Z`): 33 of 36; GLM's polling setup (two cron wakes,
+09:00–16:30 and 17:00) was right but the harness looked at one wake (now all together); GLM polled the job with
+`every 15s`, and Haiku said it could not get a "job ended" wake: the wake tool's description and the guide's
+`fire-only` line now say how a job fires its wake. Rerun of job and polling on all six: 12 of 12 (`20261103T082503Z`).
+
+**Complete CI** (the owner's command) on the final code, run `20261103T082717Z`: `unit` 114, `api` 202, `plugin` 28,
+`one` 23, `two` 29, `restart` 4, `install` 3, `web` 50, `web-unit` 103 (cached), `agents` 36 of 36 (Opus, Sol, Kimi,
+GLM, Haiku and Luna each 6 of 6; $0.80). Tier 0b2 agents-suite spend, smoke runs included: $2.32.
+
+**After 0b2: the Set column** (the owner, 2026-11-03 09:1x PT: "add "Set" column to all 3"): when a wake was last set
+(`updated_at`; setting it again replaces it and restarts its schedule) in the web Wakes table (between Set By and
+Last Fired), the CLI's `autocode wakes` (SET, before TEXT) and the agents' `autocode_wake list` (`set <time>[ by
+<who>]`); the guide, Help, howto and runbook say so. Red first: `agent-guide` list and `cli-0b` wakes table (2 of 26),
+the Wakes unit spec in the web image build (`20261103T171944Z`). Green: unit/api 38 (`agent-guide`, `cli-0b`,
+`plugin-inprocess`), `20261103T172022Z` web-unit 103 and 16 Wakes and layout checks (page fit at 1280 and 1024 px),
+`20261103T172138Z` 7 Help and layout checks after the Help text. Screenshots in both themes. Deployed as build 21 on
+myspark3 only (it has no wakes now, so the live table was empty).
+Deployed as build 21 on myspark2 too, on the owner's word (2026-11-03 12:5x PT): its database backed up at schema 4
+(`~/.autocode/backup/autocode-schema4-20261103.db` there), then migrated to 5; plugin reinstalled, every online folder on
+build 21; `autocode wakes` there shows SET for the co-sa agent's two wakes, and its `idle 30m repeat` wake fell due
+30 minutes after the session's last turn ended (12:26 to 12:56 PST) and was being handled.
+
+**After 0b2: folding, links and IDs** (the owner, 2026-11-03 13:0x–14:0x PT; the web worker, then me):
+- The owner's message `preview` is 200 characters: `messages.test.ts` red, then green (12).
+- Web: Wakes Text and Check and Messages Text fold at 200 characters and a click anywhere in the cell toggles them;
+  Check in a fixed-width font (the check measures equal widths; it found that the CI container's generic monospace
+  is a CJK font whose `…` is two characters wide, so `code` now names Consolas, Liberation Mono and DejaVu Sans Mono
+  before `monospace`; Menlo still comes first on the Mac); the Wakes trigger wraps; Agents has a Host column; agent
+  IDs elsewhere link to Agents and host IDs to Hosts, which highlight the row (scrolled into view, kept across the
+  refresh, the Agents filter cleared when it hides it, a line when the ID is gone). Red `20261103T212456Z` (18 of 113
+  unit), `20261103T213244Z` (5 of 30 browser), green `20261103T213534Z` (113 unit, 30 browser) and
+  `20261103T213752Z` (13 more checks the font could touch).
+- IDs and id-like names: first on one line (`white-space: pre`): Agents no longer fit at 1280 nor Agents, Wakes and
+  Messages at 1024; the owner chose "long IDs wrap at : and _": each ID never breaks inside a part, only after `:` or
+  `_` (`appId`, `idParts()`); 1024 still overflowed (a session ID's random part, a long wake name), and the owner
+  chose "fit only at 1280 px": the page-fit check covers 1280, and a new check makes sure that at 1024 px every page
+  scrolls inside the frame, never the window, and the Agents row's last button can be reached. Red
+  `20261103T214320Z`, `20261103T214415Z`, `20261103T224136Z` (14 of 116 unit), `20261103T224338Z`; green
+  `20261103T233652Z` (116 unit, 33 browser: page fit 1280, the 1024 frame scroll, "id cells:", `link:`, the layout
+  loops, Messages, Wakes, Settings, Help). Screenshots in both themes and in Pacific time.
+- IDs wrap as normal text (the owner, 16:0x PT: "instead of white-space: pre, use normal"): the parts keep the
+  break points after `:` and `_`, and the browser's own (after `-`) come back; never inside a word. The "id cells:"
+  check now walks each cell's characters and requires every line but the last to end with a separator, and the long
+  wake name to wrap: red `20261104T000006Z`. "Set" renamed "Last Set" (web column, the CLI's LAST SET, the agents'
+  list `last set ...`): red `agent-guide` and `cli-0b` (2 of 26) and the Wakes unit spec (`20261104T000044Z`). Green
+  `20261104T000145Z`: unit 116, browser 31 (ID cells, page fit 1280, the 1024 frame scroll, links, the layout loops,
+  Messages, Wakes, Settings, Help); unit/api 38. At 1024 px Wakes fits again; Agents scrolls in the frame.
+- Tabs with 2 px rounded top corners (the owner); the Help contents' links stay square: red `20261104T000411Z`,
+  green `20261104T000429Z` (15: the new check, Help, header, tabs, Title Case, page fit, first item). Screenshots at
+  3x in both themes.
+- The highlighted row (the owner, 16:2x PT: an inset glow `box-shadow: inset 0px 0px 7px var(--link)` with the
+  `--sel` background): now on the row, as cell backgrounds would cover a row's shadow; the 3 px left line goes. The
+  host-link check compares the row's background, shadow and cells in both themes: red `20261104T013142Z`, green
+  `20261104T013200Z` (8: `link:`, cell padding, room above tables, first item, page fit, the fixture). Screenshots
+  in both themes, with a 2x close-up: the glow paints around the whole row.
+
+**Before the tier 0b2 commit and tag** (the owner's "commit and publish -0b2 tag", 2026-11-03 22:0x PT): typecheck and
+Biome clean; two lines over 80 columns re-wrapped. The complete CI (a release tag), run `20261104T055935Z`: `unit` 114,
+`api` 202, `plugin` 28, `one` 23, `two` 29, `restart` 4, `install` 3, `web` 56, `web-unit` 116 (cached), all pass;
+`agents` 31 of 36 ($0.79): GLM 5.3 got no answer at all in four sessions (no messages, $0.00, 6–8 minutes; its first
+two passed): the provider, not the model's use of Autocode; Sol 6.1 ran the job in OpenCode's own background shell,
+whose end notification woke the session before Autocode's prompt, and the harness took that turn for the wake's. The
+job scenario now waits for Autocode's prompt (`injection.sent`) and the turn after it. The agents suite again on the
+final code, run `20261104T061059Z`: 36 of 36 (each model 6 of 6; $0.80). Tier 0b2 agents spend so far: $3.91.

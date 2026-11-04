@@ -1,7 +1,8 @@
 <!--
   The Wakes page: Refresh (an action's result beside it), the Set a Wake form
-  (collapsed until its title is clicked), every wake by agent (Fire, Cancel),
-  and when the list last loaded.
+  (collapsed until its title is clicked), every wake by agent (agent IDs link
+  to the Agents page; Fire, Cancel; a long text or check shows its first 200
+  characters until its cell is clicked), and when the list last loaded.
 -->
 
 <div class="toolbar">
@@ -114,6 +115,7 @@
       <th>Check</th>
       <th>End</th>
       <th>Set By</th>
+      <th>Last Set</th>
       <th>Last Fired</th>
       <th></th>
     </tr>
@@ -121,23 +123,61 @@
   @for (g of agents(); track g.agent) {
     <tbody [attr.data-agent]="g.agent">
       <tr class="group">
-        <th colspan="9" scope="rowgroup">{{ g.agent }}</th>
+        <th class="id-like" colspan="10" scope="rowgroup">
+          <app-agent-link [id]="g.agent" [plain]="true" />
+        </th>
       </tr>
       @for (w of g.wakes; track w.name) {
         <tr [attr.data-wake]="w.name">
-          <td class="name"><code [appBreaks]="w.name"></code></td>
+          <td class="name id-like"><code [appId]="w.name"></code></td>
           <td class="trigger">{{ triggerText(w.trigger) }}</td>
           @if (w.next) {
             <td class="time next" [title]="w.next" [appTime]="w.next"></td>
           } @else {
             <td class="time next muted">—</td>
           }
-          <td class="text" [title]="w.text">{{ firstLine(w.text) }}</td>
-          <td class="check">
-            @if (w.check) {
-              <code [appBreaks]="w.check"></code>
+          <!--
+            A long text or check: a click anywhere in its cell (or Enter on
+            it) shows it whole, the next folds it.
+          -->
+          <td
+            class="text"
+            [class.folds]="isLong(w.text)"
+            (click)="cellClick(w, 'text')"
+          >
+            @if (isLong(w.text)) {
+              <span
+                class="more"
+                role="button"
+                tabindex="0"
+                [attr.aria-expanded]="isOpen(w, 'text')"
+                (keydown.enter)="toggle(w, 'text')"
+                (keydown.space)="$event.preventDefault(); toggle(w, 'text')"
+                >{{ shown(w, 'text') }}</span
+              >
             } @else {
+              <span class="whole">{{ w.text }}</span>
+            }
+          </td>
+          <td
+            class="check"
+            [class.folds]="isLong(w.check)"
+            (click)="cellClick(w, 'check')"
+          >
+            @if (!w.check) {
               <span class="muted">—</span>
+            } @else if (isLong(w.check)) {
+              <code
+                class="more"
+                role="button"
+                tabindex="0"
+                [attr.aria-expanded]="isOpen(w, 'check')"
+                (keydown.enter)="toggle(w, 'check')"
+                (keydown.space)="$event.preventDefault(); toggle(w, 'check')"
+                [appBreaks]="shown(w, 'check')"
+              ></code>
+            } @else {
+              <code class="whole" [appBreaks]="w.check"></code>
             }
           </td>
           @if (w.end) {
@@ -145,13 +185,19 @@
           } @else {
             <td class="time end muted">—</td>
           }
-          <td class="by">
+          <td class="by id-like">
             @if (w.set_by === 'owner') {
-              owner
+              <span appId="owner"></span>
             } @else {
-              <code [appBreaks]="w.set_by"></code>
+              <app-agent-link [id]="w.set_by" />
             }
           </td>
+          <!-- When it was last set: its schedule counts from then. -->
+          <td
+            class="time set"
+            [title]="w.updated_at"
+            [appTime]="w.updated_at"
+          ></td>
           @if (w.last_fired_at) {
             <td
               class="time fired"
@@ -182,7 +228,7 @@
   } @empty {
     <tbody>
       <tr>
-        <td class="muted" colspan="9">
+        <td class="muted" colspan="10">
           {{ loaded() ? 'No wakes yet.' : 'Loading...' }}
         </td>
       </tr>

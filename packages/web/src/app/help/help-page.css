@@ -1,0 +1,140 @@
+/*
+ * The Help page, after nv-ov-aaa's method page: numbered contents at the left
+ * (faint numbers, subsections indented, a thin line at their left) that stay
+ * in view as the text scrolls, the text at the right; under 900 px the
+ * contents become a wrapping row above the text, without the subsections.
+ */
+
+.layout {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+/* Not the tabs (nav): a column of links that stays 1rem below the top. */
+nav.toc {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  margin: 0;
+  border-left: 1px solid var(--border-soft);
+}
+nav.toc a {
+  display: flex;
+  padding: 0.12rem 0.7rem;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--link);
+  text-decoration: none;
+}
+nav.toc a:hover {
+  text-decoration: underline;
+}
+nav.toc a.sub {
+  padding-left: 1.4rem;
+}
+nav.toc .n {
+  flex: none;
+  min-width: 1.6rem;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+nav.toc a.sub .n {
+  min-width: 2.2rem;
+}
+
+article {
+  max-width: 62rem;
+}
+/* A heading lands 1rem below the window's top when its link is followed. */
+article h2,
+article h3 {
+  scroll-margin-top: 1rem;
+}
+article h2 {
+  margin: 2rem 0 0.5rem;
+}
+article h2.first {
+  margin-top: 0;
+}
+article h3 {
+  font-size: 15px;
+  margin: 1.5rem 0 0.4rem;
+}
+article h2 .n,
+article h3 .n {
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+article p,
+article li {
+  line-height: 1.55;
+}
+article ul {
+  padding-left: 1.3rem;
+  margin: 0.3rem 0 0.7rem;
+}
+article li + li {
+  margin-top: 0.2rem;
+}
+/* Prompts the owner can give: set off, as quotations are. */
+article ul.examples {
+  list-style: none;
+  padding-left: 0.8rem;
+  border-left: 2px solid var(--border);
+  color: var(--fg-dim);
+}
+article pre {
+  background: var(--code);
+  padding: 0.5rem 0.7rem;
+  margin: 0.4rem 0 0.7rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    "DejaVu Sans Mono", monospace;
+  font-size: 0.9em;
+}
+article td {
+  vertical-align: top;
+}
+/* A table's first column: a trigger, setting or token, kept together. */
+article table.triggers td:first-child code,
+article table.settings-help td:first-child,
+article table.tokens td:first-child {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+  nav.toc {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: 1rem;
+    border-left: none;
+  }
+  /* Lined up with the text below. */
+  nav.toc a {
+    padding: 0.12rem 0;
+  }
+  nav.toc a.sub {
+    display: none;
+  }
+  nav.toc .n {
+    min-width: 0;
+    margin-right: 0.3rem;
+  }
+}

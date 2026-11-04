@@ -128,9 +128,10 @@ export function connect(args: Parsed): Connection {
       if (!token && agentShell)
         throw new CliError(
           "this shell belongs to an OpenCode session but has no " +
-            "AUTOCODE_TOKEN (the Autocode server could not be reached " +
-            "when the shell started): run the command in a new shell, " +
-            "or pass --token",
+            "AUTOCODE_TOKEN, so it cannot act as the agent: in the " +
+            "conversation, use the autocode_* tools instead (the plugin " +
+            "puts the token into shells when it can reach the server; a " +
+            "new shell may have it), or pass --token",
           1,
         )
       checked ??= check()

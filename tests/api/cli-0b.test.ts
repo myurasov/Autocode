@@ -182,6 +182,18 @@ describe("agent commands, from a script in an agent's shell", () => {
     expect(Date.now() - started).toBeGreaterThan(900)
   })
 
+  test("an agent's shell without its token says to use the tools", async () => {
+    const res = await cli(["me"], {
+      AUTOCODE_URL: t.url,
+      OPENCODE_SESSION_ID: "ses_9",
+    })
+    expect(res.code).toBe(1)
+    expect(res.stderr).toContain("has no AUTOCODE_TOKEN")
+    expect(res.stderr).toContain(
+      "in the conversation, use the autocode_* tools instead",
+    )
+  })
+
   test("an agent's shell never acts as the owner", async () => {
     const res = await cli(["pause", "kaggle:worker"], asLead())
     expect(res.code).toBe(1)
@@ -210,7 +222,13 @@ describe("owner commands", () => {
       'wake standup of kaggle:lead set: cron "0 9 * * 1-5" UTC; next',
     )
     const all = await cli(["wakes"], asAdmin())
-    expect(all.stdout).toMatch(/AGENT\s+NAME\s+TRIGGER\s+NEXT\s+CHECK\s+TEXT/)
+    expect(all.stdout).toMatch(
+      /AGENT\s+NAME\s+TRIGGER\s+NEXT\s+CHECK\s+LAST SET\s+TEXT/,
+    )
+    // when each was last set, in the machine's local time
+    expect(all.stdout).toMatch(
+      /kaggle:lead\s+standup\s+.*\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\s+Standup\./,
+    )
     expect(all.stdout).toMatch(/kaggle:lead\s+standup\s+cron/)
     expect(all.stdout).toMatch(/kaggle:worker\s+poll\s+fire-only/)
     expect(

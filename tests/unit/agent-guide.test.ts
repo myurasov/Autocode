@@ -1,0 +1,407 @@
+/*
+ * What agents are told (tier 0b2): the tools' descriptions name every action
+ * and trigger and say to use the tools; status, set, list and show say when
+ * things happen, in the server's zone and relative to now; help returns the
+ * guide or a part of it; the guide answers how wakes, checks, delivery,
+ * messages and scripts work exactly; the line for registered sessions points
+ * to the tools.
+ */
+import { describe, expect, test } from "bun:test"
+import {
+  agentLine,
+  guideText,
+  helpText,
+  TOPICS,
+} from "../../packages/plugin/src/guide.ts"
+import {
+  ME_TOOL,
+  MESSAGE_TOOL,
+  runMe,
+  runWake,
+  TOOLS,
+  WAKE_TOOL,
+} from "../../packages/plugin/src/tools.ts"
+
+const FACTS = {
+  serverId: "api-test",
+  url: "http://server:4848",
+  shellValues: true,
+  tools: TOOLS,
+}
+
+// 12:00 UTC is 05:00 PDT
+const ME = {
+  registered: true,
+  session: "ses_a",
+  agent: {
+    id: "team:a",
+    description: "Lead",
+    status: "idle",
+    paused: "",
+    machine: "m1",
+  },
+  server: {
+    id: "api-test",
+    time: "2026-10-28T12:00:00.000Z",
+    timezone: "America/Los_Angeles",
+  },
+  settings: { min_interval: "1m", inline_limit: 1024, max_tool_wait: "5m" },
+  wakes: { count: 0, next: null },
+  unread: 0,
+}
+
+const wake = (over: Record<string, unknown>) => ({
+  agent: "team:a",
+  name: "w",
+  text: "Go.",
+  trigger: "every 30m",
+  check: null,
+  end: null,
+  next: null,
+  due: null,
+  set_by: "team:a",
+  created_at: "2026-10-28T12:00:00.000Z",
+  updated_at: "2026-10-28T12:00:00.000Z",
+  last_fired_at: null,
+  check_failures: 0,
+  ...over,
+})
+
+// A fake server: answers by "METHOD path", and records the calls.
+function server(answers: Record<string, unknown>) {
+  const calls: string[] = []
+  const call = async (method: string, path: string) => {
+    const key = `${method} ${path.split("?")[0]}`
+    calls.push(key)
+    if (!(key in answers)) throw new Error(`unexpected ${key}`)
+    return answers[key]
+  }
+  return { call, calls }
+}
+
+describe("the tools' descriptions", () => {
+  test("say to use the tools, name every action, and every trigger", () => {
+    expect(ME_TOOL.description).toContain("not the autocode CLI")
+    for (const tool of TOOLS) {
+      const actions = (tool.input.properties.action as any).enum as string[]
+      for (const action of actions)
+        expect(tool.description, `${tool.name} ${action}`).toContain(action)
+    }
+    for (const trigger of [
+      "every 30m",
+      "in 45m",
+      "at 09:00",
+      "cron",
+      "idle 30m",
+      "repeat",
+      "fire-only",
+    ])
+      expect(WAKE_TOOL.description).toContain(trigger)
+    expect(WAKE_TOOL.description).toContain("only while the session is idle")
+    // how a job of yours wakes you (Haiku 5.5 and GLM 5.3 missed it,
+    // 2026-11-03)
+    expect(WAKE_TOOL.description).toContain(
+      "a job you start fires it by ending with: autocode fire me NAME",
+    )
+    expect(MESSAGE_TOOL.description).toContain("owner")
+  })
+
+  test("every parameter says what it is for", () => {
+    for (const tool of TOOLS)
+      for (const [name, prop] of Object.entries(tool.input.properties))
+        if (name !== "action")
+          expect((prop as any).description, `${tool.name}.${name}`).toBeTruthy()
+    const trigger = (WAKE_TOOL.input.properties as any).trigger.description
+    expect(trigger).toContain("in 45m")
+    const end = (WAKE_TOOL.input.properties as any).end.description
+    expect(end).toContain("2026-11-30T17:00:00-08:00")
+  })
+})
+
+describe("autocode_me", () => {
+  test("status: registration, server time and zone, delivery, wakes, unread", async () => {
+    const { call } = server({
+      "GET /v1/me": {
+        ...ME,
+        wakes: {
+          count: 2,
+          next: { name: "sooner", due: "2026-10-28T12:30:00.000Z" },
+        },
+        unread: 1,
+      },
+    })
+    expect(await runMe({ action: "status" }, call)).toBe(
+      [
+        "Registered as team:a: Lead.",
+        "Status idle on machine m1.",
+        "Server api-test; its time 2026-10-28 05:00 PDT (America/Los_Angeles).",
+        "Delivery: only while this session is idle, at most once per 1m; " +
+          "messages up to 1024 characters come whole.",
+        'Wakes: 2; next "sooner" at 2026-10-28 05:30 PDT (in 30m). ' +
+          "See autocode_wake list.",
+        "Unread messages: 1. See autocode_message list.",
+        "How Autocode works: autocode_me action=help.",
+      ].join("\n"),
+    )
+  })
+
+  test("status: paused, none, and not registered", async () => {
+    const paused = server({
+      "GET /v1/me": {
+        ...ME,
+        agent: { ...ME.agent, status: "paused", paused: "stop-all" },
+      },
+    })
+    const text = await runMe({ action: "status" }, paused.call)
+    expect(text).toContain(
+      "Status paused by Stop All: nothing is delivered until the owner " +
+        "resumes you.",
+    )
+    expect(text).toContain("Wakes: none.")
+    expect(text).toContain("Unread messages: none.")
+    const loose = server({
+      "GET /v1/me": {
+        registered: false,
+        session: "ses_x",
+        server: ME.server,
+        settings: ME.settings,
+      },
+    })
+    expect(await runMe({ action: "status" }, loose.call)).toBe(
+      [
+        "Not registered. Register with action=register and an id like " +
+          "project:role:name.",
+        "Server api-test; its time 2026-10-28 05:00 PDT (America/Los_Angeles).",
+        "How Autocode works: autocode_me action=help.",
+      ].join("\n"),
+    )
+  })
+
+  test("help: the whole guide, one topic, or the topics there are", async () => {
+    const { call } = server({})
+    const guide = (topic?: string) => helpText(FACTS, topic)
+    expect(await runMe({ action: "help" }, call, { guide })).toBe(
+      guideText(FACTS),
+    )
+    const wakes = await runMe({ action: "help", topic: "wakes" }, call, {
+      guide,
+    })
+    expect(wakes).toStartWith("## Wakes")
+    expect(wakes).not.toContain("## Messages")
+    const unknown = await runMe({ action: "help", topic: "nope" }, call, {
+      guide,
+    })
+    expect(unknown).toContain(`Topics: ${TOPICS.join(", ")}`)
+  })
+})
+
+describe("autocode_wake", () => {
+  test("set says when a timed wake runs, in the server's zone and from now", async () => {
+    const { call } = server({
+      "GET /v1/me": ME,
+      "PUT /v1/me/wakes/tick": {
+        wake: wake({
+          name: "tick",
+          next: "2026-10-28T12:30:00.000Z",
+          due: "2026-10-28T12:30:00.000Z",
+          check: "./has-work.sh",
+          end: "2026-10-28T20:00:00.000Z",
+        }),
+      },
+    })
+    expect(
+      await runWake(
+        {
+          action: "set",
+          name: "tick",
+          trigger: "every 30m",
+          text: "Go.",
+          check: "./has-work.sh",
+          end: "2026-10-28T20:00:00Z",
+        },
+        call,
+      ),
+    ).toBe(
+      'Wake "tick" set: every 30m. Next run 2026-10-28 05:30 PDT (in 30m). ' +
+        "Before each run its check runs in your folder: exit 0 wakes you " +
+        "with its output, exit 1 skips that run. It is removed at " +
+        "2026-10-28 13:00 PDT. Delivered only while your session is idle, " +
+        "at most once per 1m.",
+    )
+  })
+
+  test("set explains idle, one-time and fire-only wakes", async () => {
+    const answers = (w: Record<string, unknown>, me = ME) =>
+      server({ "GET /v1/me": me, "PUT /v1/me/wakes/w": { wake: wake(w) } })
+    const working = { ...ME, agent: { ...ME.agent, status: "working" } }
+    const idle = await runWake(
+      { action: "set", name: "w", trigger: "idle 30m repeat", text: "x" },
+      answers({ trigger: "idle 30m repeat" }, working).call,
+    )
+    expect(idle).toContain(
+      "It falls due once your session has been idle 30m (counted from the " +
+        "end of this turn), and again every 30m while you stay idle.",
+    )
+    const soon = await runWake(
+      { action: "set", name: "w", trigger: "idle 30m", text: "x" },
+      answers({ trigger: "idle 30m", due: "2026-10-28T12:30:00.000Z" }).call,
+    )
+    expect(soon).toContain(
+      "It falls due once per idle stretch: if your session stays idle, at " +
+        "2026-10-28 05:30 PDT (in 30m).",
+    )
+    const once = await runWake(
+      { action: "set", name: "w", trigger: "in 45m", text: "x" },
+      answers({
+        trigger: "at 2026-10-28T12:45:00.000Z",
+        next: "2026-10-28T12:45:00.000Z",
+        due: "2026-10-28T12:45:00.000Z",
+      }).call,
+    )
+    expect(once).toContain(
+      "It runs once, at 2026-10-28 05:45 PDT (in 45m), then it is removed.",
+    )
+    const fire = await runWake(
+      { action: "set", name: "w", trigger: "fire-only", text: "x" },
+      answers({ trigger: "fire-only" }).call,
+    )
+    expect(fire).toContain(
+      "It runs only when fired: autocode_wake fire, or `autocode fire me w` " +
+        "from a script.",
+    )
+  })
+
+  test("list: the server's time, then each wake with when it falls due and the start of its text", async () => {
+    const long = "word ".repeat(40)
+    const { call } = server({
+      "GET /v1/me": ME,
+      "GET /v1/me/wakes": {
+        wakes: [
+          wake({
+            name: "tick",
+            next: "2026-10-28T12:30:00.000Z",
+            due: "2026-10-28T12:30:00.000Z",
+            check: "./has-work.sh",
+            last_fired_at: "2026-10-28T11:30:00.000Z",
+          }),
+          wake({
+            name: "nudge",
+            trigger: "idle 2h repeat",
+            due: "2026-10-28T14:00:00.000Z",
+            text: long,
+          }),
+          wake({ name: "go", trigger: "fire-only", set_by: "owner" }),
+        ],
+      },
+    })
+    const text = await runWake({ action: "list" }, call)
+    expect(text.split("\n")).toEqual([
+      "Server time 2026-10-28 05:00 PDT (America/Los_Angeles).",
+      "tick: every 30m; next 2026-10-28 05:30 PDT (in 30m); " +
+        "check: ./has-work.sh; last set 2026-10-28 05:00 PDT; " +
+        "last ran 2026-10-28 04:30 PDT",
+      "  Go.",
+      "nudge: idle 2h repeat; due 2026-10-28 07:00 PDT (in 2h) " +
+        "if you stay idle; last set 2026-10-28 05:00 PDT",
+      `  ${long.slice(0, 100)}…`,
+      "go: fire-only; runs only when fired; " +
+        "last set 2026-10-28 05:00 PDT by the owner",
+      "  Go.",
+    ])
+  })
+
+  test("show: one wake whole", async () => {
+    const { call } = server({
+      "GET /v1/me": ME,
+      "GET /v1/me/wakes": {
+        wakes: [
+          wake({
+            name: "tick",
+            text: "Line one.\nLine two.",
+            next: "2026-10-28T12:30:00.000Z",
+            due: "2026-10-28T12:30:00.000Z",
+          }),
+        ],
+      },
+    })
+    expect(await runWake({ action: "show", name: "tick" }, call)).toBe(
+      [
+        'Wake "tick", set by you at 2026-10-28 05:00 PDT.',
+        "Trigger: every 30m; next 2026-10-28 05:30 PDT (in 30m).",
+        "Check: none.",
+        "Ends: never.",
+        "Last ran: never.",
+        "Text:",
+        "Line one.",
+        "Line two.",
+      ].join("\n"),
+    )
+    expect(await runWake({ action: "show", name: "nope" }, call)).toBe(
+      'error: you have no wake "nope" (autocode_wake list shows them)',
+    )
+  })
+})
+
+describe("the guide", () => {
+  // markdown wraps its lines anywhere: compare with whitespace collapsed
+  const flat = (text: string) => text.replace(/\s+/g, " ")
+  const guide = flat(guideText(FACTS))
+
+  test("says to use the tools, and what to do when unsure", () => {
+    expect(guide).toContain("Use the `autocode_*` tools")
+    expect(guide).toContain("the `autocode` CLI is for scripts")
+    expect(guide).toContain("Never read the plugin's code")
+  })
+
+  test("names every action of every tool", () => {
+    for (const tool of TOOLS)
+      for (const action of (tool.input.properties.action as any).enum)
+        expect(guide, `${tool.name} ${action}`).toContain(action)
+  })
+
+  // The questions the co-sa update-loop agent could not answer (2026-11-02).
+  test("answers how idle wakes count, repeat after a skip, merging, end, and a check's environment", () => {
+    for (const answer of [
+      // when an idle wake falls due, and what resets it
+      "any turn: yours, the owner's or an injected one",
+      "never from before the wake was set",
+      // repeat, and a skipped check
+      "also when its check skipped that run",
+      // merging
+      "Wakes with different names and different texts are never merged",
+      // end
+      "2026-11-30T17:00:00-08:00",
+      // a check's environment
+      "AUTOCODE_TOKEN",
+      // a wake that falls due during a turn
+      "right after the turn ends",
+      // a loop spaced from the end of each run
+      "`in 30m`",
+      // a job that wakes you, in the wakes part itself
+      "a background job you start can fire it as its last command",
+      // time zones
+      "the server's zone",
+    ])
+      expect(guide).toContain(answer)
+  })
+
+  test("help topics are the guide's parts", () => {
+    for (const topic of TOPICS)
+      expect(helpText(FACTS, topic).length).toBeGreaterThan(100)
+  })
+
+  test("without shell values, scripts cannot act as the agent; checks still can", () => {
+    const off = flat(guideText({ ...FACTS, shellValues: false }))
+    expect(off).toContain("shells do not get Autocode values")
+    expect(off).toContain("your checks still can")
+  })
+})
+
+test("the line for registered sessions points to the tools and the guide", () => {
+  expect(agentLine("team:a", "api-test")).toBe(
+    "This session is Autocode agent `team:a` on server `api-test`. Use " +
+      "the `autocode_*` tools (not the `autocode` CLI); `autocode_me " +
+      "action=help` or the `autocode` skill explains exactly how wakes " +
+      "and messages work.",
+  )
+})

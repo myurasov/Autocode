@@ -230,3 +230,28 @@ export function cronNext(
   }
   return null
 }
+
+const zoneNames = new Map<string, Intl.DateTimeFormat>()
+
+// An instant as wall time in a zone, for people and agents to read:
+// "2026-11-03 08:00 PST" (the zone's short name, or its offset).
+export function localTime(instant: number, tz: string): string {
+  const w = wallTime(instant, tz)
+  let names = zoneNames.get(tz)
+  if (!names) {
+    names = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "short",
+    })
+    zoneNames.set(tz, names)
+  }
+  const zone =
+    names
+      .formatToParts(new Date(instant))
+      .find((p) => p.type === "timeZoneName")?.value ?? tz
+  const two = (n: number) => String(n).padStart(2, "0")
+  return (
+    `${w.year}-${two(w.month)}-${two(w.day)} ` +
+    `${two(w.hour)}:${two(w.minute)} ${zone}`
+  )
+}

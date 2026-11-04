@@ -1,14 +1,17 @@
 /*
- * Unit tests of the Hosts page against a mocked server: the hosts table, where
- * long IDs and folders may wrap, "Updated" in the footer, a failed load, and
- * the 10 s refresh (one at a time).
+ * Unit tests of the Hosts page against a mocked server: the hosts table, IDs on
+ * one line and folders that wrap, "Updated" in the footer, a failed load, the
+ * 10 s refresh (one at a time), and the host a link led to (?host=):
+ * highlighted and scrolled into view, or a line that says it is not there.
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import {
   apiError,
   el,
+  parts,
   settle,
   setup,
   signedIn,
@@ -171,12 +174,19 @@ describe('HostsPage', () => {
     expect(el(fixture).querySelector('th.shell, td.shell')).toBeNull();
   });
 
-  it('lets IDs and folders wrap after ":" and "/" (the text stays the same)', async () => {
+  it('breaks IDs only after ":"; machine names stay whole; a folder wraps after "/" (the text stays the same)', async () => {
     const page = await open();
     const row = page.querySelector('tr[data-host="mymbp4:project:6f3d676f"]')!;
-    expect(row.querySelector('td.id code')!.innerHTML).toBe(
-      'mymbp4:<wbr>project:<wbr>6f3d676f',
-    );
+    expect(row.querySelector('td.id')!.classList).toContain('id-like');
+    expect(parts(row.querySelector('td.id code'))).toEqual([
+      'mymbp4:',
+      'project:',
+      '6f3d676f',
+    ]);
+    const machine = page.querySelector('table.hosts tr.group th')!;
+    expect(machine.classList).toContain('id-like');
+    expect(parts(machine)).toEqual(['mymbp4']);
+    expect(row.querySelector('td.folder')!.classList).not.toContain('id-like');
     expect(row.querySelector('td.folder code')!.innerHTML).toBe(
       '/<wbr>Users/<wbr>misha/<wbr>work',
     );
@@ -209,5 +219,49 @@ describe('HostsPage', () => {
       fixture.destroy();
       vi.useRealTimers();
     }
+  });
+
+  describe('the host a link led to', () => {
+    const scroll = vi.fn();
+    beforeEach(() => {
+      scroll.mockClear();
+      Element.prototype.scrollIntoView = scroll;
+    });
+    afterEach(() => {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
+
+    async function arrive(url: string): Promise<HTMLElement> {
+      signedIn();
+      await TestBed.inject(Router).navigateByUrl(url);
+      fixture = TestBed.createComponent(HostsPage);
+      load();
+      await settle(fixture);
+      return el(fixture);
+    }
+
+    it('is highlighted and scrolled into view, centred', async () => {
+      const page = await arrive('/?host=mymbp4:project:6f3d676f');
+      const row = page.querySelector(
+        'tr[data-host="mymbp4:project:6f3d676f"]',
+      )!;
+      expect(row.classList).toContain('highlight');
+      expect(page.querySelectorAll('tr.highlight').length).toBe(1);
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.mock.contexts[0]).toBe(row);
+      expect(scroll).toHaveBeenCalledWith({ block: 'center' });
+      expect(page.querySelector('p.missing')).toBeNull();
+      // The tab itself (no host in the address): nothing highlighted.
+      await TestBed.inject(Router).navigateByUrl('/');
+      await settle(fixture);
+      expect(page.querySelector('tr.highlight')).toBeNull();
+    });
+
+    it('says so when the host is not there now', async () => {
+      const page = await arrive('/?host=gone:1');
+      expect(text(page.querySelector('p.missing'))).toBe('No host gone:1 now.');
+      expect(page.querySelector('tr.highlight')).toBeNull();
+      expect(scroll).not.toHaveBeenCalled();
+    });
   });
 });

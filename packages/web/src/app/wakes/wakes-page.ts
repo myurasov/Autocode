@@ -1,16 +1,23 @@
 /*
- * The Wakes page: every agent's wakes, by agent, refreshed every 10 s (one
- * refresh at a time). The owner fires a wake now or cancels it (after a
- * confirmation; the result shows in the toolbar), and sets a wake for any
- * agent in a form that opens from its title; the list refreshes after each.
+ * The Wakes page: every agent's wakes, by agent (a link to the agent on the
+ * Agents page), refreshed every 10 s (one refresh at a time); a long text or
+ * check shows its first 200 characters until a click anywhere in its cell
+ * opens it (it stays open across refreshes). The owner fires a wake now or
+ * cancels it (after a confirmation; the result shows in the toolbar), and sets
+ * a wake for any agent in a form that opens from its title; the list refreshes
+ * after each.
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Wake, type WakeInput } from '../api';
-import { Breaks, TimeText } from '../breaks';
-import { localTime } from '../format';
+import { Breaks, IdParts, TimeText } from '../breaks';
+import { FOLD_CHARS, folded, localTime } from '../format';
+import { AgentLink } from '../links';
 import { Updated } from '../updated';
+
+// The parts of a wake that fold when long.
+type Field = 'text' | 'check';
 
 export const TRIGGER_HINT =
   'every 30m, at 09:00, cron "0 9 * * 1-5", idle 30m, fire-only';
@@ -21,16 +28,9 @@ export function triggerText(trigger: string): string {
   return at ? `at ${localTime(at[1])}` : trigger;
 }
 
-// A wake's text as its cell shows it: the first line, and "…" when there is
-// more.
-export function firstLine(text: string): string {
-  const lines = text.trim().split('\n');
-  return lines.length > 1 ? `${lines[0]} …` : (lines[0] ?? '');
-}
-
 @Component({
   selector: 'app-wakes-page',
-  imports: [Breaks, TimeText, Updated],
+  imports: [AgentLink, Breaks, IdParts, TimeText, Updated],
   templateUrl: './wakes-page.html',
 })
 export class WakesPage {
@@ -56,9 +56,11 @@ export class WakesPage {
   protected readonly updatedAt = signal<number | null>(null);
   protected readonly busy = signal(false);
   protected readonly triggerText = triggerText;
-  protected readonly firstLine = firstLine;
   protected readonly triggerHint = TRIGGER_HINT;
   private inFlight = 0;
+
+  // The long texts and checks opened whole, by agent, wake name and field.
+  protected readonly opened = signal<ReadonlySet<string>>(new Set());
 
   // The Set a Wake form, and how its last try went.
   protected readonly form = {
@@ -93,6 +95,35 @@ export class WakesPage {
       this.inFlight--;
       this.loaded.set(true);
     }
+  }
+
+  protected isLong(value: string | null): boolean {
+    return (value?.length ?? 0) > FOLD_CHARS;
+  }
+
+  protected isOpen(wake: Wake, field: Field): boolean {
+    return this.opened().has(`${wake.agent}/${wake.name}/${field}`);
+  }
+
+  // A long text's or check's cell: the whole when opened, else its first 200
+  // characters.
+  protected shown(wake: Wake, field: Field): string {
+    const value = wake[field] ?? '';
+    return this.isOpen(wake, field) ? value : folded(value);
+  }
+
+  protected toggle(wake: Wake, field: Field): void {
+    const key = `${wake.agent}/${wake.name}/${field}`;
+    const opened = new Set(this.opened());
+    if (!opened.delete(key)) opened.add(key);
+    this.opened.set(opened);
+  }
+
+  // A click anywhere in a long one's cell, but not one that ends a selection.
+  protected cellClick(wake: Wake, field: Field): void {
+    if (!this.isLong(wake[field])) return;
+    if (window.getSelection()?.toString()) return;
+    this.toggle(wake, field);
   }
 
   protected async fire(wake: Wake): Promise<void> {

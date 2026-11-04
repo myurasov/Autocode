@@ -352,8 +352,39 @@ export async function startServer(
       method: "GET",
       path: "/v1/me",
       access: ["session"],
-      summary: "the calling session's registration and status",
-      handler: ({ caller }) => agents.me(caller!.session!),
+      summary:
+        "the calling session's registration and status, the server's time " +
+        "and zone, the delivery settings, its wakes and unread messages",
+      handler: ({ caller }) => {
+        const res: any = agents.me(caller!.session!)
+        const agent: string | undefined = res.registered
+          ? res.agent.id
+          : undefined
+        const values: Record<string, unknown> = agent
+          ? resolveSettings(settings.layers(), agent).values
+          : {}
+        const value = (key: string) =>
+          agent ? values[key] : settings.value(key)
+        return {
+          ...res,
+          server: {
+            id,
+            time: new Date(now()).toISOString(),
+            timezone: tz(),
+          },
+          settings: {
+            min_interval: value("min_interval"),
+            inline_limit: value("inline_limit"),
+            max_tool_wait: value("max_tool_wait"),
+          },
+          ...(agent
+            ? {
+                wakes: wakes.summary(agent),
+                unread: messages.list(agent).length,
+              }
+            : {}),
+        }
+      },
     },
     {
       method: "DELETE",

@@ -1,7 +1,8 @@
 /*
  * Helpers for the web UI's unit tests: a clean setup with a mocked server, an
  * admin sign-in that skips the server, a wait for pending work, and DOM
- * shortcuts to read text, find buttons, type, pick options and press keys.
+ * shortcuts to read text and an ID's parts, find buttons, type, pick options
+ * and press keys.
  */
 
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
@@ -69,6 +70,13 @@ export function el(fixture: ComponentFixture<unknown>): HTMLElement {
 
 export function text(node: Element | null | undefined): string {
   return (node?.textContent ?? '').replace(/\s+/g, ' ').trim();
+}
+
+// An ID's parts as shown: the pieces it may break between (after ":" or "_").
+export function parts(node: Element | null | undefined): string[] {
+  return [...(node?.querySelectorAll('.id-part') ?? [])].map(
+    (part) => part.textContent ?? '',
+  );
 }
 
 export function button(

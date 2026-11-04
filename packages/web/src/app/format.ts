@@ -1,7 +1,8 @@
 /*
- * How the pages show times, setting values and versions: times in the
- * viewer's own time zone, in AISee's format with the zone's short name; on/off
- * for switches; versions with a v.
+ * How the pages show times, setting values, versions and long texts: times in
+ * the viewer's own time zone, in AISee's format with the zone's short name;
+ * on/off for switches; versions with a v; a long text folded to its first 200
+ * characters.
  */
 
 // An ISO time in the viewer's time zone (or the one given), like AISee plus
@@ -46,4 +47,14 @@ export function valueText(value: unknown): string {
 export function versionText(version: string | null | undefined): string {
   if (!version) return '';
   return /^\d/.test(version) ? `v${version}` : version;
+}
+
+// How much of a long text (a wake's, a message's) shows until it is opened.
+export const FOLD_CHARS = 200;
+
+// A text as it shows folded: whole up to 200 characters, else its first 200
+// and "…".
+export function folded(text: string): string {
+  if (text.length <= FOLD_CHARS) return text;
+  return `${text.slice(0, FOLD_CHARS).trimEnd()}…`;
 }

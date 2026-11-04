@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test"
 import {
   cronNext,
   formatTrigger,
+  localTime,
   nextRun,
   parseCron,
   parseTrigger,
@@ -54,6 +55,29 @@ describe("parseTrigger", () => {
       kind: "at",
       at: "2026-11-02T18:15:00.000Z",
     })
+  })
+
+  test("in: once, that long after it is set (tier 0b2)", () => {
+    expect(parseTrigger("in 45m", opts)).toEqual({
+      kind: "at",
+      at: "2026-11-02T17:45:00.000Z",
+    })
+    expect(parseTrigger("in 1h30m", opts)).toEqual({
+      kind: "at",
+      at: "2026-11-02T18:30:00.000Z",
+    })
+    for (const bad of ["in", "in soon", "in 0s", "in 500ms", "in 5m now"])
+      expect(() => parseTrigger(bad, opts), bad).toThrow(/trigger/)
+  })
+
+  test("the help text names every kind of trigger", () => {
+    try {
+      parseTrigger("sometimes", opts)
+    } catch (err) {
+      const message = (err as Error).message
+      for (const kind of ["every", "in 45m", "at", "cron", "idle", "fire-only"])
+        expect(message).toContain(kind)
+    }
   })
 
   test("cron, quoted, with the zone given or the default one", () => {
@@ -254,6 +278,18 @@ describe("cron", () => {
 })
 
 describe("zoned times", () => {
+  test("localTime: wall time with the zone's short name", () => {
+    expect(localTime(at("2026-11-02T17:00:00Z"), LA)).toBe(
+      "2026-11-02 09:00 PST",
+    )
+    expect(localTime(at("2026-07-01T16:00:00Z"), LA)).toBe(
+      "2026-07-01 09:00 PDT",
+    )
+    expect(localTime(at("2026-07-01T16:05:00Z"), "UTC")).toBe(
+      "2026-07-01 16:05 UTC",
+    )
+  })
+
   test("wall time of an instant, and the instant of a wall time", () => {
     expect(wallTime(at("2026-11-02T17:00:00Z"), LA)).toEqual({
       year: 2026,

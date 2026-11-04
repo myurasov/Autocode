@@ -1,18 +1,23 @@
 /*
  * Unit tests of the Agents page against a mocked server: the agents by machine,
- * where long values may wrap, the filter and a bad pattern, the 10 s refresh
- * (one at a time), editing a description, New token and Unregister, each after
- * a confirmation, each status's dot, Pause and Resume, and Stop All (after a
- * confirmation) and Resume All, with each action's result in the toolbar and
- * "Updated" in the footer.
+ * IDs on one line and folders that wrap, the filter and a bad pattern, the
+ * 10 s refresh (one at a time), editing a description, New token and
+ * Unregister, each after a confirmation, each status's dot, Pause and Resume,
+ * and Stop All (after a confirmation) and Resume All, with each action's
+ * result in the toolbar and "Updated" in the footer; each agent's host, a link
+ * to the Hosts page; and the agent a link led to (?agent=): highlighted,
+ * scrolled into view once, kept across the refresh, a filter that would hide
+ * it cleared, or a line that says it is not there.
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import {
   apiError,
   button,
   el,
+  parts,
   press,
   settle,
   setup,
@@ -106,13 +111,150 @@ describe('AgentsPage', () => {
     expect(worker.querySelector('.dot')!.classList).toContain('off');
   });
 
-  it('lets IDs, folders and sessions wrap after ":", "/" and "_" (the text stays the same)', async () => {
+  it("shows each agent's host after its status, a link to the Hosts page", async () => {
+    signedIn();
+    fixture = TestBed.createComponent(AgentsPage);
+    load([AGENTS[0]!, { ...AGENTS[1]!, host: undefined }]);
+    await settle(fixture);
+    const page = el(fixture);
+    expect(
+      [...page.querySelectorAll('table.agents thead th')].map((th) => text(th)),
+    ).toEqual([
+      'ID',
+      'Description',
+      'Status',
+      'Host',
+      'Folder',
+      'Session',
+      'Registered',
+      'Last Active',
+      '',
+    ]);
+    const lead = page.querySelector('tr[data-agent="kaggle:lead"]')!;
+    expect(lead.querySelector('td.status + td.host')).not.toBeNull();
+    const link = lead.querySelector('td.host a.id-link')!;
+    expect(link.getAttribute('href')).toBe('/hosts?host=myspark3:1');
+    expect(parts(link.querySelector('code'))).toEqual(['myspark3:', '1']);
+    // The agent's own ID is not a link here.
+    expect(lead.querySelector('td.id a')).toBeNull();
+    const worker = page.querySelector('tr[data-agent="kaggle:worker"]')!;
+    expect(text(worker.querySelector('td.host'))).toBe('—');
+    expect(worker.querySelector('td.host a')).toBeNull();
+    expect(
+      page.querySelector('table.agents tr.group th')!.getAttribute('colspan'),
+    ).toBe('9');
+  });
+
+  /*
+   * The page reads the agent to highlight from its address; jsdom has no
+   * scrolling, so scrollIntoView is a spy here.
+   */
+  async function arrive(url: string, agents = AGENTS): Promise<HTMLElement> {
+    signedIn();
+    await TestBed.inject(Router).navigateByUrl(url);
+    fixture = TestBed.createComponent(AgentsPage);
+    load(agents);
+    await settle(fixture);
+    return el(fixture);
+  }
+
+  describe('the agent a link led to', () => {
+    const scroll = vi.fn();
+    beforeEach(() => {
+      scroll.mockClear();
+      Element.prototype.scrollIntoView = scroll;
+    });
+    afterEach(() => {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
+
+    it('is highlighted and scrolled into view, centred, once; it stays highlighted across the refresh', async () => {
+      const page = await arrive('/?agent=kaggle:worker');
+      const row = (id: string) => page.querySelector(`tr[data-agent="${id}"]`)!;
+      expect(row('kaggle:worker').classList).toContain('highlight');
+      expect(page.querySelectorAll('tr.highlight').length).toBe(1);
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.mock.contexts[0]).toBe(row('kaggle:worker'));
+      expect(scroll).toHaveBeenCalledWith({ block: 'center' });
+      expect(page.querySelector('p.missing')).toBeNull();
+      button(page, 'Refresh')!.click();
+      load();
+      await settle(fixture);
+      expect(row('kaggle:worker').classList).toContain('highlight');
+      expect(scroll).toHaveBeenCalledTimes(1);
+      // A link to another agent while on the page: that one now.
+      await TestBed.inject(Router).navigateByUrl('/?agent=kaggle:lead');
+      await settle(fixture);
+      expect(row('kaggle:lead').classList).toContain('highlight');
+      expect(row('kaggle:worker').classList).not.toContain('highlight');
+      expect(scroll).toHaveBeenCalledTimes(2);
+      expect(scroll.mock.contexts[1]).toBe(row('kaggle:lead'));
+      // The tab itself (no agent in the address): nothing highlighted.
+      await TestBed.inject(Router).navigateByUrl('/');
+      await settle(fixture);
+      expect(page.querySelector('tr.highlight')).toBeNull();
+    });
+
+    it('says so when the agent is not there now', async () => {
+      const page = await arrive('/?agent=kaggle:gone');
+      expect(text(page.querySelector('p.missing'))).toBe(
+        'No agent kaggle:gone now.',
+      );
+      expect(page.querySelector('tr.highlight')).toBeNull();
+      expect(scroll).not.toHaveBeenCalled();
+    });
+
+    it('clears a filter that would hide it, and keeps one that shows it', async () => {
+      const page = await arrive('/');
+      const input = page.querySelector('#match') as HTMLInputElement;
+      type(input, 'kaggle:lead');
+      press(input, 'Enter');
+      load([AGENTS[0]!], 'kaggle:lead');
+      await settle(fixture);
+      await TestBed.inject(Router).navigateByUrl('/?agent=kaggle:worker');
+      await settle(fixture);
+      load();
+      await settle(fixture);
+      expect(input.value).toBe('');
+      expect(
+        page.querySelector('tr[data-agent="kaggle:worker"]')!.classList,
+      ).toContain('highlight');
+
+      type(input, 'kaggle:*');
+      press(input, 'Enter');
+      load(AGENTS, 'kaggle:*');
+      await settle(fixture);
+      await TestBed.inject(Router).navigateByUrl('/?agent=kaggle:lead');
+      await settle(fixture);
+      http.expectNone((r) => r.url === '/v1/agents');
+      expect(input.value).toBe('kaggle:*');
+      expect(
+        page.querySelector('tr[data-agent="kaggle:lead"]')!.classList,
+      ).toContain('highlight');
+    });
+  });
+
+  it('breaks IDs, hosts, sessions and machine names only after ":" or "_"; a folder wraps after "/" (the text stays the same)', async () => {
     const page = await open();
     const lead = page.querySelector('tr[data-agent="kaggle:lead"]')!;
     const code = (cell: string) => lead.querySelector(`td.${cell} code`)!;
-    expect(code('id').innerHTML).toBe('kaggle:<wbr>lead');
+    // An ID may break only right after a ":" or "_" (the owner, 2026-11-03).
+    for (const cell of ['id', 'host', 'session'])
+      expect(lead.querySelector(`td.${cell}`)!.classList, cell).toContain(
+        'id-like',
+      );
+    expect(parts(code('id'))).toEqual(['kaggle:', 'lead']);
+    expect(parts(code('session'))).toEqual(['ses_', 'lead']);
+    expect(code('session').textContent).toBe('ses_lead');
+    const machine = page.querySelector('table.agents tr.group th')!;
+    expect(machine.classList).toContain('id-like');
+    expect(parts(machine)).toEqual(['mymbp4']);
+    // Not IDs: they wrap as before.
+    for (const cell of ['desc', 'status', 'folder', 'time'])
+      expect(lead.querySelector(`td.${cell}`)!.classList, cell).not.toContain(
+        'id-like',
+      );
     expect(code('folder').innerHTML).toBe('/<wbr>home/<wbr>misha/<wbr>kaggle');
-    expect(code('session').innerHTML).toBe('ses_<wbr>lead');
     expect(code('folder').textContent).toBe('/home/misha/kaggle');
     // A time wraps only between its date and its clock, which keeps its zone.
     const time = lead.querySelector('td.time')!;

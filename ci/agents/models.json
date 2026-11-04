@@ -1,0 +1,35 @@
+{
+  "about": "The models the agents suite (ci/agents/run.ts) tests, each with the OpenCode model ID and variant. The owner changes this set (2026-11-02: Opus 5.5, Sol 6.1, Kimi K3, GLM 5.3, Haiku 5.5, Luna; the provider has gpt-6-luna, no 6.1 Luna). AGENT_MODELS (a comma list of names) runs a part.",
+  "models": [
+    {
+      "name": "opus-5.5",
+      "model": "nvidia-ih/azure/anthropic/claude-opus-5-5",
+      "variant": "high"
+    },
+    {
+      "name": "sol-6.1",
+      "model": "nvidia-ih/azure/openai/gpt-6.1-sol",
+      "variant": "high"
+    },
+    {
+      "name": "kimi-k3",
+      "model": "nvidia-ih/nvidia/moonshotai/kimi-k3",
+      "variant": "high"
+    },
+    {
+      "name": "glm-5.3",
+      "model": "nvidia-ih/nvidia/zai-org/glm-5.3",
+      "variant": "high"
+    },
+    {
+      "name": "haiku-5.5",
+      "model": "nvidia-ih/azure/anthropic/claude-haiku-5-5",
+      "variant": "high"
+    },
+    {
+      "name": "luna-6",
+      "model": "nvidia-ih/azure/openai/gpt-6-luna",
+      "variant": "high"
+    }
+  ]
+}

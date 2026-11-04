@@ -1,7 +1,9 @@
 <!--
   The Agents page: Stop All and Resume All (an action's result beside them), a
-  filter by ID pattern, the agents by machine (Edit, Pause or Resume, New
-  Token, Unregister), and when the list last loaded.
+  filter by ID pattern, the agents by machine (their hosts link to the Hosts
+  page; Edit, Pause or Resume, New Token, Unregister), the agent a link led to
+  highlighted (or a line that says it is not there), and when the list last
+  loaded.
 -->
 
 <div class="toolbar">
@@ -47,6 +49,9 @@
 @if (error()) {
   <p class="errmsg" role="alert">{{ error() }}</p>
 }
+@if (missing(); as id) {
+  <p class="muted missing">No agent {{ id }} now.</p>
+}
 
 <table class="agents">
   <thead>
@@ -54,6 +59,7 @@
       <th>ID</th>
       <th>Description</th>
       <th>Status</th>
+      <th>Host</th>
       <th>Folder</th>
       <th>Session</th>
       <th>Registered</th>
@@ -64,13 +70,20 @@
   @for (m of machines(); track m.machine) {
     <tbody [attr.data-machine]="m.machine">
       <tr class="group">
-        <th colspan="8" scope="rowgroup">
-          {{ m.machine || 'unknown machine' }}
-        </th>
+        <th
+          class="id-like"
+          colspan="9"
+          scope="rowgroup"
+          [appId]="m.machine || 'unknown machine'"
+        ></th>
       </tr>
       @for (a of m.agents; track a.id) {
-        <tr [attr.data-agent]="a.id">
-          <td class="id"><code [appBreaks]="a.id"></code></td>
+        <tr
+          [attr.data-agent]="a.id"
+          [class.highlight]="a.id === target()"
+          [attr.aria-current]="a.id === target() ? 'true' : null"
+        >
+          <td class="id id-like"><code [appId]="a.id"></code></td>
           <td class="desc">
             @if (editing() === a.id) {
               <div class="inline-edit">
@@ -106,8 +119,15 @@
               [class.off]="a.status === 'offline'"
             ></span>{{ a.status }}
           </td>
+          <td class="host id-like">
+            @if (a.host) {
+              <app-host-link [id]="a.host" />
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
           <td class="folder"><code [appBreaks]="a.directory"></code></td>
-          <td class="session"><code [appBreaks]="a.session"></code></td>
+          <td class="session id-like"><code [appId]="a.session"></code></td>
           <td
             class="time"
             [title]="a.registered_at ?? ''"
@@ -169,7 +189,7 @@
   } @empty {
     <tbody>
       <tr>
-        <td class="muted" colspan="8">
+        <td class="muted" colspan="9">
           @if (!loaded()) {
             Loading...
           } @else if (applied()) {

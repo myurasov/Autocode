@@ -302,7 +302,10 @@ describe("plugin: autocode_me", () => {
     expect(calls).toEqual([
       ["POST", "/v1/agents", { id: "k:lead", description: "Lead" }],
     ])
-    expect(text).toBe("Registered as k:lead (status idle).")
+    expect(text).toBe(
+      "Registered as k:lead (status idle). How Autocode works: " +
+        "autocode_me action=help.",
+    )
     expect(await runMe({ action: "register" }, async () => ({}))).toMatch(
       /needs an id/,
     )
@@ -322,7 +325,7 @@ describe("plugin: autocode_me", () => {
       await runMe({ action: "unregister" }, async () => ({
         unregistered: "k:lead",
       })),
-    ).toBe("Unregistered k:lead.")
+    ).toBe("Unregistered k:lead; your wakes are removed.")
     const seen: string[] = []
     const out = await runMe(
       { action: "discover", pattern: "k:*" },

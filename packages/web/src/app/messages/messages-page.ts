@@ -1,22 +1,25 @@
 /*
- * The Messages page: every message, newest first, with its ID, sender,
- * recipient, subject, kind, size and state, refreshed every 10 s (one refresh
- * at a time); a click on a message (or Enter) opens its text in a row below it
- * and the next closes it; and a form, collapsed until opened, to send a
- * message as the owner, to an agent ID, a pattern or a list.
+ * The Messages page: every message, newest first, with its ID, sender and
+ * recipient (an agent's a link to the Agents page), subject, text, kind, size
+ * and state, refreshed every 10 s (one refresh at a time); a long text shows
+ * its first 200 characters until a click anywhere in its cell (or Enter) opens
+ * it, read whole once, and the next folds it; and a form,
+ * collapsed until opened, to send a message as the owner, to an agent ID, a
+ * pattern or a list.
  */
 
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Message } from '../api';
-import { Breaks, TimeText } from '../breaks';
+import { IdParts, TimeText } from '../breaks';
+import { FOLD_CHARS } from '../format';
+import { AgentLink } from '../links';
 import { Updated } from '../updated';
 
-// What an opened message's row shows: its text (or what a file is), why it
-// could not be read, or nothing yet.
+// An opened long text: the whole text, why it could not be read, or nothing
+// yet.
 export interface Opened {
   text?: string;
-  file?: boolean;
   error?: string;
 }
 
@@ -32,7 +35,7 @@ export function recipients(to: string): string | string[] {
 
 @Component({
   selector: 'app-messages-page',
-  imports: [Breaks, TimeText, Updated],
+  imports: [AgentLink, IdParts, TimeText, Updated],
   templateUrl: './messages-page.html',
 })
 export class MessagesPage {
@@ -44,7 +47,7 @@ export class MessagesPage {
   protected readonly updatedAt = signal<number | null>(null);
   private inFlight = 0;
 
-  // The messages opened below their rows, and what each shows.
+  // The long texts opened, and what each shows.
   protected readonly opened = signal<ReadonlySet<string>>(new Set());
   protected readonly bodies = signal<Record<string, Opened>>({});
 
@@ -86,8 +89,21 @@ export class MessagesPage {
     return this.bodies()[id];
   }
 
-  // Opens a message below its row, reading it the first time (again after a
-  // failed read), or closes it.
+  // A text message too long to show whole in the list.
+  protected isLong(message: Message): boolean {
+    return message.kind === 'text' && message.size > FOLD_CHARS;
+  }
+
+  // A long text's cell: the whole text once opened and read, else the list's
+  // first 200 characters and "…".
+  protected shown(message: Message): string {
+    const read = this.bodyOf(message.id)?.text;
+    if (this.isOpen(message.id) && read !== undefined) return read;
+    return `${(message.preview ?? '').trimEnd()}…`;
+  }
+
+  // Opens a long text, reading the message the first time (again after a
+  // failed read), or folds it.
   protected async toggle(message: Message): Promise<void> {
     const opened = new Set(this.opened());
     if (opened.delete(message.id)) {
@@ -99,20 +115,18 @@ export class MessagesPage {
     if (known && !known.error) return;
     let body: Opened;
     try {
-      const full = await this.api.message(message.id);
-      body =
-        full.text !== undefined
-          ? { text: full.text }
-          : {
-              text:
-                `A file (${full.mime ?? 'binary'}, ${this.sizeText(full)} ` +
-                'characters of base64).',
-              file: true,
-            };
+      body = { text: (await this.api.message(message.id)).text ?? '' };
     } catch (err) {
       body = { error: errorText(err) };
     }
     this.bodies.update((all) => ({ ...all, [message.id]: body }));
+  }
+
+  // A click anywhere in a long text's cell, but not one that ends a selection.
+  protected cellClick(message: Message): void {
+    if (!this.isLong(message)) return;
+    if (window.getSelection()?.toString()) return;
+    void this.toggle(message);
   }
 
   // What the Kind column shows: text, or a file's mime type.

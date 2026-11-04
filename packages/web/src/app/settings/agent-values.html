@@ -21,8 +21,8 @@
   <tbody>
     @for (row of rows(); track row.agent + ' ' + row.key) {
       <tr [attr.data-agent]="row.agent" [attr.data-key]="row.key">
-        <td class="id"><code>{{ row.agent }}</code></td>
-        <td class="key"><code>{{ row.key }}</code></td>
+        <td class="id id-like"><app-agent-link [id]="row.agent" /></td>
+        <td class="key id-like"><code [appId]="row.key"></code></td>
         <td class="value">
           @let e = editing();
           @if (e && isEditing(row)) {

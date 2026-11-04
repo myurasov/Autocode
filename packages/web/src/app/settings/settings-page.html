@@ -28,7 +28,7 @@
     <tbody>
       @for (key of state.keys(); track key) {
         <tr [attr.data-key]="key">
-          <td class="key"><code>{{ key }}</code></td>
+          <td class="key id-like"><code [appId]="key"></code></td>
           <td class="value">
             <div class="inline-edit">
               <app-value-input

@@ -258,6 +258,27 @@ describe("the owner", () => {
   })
 })
 
+describe("the owner's list", () => {
+  test("text messages carry a 200-character preview; files none", async () => {
+    const long = `${"x".repeat(199)}yz${"!".repeat(50)}`
+    await as(a, "POST", "/v1/messages", { to: "team:b", text: long })
+    await as(a, "POST", "/v1/messages", { to: "team:b", text: "short" })
+    await as(a, "POST", "/v1/messages", {
+      to: "team:b",
+      data: "iVBORw==",
+      mime: "image/png",
+    })
+    const [file, short, first] = (await owner("GET", "/v1/messages")).body
+      .messages
+    expect(first.preview).toBe(`${"x".repeat(199)}y`)
+    expect(short.preview).toBe("short")
+    expect(file.preview).toBeUndefined()
+    // an agent's own list carries none (it reads or is shown messages whole)
+    const mine = (await as(b, "GET", "/v1/me/messages")).body.messages
+    expect(mine.every((m: any) => m.preview === undefined)).toBe(true)
+  })
+})
+
 describe("waiting", () => {
   test("wait returns as soon as a message comes, or empty after the wait", async () => {
     const started = Date.now()

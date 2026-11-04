@@ -1,9 +1,10 @@
 /*
  * Unit tests of how the pages show times: in the viewer's time zone, with the
- * zone's short name (PT for Pacific time); and versions, with a v.
+ * zone's short name (PT for Pacific time); versions, with a v; and long texts,
+ * folded to their first 200 characters.
  */
 
-import { localTime, versionText } from './format';
+import { folded, localTime, versionText } from './format';
 
 describe('localTime', () => {
   it("shows a time in the viewer's zone, with the zone's name", () => {
@@ -40,5 +41,14 @@ describe('versionText', () => {
     expect(versionText('local')).toBe('local');
     expect(versionText('')).toBe('');
     expect(versionText(null)).toBe('');
+  });
+});
+
+describe('folded', () => {
+  it('keeps a text of up to 200 characters whole and folds a longer one', () => {
+    const two = 'x'.repeat(200);
+    expect(folded(two)).toBe(two);
+    expect(folded(`${'y'.repeat(199)} more`)).toBe(`${'y'.repeat(199)}…`);
+    expect(folded(`a\nb${'c'.repeat(220)}`)).toBe(`a\nb${'c'.repeat(197)}…`);
   });
 });

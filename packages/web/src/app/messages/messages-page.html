@@ -1,7 +1,8 @@
 <!--
   The Messages page: the form to send a message as the owner (collapsed until
-  its title is clicked), every message, newest first (a click on one opens its
-  text in a row below it), and when the list last loaded.
+  its title is clicked), every message, newest first (agent IDs link to the
+  Agents page; a long text shows its first 200 characters until its cell is
+  clicked), and when the list last loaded.
 -->
 
 <div class="toolbar">
@@ -67,6 +68,7 @@
       <th>From</th>
       <th>To</th>
       <th>Subject</th>
+      <th>Text</th>
       <th>Kind</th>
       <th>Size</th>
       <th>State</th>
@@ -74,52 +76,55 @@
   </thead>
   <tbody>
     @for (m of messages(); track m.id) {
-      <tr
-        [attr.data-message]="m.id"
-        tabindex="0"
-        [attr.aria-expanded]="isOpen(m.id)"
-        (click)="toggle(m)"
-        (keydown.enter)="toggle(m)"
-      >
-        <td class="id"><code>{{ m.id }}</code></td>
+      <tr [attr.data-message]="m.id">
+        <td class="id id-like"><code [appId]="m.id"></code></td>
         <td class="time" [title]="m.created_at" [appTime]="m.created_at"></td>
-        <td class="sender">
+        <td class="sender id-like">
           @if (m.from === 'owner') {
-            owner
+            <span appId="owner"></span>
           } @else {
-            <code [appBreaks]="m.from"></code>
+            <app-agent-link [id]="m.from" />
           }
         </td>
-        <td class="recipient">
+        <td class="recipient id-like">
           @if (m.to === 'owner') {
-            owner
+            <span appId="owner"></span>
           } @else {
-            <code [appBreaks]="m.to"></code>
+            <app-agent-link [id]="m.to" />
           }
         </td>
         <td class="subject">{{ m.subject }}</td>
+        <!--
+          A long text: a click anywhere in its cell (or Enter on it) opens it,
+          the next folds it.
+        -->
+        <td class="text" [class.folds]="isLong(m)" (click)="cellClick(m)">
+          @if (m.kind !== 'text') {
+            <span class="muted">{{ m.mime ?? 'binary' }} file</span>
+          } @else if (isLong(m)) {
+            <span
+              class="more"
+              role="button"
+              tabindex="0"
+              [attr.aria-expanded]="isOpen(m.id)"
+              (keydown.enter)="toggle(m)"
+              (keydown.space)="$event.preventDefault(); toggle(m)"
+              >{{ shown(m) }}</span
+            >
+            @if (isOpen(m.id) && bodyOf(m.id)?.error; as error) {
+              <span class="errmsg" role="alert">{{ error }}</span>
+            }
+          } @else {
+            <span class="whole">{{ m.preview ?? '' }}</span>
+          }
+        </td>
         <td class="kind">{{ kindText(m) }}</td>
         <td class="num size">{{ sizeText(m) }}</td>
         <td class="state">{{ m.state }}</td>
       </tr>
-      @if (isOpen(m.id)) {
-        <tr class="detail" [attr.data-detail]="m.id">
-          <td colspan="8">
-            @if (bodyOf(m.id); as b) {
-              @if (b.error) {
-                <span class="errmsg" role="alert">{{ b.error }}</span>
-              } @else {
-                <div class="body" [class.muted]="b.file">{{ b.text }}</div>
-              }
-            } @else {
-              <span class="muted">Loading...</span>
-            }
-          </td>
-        </tr>
-      }
     } @empty {
       <tr>
-        <td class="muted" colspan="8">
+        <td class="muted" colspan="9">
           {{ loaded() ? 'No messages yet.' : 'Loading...' }}
         </td>
       </tr>

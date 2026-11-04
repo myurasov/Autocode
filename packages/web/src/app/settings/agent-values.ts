@@ -1,7 +1,7 @@
 /*
- * The Settings page's section for agents' own values: lists them, adds one for
- * an agent ID (known IDs are offered), and changes or removes one; each change
- * is saved on the server at once.
+ * The Settings page's section for agents' own values: lists them (each ID
+ * links to the Agents page), adds one for an agent ID (known IDs are offered),
+ * and changes or removes one; each change is saved on the server at once.
  */
 
 import {
@@ -13,7 +13,9 @@ import {
   untracked,
 } from '@angular/core';
 import { Api, type SettingValue } from '../api';
+import { IdParts } from '../breaks';
 import { valueText } from '../format';
+import { AgentLink } from '../links';
 import { SettingsMessage } from './settings-message';
 import { type Draft, draftOf, SettingsState } from './settings-state';
 import { ValueInput } from './value-input';
@@ -27,7 +29,7 @@ interface Row {
 // Agents' own values: they count more than the rules and the server's values.
 @Component({
   selector: 'app-agent-values',
-  imports: [ValueInput, SettingsMessage],
+  imports: [AgentLink, IdParts, ValueInput, SettingsMessage],
   templateUrl: './agent-values.html',
 })
 export class AgentValues {

@@ -27,7 +27,7 @@
     ) {
       <tr [attr.data-rule]="i + 1">
         <td class="num">{{ i + 1 }}</td>
-        <td class="match"><code>{{ rule.match }}</code></td>
+        <td class="match id-like"><code [appId]="rule.match"></code></td>
         <td class="pairs">
           @for (entry of entries(rule); track entry[0]) {
             <span class="pair"

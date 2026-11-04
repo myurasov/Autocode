@@ -1,7 +1,8 @@
 <!--
   The Hosts page: one row per OpenCode server folder that the Autocode plugin
   connects from, by machine: its status, OpenCode process (marked when its
-  shells get no Autocode values), and its versions; then when the list last
+  shells get no Autocode values), and its versions; the host a link led to
+  highlighted (or a line that says it is not there); then when the list last
   loaded.
 -->
 
@@ -11,6 +12,9 @@
 
 @if (error()) {
   <p class="errmsg" role="alert">{{ error() }}</p>
+}
+@if (missing(); as id) {
+  <p class="muted missing">No host {{ id }} now.</p>
 }
 
 <table class="hosts">
@@ -28,13 +32,20 @@
   @for (m of machines(); track m.machine) {
     <tbody [attr.data-machine]="m.machine">
       <tr class="group">
-        <th colspan="7" scope="rowgroup">
-          {{ m.machine || 'unknown machine' }}
-        </th>
+        <th
+          class="id-like"
+          colspan="7"
+          scope="rowgroup"
+          [appId]="m.machine || 'unknown machine'"
+        ></th>
       </tr>
       @for (h of m.hosts; track h.id) {
-        <tr [attr.data-host]="h.id">
-          <td class="id"><code [appBreaks]="h.id"></code></td>
+        <tr
+          [attr.data-host]="h.id"
+          [class.highlight]="h.id === target()"
+          [attr.aria-current]="h.id === target() ? 'true' : null"
+        >
+          <td class="id id-like"><code [appId]="h.id"></code></td>
           <td class="folder"><code [appBreaks]="h.directory"></code></td>
           <td class="status">
             <span

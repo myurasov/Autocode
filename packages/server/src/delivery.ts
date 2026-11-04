@@ -4,11 +4,19 @@
  * checks run by the plugin before a wake is injected; at most one injection
  * per min_interval, only while the session is idle, its host online and the
  * agent not paused; each injection one prompt with the [autocode] header, in
- * which what agents wrote is quoted.
+ * which what agents wrote is quoted, each wake says what kind it is and when
+ * it runs next, and a footer says where the prompt comes from.
  */
 
 import type { Database } from "bun:sqlite"
-import { parseDuration, resolveSettings } from "@autocode/shared"
+import {
+  formatDuration,
+  formatTrigger,
+  localTime,
+  parseDuration,
+  resolveSettings,
+  type Trigger,
+} from "@autocode/shared"
 import type { History } from "./history.ts"
 import type { Hosts } from "./hosts.ts"
 import type { Loader } from "./loader.ts"
@@ -29,6 +37,11 @@ function promptId(now: number): string {
   const random = crypto.randomUUID().replaceAll("-", "").slice(0, 12)
   return `msg_${time}${random}`
 }
+
+// The last line of every injection (tier 0b2).
+export const FOOTER =
+  "— From Autocode, not the owner. Your wakes: autocode_wake list. " +
+  "How Autocode works: autocode_me action=help."
 
 const who = (id: string) =>
   id === "owner" ? "the owner" : id === "autocode" ? "Autocode" : `agent ${id}`
@@ -77,7 +90,8 @@ export class Delivery {
       this.db
         .query(
           `INSERT INTO queue (agent_id, kind, wake, text, check_cmd, fired_by,
-             extra, created_at) VALUES (?, 'wake', ?, ?, ?, ?, ?, ?)`,
+             extra, trigger, created_at)
+           VALUES (?, 'wake', ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           agent,
@@ -86,6 +100,7 @@ export class Delivery {
           item.check ?? null,
           item.fired_by ?? null,
           item.extra ?? null,
+          item.trigger ?? null,
           this.now(),
         )
       return
@@ -99,7 +114,7 @@ export class Delivery {
         .query(
           `UPDATE queue SET wake = ?, text = ?, check_cmd = ?, fired_by = ?,
              extra = ?, check_instruction = ?, check_sent_at = ?,
-             check_output = ? WHERE id = ?`,
+             check_output = ?, trigger = ? WHERE id = ?`,
         )
         .run(
           item.wake,
@@ -110,6 +125,7 @@ export class Delivery {
           firedBy ? null : first.check_instruction,
           firedBy ? null : first.check_sent_at,
           firedBy ? null : first.check_output,
+          item.trigger ?? first.trigger ?? null,
           first.id,
         )
     for (const r of rest)
@@ -400,6 +416,39 @@ export class Delivery {
     return running
   }
 
+  /*
+   * What a wake is, for its section of the prompt: its trigger, when it runs
+   * next and when it ends, in the server's zone; a one-time wake that ran
+   * (and is gone) says so.
+   */
+  private about(agent: string, item: any, tz: string): string {
+    const live = this.wakes.row(agent, item.wake)
+    const stored = live?.trigger ?? item.trigger
+    if (!stored) return ""
+    const t = JSON.parse(stored) as Trigger
+    const ends = live?.end_at ? `; ends ${localTime(live.end_at, tz)}` : ""
+    switch (t.kind) {
+      case "every":
+      case "cron": {
+        const next = live?.next_at
+          ? `; next ${localTime(live.next_at, tz)}`
+          : ""
+        return `(${formatTrigger(t)}${next}${ends})`
+      }
+      case "at":
+        return live?.next_at
+          ? `(once, at ${localTime(live.next_at, tz)}${ends})`
+          : "(once, this was its only run)"
+      case "idle":
+        return t.repeat
+          ? `(${formatTrigger(t)}; again after ${formatDuration(t.idle_ms)} ` +
+              `more idle${ends})`
+          : `(${formatTrigger(t)}; once per idle stretch${ends})`
+      case "fire-only":
+        return `(fire-only${ends})`
+    }
+  }
+
   private inject(row: any, items: any[], values: Record<string, unknown>) {
     // Wakes left with the same name or text: only the newest goes in.
     const seen = new Set<string>()
@@ -442,8 +491,10 @@ export class Delivery {
     }
     const inline = Number(values.inline_limit) || 0
     const sections: string[] = []
+    const tz = String(this.settings.value("timezone")) || "UTC"
     for (const w of wakes) {
-      const lines = [`Wake "${w.wake}":`, w.text]
+      const about = this.about(row.id, w, tz)
+      const lines = [`Wake "${w.wake}"${about ? ` ${about}` : ""}:`, w.text]
       if (w.extra) lines.push(`Added by ${who(w.fired_by)}:`, quote(w.extra))
       if (w.check_output) lines.push("Its check said:", quote(w.check_output))
       sections.push(lines.join("\n"))
@@ -466,7 +517,9 @@ export class Delivery {
         listed.push(m.id)
       }
     }
-    const text = `[autocode] ${reasons.join(", ")}\n\n${sections.join("\n\n")}`
+    const text =
+      `[autocode] ${reasons.join(", ")}\n\n${sections.join("\n\n")}` +
+      `\n\n${FOOTER}`
     const now = this.now()
     const id = promptId(now)
     const instruction = this.hosts.enqueue(row.host_id, "inject", {
@@ -486,6 +539,7 @@ export class Delivery {
         text: w.text,
         fired_by: w.fired_by,
         extra: w.extra,
+        trigger: w.trigger,
         check: null,
       })),
       ...messages.map((m) => ({ kind: "message", id: m.id })),

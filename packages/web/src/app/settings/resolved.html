@@ -30,14 +30,16 @@
     <thead>
       <tr>
         <th>Setting</th>
-        <th>Value for <code>{{ r.agent }}</code></th>
+        <th>
+          Value for <app-agent-link class="id-like" [id]="r.agent" />
+        </th>
         <th>From</th>
       </tr>
     </thead>
     <tbody>
       @for (key of keys(); track key) {
         <tr [attr.data-key]="key">
-          <td class="key"><code>{{ key }}</code></td>
+          <td class="key id-like"><code [appId]="key"></code></td>
           <td class="value">{{ valueText(r.values[key]) }}</td>
           <td class="from">{{ sourceText(r.sources[key]) }}</td>
         </tr>

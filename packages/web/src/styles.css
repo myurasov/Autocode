@@ -174,8 +174,14 @@ td button {
 .row-buttons button {
   margin-right: 0;
 }
+/*
+ * Fixed-width fonts by name before the generic one: on Linux the generic
+ * monospace can be a CJK font, whose "…" is two letters wide.
+ */
 code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    "DejaVu Sans Mono", monospace;
   font-size: 0.9em;
 }
 a {
@@ -210,6 +216,9 @@ nav {
 }
 nav a {
   border: 1px solid var(--border);
+  /* 2 px rounded top corners (the owner, 2026-11-03) */
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
   background: var(--tab-bg);
   color: var(--fg-dim);
   padding: 0.45rem 1rem;
@@ -230,6 +239,13 @@ nav a.on {
   padding: 1.25rem;
   min-height: 14rem;
   overflow-x: auto;
+}
+/*
+ * Help's contents stay in view as the window scrolls: its frame lets them
+ * (a frame that scrolls sideways would hold them in place).
+ */
+#frame:has(> app-help-page) {
+  overflow: visible;
 }
 /* A page's first item starts at the top of its frame. */
 #frame > :first-child,
@@ -257,7 +273,6 @@ th {
   font-weight: var(--bold);
 }
 td.status,
-td.key,
 td.num,
 td.from,
 td.scope {
@@ -267,14 +282,15 @@ td.help {
   color: var(--fg-dim);
 }
 /*
- * So that a table fits its frame: long IDs, folders and sessions wrap after
- * ":", "/" or "_" (the page marks those places), a session anywhere if it must
- * but no narrower than 10 characters, and a time between its date and clock.
+ * IDs and id-like names (agent, host, message and session IDs, wake names,
+ * setting keys, rules' patterns, machine names; the cells marked .id-like)
+ * wrap as normal text (the owner, 2026-11-03): at their separators, after a
+ * ":" or "_" (between the parts appId marks) and where the browser breaks,
+ * as after "-"; never inside a word. Folders wrap after "/" (the page marks
+ * those places), and a time between its date and clock.
  */
-td.session code {
-  display: inline-block;
-  min-width: 10ch;
-  overflow-wrap: anywhere;
+.id-part {
+  white-space: normal;
 }
 td.time > span {
   white-space: nowrap;
@@ -331,37 +347,58 @@ table.inbox tr.closed .title {
   font-weight: normal;
 }
 /*
- * Wakes: a trigger stays on one line; a text or a check as long as a sentence
- * wraps anywhere it must.
+ * Wakes: a text or a check as long as a sentence wraps anywhere it must (a
+ * trigger wraps like any cell: the owner, 2026-11-03).
  */
-table.wakes td.trigger {
-  white-space: nowrap;
-}
 table.wakes td.text,
 table.wakes td.check code {
   overflow-wrap: anywhere;
 }
 /*
- * Messages: a message's row opens its text in a row below it (the owner,
- * 2026-11-02): it reads as clickable, and an open one stays marked; the text
- * keeps its lines and wraps anywhere it must.
+ * A long text (a wake's text or check, a message's text) folded to its first
+ * 200 characters: a click anywhere in its cell (or Enter on it) shows it
+ * whole, the next folds it (the owner, 2026-11-03). The cell reads as
+ * clickable; a text keeps its lines and wraps anywhere it must.
  */
-table.messages tr[data-message] {
-  cursor: pointer;
-}
-table.messages tr[data-message]:hover > td,
-table.messages tr[aria-expanded="true"] > td {
-  background: var(--sel);
-}
-table.messages td.id {
-  white-space: nowrap;
-}
-table.messages tr.detail > td {
-  background: var(--softer);
-}
-table.messages tr.detail .body {
+.more,
+.whole {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+td.folds {
+  cursor: pointer;
+}
+td.folds:hover .more,
+.more:focus-visible {
+  color: var(--link);
+}
+td.text .errmsg {
+  display: block;
+}
+/* Messages' Text column takes a good share of a narrow table, as it can. */
+table.messages td.text {
+  width: 30%;
+}
+/*
+ * An agent or host ID that leads to its page (the owner, 2026-11-03): it looks
+ * like the ID it is, underlined on hover.
+ */
+a.id-link {
+  color: inherit;
+  text-decoration: none;
+}
+a.id-link:hover,
+a.id-link:focus-visible {
+  text-decoration: underline;
+}
+/*
+ * The row such a link led to, in both themes: the selection's tint, and an
+ * inset glow in the link color (the owner, 2026-11-03). On the row, so that
+ * no cell background covers the glow.
+ */
+tr.highlight {
+  background: var(--sel);
+  box-shadow: inset 0px 0px 7px var(--link);
 }
 .pair {
   display: inline-block;

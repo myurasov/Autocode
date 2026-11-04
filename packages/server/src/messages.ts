@@ -18,6 +18,9 @@ import type { History } from "./history.ts"
 export const MAX_MESSAGE = 32_000
 // A wait ends before the HTTP server's idle limit (255 s); callers wait again.
 export const MAX_WAIT_SECONDS = 240
+// How much of a text message the owner's list shows (200: the owner,
+// 2026-11-03).
+export const PREVIEW = 200
 const MAX_SUBJECT = 500
 const MAX_MIME = 200
 const MIME = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/
@@ -370,7 +373,8 @@ export class Messages {
     return messageView(row, true)
   }
 
-  // The owner's view: every message, newest first, without bodies.
+  // The owner's view: every message, newest first, without bodies; a text
+  // message carries its first PREVIEW characters.
   all(filter: { agent?: string; limit?: number } = {}): MessageView[] {
     const limit = Math.min(Math.max(1, filter.limit ?? 200), 1000)
     const rows = filter.agent
@@ -386,7 +390,10 @@ export class Messages {
               "LIMIT ?",
           )
           .all(limit)
-    return (rows as any[]).map((r) => messageView(r))
+    return (rows as any[]).map((r) => ({
+      ...messageView(r),
+      ...(r.mime ? {} : { preview: String(r.body).slice(0, PREVIEW) }),
+    }))
   }
 
   // Message bodies go with the history (history_days).

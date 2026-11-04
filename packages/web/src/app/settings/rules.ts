@@ -5,6 +5,7 @@
 
 import { Component, computed, inject, signal } from '@angular/core';
 import type { Rule } from '../api';
+import { IdParts } from '../breaks';
 import { valueText } from '../format';
 import { SettingsMessage } from './settings-message';
 import { type Draft, draftOf, SettingsState } from './settings-state';
@@ -21,7 +22,7 @@ interface DraftRule {
 // whole list.
 @Component({
   selector: 'app-rules',
-  imports: [ValueInput, SettingsMessage],
+  imports: [IdParts, ValueInput, SettingsMessage],
   templateUrl: './rules.html',
 })
 export class Rules {

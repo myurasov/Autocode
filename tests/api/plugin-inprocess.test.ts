@@ -371,7 +371,7 @@ describe("the plugin in-process", () => {
       { action: "register", id: "inproc:older" },
       { sessionID: "ses_old" },
     )
-    expect(out.content).toBe("Registered as inproc:older (status idle).")
+    expect(out.content).toStartWith("Registered as inproc:older (status idle).")
     // the owner deletes that session in the older process: only that process's
     // event stream carries it
     sessions.splice(0, 1)
@@ -756,13 +756,21 @@ describe("the plugin in-process, tier 0b", () => {
     const line = {
       type: "text",
       text:
-        "This session is Autocode agent `inproc:guide` on server `api-test`; " +
-        "the `autocode` skill says how to use Autocode.",
+        "This session is Autocode agent `inproc:guide` on server `api-test`. " +
+        "Use the `autocode_*` tools (not the `autocode` CLI); `autocode_me " +
+        "action=help` or the `autocode` skill explains exactly how wakes and " +
+        "messages work.",
     }
     await until(async () => (await context("ses_guide")).length === 1, {
       what: "the registration to reach the plugin",
     })
     expect(await context("ses_guide")).toEqual([line])
+    // the same guide through the tool, for agents that do not load skills
+    const help = await tool(fake, "autocode_me").execute(
+      { action: "help", topic: "wakes" },
+      { sessionID: "ses_guide" },
+    )
+    expect(help.content).toStartWith("## Wakes")
     expect(await context("ses_guide_child")).toEqual([line])
     expect(await context("ses_guide_free")).toEqual([])
     await tool(fake, "autocode_me").execute(
@@ -800,17 +808,22 @@ describe("the plugin in-process, tier 0b", () => {
         { action: "set", name: "daily", trigger: "every 1h", text: "Look." },
         "ses_tool_a",
       ),
-    ).toMatch(/^Wake "daily" set: every 1h; next \S+Z\.$/)
+    ).toMatch(
+      new RegExp(
+        '^Wake "daily" set: every 1h\\. ' +
+          "Next run [\\d-]{10} \\d\\d:\\d\\d \\S+ \\(in 1h\\)\\.",
+      ),
+    )
     expect(
       await run("autocode_wake", { action: "list" }, "ses_tool_a"),
-    ).toContain("daily  every 1h")
+    ).toContain("daily: every 1h; next ")
     expect(
       await run(
         "autocode_wake",
         { action: "fire", agent: "tools:a", name: "daily", text: "now" },
         "ses_tool_b",
       ),
-    ).toBe('Fired wake "daily" of tools:a.')
+    ).toBe('Fired wake "daily" of tools:a: it comes when that session is idle.')
     writeFileSync(join(dir, "notes.txt"), "plain words")
     writeFileSync(join(dir, "plot.png"), Buffer.from([137, 80, 78, 71, 0, 1]))
     expect(

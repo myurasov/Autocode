@@ -118,6 +118,7 @@ describe('App (shell)', () => {
       'Messages',
       'Wakes',
       'Settings',
+      'Help',
     ]);
     expect(
       [...page.querySelectorAll('nav a')].map((a) => a.getAttribute('href')),
@@ -128,6 +129,7 @@ describe('App (shell)', () => {
       '/messages',
       '/wakes',
       '/settings',
+      '/help',
     ]);
     expect(text(page.querySelector('.who'))).toBe('admin');
     // kept for this tab only

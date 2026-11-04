@@ -167,10 +167,12 @@ const LOADED: Record<string, string> = {
   Messages: "table.messages tr[data-message]",
   Wakes: "table.wakes tr[data-wake]",
   Settings: "table.settings tr[data-key]",
+  Help: "article h2",
 }
 const TABS = Object.keys(LOADED)
+// The tab itself: Help's contents link to sections with the same names.
 async function openTab(page: Page, tab: string) {
-  await page.getByRole("link", { name: tab }).click()
+  await page.getByRole("link", { name: tab, exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/${tab.toLowerCase()}$`))
   await expect(page.locator(`#frame ${LOADED[tab]}`).first()).toBeVisible()
 }
@@ -188,6 +190,7 @@ test("admin: Agents shows smoke:agent under machine smoke, Hosts its host", asyn
     "Messages",
     "Wakes",
     "Settings",
+    "Help",
   ])
   const machine = page.locator('table.agents tbody[data-machine="smoke"]')
   await expect(machine.locator("tr.group")).toHaveText("smoke")
@@ -288,6 +291,7 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
     "From",
     "To",
     "Subject",
+    "Text",
     "Kind",
     "Size",
     "State",
@@ -296,6 +300,11 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
     .locator("table.messages tr[data-message]")
     .filter({ has: page.locator("td.subject", { hasText: /^Smoke$/ }) })
     .first()
+  // A short text is shown whole, its lines kept.
+  await expect(message.locator("td.text")).toHaveText(
+    /^Hello from the smoke test\.\s+A second line\.$/,
+  )
+  await expect(message.locator("td.text .more")).toHaveCount(0)
   await expect(message.locator("td.sender")).toHaveText("smoke:agent")
   await expect(message.locator("td.recipient")).toHaveText("owner")
   await expect(message.locator("td.kind")).toHaveText("text")
@@ -310,6 +319,7 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
     "Check",
     "End",
     "Set By",
+    "Last Set",
     "Last Fired",
     "",
   ])
@@ -319,6 +329,10 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
   await expect(wake.locator("td.trigger")).toHaveText("every 30m")
   await expect(wake.locator("td.text")).toHaveText("Check the smoke.")
   await expect(wake.locator("td.by")).toHaveText("smoke:agent")
+  await expect(wake.locator("td.set")).toHaveAttribute(
+    "title",
+    /^\d{4}-\d\d-\d\dT/,
+  )
   await expect(wake.locator("td.check")).toHaveText("—")
 })
 
@@ -427,39 +441,316 @@ test("admin: sends a message from the Messages page", async ({ page }) => {
   )
 })
 
+// Sends the owner a message as smoke:agent.
+async function messageOwner(subject: string, text: string) {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  try {
+    const sent = await api.post("/v1/messages", {
+      headers: bearer(sessionToken),
+      data: { to: "owner", subject, text },
+    })
+    expect(sent.status(), await sent.text()).toBe(201)
+  } finally {
+    await api.dispose()
+  }
+}
+
+// What a long text shows folded: its first 200 characters and an ellipsis.
+const folded = (text: string) => `${text.slice(0, 200).trimEnd()}…`
+
+// A click in a cell's top right corner: its padding, away from its text.
+async function clickCorner(cell: Locator) {
+  const box = (await cell.boundingBox())!
+  await cell.click({ position: { x: box.width - 3, y: 3 } })
+}
+
 /*
- * A click on a message's row opens its text in a row below it, its lines
- * kept; the next click closes it (the owner, 2026-11-02). The owner's read
- * leaves the message's state as it was.
+ * A long message text shows its first 200 characters and "…"; a click
+ * anywhere in its cell (or Enter) shows it whole, its lines kept; the next
+ * click folds it (the owner, 2026-11-03). The row itself opens nothing, and
+ * the owner's read leaves the message's state.
  */
-test("admin: opens a message's text from the Messages table", async ({
+test("admin: a long message text is truncated to 200 characters; a click anywhere in its cell expands it", async ({
   page,
 }) => {
+  const subject = `Long ${Date.now()}`
+  const long =
+    "First line of a long report from the smoke test, long enough to be " +
+    "cut at two hundred characters, which takes a while to write out in " +
+    "full, so it goes on for a little longer than that.\n" +
+    "Second line, shown only when opened."
+  expect(long.length).toBeGreaterThan(200)
+  await messageOwner(subject, long)
   await signIn(page, admin)
   await openTab(page, "Messages")
   const row = page
     .locator("table.messages tr[data-message]")
-    .filter({ has: page.locator("td.subject", { hasText: /^Smoke$/ }) })
-    .first()
-  await expect(row.locator("td.id")).toHaveText(/^m_\w+$/)
-  await expect(row).toHaveCSS("cursor", "pointer")
+    .filter({ has: page.locator("td.subject", { hasText: subject }) })
+  const cell = row.locator("td.text")
+  const more = cell.locator(".more")
+  await expect(more).toHaveText(folded(long))
+  await expect(cell).toHaveCSS("cursor", "pointer")
+  await expect(more).toHaveAttribute("aria-expanded", "false")
   const state = await row.locator("td.state").textContent()
-  const id = await row.getAttribute("data-message")
-  await row.click()
-  const body = page.locator(
-    `table.messages tr.detail[data-detail="${id}"] .body`,
-  )
-  await expect(body).toHaveText("Hello from the smoke test.\nA second line.")
-  const lines = await body.evaluate(
-    (e) =>
-      e.getBoundingClientRect().height /
-      Number.parseFloat(getComputedStyle(e).lineHeight),
-  )
-  expect(Math.round(lines)).toBe(2)
+  await clickCorner(cell)
+  await expect(more).toHaveAttribute("aria-expanded", "true")
+  await expect(more).toHaveCSS("white-space", "pre-wrap")
+  await expect.poll(() => more.evaluate((e) => e.textContent)).toBe(long)
   expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
-  await row.click()
-  await expect(body).toHaveCount(0)
+  // A click on the text itself folds it once.
+  await more.click()
+  await expect(more).toHaveText(folded(long))
+  await more.press("Enter")
+  await expect.poll(() => more.evaluate((e) => e.textContent)).toBe(long)
   await expect(row.locator("td.state")).toHaveText(state!)
+  await row.locator("td.subject").click()
+  await expect(page.locator("table.messages tr.detail")).toHaveCount(0)
+  await expect(row).not.toHaveAttribute("tabindex")
+})
+
+// The widths of ten narrow and ten wide letters, and of "…" and "i", in an
+// element's own font: equal pairs in a fixed-width font.
+function widths(element: Locator) {
+  return element.evaluate((e) => {
+    const width = (text: string) => {
+      const probe = document.createElement("span")
+      probe.style.display = "inline-block"
+      probe.style.whiteSpace = "pre"
+      probe.textContent = text
+      e.append(probe)
+      const w = probe.getBoundingClientRect().width
+      probe.remove()
+      return w
+    }
+    return {
+      narrow: width("iiiiiiiiii"),
+      wide: width("MMMMMMMMMM"),
+      ellipsis: width("…"),
+      letter: width("i"),
+    }
+  })
+}
+
+/*
+ * A long wake text and a long check show their first 200 characters and "…";
+ * a click anywhere in the cell (or Enter) shows the whole, its lines kept, and
+ * it stays so across the 10 s refresh; the next folds it. The check is in a
+ * fixed-width font, folded and open, its "…" too (the owner, 2026-11-03).
+ */
+test("admin: a long wake text and check are truncated to 200 characters; a click anywhere in the cell expands them; the check is fixed-width", async ({
+  page,
+}) => {
+  const long =
+    "Look at every page of the web UI at 1024 and 1280 pixels and list " +
+    "what does not fit its frame, which page it is on, at which width, " +
+    "and what the owner would want it to look like.\n" +
+    "Then fix the worst one first."
+  const check =
+    'test -n "$(find /home/someone/MY-Solaris/projects/my/autocode/' +
+    "source/__out/live/project -name '*.png' -newer " +
+    "/home/someone/MY-Solaris/projects/my/autocode/source/__out/live/" +
+    'project/.last-look -print -quit)"'
+  expect(long.length).toBeGreaterThan(200)
+  expect(check.length).toBeGreaterThan(200)
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  try {
+    const set = await api.put("/v1/me/wakes/long-text", {
+      headers: bearer(sessionToken),
+      data: { text: long, check, trigger: "fire-only" },
+    })
+    expect(set.ok(), await set.text()).toBe(true)
+    await signIn(page, admin)
+    await openTab(page, "Wakes")
+    const wake = page.locator(
+      'table.wakes tbody[data-agent="smoke:agent"] tr[data-wake="long-text"]',
+    )
+    const text = wake.locator("td.text")
+    const more = text.locator(".more")
+    await expect(more).toHaveText(folded(long))
+    await expect(text).toHaveCSS("cursor", "pointer")
+    await clickCorner(text)
+    await expect(more).toHaveAttribute("aria-expanded", "true")
+    await expect(more).toHaveCSS("white-space", "pre-wrap")
+    await expect.poll(() => more.evaluate((e) => e.textContent)).toBe(long)
+
+    const cell = wake.locator("td.check")
+    const code = cell.locator("code.more")
+    await expect
+      .poll(() => code.evaluate((e) => e.textContent))
+      .toBe(folded(check))
+    await expect(cell).toHaveCSS("cursor", "pointer")
+    for (const state of ["folded", "open"]) {
+      if (state === "open") {
+        await clickCorner(cell)
+        await expect(code).toHaveAttribute("aria-expanded", "true")
+      }
+      const w = await widths(code)
+      expect(w.narrow, state).toBeCloseTo(w.wide, 0)
+      expect(w.ellipsis, state).toBeCloseTo(w.letter, 0)
+    }
+    await expect.poll(() => code.evaluate((e) => e.textContent)).toBe(check)
+    expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+    // Still whole after the page's next refresh.
+    await page.waitForTimeout(10_500)
+    await expect(page.locator("#frame footer")).toHaveText(
+      /^Updated [0-9]s ago\.$/,
+    )
+    expect(await more.evaluate((e) => e.textContent)).toBe(long)
+    expect(await code.evaluate((e) => e.textContent)).toBe(check)
+    await more.press("Enter")
+    await expect(more).toHaveText(folded(long))
+    await code.click()
+    await expect
+      .poll(() => code.evaluate((e) => e.textContent))
+      .toBe(folded(check))
+    // A short text has nothing to open.
+    const short = page.locator(
+      'table.wakes tr[data-wake="smoke-check"] td.text',
+    )
+    await expect(short.locator(".more")).toHaveCount(0)
+    await expect(short).not.toHaveCSS("cursor", "pointer")
+  } finally {
+    await api.delete("/v1/me/wakes/long-text", {
+      headers: bearer(sessionToken),
+    })
+    await api.dispose()
+  }
+})
+
+// The Wakes Trigger column wraps like the others (the owner, 2026-11-03).
+test("layout: the Wakes Trigger column wraps", async ({ page }) => {
+  await signIn(page, admin)
+  await openTab(page, "Wakes")
+  const triggers = page.locator("table.wakes td.trigger")
+  await expect(triggers.first()).toBeVisible()
+  const spaces = await triggers.evaluateAll((all) => [
+    ...new Set(all.map((td) => getComputedStyle(td).whiteSpace)),
+  ])
+  expect(spaces).toEqual(["normal"])
+})
+
+/*
+ * An agent ID shown outside the Agents page links to it, which highlights
+ * the agent's row and scrolls it into view; the browser's back returns (the
+ * owner, 2026-11-03).
+ */
+test("link: an agent ID on Wakes, Messages and Inbox opens Agents with its row highlighted and in view; back returns", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 500 })
+  await signIn(page, admin)
+  const sources: [string, string][] = [
+    ["Wakes", 'table.wakes tbody[data-agent="smoke:agent"] tr.group a.id-link'],
+    ["Messages", "table.messages td.sender a.id-link"],
+    ["Inbox", "table.inbox td.agent a.id-link"],
+  ]
+  for (const [tab, selector] of sources) {
+    await openTab(page, tab)
+    const link = page.locator(selector, { hasText: "smoke:agent" }).first()
+    await expect(link, tab).toHaveCSS("text-decoration-line", "none")
+    await link.hover()
+    await expect(link, tab).toHaveCSS("text-decoration-line", "underline")
+    await link.click()
+    await expect(page, tab).toHaveURL(/\/agents\?agent=smoke(:|%3A)agent$/)
+    const row = page.locator('table.agents tr[data-agent="smoke:agent"]')
+    await expect(row, tab).toHaveClass(/\bhighlight\b/)
+    await expect(row, tab).toBeInViewport()
+    await expect(page.locator("table.agents tr.highlight")).toHaveCount(1)
+    await page.goBack()
+    await expect(page, tab).toHaveURL(new RegExp(`/${tab.toLowerCase()}$`))
+    await expect(page.locator(`#frame ${LOADED[tab]}`).first()).toBeVisible()
+  }
+})
+
+/*
+ * How a highlighted row and another row look: the row's background and
+ * shadow, and its first cell's background; and what --sel and --link are now.
+ */
+async function looks(page: Page, table: string, attr: string) {
+  return page.evaluate(
+    ([table, attr]) => {
+      const rows = [...document.querySelectorAll(`table.${table} tr[${attr}]`)]
+      const resolved = (prop: "color" | "backgroundColor", value: string) => {
+        const probe = document.createElement("span")
+        probe.style[prop] = value
+        document.body.append(probe)
+        const out = getComputedStyle(probe)[prop]
+        probe.remove()
+        return out
+      }
+      const look = (r: Element | undefined) => {
+        if (!r) return undefined
+        const row = getComputedStyle(r)
+        return {
+          row: row.backgroundColor,
+          shadow: row.boxShadow,
+          cell: getComputedStyle(r.querySelector("td")!).backgroundColor,
+        }
+      }
+      return {
+        sel: resolved("backgroundColor", "var(--sel)"),
+        link: resolved("color", "var(--link)"),
+        highlight: look(rows.find((r) => r.classList.contains("highlight"))),
+        other: look(rows.find((r) => !r.classList.contains("highlight"))),
+      }
+    },
+    [table, attr],
+  )
+}
+
+/*
+ * A host ID on Agents links to the Hosts page, which highlights the host's
+ * row, in both themes; the Hosts tab itself highlights nothing; back returns.
+ */
+test("link: a host ID on Agents opens Hosts with its row highlighted; the tab clears it", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  const link = page.locator(
+    'table.agents tr[data-agent="smoke:agent"] td.host a.id-link',
+  )
+  await expect(link).toHaveText("smoke:host:1")
+  await link.click()
+  await expect(page).toHaveURL(/\/hosts\?host=smoke(:|%3A)host(:|%3A)1$/)
+  const row = page.locator('table.hosts tr[data-host="smoke:host:1"]')
+  await expect(row).toHaveClass(/\bhighlight\b/)
+  await expect(row).toBeInViewport()
+  // The highlight (the owner, 2026-11-03): the row in the selection's tint,
+  // with an inset glow in the link color; its cells let the row show.
+  for (const theme of ["one", "the other"]) {
+    const look = await looks(page, "hosts", "data-host")
+    expect(look.highlight, theme).toEqual({
+      row: look.sel,
+      shadow: `${look.link} 0px 0px 7px 0px inset`,
+      cell: "rgba(0, 0, 0, 0)",
+    })
+    expect(look.other?.shadow, theme).toBe("none")
+    expect(look.other?.row, theme).not.toBe(look.sel)
+    await page.getByRole("button", { name: "Light or dark" }).click()
+  }
+  await page.getByRole("link", { name: "Hosts", exact: true }).click()
+  await expect(page).toHaveURL(/\/hosts$/)
+  await expect(page.locator("table.hosts tr.highlight")).toHaveCount(0)
+  await page.goBack()
+  await expect(row).toHaveClass(/\bhighlight\b/)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/agents$/)
+})
+
+// An ID that is not in the list now: a muted line says so.
+test("link: an agent or host that is not there now says so", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await page.goto("/agents?agent=nobody:here")
+  await expect(page.locator("#frame p.missing")).toHaveText(
+    "No agent nobody:here now.",
+  )
+  await expect(page.locator("table.agents tr.highlight")).toHaveCount(0)
+  await page.goto("/hosts?host=gone:1")
+  await expect(page.locator("#frame p.missing")).toHaveText(
+    "No host gone:1 now.",
+  )
 })
 
 test("admin: sets, fires and cancels a wake on the Wakes page", async ({
@@ -491,6 +782,103 @@ test("admin: sets, fires and cancels a wake on the Wakes page", async ({
   await wake.getByRole("button", { name: "Cancel" }).click()
   await expect(notice).toHaveText("Cancelled smoke:agent's wake owner-set.")
   await expect(wake).toHaveCount(0)
+})
+
+/*
+ * IDs and id-like names (agent, host, message and session IDs, wake names,
+ * setting keys, patterns, machine names) wrap as normal text, so they break
+ * at their separators (after ":" and "_", which the page marks, and where the
+ * browser breaks, as after "-"), never inside a word (the owner, 2026-11-03:
+ * "instead of white-space: pre, use normal"). At 1024 px: every line of such
+ * a cell but the last ends with a separator, a long wake name breaks at its
+ * hyphens, nothing is added around the ID, and the fixture's long IDs are
+ * among them.
+ */
+test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 800 })
+  await signIn(page, admin)
+  const seen: Record<string, string[]> = {}
+  const lines: Record<string, number> = {}
+  for (const tab of [
+    "Agents",
+    "Hosts",
+    "Inbox",
+    "Messages",
+    "Wakes",
+    "Settings",
+  ]) {
+    await openTab(page, tab)
+    const cells = await page.locator("#frame .id-like").evaluateAll((all) =>
+      all.map((e) => {
+        const parts = [...e.querySelectorAll(".id-part")]
+        const range = document.createRange()
+        range.selectNodeContents(e)
+        const style = getComputedStyle(e)
+        return {
+          raw: e.textContent ?? "",
+          text: (e.textContent ?? "").trim(),
+          parts: parts.map((p) => p.textContent ?? ""),
+          spaces: [
+            ...new Set(parts.map((p) => getComputedStyle(p).whiteSpace)),
+          ],
+          // The character before each line break: walk the characters and
+          // note where the next one starts lower down.
+          ends: (() => {
+            const out: string[] = []
+            const line = Number.parseFloat(style.lineHeight)
+            const walker = document.createTreeWalker(e, NodeFilter.SHOW_TEXT)
+            let last: { ch: string; top: number } | undefined
+            for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+              const text = n.textContent ?? ""
+              for (let i = 0; i < text.length; i++) {
+                const r = document.createRange()
+                r.setStart(n, i)
+                r.setEnd(n, i + 1)
+                const top = r.getBoundingClientRect().top
+                if (last && top - last.top > line / 2) out.push(last.ch)
+                last = { ch: text[i]!, top }
+              }
+            }
+            return out
+          })(),
+          lines:
+            range.getBoundingClientRect().height /
+            Number.parseFloat(style.lineHeight),
+        }
+      }),
+    )
+    expect(cells.length, tab).toBeGreaterThan(0)
+    for (const cell of cells) {
+      const name = `${tab}: ${cell.text}`
+      // Kept as it is, a space around the ID would show.
+      expect(cell.raw, name).toBe(cell.text)
+      if (cell.text === "—") continue
+      expect(cell.parts.join(""), name).toBe(cell.text)
+      expect(cell.spaces, name).toEqual(["normal"])
+      // Every line but the last ends with a separator.
+      expect(
+        cell.ends.filter((ch) => !/[:_\-/.]/.test(ch)),
+        name,
+      ).toEqual([])
+      lines[name] = cell.lines
+    }
+    seen[tab] = cells.map((cell) => cell.text)
+  }
+  // The long ones are among them.
+  for (const id of [LONG.agent, LONG.session, LONG.host])
+    expect(seen.Agents, id).toContain(id)
+  expect(seen.Agents).toContain("mymbp4")
+  expect(seen.Hosts).toContain(LONG.host)
+  expect(seen.Wakes).toContain("layout-check-of-a-long-wake-name")
+  // A long wake name wraps at its hyphens now (it did not with pre).
+  expect(lines["Wakes: layout-check-of-a-long-wake-name"]).toBeGreaterThan(1.5)
+  expect(seen.Wakes).toContain(LONG.agent)
+  expect(seen.Messages).toContain(LONG.agent)
+  expect(seen.Messages.some((id) => /^m_\w+$/.test(id))).toBe(true)
+  expect(seen.Inbox).toContain(LONG.agent)
+  expect(seen.Settings).toContain("min_interval")
 })
 
 // "Updated Ns ago." sits in a footer at the bottom of the page, at the left;
@@ -587,6 +975,141 @@ test("layout: the forms are full width and start collapsed", async ({
   }
 })
 
+// The tabs have 2 px rounded top corners (the owner, 2026-11-03); the Help
+// page's contents links stay square.
+test("layout: tabs have 2 px rounded top corners", async ({ page }) => {
+  await signIn(page, admin)
+  await openTab(page, "Help")
+  const radii = (selector: string) =>
+    page.locator(selector).evaluateAll((all) =>
+      all.map((a) => {
+        const s = getComputedStyle(a)
+        return [
+          s.borderTopLeftRadius,
+          s.borderTopRightRadius,
+          s.borderBottomRightRadius,
+          s.borderBottomLeftRadius,
+        ].join(" ")
+      }),
+    )
+  const tabs = await radii("nav:not(.toc) > a")
+  expect(tabs.length).toBe(7)
+  expect(new Set(tabs)).toEqual(new Set(["2px 2px 0px 0px"]))
+  expect(new Set(await radii("nav.toc a"))).toEqual(
+    new Set(["0px 0px 0px 0px"]),
+  )
+})
+
+/*
+ * Help (the owner, 2026-11-02): the last tab, how to use Autocode, with
+ * numbered contents at the left (numbers faint, subsections indented, a thin
+ * line at their left) that stay in view as the text scrolls; no text heavier
+ * than 500.
+ */
+test("Help: the last tab, with numbered contents that stay in view", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await expect(page.locator("nav a").last()).toHaveText("Help")
+  await openTab(page, "Help")
+  await expect(page).toHaveURL(/\/help$/)
+  const toc = page.locator("nav.toc")
+  await expect(toc.locator("a").first()).toHaveText("1 What Autocode Is")
+  await expect(toc.locator("a").last()).toHaveText("7 Troubleshooting")
+  const look = await page.evaluate(() => {
+    const toc = document.querySelector("nav.toc")!
+    const number = (a: Element) => a.querySelector(".n")!
+    const top = toc.querySelector("a:not(.sub)")!
+    const sub = toc.querySelector("a.sub")!
+    const muted = document.createElement("span")
+    muted.className = "muted"
+    document.body.append(muted)
+    const faint = getComputedStyle(muted).color
+    muted.remove()
+    const left = (e: Element) => e.getBoundingClientRect().left
+    const article = document.querySelector("#frame article")!
+    return {
+      number: getComputedStyle(number(top)).color,
+      faint,
+      heading: getComputedStyle(article.querySelector("h2 .n")!).color,
+      indent: left(number(sub)) - left(number(top)),
+      line: getComputedStyle(toc).borderLeftStyle,
+      beside: left(article) - toc.getBoundingClientRect().right,
+    }
+  })
+  expect(look.number).toBe(look.faint)
+  expect(look.heading).toBe(look.faint)
+  expect(look.indent).toBeGreaterThan(8)
+  expect(look.line).toBe("solid")
+  expect(look.beside).toBeGreaterThan(16)
+  // Scrolled down to section 5, the contents stay at the top of the window.
+  await page.evaluate(() => document.getElementById("web")!.scrollIntoView())
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(500)
+  await expect
+    .poll(() => toc.evaluate((e) => Math.round(e.getBoundingClientRect().top)))
+    .toBe(16)
+  await expect(toc.locator("a").first()).toBeInViewport()
+  const heavy = await page.evaluate(() =>
+    [...document.querySelectorAll("#frame *")]
+      .filter((e) =>
+        [...e.childNodes].some(
+          (n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim(),
+        ),
+      )
+      .filter((e) => Number(getComputedStyle(e).fontWeight) > 500)
+      .map((e) => e.tagName),
+  )
+  expect(heavy).toEqual([])
+})
+
+// A contents link scrolls its section's heading to the top of the window,
+// also when it is the section already in the address.
+test("Help: a contents link scrolls to its section", async ({ page }) => {
+  await signIn(page, admin)
+  await openTab(page, "Help")
+  const toc = page.locator("nav.toc")
+  const top = (id: string) =>
+    page
+      .locator(`#frame article #${id}`)
+      .evaluate((e) => Math.round(e.getBoundingClientRect().top))
+  for (const [name, id] of [
+    ["3.3 Wakes", "wakes"],
+    ["4.1 Your Commands", "commands"],
+    ["1 What Autocode Is", "what"],
+    ["3.3 Wakes", "wakes"],
+  ]) {
+    await toc.getByRole("link", { name, exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/help#${id}$`))
+    await expect.poll(() => top(id), name).toBeGreaterThanOrEqual(8)
+    await expect.poll(() => top(id), name).toBeLessThanOrEqual(24)
+  }
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await toc.getByRole("link", { name: "3.3 Wakes", exact: true }).click()
+  await expect.poll(() => top("wakes"), "again").toBeLessThanOrEqual(24)
+})
+
+// Under 900 px the contents become a wrapping row above the text, without the
+// subsections.
+test("Help: under 900 px the contents are a row above the text", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 800 })
+  await signIn(page, admin)
+  await openTab(page, "Help")
+  const toc = page.locator("nav.toc")
+  await expect(toc).toHaveCSS("flex-direction", "row")
+  await expect(toc).toHaveCSS("flex-wrap", "wrap")
+  await expect(toc.locator("a.sub").first()).toBeHidden()
+  await expect(toc.locator("a", { hasText: "Troubleshooting" })).toBeVisible()
+  const place = await page.evaluate(() => ({
+    toc: document.querySelector("nav.toc")!.getBoundingClientRect().bottom,
+    article: document.querySelector("#frame article")!.getBoundingClientRect()
+      .top,
+  }))
+  expect(place.toc).toBeLessThanOrEqual(place.article)
+  expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+})
+
 async function refused(page: Page, token: string, says: string) {
   await page.goto("/")
   await page.getByLabel("Token").fill(token)
@@ -617,7 +1140,10 @@ async function overflow(page: Page) {
   })
 }
 
-for (const width of [1280, 1024]) {
+// Every page fits 1280 px. At 1024 px, Agents and Wakes may be wider than
+// the frame, since IDs break only after ':' and '_' (the owner, 2026-11-03:
+// "Fit only at 1280 px"); see the next check.
+for (const width of [1280]) {
   test(`layout: every page fits ${width} px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 })
     await signIn(page, admin)
@@ -629,12 +1155,43 @@ for (const width of [1280, 1024]) {
     const host = page.locator(`table.hosts tr[data-host="${LONG.host}"]`)
     await expect(host.locator("td.folder")).toHaveText(LONG.directory)
     expect(await overflow(page), "Hosts").toEqual({ frame: 0, page: 0 })
-    for (const tab of ["Inbox", "Messages", "Wakes", "Settings"]) {
+    for (const tab of ["Inbox", "Messages", "Wakes", "Settings", "Help"]) {
       await openTab(page, tab)
       expect(await overflow(page), tab).toEqual({ frame: 0, page: 0 })
     }
   })
 }
+
+// At 1024 px a page wider than the frame scrolls inside the frame, never the
+// window, and its last column can be reached (the owner, 2026-11-03).
+test("layout: at 1024 px a wide page scrolls inside the frame", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 800 })
+  await signIn(page, admin)
+  const row = page.locator(`table.agents tr[data-agent="${LONG.agent}"]`)
+  await expect(row.locator("td.session")).toHaveText(LONG.session)
+  for (const tab of [
+    "Agents",
+    "Hosts",
+    "Inbox",
+    "Messages",
+    "Wakes",
+    "Settings",
+    "Help",
+  ]) {
+    await openTab(page, tab)
+    expect((await overflow(page)).page, tab).toBe(0)
+  }
+  await openTab(page, "Agents")
+  const last = row.getByRole("button", { name: "Unregister", exact: true })
+  await page.locator("#frame").evaluate((f) => {
+    f.scrollLeft = f.scrollWidth
+  })
+  const frame = (await page.locator("#frame").boundingBox())!
+  const button = (await last.boundingBox())!
+  expect(button.x + button.width).toBeLessThanOrEqual(frame.x + frame.width)
+})
 
 test("layout: wrapped action buttons have space between their lines", async ({
   page,
@@ -1018,12 +1575,21 @@ test("layout: the text is 15 px", async ({ page }) => {
     "table.wakes tr.group th",
     "table.wakes td.text",
   ])
+  await openTab(page, "Help")
+  const help = await sizes([
+    "nav.toc a",
+    "nav.toc a.sub",
+    "#frame article p",
+    "#frame article li",
+    "#frame article td",
+  ])
   for (const [item, size] of Object.entries({
     ...agents,
     ...hosts,
     ...inbox,
     ...messages,
     ...wakes,
+    ...help,
   }))
     expect(size, item).toBe("15px")
 })

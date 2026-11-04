@@ -1,6 +1,9 @@
 /*
  * Unit tests of the Wakes page against a mocked server: every wake by agent
- * with its trigger, next time, text, check, end, setter and last firing; Fire,
+ * (a link to the agent on the Agents page) with its trigger, next time, text
+ * and check (a long one's first 200 characters, whole on a click anywhere in
+ * its cell; the check as code), end, setter (an agent's a link), when it was
+ * set and last firing; Fire,
  * and Cancel after a confirmation (the list refreshes after each), with the
  * result in the toolbar; the Set a Wake form, collapsed until opened, for any
  * agent (and the server's message when it refuses); "Updated" in the footer;
@@ -13,6 +16,7 @@ import {
   apiError,
   button,
   el,
+  parts,
   settle,
   setup,
   signedIn,
@@ -116,6 +120,7 @@ describe('WakesPage', () => {
       'Check',
       'End',
       'Set By',
+      'Last Set',
       'Last Fired',
       '',
     ]);
@@ -127,6 +132,10 @@ describe('WakesPage', () => {
       'kaggle:lead',
     ]);
     expect(text(groups[1]!.querySelector('tr.group'))).toBe('kaggle:lead');
+    // The agent's heading links to its row on the Agents page, as plain text.
+    const heading = groups[1]!.querySelector('tr.group a.id-link')!;
+    expect(heading.getAttribute('href')).toBe('/agents?agent=kaggle:lead');
+    expect(heading.querySelector('code')).toBeNull();
     expect(
       [...groups[1]!.querySelectorAll('tr[data-wake]')].map((r) =>
         r.getAttribute('data-wake'),
@@ -141,15 +150,27 @@ describe('WakesPage', () => {
     expect(standup.querySelector('td.next')!.getAttribute('title')).toBe(
       '2026-10-28T12:00:00.000Z',
     );
-    // The text's first line; all of it in the tooltip.
-    expect(cell(standup, 'text')).toBe('Report your progress. …');
-    expect(standup.querySelector('td.text')!.getAttribute('title')).toBe(
-      'Report your progress.\nThen go on.',
-    );
+    // A short text whole, its lines kept; nothing to open.
+    const short = standup.querySelector('td.text')!;
+    expect(short.textContent).toBe('Report your progress.\nThen go on.');
+    expect(short.querySelector('.more')).toBeNull();
+    expect(short.getAttribute('title')).toBeNull();
     expect(cell(standup, 'check')).toBe('test -f /tmp/go');
     expect(cell(standup, 'end')).toBe(localTime('2026-12-31T08:00:00.000Z'));
     expect(cell(standup, 'by')).toBe('owner');
     expect(standup.querySelector('td.by code')).toBeNull();
+    expect(standup.querySelector('td.by a')).toBeNull();
+    // A short check whole, as code; nothing to open.
+    expect(standup.querySelector('td.check code')!.textContent).toBe(
+      'test -f /tmp/go',
+    );
+    expect(standup.querySelector('td.check .more')).toBeNull();
+    expect(standup.querySelector('td.check')!.classList).not.toContain('folds');
+    // When it was last set: its schedule counts from then.
+    expect(cell(standup, 'set')).toBe(localTime('2026-10-28T09:00:00.000Z'));
+    expect(standup.querySelector('td.set')!.getAttribute('title')).toBe(
+      '2026-10-28T09:00:00.000Z',
+    );
     expect(cell(standup, 'fired')).toBe(localTime('2026-10-28T11:30:00.000Z'));
     expect(button(standup, 'Fire')).toBeDefined();
     expect(button(standup, 'Cancel')).toBeDefined();
@@ -161,7 +182,107 @@ describe('WakesPage', () => {
     expect(cell(ping, 'end')).toBe('—');
     expect(cell(ping, 'fired')).toBe('—');
     expect(cell(ping, 'text')).toBe('Ping.');
-    expect(ping.querySelector('td.by code')!.innerHTML).toBe('alpha:<wbr>one');
+    expect(parts(ping.querySelector('td.by code'))).toEqual(['alpha:', 'one']);
+    // IDs and wake names break only after ":" or "_" (the owner,
+    // 2026-11-03); texts, checks, triggers and times wrap.
+    expect(groups[1]!.querySelector('tr.group th')!.classList).toContain(
+      'id-like',
+    );
+    for (const c of ['name', 'by'])
+      expect(standup.querySelector(`td.${c}`)!.classList, c).toContain(
+        'id-like',
+      );
+    expect(parts(standup.querySelector('td.name code'))).toEqual(['standup']);
+    expect(parts(standup.querySelector('td.by'))).toEqual(['owner']);
+    expect(parts(groups[1]!.querySelector('tr.group th'))).toEqual([
+      'kaggle:',
+      'lead',
+    ]);
+    for (const c of ['trigger', 'next', 'text', 'check', 'end', 'set'])
+      expect(standup.querySelector(`td.${c}`)!.classList, c).not.toContain(
+        'id-like',
+      );
+    // An agent that set a wake links to its row on the Agents page.
+    expect(ping.querySelector('td.by a.id-link')!.getAttribute('href')).toBe(
+      '/agents?agent=alpha:one',
+    );
+  });
+
+  // A text longer than 200 characters, with its lines.
+  const LONG =
+    'Check the training run in runs/latest and act on the result:\n' +
+    'restart it when it stopped, tune the learning rate when it diverges, ' +
+    'and write down what you changed and why in runs/latest/NOTES.md, ' +
+    'with the step and the loss at that step.';
+  const CHECK =
+    "test -n \"$(find /home/misha/kaggle/runs/latest -name '*.ckpt' " +
+    '-newer /home/misha/kaggle/runs/latest/.last-check -print -quit)" && ' +
+    'touch /home/misha/kaggle/runs/latest/.last-check && ' +
+    'grep -q DONE /home/misha/kaggle/runs/latest/status.txt';
+
+  it("shows a long text's first 200 characters; a click anywhere in its cell shows it whole, the next folds it; it stays open across the refresh", async () => {
+    expect(LONG.length).toBeGreaterThan(200);
+    const wakes = [{ ...WAKES[1]!, text: LONG }, WAKES[0]!, WAKES[2]!];
+    const page = await open(wakes);
+    const td = () =>
+      row(page, 'kaggle:lead', 'nightly').querySelector(
+        'td.text',
+      ) as HTMLElement;
+    const more = () => td().querySelector('.more') as HTMLElement;
+    expect(td().classList).toContain('folds');
+    expect(more().getAttribute('role')).toBe('button');
+    expect(more().getAttribute('tabindex')).toBe('0');
+    expect(more().getAttribute('aria-expanded')).toBe('false');
+    expect(more().textContent).toBe(`${LONG.slice(0, 200).trimEnd()}…`);
+    // The cell itself, its padding included, takes the click.
+    td().click();
+    await settle(fixture);
+    expect(more().textContent).toBe(LONG);
+    expect(more().getAttribute('aria-expanded')).toBe('true');
+    button(page, 'Refresh')!.click();
+    load(wakes);
+    await settle(fixture);
+    expect(more().textContent).toBe(LONG);
+    // A click on the text itself folds it once, not twice.
+    more().click();
+    await settle(fixture);
+    expect(more().textContent).toBe(`${LONG.slice(0, 200).trimEnd()}…`);
+    // Enter (or Space) on the focusable text opens it.
+    more().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await settle(fixture);
+    expect(more().textContent).toBe(LONG);
+    // Another wake of the same agent stays as it was.
+    const other = row(page, 'kaggle:lead', 'standup').querySelector('td.text')!;
+    expect(other.querySelector('.more')).toBeNull();
+    expect(other.classList).not.toContain('folds');
+  });
+
+  it('folds a long check the same way, in code', async () => {
+    expect(CHECK.length).toBeGreaterThan(200);
+    const wakes = [{ ...WAKES[1]!, check: CHECK }, WAKES[0]!, WAKES[2]!];
+    const page = await open(wakes);
+    const td = () =>
+      row(page, 'kaggle:lead', 'nightly').querySelector(
+        'td.check',
+      ) as HTMLElement;
+    const code = () => td().querySelector('code.more') as HTMLElement;
+    expect(td().classList).toContain('folds');
+    expect(code().getAttribute('role')).toBe('button');
+    expect(code().getAttribute('tabindex')).toBe('0');
+    expect(code().textContent).toBe(`${CHECK.slice(0, 200).trimEnd()}…`);
+    // It still breaks after "/" where it must.
+    expect(code().querySelector('wbr')).not.toBeNull();
+    td().click();
+    await settle(fixture);
+    expect(code().textContent).toBe(CHECK);
+    expect(code().getAttribute('aria-expanded')).toBe('true');
+    // The text of the same wake stays as it was.
+    expect(
+      row(page, 'kaggle:lead', 'nightly').querySelector('td.text .more'),
+    ).toBeNull();
+    code().dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+    await settle(fixture);
+    expect(code().textContent).toBe(`${CHECK.slice(0, 200).trimEnd()}…`);
   });
 
   it('shows a one-time trigger at its local time', () => {

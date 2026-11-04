@@ -94,6 +94,8 @@ export interface Message {
   kind: 'text' | 'binary';
   mime: string | null;
   size: number;
+  // A text message's first 100 characters (the owner's list only).
+  preview?: string;
   state: 'queued' | 'delivered' | 'read';
   created_at: string;
   delivered_at: string | null;

@@ -1,11 +1,13 @@
 /*
  * The Settings page's lookup of one agent ID: the values the server resolves
- * for it and where each comes from.
+ * for it and where each comes from (the ID links to the Agents page).
  */
 
 import { Component, computed, inject, signal } from '@angular/core';
 import { Api, errorText, type ResolvedSettings } from '../api';
+import { IdParts } from '../breaks';
 import { valueText } from '../format';
+import { AgentLink } from '../links';
 
 // Where a resolved value comes from, in plain words.
 export function sourceText(source: string | undefined): string {
@@ -18,6 +20,7 @@ export function sourceText(source: string | undefined): string {
 // The values one agent ID ends up with, and where each comes from.
 @Component({
   selector: 'app-resolved-lookup',
+  imports: [AgentLink, IdParts],
   templateUrl: './resolved.html',
 })
 export class ResolvedLookup {

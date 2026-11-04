@@ -1,10 +1,12 @@
 /*
  * Unit tests of the Messages page against a mocked server: every message,
- * newest first, with its ID, time, sender, recipient, subject, kind, size and
- * state, and its text in a row below it on a click; the Send a Message form,
- * collapsed until opened, that sends as the owner to one ID, a pattern or a
- * list (the recipients on success, the server's message on failure);
- * "Updated" in the footer; and the 10 s refresh (one at a time).
+ * newest first, with its ID, time, sender and recipient (an agent's a link
+ * to its row on the Agents page), subject, text, kind, size and state; a long
+ * text's first 200 characters, the whole text on a click anywhere in its cell
+ * (read once) and back on the next; the Send a Message form, collapsed
+ * until opened, that sends as the owner to one ID, a pattern or a list (the
+ * recipients on success, the server's message on failure); "Updated" in the
+ * footer; and the 10 s refresh (one at a time).
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -13,6 +15,7 @@ import {
   apiError,
   button,
   el,
+  parts,
   settle,
   setup,
   signedIn,
@@ -35,6 +38,7 @@ const MESSAGES: Message[] = [
     kind: 'text',
     mime: null,
     size: 12,
+    preview: 'Status, now?',
     state: 'queued',
     created_at: '2026-10-28T11:00:00.000Z',
     delivered_at: null,
@@ -56,6 +60,24 @@ const MESSAGES: Message[] = [
     read_at: '2026-10-28T10:05:00.000Z',
   },
 ];
+
+// A long text message: the list has its first 200 characters.
+const LONG_TEXT =
+  'Line one of a long report that goes on and on about the training run.\n' +
+  'Line two: the loss went down, then up again, and the run stopped at ' +
+  'epoch 12, after which the validation score fell by two points.\n' +
+  'Line three: I restarted it from the checkpoint of epoch 10.';
+const LONG: Message = {
+  ...MESSAGES[0]!,
+  id: 'msg_3',
+  send_id: 'snd_3',
+  from: 'kaggle:lead',
+  to: 'owner',
+  subject: 'Report',
+  size: LONG_TEXT.length,
+  preview: LONG_TEXT.slice(0, 200),
+  state: 'delivered',
+};
 
 // What a field of the page holds.
 const value = (page: HTMLElement, selector: string) =>
@@ -95,7 +117,17 @@ describe('MessagesPage', () => {
       [...page.querySelectorAll('table.messages thead th')].map((th) =>
         text(th),
       ),
-    ).toEqual(['ID', 'Time', 'From', 'To', 'Subject', 'Kind', 'Size', 'State']);
+    ).toEqual([
+      'ID',
+      'Time',
+      'From',
+      'To',
+      'Subject',
+      'Text',
+      'Kind',
+      'Size',
+      'State',
+    ]);
     const rows = [...page.querySelectorAll('table.messages tr[data-message]')];
     expect(rows.map((r) => r.getAttribute('data-message'))).toEqual([
       'msg_2',
@@ -109,6 +141,7 @@ describe('MessagesPage', () => {
       'owner',
       'kaggle:lead',
       '',
+      'Status, now?',
       'text',
       '12',
       'queued',
@@ -119,15 +152,38 @@ describe('MessagesPage', () => {
       'kaggle:lead',
       'owner',
       'Plan',
+      'image/png file',
       'image/png',
       '20,480',
       'read',
     ]);
-    // Agent IDs are data (code that wraps after ":"); the owner is a word.
+    // Agent IDs are data (code that wraps after ":") that links to the
+    // agent's row on the Agents page; the owner is a word.
     expect(rows[0]!.querySelector('td.sender code')).toBeNull();
-    expect(rows[0]!.querySelector('td.recipient code')!.innerHTML).toBe(
-      'kaggle:<wbr>lead',
-    );
+    expect(rows[0]!.querySelector('td.sender a')).toBeNull();
+    expect(parts(rows[0]!.querySelector('td.recipient code'))).toEqual([
+      'kaggle:',
+      'lead',
+    ]);
+    expect(parts(rows[0]!.querySelector('td.sender'))).toEqual(['owner']);
+    expect(parts(rows[0]!.querySelector('td.id'))).toEqual(['msg_', '2']);
+    // IDs break only after ":" or "_" (the owner, 2026-11-03); the rest
+    // wraps.
+    for (const c of ['id', 'sender', 'recipient'])
+      expect(rows[0]!.querySelector(`td.${c}`)!.classList, c).toContain(
+        'id-like',
+      );
+    for (const c of ['time', 'subject', 'text', 'kind', 'state'])
+      expect(rows[0]!.querySelector(`td.${c}`)!.classList, c).not.toContain(
+        'id-like',
+      );
+    expect(
+      rows[0]!.querySelector('td.recipient a.id-link')!.getAttribute('href'),
+    ).toBe('/agents?agent=kaggle:lead');
+    expect(
+      rows[1]!.querySelector('td.sender a.id-link')!.getAttribute('href'),
+    ).toBe('/agents?agent=kaggle:lead');
+    expect(rows[1]!.querySelector('td.recipient a')).toBeNull();
     expect(rows[0]!.querySelector('td.time')!.getAttribute('title')).toBe(
       '2026-10-28T11:00:00.000Z',
     );
@@ -137,77 +193,103 @@ describe('MessagesPage', () => {
   function read(id: string, body: Record<string, unknown>): void {
     const req = http.expectOne(`/v1/messages/${id}`);
     expect(req.request.method).toBe('GET');
-    const listed = MESSAGES.find((m) => m.id === id)!;
-    req.flush({ message: { ...listed, ...body } });
+    req.flush({ message: { ...LONG, id, ...body } });
   }
-  const row = (page: HTMLElement, id: string) =>
+  const cell = (page: HTMLElement, id: string) =>
     page.querySelector(
-      `table.messages tr[data-message="${id}"]`,
+      `table.messages tr[data-message="${id}"] td.text`,
     ) as HTMLElement;
-  const detail = (page: HTMLElement, id: string) =>
-    page.querySelector(`table.messages tr.detail[data-detail="${id}"]`);
-  const shown = (page: HTMLElement, id: string) =>
-    detail(page, id)?.querySelector('.body')?.textContent;
+  // A long text's toggle: a button to the keyboard and to screen readers.
+  const toggle = (page: HTMLElement, id: string) =>
+    cell(page, id).querySelector('.more') as HTMLElement | null;
 
-  it('opens a message in a row below it on a click, with its lines, and closes it on the next', async () => {
-    const page = await open();
-    expect(detail(page, 'msg_2')).toBeNull();
-    expect(row(page, 'msg_2').getAttribute('aria-expanded')).toBe('false');
-    row(page, 'msg_2').click();
+  it("shows a long text's first 200 characters; a click anywhere in its cell shows it whole (read once), the next folds it", async () => {
+    expect(LONG_TEXT.length).toBeGreaterThan(200);
+    const page = await open([LONG, ...MESSAGES]);
+    const more = toggle(page, 'msg_3')!;
+    expect(cell(page, 'msg_3').classList).toContain('folds');
+    expect(more.getAttribute('role')).toBe('button');
+    expect(more.getAttribute('tabindex')).toBe('0');
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(more.textContent).toBe(`${LONG_TEXT.slice(0, 200).trimEnd()}…`);
+    // The cell itself, its padding included, takes the click.
+    cell(page, 'msg_3').click();
     await settle(fixture);
-    read('msg_2', { text: 'Line one.\nLine two.' });
+    read('msg_3', { text: LONG_TEXT });
     await settle(fixture);
-    const below = detail(page, 'msg_2')!;
-    expect(below.previousElementSibling).toBe(row(page, 'msg_2'));
-    expect(below.querySelector('td')!.getAttribute('colspan')).toBe('8');
-    expect(shown(page, 'msg_2')).toBe('Line one.\nLine two.');
-    expect(row(page, 'msg_2').getAttribute('aria-expanded')).toBe('true');
-    row(page, 'msg_2').click();
+    // The whole text, its lines kept.
+    expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
+    expect(toggle(page, 'msg_3')!.getAttribute('aria-expanded')).toBe('true');
+    // A click on the text itself folds it once, not twice.
+    toggle(page, 'msg_3')!.click();
     await settle(fixture);
-    expect(detail(page, 'msg_2')).toBeNull();
-    // Opened again (here with Enter): from what was read, without asking.
-    row(page, 'msg_2').dispatchEvent(
+    expect(toggle(page, 'msg_3')!.textContent).toBe(
+      `${LONG_TEXT.slice(0, 200).trimEnd()}…`,
+    );
+    // Open again, with Enter: from what was read, without asking again.
+    toggle(page, 'msg_3')!.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Enter' }),
     );
     await settle(fixture);
-    http.expectNone('/v1/messages/msg_2');
-    expect(shown(page, 'msg_2')).toBe('Line one.\nLine two.');
-    expect(row(page, 'msg_2').getAttribute('tabindex')).toBe('0');
+    http.expectNone('/v1/messages/msg_3');
+    expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
   });
 
-  it('a file says what it is; a read that fails says why', async () => {
-    const page = await open();
-    row(page, 'msg_1').click();
+  it('a short text shows whole and a file says what it is; neither opens, nor does the row', async () => {
+    const page = await open([LONG, ...MESSAGES]);
+    expect(toggle(page, 'msg_2')).toBeNull();
+    expect(text(cell(page, 'msg_2'))).toBe('Status, now?');
+    expect(cell(page, 'msg_2').classList).not.toContain('folds');
+    expect(toggle(page, 'msg_1')).toBeNull();
+    const file = cell(page, 'msg_1').querySelector('.muted');
+    expect(text(file)).toBe('image/png file');
+    // The row itself opens nothing: no detail row, no focus, no state.
+    const row = page.querySelector(
+      'table.messages tr[data-message="msg_2"]',
+    ) as HTMLElement;
+    expect(row.getAttribute('tabindex')).toBeNull();
+    expect(row.getAttribute('aria-expanded')).toBeNull();
+    row.click();
+    cell(page, 'msg_1').click();
     await settle(fixture);
-    read('msg_1', { data: 'iVBORw0KGgo=' });
-    await settle(fixture);
-    expect(shown(page, 'msg_1')).toBe(
-      'A file (image/png, 20,480 characters of base64).',
-    );
-    row(page, 'msg_2').click();
+    expect(page.querySelector('tr.detail')).toBeNull();
+    http.expectNone((r) => r.url.startsWith('/v1/messages/'));
+  });
+
+  it('a read that fails says why in the cell, and the next opening asks again', async () => {
+    const page = await open([LONG, ...MESSAGES]);
+    toggle(page, 'msg_3')!.click();
     await settle(fixture);
     apiError(
-      http.expectOne('/v1/messages/msg_2'),
+      http.expectOne('/v1/messages/msg_3'),
       404,
       'no_message',
-      'no message msg_2',
+      'no message msg_3',
     );
     await settle(fixture);
-    expect(text(detail(page, 'msg_2')!.querySelector('.errmsg'))).toBe(
-      'no message msg_2',
+    expect(text(cell(page, 'msg_3').querySelector('.errmsg'))).toBe(
+      'no message msg_3',
     );
+    toggle(page, 'msg_3')!.click();
+    await settle(fixture);
+    expect(cell(page, 'msg_3').querySelector('.errmsg')).toBeNull();
+    toggle(page, 'msg_3')!.click();
+    await settle(fixture);
+    read('msg_3', { text: LONG_TEXT });
+    await settle(fixture);
+    expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
   });
 
-  it('an open message stays open when the list refreshes', async () => {
-    const page = await open();
-    row(page, 'msg_2').click();
+  it('an open text stays open when the list refreshes', async () => {
+    const page = await open([LONG, ...MESSAGES]);
+    toggle(page, 'msg_3')!.click();
     await settle(fixture);
-    read('msg_2', { text: 'Still here.' });
+    read('msg_3', { text: LONG_TEXT });
     await settle(fixture);
     button(page, 'Refresh')!.click();
-    load();
+    load([LONG, ...MESSAGES]);
     await settle(fixture);
-    expect(shown(page, 'msg_2')).toBe('Still here.');
+    expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
   });
 
   it('says when there are no messages yet', async () => {

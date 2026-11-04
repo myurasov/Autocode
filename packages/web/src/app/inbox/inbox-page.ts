@@ -1,16 +1,17 @@
 /*
  * The Inbox page: the owner's open items (messages to the owner and alerts),
  * or with Show Closed every item, refreshed every 10 s (one refresh at a
- * time). The owner answers a message (the answer goes back to its agent as a
- * message) or closes an item; the result shows in the toolbar, and the list
- * refreshes after each.
+ * time); an item's agent links to the Agents page. The owner answers a
+ * message (the answer goes back to its agent as a message) or closes an item;
+ * the result shows in the toolbar, and the list refreshes after each.
  */
 
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type InboxItem } from '../api';
-import { Breaks, TimeText } from '../breaks';
+import { TimeText } from '../breaks';
 import { localTime } from '../format';
+import { AgentLink } from '../links';
 import { Updated } from '../updated';
 
 // What Close says it closed: "the message from a:b", "the alert about a:b".
@@ -22,7 +23,7 @@ function itemText(item: InboxItem): string {
 
 @Component({
   selector: 'app-inbox-page',
-  imports: [Breaks, TimeText, Updated],
+  imports: [AgentLink, TimeText, Updated],
   templateUrl: './inbox-page.html',
 })
 export class InboxPage {

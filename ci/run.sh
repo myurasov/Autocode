@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
-# Runs the test suites in Docker:  ci/run.sh [suite...]   (default: all)
-# Suites: unit api plugin one two restart install web. Each suite is its own
-# Compose project (autocode-ci-<suite>) on its own network, removed when it
-# ends. The test output of every suite, and the service logs and server database
-# of a failed one, are kept in __out/ci/<run>/<suite>/. The web UI's unit tests
-# run while its image builds (a failure stops the run there); their output is in
+# Runs the test suites:  ci/run.sh [suite...]   (default: all)
+# Suites: unit api plugin one two restart install web (in Docker) and agents
+# (real models, on the host: ci/agents/run.ts; the owner's word or a full run
+# only). Suites run side by side, CI_PARALLEL at a time (default 4). Each
+# Docker suite is its own Compose project (autocode-ci-<suite>) on its own
+# network, removed when it ends. The test output of every suite, and the
+# service logs and server database of a failed one, are kept in
+# __out/ci/<run>/<suite>/. The web UI's unit tests run while its image builds
+# (a failure stops the run there); their output is in
 # __out/ci/<run>/web-image.log. Env: OPENCODE_VERSION (default 2.2.0),
 # AUTOCODE_TARGETS (extra binaries to build, e.g. "all"), CI_GREP (the web
-# suite: only the browser tests whose names match), CI_KEEP=1 (leave the
-# Compose projects up after the run, for debugging).
+# suite: only the browser tests whose names match), CI_PARALLEL, CI_KEEP=1
+# (leave the Compose projects up after the run, for debugging);
+# AGENT_MODELS and AGENT_SCENARIOS (the agents suite: comma lists of names).
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
 root="$(pwd)"
-all=(unit api plugin one two restart install web)
+all=(unit api plugin one two restart install web agents)
 if [ $# -eq 0 ] || [ "$1" = all ]; then
   suites=("${all[@]}")
 else
@@ -40,6 +44,7 @@ limit_for() {
     plugin) echo 1500 ;;
     one | two | restart) echo 1200 ;;
     install | web) echo 900 ;;
+    agents) echo 2700 ;;
   esac
 }
 
@@ -55,7 +60,15 @@ log() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*"; }
 
 wants() { case " ${suites[*]} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
+# Whether any suite runs in Docker (agents runs on the host).
+docker_suites() {
+  local s
+  for s in "${suites[@]}"; do [ "$s" != agents ] && return 0; done
+  return 1
+}
+
 build() {
+  docker_suites || return 0
   log "building images (OpenCode $opencode_version)"
   # The web image runs the web UI's unit tests as it builds; its full output is
   # kept for their counts.
@@ -94,7 +107,12 @@ build() {
 # Playwright's for the web suite.
 counts() {
   local log="$out/$1/test.log" passed failed
-  if [ "$1" = web ]; then
+  if [ "$1" = agents ]; then
+    passed="$(grep -oE '^agents: [0-9]+ pass' "$log" 2>/dev/null |
+      grep -oE '[0-9]+' | tail -1)"
+    failed="$(grep -oE '^agents: [0-9]+ pass, [0-9]+ fail' "$log" \
+      2>/dev/null | grep -oE '[0-9]+ fail' | grep -oE '[0-9]+' | tail -1)"
+  elif [ "$1" = web ]; then
     passed="$(grep -oE '[0-9]+ passed \(' "$log" 2>/dev/null |
       grep -oE '^[0-9]+' | tail -1)"
     failed="$(grep -oE '\| +[0-9]+ failed$' "$log" 2>/dev/null |
@@ -111,6 +129,12 @@ counts() {
 
 run_suite() {
   local suite="$1"
+  if [ "$suite" = agents ]; then
+    mkdir -p "$out/agents"
+    timeout "$(limit_for agents)" bun ci/agents/run.ts --out "$out/agents" \
+      >"$out/agents/test.log" 2>&1
+    return $?
+  fi
   local project="autocode-ci-$suite"
   local file="ci/compose/$suite.yml"
   local dir="$out/$suite"
@@ -142,20 +166,40 @@ if ! build; then
   exit 1
 fi
 
+# One suite in the background: its status and time go to files beside its log.
+run_one() {
+  local suite="$1" started
+  started=$(date +%s)
+  mkdir -p "$out/$suite"
+  if run_suite "$suite"; then
+    echo pass >"$out/$suite/.status"
+  else
+    echo FAIL >"$out/$suite/.status"
+  fi
+  echo $(($(date +%s) - started)) >"$out/$suite/.seconds"
+  log "suite $suite: $(cat "$out/$suite/.status")"
+}
+
+parallel="${CI_PARALLEL:-4}"
+for suite in "${suites[@]}"; do
+  while [ "$(jobs -rp | wc -l)" -ge "$parallel" ]; do wait -n; done
+  log "suite $suite"
+  run_one "$suite" &
+done
+wait
+
 declare -a results=()
 failed=0
 for suite in "${suites[@]}"; do
-  started=$(date +%s)
-  log "suite $suite"
-  if run_suite "$suite"; then
-    status=pass
-  else
-    status=FAIL
+  status="$(cat "$out/$suite/.status" 2>/dev/null || echo FAIL)"
+  if [ "$status" != pass ]; then
     failed=1
+    echo "--- $suite"
     tail -60 "$out/$suite/test.log"
   fi
+  seconds="$(cat "$out/$suite/.seconds" 2>/dev/null || echo 0)"
   results+=("$(printf '%-8s %-4s %4ss  %s' "$suite" "$status" \
-    "$(($(date +%s) - started))" "$(counts "$suite")")")
+    "$seconds" "$(counts "$suite")")")
 done
 
 # Vitest's summary in the web image's build output; none when Docker reused the
@@ -166,7 +210,9 @@ web_unit="$(sed "s/$(printf '\033')\[[0-9;]*m//g" "$out/web-image.log" \
 docker image prune -f --filter label=autocode-ci=1 >/dev/null 2>&1 || true
 {
   echo "run $run_id (OpenCode $opencode_version)"
-  if [ -n "$web_unit" ]; then
+  if ! docker_suites; then
+    :
+  elif [ -n "$web_unit" ]; then
     printf '%-8s %-4s %5s  %s pass, 0 fail (in the web image build)\n' \
       web-unit pass "" "$web_unit"
   else

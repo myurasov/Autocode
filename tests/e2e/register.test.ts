@@ -27,7 +27,7 @@ describe("registration through autocode_me", () => {
         description: `lead on ${node}`,
       })
       // it registers during its own turn: working (tier 0b turn status)
-      expect(out).toBe(`Registered as ${idFor(node)} (status working).`)
+      expect(out).toStartWith(`Registered as ${idFor(node)} (status working).`)
       const status = await callTool(oc, s.id, "autocode_me", {
         action: "status",
       })
@@ -74,7 +74,7 @@ describe("registration through autocode_me", () => {
     ).toContain("Registered")
     expect(
       await callTool(oc, s.id, "autocode_me", { action: "unregister" }),
-    ).toBe(`Unregistered ${id}.`)
+    ).toBe(`Unregistered ${id}; your wakes are removed.`)
     expect(
       await callTool(oc, s.id, "autocode_me", { action: "status" }),
     ).toStartWith("Not registered")

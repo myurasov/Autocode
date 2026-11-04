@@ -6,6 +6,7 @@
 
 import { Component, inject, linkedSignal } from '@angular/core';
 import type { SettingsView } from '../api';
+import { IdParts } from '../breaks';
 import { AgentValues } from './agent-values';
 import { ResolvedLookup } from './resolved';
 import { Rules } from './rules';
@@ -15,7 +16,14 @@ import { ValueInput } from './value-input';
 
 @Component({
   selector: 'app-settings-page',
-  imports: [ValueInput, SettingsMessage, Rules, AgentValues, ResolvedLookup],
+  imports: [
+    IdParts,
+    ValueInput,
+    SettingsMessage,
+    Rules,
+    AgentValues,
+    ResolvedLookup,
+  ],
   providers: [SettingsState],
   templateUrl: './settings-page.html',
 })

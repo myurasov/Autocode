@@ -9,7 +9,14 @@ import { request, ServerError } from "./client.ts"
 import { hostId, machineName, processOf, readClientConfig } from "./config.ts"
 import { sessionIsGone } from "./errors.ts"
 import { folderFiles } from "./files.ts"
-import { agentLine, guideText, SKILL_DESCRIPTION, SKILL_ID } from "./guide.ts"
+import {
+  agentLine,
+  type GuideFacts,
+  guideText,
+  helpText,
+  SKILL_DESCRIPTION,
+  SKILL_ID,
+} from "./guide.ts"
 import {
   activeSessions,
   findLocalApi,
@@ -281,6 +288,13 @@ export default {
     }
 
     const files = folderFiles(() => directory)
+    // What the guide says of this host (the server's ID once connected).
+    const guideFacts = (): GuideFacts => ({
+      serverId: channel.serverId,
+      url: config.url,
+      shellValues: api !== undefined,
+      tools: TOOLS,
+    })
     const asTool = (
       tool: { name: string; description: string; input: unknown },
       run: (input: any, call: Call, sessionID: string) => Promise<string>,
@@ -300,7 +314,13 @@ export default {
       },
     })
     await ctx.tool.transform((tools: any) => {
-      tools.add(asTool(ME_TOOL, (input: MeInput, call) => runMe(input, call)))
+      tools.add(
+        asTool(ME_TOOL, (input: MeInput, call) =>
+          runMe(input, call, {
+            guide: (topic) => helpText(guideFacts(), topic),
+          }),
+        ),
+      )
       tools.add(
         asTool(WAKE_TOOL, (input: WakeInput, call) => runWake(input, call)),
       )
@@ -354,12 +374,7 @@ export default {
           description: SKILL_DESCRIPTION,
           // the plugin's own folder: nothing is written there
           path: `${import.meta.dir}/SKILL.md`,
-          content: guideText({
-            serverId: channel.serverId,
-            url: config.url,
-            shellValues: api !== undefined,
-            tools: TOOLS,
-          }),
+          content: guideText(guideFacts()),
         })
       })
     } catch (err) {

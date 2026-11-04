@@ -2,6 +2,8 @@
  * Wake triggers (spec, Wakes): the text an agent or the owner writes, the
  * stored form, and when a trigger runs next.
  *   every <duration> [from <HH:MM>]   steps from when it was set (or that time)
+ *   in <duration>                     once, that long after it is set (stored
+ *                                     as `at`)
  *   at <time>                         once: an ISO time, a local date and time,
  *                                     or the next HH:MM, in the zone
  *   cron "<5 fields>" [<zone>]        on wall time in the zone
@@ -27,8 +29,8 @@ export type Trigger =
   | { kind: "fire-only" }
 
 const HELP =
-  'a trigger looks like every 30m [from 09:00], at 09:00, cron "0 9 * * 1-5" ' +
-  "[zone], idle 30m [repeat] or fire-only"
+  "a trigger looks like every 30m [from 09:00], in 45m, at 09:00, " +
+  'cron "0 9 * * 1-5" [zone], idle 30m [repeat] or fire-only'
 
 function bad(text: string, why?: string): AutocodeError {
   return new AutocodeError(
@@ -109,6 +111,12 @@ export function parseTrigger(
       const hh = String(c.hour).padStart(2, "0")
       const mm = String(c.minute).padStart(2, "0")
       return { kind: "every", every_ms, from: `${hh}:${mm}` }
+    }
+    case "in": {
+      const [d, ...extra] = rest
+      const ms = duration(d, text)
+      if (extra.length) throw bad(text)
+      return { kind: "at", at: new Date(opts.now + ms).toISOString() }
     }
     case "at": {
       const when = rest.join(" ")

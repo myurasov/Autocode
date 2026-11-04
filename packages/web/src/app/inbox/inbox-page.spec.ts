@@ -1,6 +1,7 @@
 /*
  * Unit tests of the Inbox page against a mocked server: the open items with
- * their kind, agent, title, body and time, answering a message and closing an
+ * their kind, agent (a link to its row on the Agents page), title, body and
+ * time, answering a message and closing an
  * item (the list refreshes after each) with the result in the toolbar, Show
  * Closed with the answers given, the empty inbox, a failed answer, "Updated" in
  * the footer, and the 10 s refresh (one at a time).
@@ -12,6 +13,7 @@ import {
   apiError,
   button,
   el,
+  parts,
   settle,
   setup,
   signedIn,
@@ -101,9 +103,18 @@ describe('InboxPage', () => {
     expect(time.getAttribute('title')).toBe('2026-10-28T10:00:00.000Z');
     expect(text(time)).toBe(localTime('2026-10-28T10:00:00.000Z'));
     expect(text(message.querySelector('td.kind'))).toBe('message');
-    expect(message.querySelector('td.agent code')!.innerHTML).toBe(
-      'kaggle:<wbr>lead',
+    expect(parts(message.querySelector('td.agent code'))).toEqual([
+      'kaggle:',
+      'lead',
+    ]);
+    // An agent ID breaks only after ":" (the owner, 2026-11-03).
+    expect(message.querySelector('td.agent')!.classList).toContain('id-like');
+    expect(message.querySelector('td.item')!.classList).not.toContain(
+      'id-like',
     );
+    expect(
+      message.querySelector('td.agent a.id-link')!.getAttribute('href'),
+    ).toBe('/agents?agent=kaggle:lead');
     expect(text(message.querySelector('.title'))).toBe(
       'Message from kaggle:lead: "Plan"',
     );

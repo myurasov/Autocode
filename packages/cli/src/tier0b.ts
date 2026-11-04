@@ -60,9 +60,10 @@ function wakeTable(wakes: any[]): string {
       w.trigger,
       local(w.next),
       w.check ?? "",
+      local(w.updated_at),
       String(w.text).split("\n")[0] ?? "",
     ]),
-    ["AGENT", "NAME", "TRIGGER", "NEXT", "CHECK", "TEXT"],
+    ["AGENT", "NAME", "TRIGGER", "NEXT", "CHECK", "LAST SET", "TEXT"],
   )
 }
 

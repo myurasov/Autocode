@@ -1,15 +1,27 @@
 /*
  * The Agents page: the agents (optionally filtered by an ID pattern) by
- * machine, refreshed every 10 s. The owner can edit an agent's description,
+ * machine, with their hosts (links to the Hosts page), refreshed every 10 s;
+ * the agent a link led to (?agent=) highlighted and scrolled into view, a
+ * filter that would hide it cleared, or a line that says it is not there.
+ * The owner can edit an agent's description,
  * pause or resume its injections, give it a new token or unregister it (the
  * last two ask for a confirmation first), and stop all agents (after a
  * confirmation) or resume the ones Stop All paused; each action's result shows
  * in the toolbar.
  */
 
-import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { type Agent, Api, errorText } from '../api';
-import { Breaks, TimeText } from '../breaks';
+import { Breaks, IdParts, TimeText } from '../breaks';
+import { HostLink, highlightParam, scrollToHighlight } from '../links';
 import { Updated } from '../updated';
 
 export const REFRESH_MS = 10_000;
@@ -24,6 +36,20 @@ export function pausedText(agent: Agent): string {
     : 'Paused by the owner';
 }
 
+// Whether a filter shows an ID: IDs with * wildcards, separated by commas.
+export function matchesPattern(pattern: string, id: string): boolean {
+  return pattern
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .some((part) => {
+      const parts = part
+        .split('*')
+        .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&'));
+      return new RegExp(`^${parts.join('.*')}$`).test(id);
+    });
+}
+
 // "1 agent", "2 agents".
 function count(n: number, thing: string): string {
   return `${n} ${thing}${n === 1 ? '' : 's'}`;
@@ -31,7 +57,7 @@ function count(n: number, thing: string): string {
 
 @Component({
   selector: 'app-agents-page',
-  imports: [Breaks, TimeText, Updated],
+  imports: [Breaks, HostLink, IdParts, TimeText, Updated],
   templateUrl: './agents-page.html',
 })
 export class AgentsPage {
@@ -68,6 +94,18 @@ export class AgentsPage {
   protected readonly draft = signal('');
   protected readonly pausedText = pausedText;
 
+  // The agent a link led to, and the filter the list on show was loaded with.
+  protected readonly target = highlightParam('agent');
+  private readonly listedFor = signal<string | null>(null);
+  // The agent a link led to when the list (for this filter) does not have it.
+  protected readonly missing = computed(() => {
+    const id = this.target();
+    const applied = this.applied();
+    if (!id || this.listedFor() !== applied) return null;
+    if (this.agents().some((a) => a.id === id)) return null;
+    return applied && !matchesPattern(applied, id) ? null : id;
+  });
+
   private inFlight = 0;
   private typing?: ReturnType<typeof setTimeout>;
 
@@ -81,6 +119,19 @@ export class AgentsPage {
       clearInterval(timer);
       clearTimeout(this.typing);
     });
+    scrollToHighlight(
+      this.target,
+      (id) => this.agents().some((a) => a.id === id),
+      'data-agent',
+    );
+    // A filter that would hide the agent a link leads to goes.
+    effect(() => {
+      const id = this.target();
+      untracked(() => {
+        const applied = this.applied();
+        if (id && applied && !matchesPattern(applied, id)) this.clearFilter();
+      });
+    });
   }
 
   protected async refresh(): Promise<void> {
@@ -90,6 +141,7 @@ export class AgentsPage {
       const agents = await this.api.agents(match);
       if (match !== this.applied()) return;
       this.agents.set(agents);
+      this.listedFor.set(match);
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {

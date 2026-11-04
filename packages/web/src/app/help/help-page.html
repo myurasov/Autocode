@@ -1,0 +1,843 @@
+<!--
+  The Help page: numbered contents at the left, then the text: what Autocode
+  is, getting started, using it from OpenCode, the CLI, the web UI, the
+  settings and troubleshooting. Headings take their numbers and titles from
+  the sections in help-page.ts.
+-->
+
+<div class="layout">
+  <nav class="toc" aria-label="Contents">
+    @for (s of sections; track s.id) {
+      <a
+        routerLink="/help"
+        [fragment]="s.id"
+        [class.sub]="s.sub"
+        (click)="again(s.id)"
+        ><span class="n">{{ s.n }}</span> {{ s.label }}</a
+      >
+    }
+  </nav>
+
+  <article>
+    <h2 id="what" class="first">
+      <span class="n">{{ sec.what.n }}</span> {{ sec.what.label }}
+    </h2>
+    <p>
+      Autocode coordinates OpenCode 2 sessions. It has two parts: a server,
+      which keeps the state and serves this web UI, and a plugin, which
+      OpenCode loads on every machine that should use Autocode. The plugin
+      connects each OpenCode server folder to the Autocode server.
+    </p>
+    <p>
+      A session that registers with an ID becomes an agent. Agents can:
+    </p>
+    <ul>
+      <li>
+        be woken later: on a schedule, at a time, after they have been idle
+        for a while, or by a script or another agent (wakes);
+      </li>
+      <li>
+        send messages to one another and to you, and get yours (messages).
+      </li>
+    </ul>
+    <p>
+      Later tiers add locks and semaphores, questions and approvals that come
+      to you, retries of failed turns, and jobs that run in fresh sessions.
+    </p>
+    <p>
+      You control it all here: you see every agent, wake and message, pause or
+      stop agents, answer messages in the Inbox and change the settings.
+      Autocode types into a session only while it is idle, and every prompt it
+      types says that it comes from Autocode.
+    </p>
+
+    <h2 id="start">
+      <span class="n">{{ sec.start.n }}</span> {{ sec.start.label }}
+    </h2>
+    <p>
+      Install the server once, connect the OpenCode of each machine, then sign
+      in here.
+    </p>
+
+    <h3 id="install">
+      <span class="n">{{ sec.install.n }}</span> {{ sec.install.label }}
+    </h3>
+    <p>
+      On the Linux machine that should run the server, as the user that should
+      own it:
+    </p>
+    <pre>./autocode install [--listen ADDRESSES] [--id ID]</pre>
+    <ul>
+      <li>
+        It copies the binary to <code>~/.autocode/bin/autocode</code>, sets up
+        a systemd user service, starts it and waits until it answers.
+      </li>
+      <li>
+        <code>--listen</code> sets the addresses: names that share one port,
+        like <code>localhost,tailscale:4848</code> (the default: this machine
+        and its Tailscale address), or addresses each with a port, like
+        <code>127.0.0.1:4848,0.0.0.0:4849</code>.
+      </li>
+      <li>
+        <code>--id</code> sets the server's ID. Without it, the ID comes from
+        <code>~/.autocode/config.json</code>, else from the host name.
+      </li>
+      <li>
+        The service starts at boot only with lingering on:
+        <code>loginctl enable-linger $USER</code> (once, as root). Otherwise it
+        starts when you log in; <code>install</code> tells you which.
+      </li>
+      <li>
+        Check it with <code>autocode info</code> and
+        <code>systemctl --user status autocode</code>. Its log:
+        <code>journalctl --user -u autocode</code>.
+      </li>
+    </ul>
+
+    <h3 id="connect">
+      <span class="n">{{ sec.connect.n }}</span> {{ sec.connect.label }}
+    </h3>
+    <p>On each machine whose OpenCode (2.2.0 or later) should use Autocode:</p>
+    <pre>
+autocode plugin install --url http://SERVER:4848 \
+  --consumer-token-file FILE --server-id ID</pre
+    >
+    <ul>
+      <li>
+        The consumer token is in <code>~/.autocode/consumer.token</code> on the
+        server: copy it into a file on this machine.
+      </li>
+      <li>
+        <code>--server-id</code> makes the plugin and the CLI check that they
+        talk to the right server. <code>--admin-token-file</code> also lets you
+        run your own CLI commands from this machine.
+      </li>
+      <li>
+        It puts the plugin into OpenCode's plugin folder and writes the client
+        config, <code>~/.autocode/client.json</code>.
+      </li>
+      <li>
+        OpenCode loads the plugin with each folder, when the folder is first
+        used. Restart OpenCode servers that were already running
+        (<code>opencode service restart</code> for the background service; it
+        closes open TUIs), or let their folders reload: OpenCode unloads a
+        folder after an hour unused.
+      </li>
+      <li>
+        Check: the Hosts tab (or <code>autocode hosts</code>) lists the
+        machine's folders as online.
+      </li>
+    </ul>
+
+    <h3 id="sign-in">
+      <span class="n">{{ sec['sign-in'].n }}</span> {{ sec['sign-in'].label }}
+    </h3>
+    <p>
+      Open <code>http://SERVER:4848/</code> and sign in with the admin token,
+      from <code>~/.autocode/admin.token</code> on the server. The token is
+      kept for this browser tab; tick Stay signed in to keep it on this browser
+      until you sign out. The consumer token and agents' session tokens are
+      refused here.
+    </p>
+
+    <h3 id="tokens">
+      <span class="n">{{ sec.tokens.n }}</span> {{ sec.tokens.label }}
+    </h3>
+    <p>
+      The server makes the admin and consumer tokens at its first start and
+      keeps only their hashes.
+    </p>
+    <table class="tokens">
+      <thead>
+        <tr>
+          <th>Token</th>
+          <th>Kept In</th>
+          <th>Used By</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>admin</td>
+          <td><code>~/.autocode/admin.token</code> on the server</td>
+          <td>you: the CLI and this web UI, with full control</td>
+        </tr>
+        <tr>
+          <td>consumer</td>
+          <td><code>~/.autocode/consumer.token</code> on the server</td>
+          <td>
+            the plugin's connection, and your CLI for reading; keep it secret:
+            it can act for any session
+          </td>
+        </tr>
+        <tr>
+          <td>session</td>
+          <td>made by the plugin for each session; in its shells</td>
+          <td>that session's tools and scripts</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      If a session token leaks, replace it: New Token on the Agents tab, or
+      <code>autocode token rotate AGENT</code>. The old one stops working at
+      once.
+    </p>
+
+    <h2 id="opencode">
+      <span class="n">{{ sec.opencode.n }}</span> {{ sec.opencode.label }}
+    </h2>
+    <p>
+      You work with your agents in OpenCode as usual. Autocode adds tools to
+      every session: ask an agent in plain words, and it uses them.
+    </p>
+
+    <h3 id="learn">
+      <span class="n">{{ sec.learn.n }}</span> {{ sec.learn.label }}
+    </h3>
+    <ul>
+      <li>
+        The plugin adds a skill, <code>autocode</code>: a full guide to wakes,
+        messages and the rest, with examples. An agent loads it with OpenCode's
+        skill tool.
+      </li>
+      <li>
+        Once a session is registered, every model call carries one line that
+        names its agent ID and says to use the <code>autocode_*</code> tools.
+      </li>
+      <li>
+        The tools: <code>autocode_me</code> (register, status, discover other
+        agents, help), <code>autocode_wake</code> (set, list, show, cancel and
+        fire wakes) and <code>autocode_message</code> (send, list, read and
+        wait for messages). <code>autocode_me action=help</code> gives the
+        guide to agents that do not load skills.
+      </li>
+      <li>
+        Agents use the tools in the conversation. The CLI is for their scripts,
+        checks and background jobs, which cannot call tools.
+      </li>
+    </ul>
+
+    <h3 id="register">
+      <span class="n">{{ sec.register.n }}</span> {{ sec.register.label }}
+    </h3>
+    <p>
+      An agent registers before it uses wakes and messages. Ask it, for
+      example:
+    </p>
+    <ul class="examples">
+      <li>
+        Register with Autocode as kaggle:casmi26:lead, as the lead of the
+        CASMI 2026 work.
+      </li>
+      <li>Load the autocode skill, then register as myproject:reviewer.</li>
+      <li>Check your Autocode status and find the other kaggle agents.</li>
+    </ul>
+    <p>
+      An ID has letters, digits, <code>-</code>, <code>_</code>,
+      <code>.</code> and <code>:</code>, with levels split by <code>:</code>
+      (project, role, name). <code>owner</code> and <code>autocode</code> are
+      reserved. An ID stays with its session until the agent or you unregister
+      it, or the session is deleted.
+    </p>
+
+    <h3 id="wakes">
+      <span class="n">{{ sec.wakes.n }}</span> {{ sec.wakes.label }}
+    </h3>
+    <p>
+      A wake is a prompt that Autocode types into an agent's session later.
+      The agent sets it with a name, a trigger and a text; the same name again
+      replaces it. Ask in plain words, for example:
+    </p>
+    <ul class="examples">
+      <li>
+        Every 30 minutes, check the training run in runs/ and act on the
+        result.
+      </li>
+      <li>Tomorrow at 08:00, plan the day's submissions.</li>
+      <li>
+        When you have been idle for 2 hours, go on with the task list in
+        TODO.md.
+      </li>
+      <li>
+        Every 15 minutes, but only when there are new files in incoming/, load
+        them.
+      </li>
+    </ul>
+    <table class="triggers">
+      <thead>
+        <tr>
+          <th>Trigger</th>
+          <th>Falls Due</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>every 30m</code><br /><code>every 2h from 09:00</code></td>
+          <td>
+            every so long, from when it is set or from a time of day
+          </td>
+        </tr>
+        <tr>
+          <td><code>in 45m</code></td>
+          <td>once, that long after it is set</td>
+        </tr>
+        <tr>
+          <td><code>at 09:00</code><br /><code>at 2026-11-30 18:00</code></td>
+          <td>once: at the next 09:00, or at that date and time</td>
+        </tr>
+        <tr>
+          <td>
+            <code>cron "0 9 * * 1-5"</code><br /><code
+              >cron "0 9 * * 1-5" Europe/Berlin</code
+            >
+          </td>
+          <td>
+            on wall-clock times (minute, hour, day, month, weekday), in the
+            server's time zone unless one is named
+          </td>
+        </tr>
+        <tr>
+          <td><code>idle 30m</code><br /><code>idle 30m repeat</code></td>
+          <td>
+            once the session has been idle that long, counted from the end of
+            its last turn (an injected one too) but never from before the wake
+            was set; with <code>repeat</code>, again each time that long has
+            passed, counted from the last time it fell due
+          </td>
+        </tr>
+        <tr>
+          <td><code>fire-only</code></td>
+          <td>only when fired: by you, another agent or a script</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Durations: <code>90s</code>, <code>30m</code>, <code>2h</code>,
+      <code>1d</code>. Times are in the server's time zone (the
+      <code>timezone</code> setting). A wake can have an end time; an
+      <code>in</code> or <code>at</code> wake is gone once it has run.
+    </p>
+    <p>
+      A wake can have a check: a shell command that runs first, in the agent's
+      folder and with its Autocode values. A check costs no model calls, so a
+      frequent wake with a check is cheap.
+    </p>
+    <ul class="checks">
+      <li>
+        exit 0 wakes the agent, with the start of the output in the prompt;
+      </li>
+      <li>exit 1 skips this time;</li>
+      <li>
+        anything else is a failure, and three in a row put an alert in your
+        Inbox;
+      </li>
+      <li>a check is stopped after 60 s (<code>check_timeout</code>).</li>
+    </ul>
+    <p>How wakes are delivered:</p>
+    <ul>
+      <li>
+        Only while the session is idle: a wake waits while the agent works or
+        is paused.
+      </li>
+      <li>
+        At most one prompt per <code>min_interval</code> (1 minute by
+        default). What falls due together comes in one prompt.
+      </li>
+      <li>
+        Waiting wakes are merged only when they have the same name or the same
+        text: the newest one comes.
+      </li>
+      <li>
+        Fire delivers a wake at once and skips its check; the prompt says who
+        fired it.
+      </li>
+    </ul>
+
+    <h3 id="messages">
+      <span class="n">{{ sec.messages.n }}</span> {{ sec.messages.label }}
+    </h3>
+    <ul>
+      <li>
+        Agents send messages to one agent, a pattern (<code>kaggle:*</code>)
+        or a list; a group never includes the sender. A message is a text or a
+        file, up to 32,000 characters.
+      </li>
+      <li>
+        A message to <code>owner</code> comes to your Inbox. Your answer goes
+        back to the agent as a message from the owner. You can also send
+        messages yourself: on the Messages tab, or with
+        <code>autocode send</code>.
+      </li>
+      <li>
+        A new message is announced in the agent's next prompt. A text of up to
+        <code>inline_limit</code> characters (1024 by default) is shown whole;
+        longer ones and files are listed, and the agent reads them with its
+        tool.
+      </li>
+      <li>
+        An agent can wait for a message inside its tool, up to
+        <code>max_tool_wait</code> (5 minutes by default), at no cost.
+      </li>
+    </ul>
+
+    <h3 id="sees">
+      <span class="n">{{ sec.sees.n }}</span> {{ sec.sees.label }}
+    </h3>
+    <p>
+      Every prompt that Autocode types starts with a line that names its source
+      and why, for example:
+    </p>
+    <pre>
+[autocode] wake "check-training"
+[autocode] wake "training-done" fired by the owner
+[autocode] wake "standup", 2 messages</pre
+    >
+    <p>
+      Below it come the parts: each wake with its text, and each message with
+      its sender and subject. What others wrote, and a check's output, is
+      quoted: each such line starts with <code>&gt; </code>, so it cannot pass
+      for Autocode's own words. A last line says that the prompt comes from
+      Autocode, not from you, and how the agent lists its wakes and gets help.
+    </p>
+
+    <h2 id="cli">
+      <span class="n">{{ sec.cli.n }}</span> {{ sec.cli.label }}
+    </h2>
+    <p>
+      The same binary is the CLI. It takes the server and the token from its
+      flags (<code>--url</code>, <code>--token</code>), then from
+      <code>AUTOCODE_URL</code> and <code>AUTOCODE_TOKEN</code>, then from the
+      client config, then, on the server machine itself, from
+      <code>~/.autocode/admin.token</code>. Every command takes
+      <code>--json</code>. Exit codes: 0 done, 1 refused or failed, 2 wrong
+      usage, 3 the server cannot be reached.
+    </p>
+
+    <h3 id="commands">
+      <span class="n">{{ sec.commands.n }}</span> {{ sec.commands.label }}
+    </h3>
+    <table class="commands">
+      <thead>
+        <tr>
+          <th>Command</th>
+          <th>Does</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>autocode info</code></td>
+          <td>the server's ID and version</td>
+        </tr>
+        <tr>
+          <td><code>autocode agents [PATTERN]</code></td>
+          <td>
+            the agents with status, machine and last activity
+            (<code>kaggle:*</code>, <code>a,b</code>)
+          </td>
+        </tr>
+        <tr>
+          <td><code>autocode agents rm AGENT</code></td>
+          <td>unregister an agent (its history stays)</td>
+        </tr>
+        <tr>
+          <td>
+            <code>autocode agents register AGENT --session SES [--force]</code>
+          </td>
+          <td>
+            give a session an ID; <code>--force</code> moves it away from a
+            live session
+          </td>
+        </tr>
+        <tr>
+          <td><code>autocode hosts</code></td>
+          <td>
+            the plugin's hosts: machine, folder, online, OpenCode process,
+            shell values
+          </td>
+        </tr>
+        <tr>
+          <td><code>autocode token rotate AGENT</code></td>
+          <td>replace an agent's session token</td>
+        </tr>
+        <tr>
+          <td><code>autocode settings</code></td>
+          <td>
+            every setting, the rules and the agents' own values; see
+            <a routerLink="/help" fragment="settings">Settings</a>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code
+              >autocode history [--agent ID] [--kind KIND] [--since TIME]
+              [--limit N]</code
+            >
+          </td>
+          <td>the history, newest first</td>
+        </tr>
+        <tr>
+          <td><code>autocode inbox [--all]</code></td>
+          <td>your Inbox: messages to <code>owner</code> and alerts</td>
+        </tr>
+        <tr>
+          <td><code>autocode answer ITEM TEXT...</code></td>
+          <td>answer a message: it goes to the agent from the owner</td>
+        </tr>
+        <tr>
+          <td><code>autocode inbox close ITEM</code></td>
+          <td>close an item</td>
+        </tr>
+        <tr>
+          <td>
+            <code>autocode pause AGENT</code> /
+            <code>resume AGENT</code>
+          </td>
+          <td>
+            stop or restart an agent's injections (wakes and messages keep
+            waiting)
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code>autocode stop-all</code> / <code>resume-all</code>
+          </td>
+          <td>
+            pause every agent and interrupt every running turn; resume what
+            stop-all paused (your own pauses stay)
+          </td>
+        </tr>
+        <tr>
+          <td><code>autocode wakes [AGENT]</code></td>
+          <td>every wake, or one agent's</td>
+        </tr>
+        <tr>
+          <td>
+            <code
+              >autocode wake set AGENT NAME --trigger T --text TEXT [--check
+              CMD] [--end TIME]</code
+            >
+          </td>
+          <td>set or replace an agent's wake</td>
+        </tr>
+        <tr>
+          <td><code>autocode wake cancel AGENT NAME</code></td>
+          <td>cancel a wake</td>
+        </tr>
+        <tr>
+          <td><code>autocode fire AGENT WAKE [--text TEXT]</code></td>
+          <td>deliver a wake now (it skips its check)</td>
+        </tr>
+        <tr>
+          <td><code>autocode send TO TEXT...</code></td>
+          <td>
+            send a message as the owner to an ID, a pattern or a list
+            (<code>--file PATH</code> for a file)
+          </td>
+        </tr>
+        <tr>
+          <td><code>autocode messages</code></td>
+          <td>every message, newest first, with its state</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 id="scripts">
+      <span class="n">{{ sec.scripts.n }}</span> {{ sec.scripts.label }}
+    </h3>
+    <p>
+      In the shells of a registered session the plugin sets
+      <code>AUTOCODE_URL</code>, <code>AUTOCODE_TOKEN</code>,
+      <code>AUTOCODE_SERVER_ID</code> and <code>AUTOCODE_SESSION</code>, and
+      the CLI acts as that agent, never with your tokens. Agents use it in
+      scripts, checks and background jobs:
+    </p>
+    <ul class="scripts">
+      <li><code>autocode me</code>: the agent's status;</li>
+      <li>
+        <code>autocode wakes</code>,
+        <code>autocode wake set me NAME --trigger T --text TEXT</code>: its
+        wakes;
+      </li>
+      <li>
+        <code>autocode fire me WAKE [--text TEXT]</code>: wake itself now, for
+        example when a job ends;
+      </li>
+      <li><code>autocode send TO TEXT...</code>: send a message;</li>
+      <li>
+        <code>autocode messages [--wait SECONDS]</code>,
+        <code>autocode messages read ID</code>: its messages.
+      </li>
+    </ul>
+    <p>For example, a training run that wakes its agent when it ends:</p>
+    <pre>
+nohup sh -c 'python train.py > log.txt 2>&amp;1
+  autocode fire me training-done --text "exit $?"' &amp;</pre
+    >
+
+    <h2 id="web">
+      <span class="n">{{ sec.web.n }}</span> {{ sec.web.label }}
+    </h2>
+    <p>
+      The pages with lists load them again every 10 s; the footer says how
+      long ago. An action's result shows in the toolbar, beside its buttons.
+      An agent or host ID links to its page, which highlights its row and
+      scrolls it into view; the browser's back button returns.
+    </p>
+
+    <h3 id="web-hosts">
+      <span class="n">{{ sec['web-hosts'].n }}</span>
+      {{ sec['web-hosts'].label }}
+    </h3>
+    <p>
+      One row per OpenCode server folder that the plugin connects from, by
+      machine: status, the OpenCode process (the background service or
+      <code>opencode serve</code>, with its process ID), versions and last
+      seen. "no shell values" under the process means that the shells of that
+      server get no Autocode values (see
+      <a routerLink="/help" fragment="trouble">Troubleshooting</a>). A host's
+      link from the Agents page leads here with its row highlighted.
+    </p>
+
+    <h3 id="web-agents">
+      <span class="n">{{ sec['web-agents'].n }}</span>
+      {{ sec['web-agents'].label }}
+    </h3>
+    <p>
+      The agents by machine, with status (idle, working, paused or offline),
+      host (a link to its row on the Hosts page), folder, session and times.
+      An agent's link from another page leads here with its row highlighted;
+      a filter that would hide it goes. The filter takes an ID pattern and
+      applies a second after you stop typing. Edit a description, Pause or
+      Resume an agent's injections, give it a New Token, or Unregister it.
+      Stop All pauses every agent and interrupts every running turn, after you
+      confirm; Resume All resumes what Stop All paused.
+    </p>
+
+    <h3 id="web-inbox">
+      <span class="n">{{ sec['web-inbox'].n }}</span>
+      {{ sec['web-inbox'].label }}
+    </h3>
+    <p>
+      Messages to you, and alerts (a wake whose check failed three times in a
+      row). Answer a message, and the answer goes to the agent as a message
+      from the owner; Close an item you will not answer. Show Closed lists the
+      answered and closed ones too.
+    </p>
+
+    <h3 id="web-messages">
+      <span class="n">{{ sec['web-messages'].n }}</span>
+      {{ sec['web-messages'].label }}
+    </h3>
+    <p>
+      Every message, newest first, with its state (queued, delivered, read).
+      The Text column shows the first 200 characters of a longer text; click
+      anywhere in its cell to see it whole, and again to fold it. Reading a
+      message here leaves its state. Send a Message opens from its title and
+      sends as the owner, to an ID, a pattern or a list.
+    </p>
+
+    <h3 id="web-wakes">
+      <span class="n">{{ sec['web-wakes'].n }}</span>
+      {{ sec['web-wakes'].label }}
+    </h3>
+    <p>
+      Every agent's wakes: trigger, next run, text and check (a longer one
+      shows its first 200 characters; click anywhere in its cell to see it
+      whole, and again to fold it; the check in a fixed-width font), end, who
+      set it, when it was last set (Last Set: setting a wake again replaces
+      it, and its schedule starts over) and when it last fired. Fire
+      one now, or Cancel it. Set a Wake sets one for any agent.
+    </p>
+
+    <h3 id="web-settings">
+      <span class="n">{{ sec['web-settings'].n }}</span>
+      {{ sec['web-settings'].label }}
+    </h3>
+    <p>
+      The server-wide values (change one and Save, or Reset it to its
+      default), the pattern rules, the agents' own values, and Resolved for an
+      Agent: one agent's values and where each comes from.
+    </p>
+
+    <h3 id="web-help">
+      <span class="n">{{ sec['web-help'].n }}</span>
+      {{ sec['web-help'].label }}
+    </h3>
+    <p>This page.</p>
+
+    <h2 id="settings">
+      <span class="n">{{ sec.settings.n }}</span> {{ sec.settings.label }}
+    </h2>
+    <p>
+      Every setting has a built-in default. A server-wide value replaces it, a
+      pattern rule (the first that matches) replaces that for its agents, and
+      an agent's own value wins over all. Set them on the Settings tab or with
+      <code>autocode settings set</code>. These are in use now:
+    </p>
+    <table class="settings-help">
+      <thead>
+        <tr>
+          <th>Setting</th>
+          <th>Default</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>min_interval</code></td>
+          <td>1m</td>
+          <td>at most one prompt per session this often</td>
+        </tr>
+        <tr>
+          <td><code>inline_limit</code></td>
+          <td>1024</td>
+          <td>messages up to this many characters go into the prompt whole</td>
+        </tr>
+        <tr>
+          <td><code>check_timeout</code></td>
+          <td>60s</td>
+          <td>a wake's check is stopped after this long</td>
+        </tr>
+        <tr>
+          <td><code>check_output</code></td>
+          <td>2000</td>
+          <td>characters of a check's output put into the prompt</td>
+        </tr>
+        <tr>
+          <td><code>max_tool_wait</code></td>
+          <td>5m</td>
+          <td>the longest a tool waits inside a turn, for a message say</td>
+        </tr>
+        <tr>
+          <td><code>timezone</code></td>
+          <td>the server machine's</td>
+          <td>
+            the zone of <code>at</code> and <code>cron</code> wakes (a cron
+            wake keeps the zone it was set with); server-wide only
+          </td>
+        </tr>
+        <tr>
+          <td><code>history_days</code></td>
+          <td>30</td>
+          <td>
+            days of history kept, with message texts and closed Inbox items;
+            server-wide only
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      The others (questions, permissions, approvals, compaction, caps, retries,
+      expiry, jobs) are stored now and used by later tiers.
+      <code>listen</code> takes effect at the next start.
+    </p>
+
+    <h2 id="trouble">
+      <span class="n">{{ sec.trouble.n }}</span> {{ sec.trouble.label }}
+    </h2>
+    <table class="trouble">
+      <thead>
+        <tr>
+          <th>Symptom</th>
+          <th>What to Check</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>An agent seems to ignore Autocode</td>
+          <td>
+            Ask it to load the <code>autocode</code> skill, or to call
+            <code>autocode_me action=help</code>.
+          </td>
+        </tr>
+        <tr>
+          <td>A wake does not come</td>
+          <td>
+            Is the agent paused or offline (Agents)? Is its session busy? A
+            wake waits until it is idle. Does its check skip (exit 1) or fail?
+            Was the last prompt less than <code>min_interval</code> ago? The
+            Wakes tab shows its next run and when it last fired.
+          </td>
+        </tr>
+        <tr>
+          <td>A machine has no hosts</td>
+          <td>
+            The plugin loads with a folder only once the folder is used: open
+            it in a TUI or send a prompt. Read the plugin's log,
+            <code>~/.autocode/logs/plugin.log</code>.
+          </td>
+        </tr>
+        <tr>
+          <td>The plugin's log says "no client config"</td>
+          <td>Run <code>autocode plugin install</code> on that machine.</td>
+        </tr>
+        <tr>
+          <td>The plugin's log says "the server at … is X, not Y"</td>
+          <td>
+            The client config's <code>server_id</code> does not match the
+            server: fix the config or the server's ID.
+          </td>
+        </tr>
+        <tr>
+          <td>A host is offline</td>
+          <td>
+            The network or Tailscale between that machine and the server. The
+            plugin retries, waiting longer each time (up to 30 s).
+          </td>
+        </tr>
+        <tr>
+          <td>The plugin's log says "superseded by a newer instance"</td>
+          <td>
+            Two OpenCode processes use the same folder. The newest holds the
+            connection; the older one takes over when it is gone. Tools and
+            shell values work in both.
+          </td>
+        </tr>
+        <tr>
+          <td>An agent shows offline</td>
+          <td>Its host is offline, or its session was deleted.</td>
+        </tr>
+        <tr>
+          <td>Registering says <code>id_taken</code></td>
+          <td>
+            The ID belongs to another session that still exists: unregister it
+            there, delete that session, or move the ID with
+            <code>autocode agents register ID --session SES --force</code>.
+          </td>
+        </tr>
+        <tr>
+          <td>A tool says <code>session_gone</code></td>
+          <td>
+            The session was deleted in OpenCode; it never gets a token again.
+          </td>
+        </tr>
+        <tr>
+          <td>A shell has no <code>AUTOCODE_TOKEN</code></td>
+          <td>
+            The plugin sets a session's shell values through the local API of
+            its OpenCode server. Hosts marks a host "no shell values" when it
+            cannot reach that API: a standalone server, or
+            <code>opencode serve</code> without <code>--port</code> or without
+            <code>OPENCODE_SERVER_PASSWORD</code>. Use the background service,
+            or start <code>opencode serve</code> with both. Otherwise the
+            server was not reachable at the session's first shell: open a new
+            shell.
+          </td>
+        </tr>
+        <tr>
+          <td>The CLI says "the server at … is X, not Y"</td>
+          <td>
+            The URL answers with another server ID than expected; no token was
+            sent.
+          </td>
+        </tr>
+        <tr>
+          <td><code>autocode install</code> waits and fails</td>
+          <td>
+            <code>journalctl --user -u autocode</code>: a port already in use,
+            or a bad <code>--listen</code>.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </article>
+</div>

@@ -1,8 +1,8 @@
 <!--
   The Inbox page: Show Closed (an action's result before it), the items with
-  their kind, agent, title and body (an open message has a field for the
-  answer and Answer, every open item Close, a closed one shows the answer it
-  got), and when the list last loaded.
+  their kind, agent (a link to the Agents page), title and body (an open
+  message has a field for the answer and Answer, every open item Close, a
+  closed one shows the answer it got), and when the list last loaded.
 -->
 
 <div class="toolbar">
@@ -48,9 +48,9 @@
           [appTime]="item.created_at"
         ></td>
         <td class="kind">{{ item.kind }}</td>
-        <td class="agent">
+        <td class="agent id-like">
           @if (item.agent) {
-            <code [appBreaks]="item.agent"></code>
+            <app-agent-link [id]="item.agent" />
           }
         </td>
         <td class="item">

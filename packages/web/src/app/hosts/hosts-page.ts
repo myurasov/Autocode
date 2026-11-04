@@ -2,14 +2,16 @@
  * The Hosts page: one row per OpenCode server folder that the Autocode plugin
  * connects from, by machine, with the OpenCode process it runs in (marked when
  * its shells get no Autocode values), refreshed every 10 s (one refresh at a
- * time).
+ * time); the host a link led to (?host=) highlighted and scrolled into view,
+ * or a line that says it is not there.
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Host } from '../api';
-import { Breaks, TimeText } from '../breaks';
+import { Breaks, IdParts, TimeText } from '../breaks';
 import { versionText } from '../format';
+import { highlightParam, scrollToHighlight } from '../links';
 import { Updated } from '../updated';
 
 // What each kind of OpenCode process is called on the page.
@@ -32,7 +34,7 @@ export const NO_SHELL_VALUES =
 
 @Component({
   selector: 'app-hosts-page',
-  imports: [Breaks, TimeText, Updated],
+  imports: [Breaks, IdParts, TimeText, Updated],
   templateUrl: './hosts-page.html',
 })
 export class HostsPage {
@@ -57,12 +59,25 @@ export class HostsPage {
   protected readonly noShellValues = NO_SHELL_VALUES;
   private inFlight = 0;
 
+  // The host a link led to, and whether the list on show lacks it.
+  protected readonly target = highlightParam('host');
+  protected readonly missing = computed(() => {
+    const id = this.target();
+    if (!id || this.updatedAt() === null) return null;
+    return this.hosts().some((h) => h.id === id) ? null : id;
+  });
+
   constructor() {
     void this.refresh();
     const timer = setInterval(() => {
       if (this.inFlight === 0) void this.refresh();
     }, REFRESH_MS);
     inject(DestroyRef).onDestroy(() => clearInterval(timer));
+    scrollToHighlight(
+      this.target,
+      (id) => this.hosts().some((h) => h.id === id),
+      'data-host',
+    );
   }
 
   private async refresh(): Promise<void> {

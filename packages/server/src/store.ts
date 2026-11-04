@@ -186,6 +186,11 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX inbox_open ON inbox (closed_at, created_at);
   `,
+  // 5 (tier 0b2): a waiting wake keeps its trigger, so its prompt can say
+  // what it was after a one-time wake is gone.
+  `
+  ALTER TABLE queue ADD COLUMN trigger TEXT;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

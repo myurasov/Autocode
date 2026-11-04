@@ -1,7 +1,8 @@
 /*
  * Unit tests of the Settings page against a mocked server: server values saved,
  * reset and refused, lists and checkboxes, the rules editor, agents' own
- * values, and the values resolved for one agent.
+ * values, and the values resolved for one agent (agent IDs link to their rows
+ * on the Agents page).
  */
 
 import type {
@@ -14,6 +15,7 @@ import {
   button,
   choose,
   el,
+  parts,
   settle,
   setup,
   signedIn,
@@ -126,6 +128,10 @@ describe('SettingsPage', () => {
     expect(button(min.querySelector('td.value')!, 'Save')).toBeTruthy();
     expect(button(min.querySelector('td.value')!, 'Reset')).toBeTruthy();
     expect(text(min.querySelector('td.from'))).toBe('built-in default');
+    // A setting's key breaks only after "_" (the owner, 2026-11-03).
+    expect(min.querySelector('td.key')!.classList).toContain('id-like');
+    expect(parts(min.querySelector('td.key'))).toEqual(['min_', 'interval']);
+    expect(min.querySelector('td.help')!.classList).not.toContain('id-like');
     expect(text(min.querySelector('td.scope'))).toBe('agent');
     expect(text(min.querySelector('td.help'))).toBe(
       'at most one injection per session this often',
@@ -369,6 +375,17 @@ describe('SettingsPage', () => {
         'tr[data-agent="kaggle:lead"][data-key="min_interval"]',
     )!;
     expect(text(own.querySelector('td.value'))).toBe('2m');
+    expect(own.querySelector('td.id a.id-link')!.getAttribute('href')).toBe(
+      '/agents?agent=kaggle:lead',
+    );
+    for (const c of ['id', 'key'])
+      expect(own.querySelector(`td.${c}`)!.classList, c).toContain('id-like');
+    // A rule's pattern too.
+    const match = page.querySelector('table.rules tr[data-rule="1"] td.match')!;
+    expect(match.classList).toContain('id-like');
+    expect(parts(match)).toEqual(['kaggle:', '*']);
+    expect(parts(own.querySelector('td.key'))).toEqual(['min_', 'interval']);
+    expect(text(own.querySelector('td.id code'))).toBe('kaggle:lead');
     expect(
       [...page.querySelectorAll('#known-agents option')].map((o) =>
         o.getAttribute('value'),
@@ -444,6 +461,15 @@ describe('SettingsPage', () => {
     });
     await settle(fixture);
     const result = page.querySelector('table.resolved')!;
+    const heading = result.querySelector('thead a.id-link')!;
+    // The agent in the heading and the keys stay on one line.
+    expect(heading.closest('app-agent-link')!.classList).toContain('id-like');
+    const key = result.querySelector('tr[data-key="min_interval"] td.key')!;
+    expect(key.classList).toContain('id-like');
+    expect(parts(key)).toEqual(['min_', 'interval']);
+    expect(parts(heading)).toEqual(['kaggle:', 'lead']);
+    expect(heading.getAttribute('href')).toBe('/agents?agent=kaggle:lead');
+    expect(text(heading.closest('th'))).toBe('Value for kaggle:lead');
     expect(
       text(result.querySelector('tr[data-key="min_interval"] td.from')),
     ).toBe("the agent's own value");

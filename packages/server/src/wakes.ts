@@ -1,8 +1,8 @@
 /*
  * Wakes (spec, Wakes): each agent's named wakes with their trigger, text,
  * optional check and end date; setting, listing, cancelling and firing them;
- * and, on each scheduler tick, the wakes that fell due (by time, or by idle
- * time), handed to the injection queue.
+ * when each falls due next; and, on each scheduler tick, the wakes that fell
+ * due (by time, or by idle time), handed to the injection queue.
  */
 
 import type { Database } from "bun:sqlite"
@@ -22,6 +22,8 @@ export interface WakeItem {
   check?: string | null
   fired_by?: string | null
   extra?: string | null
+  // the wake's trigger (stored JSON), so its prompt can say what it was
+  trigger?: string | null
 }
 
 export type Enqueue = (agent: string, item: WakeItem) => void
@@ -34,6 +36,9 @@ export interface WakeView {
   check: string | null
   end: string | null
   next: string | null
+  // when it falls due next: its next run, or for an idle wake the time it
+  // will if the session stays idle (none while a turn runs)
+  due: string | null
   set_by: string
   created_at: string
   updated_at: string
@@ -45,6 +50,32 @@ const MAX_TEXT = 32_000
 const MAX_CHECK = 4000
 const iso = (ms: number | null) =>
   ms === null || ms === undefined ? null : new Date(ms).toISOString()
+
+// The session and agent fields an idle wake's timing needs.
+const WITH_SESSION = `
+  SELECT w.*, s.busy, s.idle_since, a.registered_at
+  FROM wakes w
+  JOIN agents a ON a.id = w.agent_id
+  JOIN sessions s ON s.id = a.session_id`
+
+/*
+ * When an idle wake falls due, if the session stays idle: its idle time counts
+ * from the later of the session's idle start (the end of its last turn, or its
+ * registration) and the time the wake was set; once per idle stretch, or with
+ * repeat again each duration after it last fell due. Null while a turn runs,
+ * or once a wake without repeat has fallen due in this stretch.
+ */
+export function idleDue(
+  row: any,
+  trigger: Extract<Trigger, { kind: "idle" }>,
+): { due: number | null; since: number } {
+  const since = Math.max(row.idle_since ?? row.registered_at, row.anchor)
+  if (row.busy) return { due: null, since }
+  const sameStretch = row.idle_fired_for === since
+  if (!trigger.repeat && sameStretch) return { due: null, since }
+  const last = sameStretch && row.idle_last_at ? row.idle_last_at : since
+  return { due: last + trigger.idle_ms, since }
+}
 
 export function notRegistered(): AutocodeError {
   return new AutocodeError(
@@ -68,14 +99,18 @@ export class Wakes {
   }
 
   private view(row: any): WakeView {
+    const trigger = JSON.parse(row.trigger) as Trigger
+    const due =
+      trigger.kind === "idle" ? idleDue(row, trigger).due : row.next_at
     return {
       agent: row.agent_id,
       name: row.name,
       text: row.text,
-      trigger: formatTrigger(JSON.parse(row.trigger)),
+      trigger: formatTrigger(trigger),
       check: row.check_cmd ?? null,
       end: iso(row.end_at),
       next: iso(row.next_at),
+      due: iso(due ?? null),
       set_by: row.set_by,
       created_at: iso(row.created_at)!,
       updated_at: iso(row.updated_at)!,
@@ -168,7 +203,7 @@ export class Wakes {
 
   get(agent: string, name: string): WakeView {
     const row = this.db
-      .query("SELECT * FROM wakes WHERE agent_id = ? AND name = ?")
+      .query(`${WITH_SESSION} WHERE w.agent_id = ? AND w.name = ?`)
       .get(agent, name)
     if (!row)
       throw new AutocodeError("no_wake", `${agent} has no wake ${name}`, 404)
@@ -178,10 +213,33 @@ export class Wakes {
   list(agent?: string): WakeView[] {
     const rows = agent
       ? this.db
-          .query("SELECT * FROM wakes WHERE agent_id = ? ORDER BY name")
+          .query(`${WITH_SESSION} WHERE w.agent_id = ? ORDER BY w.name`)
           .all(agent)
-      : this.db.query("SELECT * FROM wakes ORDER BY agent_id, name").all()
+      : this.db.query(`${WITH_SESSION} ORDER BY w.agent_id, w.name`).all()
     return (rows as any[]).map((r) => this.view(r))
+  }
+
+  // An agent's wakes in short: how many, and the one due first.
+  summary(agent: string): {
+    count: number
+    next: { name: string; due: string } | null
+  } {
+    const wakes = this.list(agent)
+    const timed = wakes
+      .filter((w) => w.due !== null)
+      .sort((a, b) => Date.parse(a.due!) - Date.parse(b.due!))
+    const first = timed[0]
+    return {
+      count: wakes.length,
+      next: first ? { name: first.name, due: first.due! } : null,
+    }
+  }
+
+  // The stored wake, for its prompt (undefined once a one-time wake ran).
+  row(agent: string, name: string): any {
+    return this.db
+      .query("SELECT * FROM wakes WHERE agent_id = ? AND name = ?")
+      .get(agent, name)
   }
 
   cancel(agent: string, nameInput: unknown, by: string) {
@@ -191,6 +249,12 @@ export class Wakes {
       .run(agent, name)
     if (!res.changes)
       throw new AutocodeError("no_wake", `${agent} has no wake ${name}`, 404)
+    // its runs that wait to be delivered go with it
+    this.db
+      .query(
+        "DELETE FROM queue WHERE agent_id = ? AND kind = 'wake' AND wake = ?",
+      )
+      .run(agent, name)
     this.history.record("wake.cancelled", { agent, data: { name, by } })
     return { cancelled: name }
   }
@@ -224,6 +288,7 @@ export class Wakes {
       wake: name,
       text: row.text,
       check: null,
+      trigger: row.trigger,
       fired_by: by,
       extra: typeof extra === "string" && extra.trim() ? extra : null,
     })
@@ -291,6 +356,7 @@ export class Wakes {
       wake: row.name,
       text: row.text,
       check: row.check_cmd ?? null,
+      trigger: row.trigger,
     })
     this.history.record("wake.due", {
       agent: row.agent_id,
@@ -298,32 +364,21 @@ export class Wakes {
     })
   }
 
-  /*
-   * Idle wakes: once per idle stretch (the time the session's last turn
-   * ended), when the session has been idle that long; with repeat, again each
-   * time the duration passes while it stays idle.
-   */
+  // Idle wakes that fell due (idleDue says when).
   private idle(enqueue: Enqueue, now: number) {
     const rows = this.db
       .query(
-        `SELECT w.*, s.busy, s.idle_since, a.registered_at
-         FROM wakes w
-         JOIN agents a ON a.id = w.agent_id
-         JOIN sessions s ON s.id = a.session_id
-         WHERE w.next_at IS NULL AND w.trigger LIKE '%"kind":"idle"%'`,
+        `${WITH_SESSION} WHERE w.next_at IS NULL ` +
+          `AND w.trigger LIKE '%"kind":"idle"%'`,
       )
       .all() as any[]
     for (const row of rows) {
-      if (row.busy) continue
       const trigger = JSON.parse(row.trigger) as Extract<
         Trigger,
         { kind: "idle" }
       >
-      const since = row.idle_since ?? row.registered_at
-      const sameStretch = row.idle_fired_for === since
-      if (!trigger.repeat && sameStretch) continue
-      const last = sameStretch && row.idle_last_at ? row.idle_last_at : since
-      if (now < last + trigger.idle_ms) continue
+      const { due, since } = idleDue(row, trigger)
+      if (due === null || now < due) continue
       this.due(row, enqueue)
       this.db
         .query(
