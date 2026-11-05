@@ -36,8 +36,9 @@ const CONTENTS = [
   ['5.3', 'Inbox'],
   ['5.4', 'Messages'],
   ['5.5', 'Wakes'],
-  ['5.6', 'Settings'],
-  ['5.7', 'Help'],
+  ['5.6', 'History'],
+  ['5.7', 'Settings'],
+  ['5.8', 'Help'],
   ['6', 'Settings'],
   ['7', 'Troubleshooting'],
 ];
@@ -174,6 +175,22 @@ describe('HelpPage', () => {
     expect(text(page.querySelector('table.settings-help + p'))).not.toContain(
       'retries',
     );
+  });
+
+  it('tells what the History tab shows, its filters and Older', async () => {
+    const page = await open();
+    const history = text(page.querySelector('#web-history + p'));
+    for (const part of [
+      'newest first',
+      'Agent',
+      'pattern',
+      'Kind',
+      'wake.*',
+      'Older',
+      '100',
+      'click',
+    ])
+      expect(history, part).toContain(part);
   });
 
   it('explains the error state, Retry and the failures not retried', async () => {

@@ -176,9 +176,11 @@ td button {
 }
 /*
  * Fixed-width fonts by name before the generic one: on Linux the generic
- * monospace can be a CJK font, whose "…" is two letters wide.
+ * monospace can be a CJK font, whose "…" is two letters wide. Code, and
+ * History's data when shown whole (JSON).
  */
-code {
+code,
+.more.json {
   font-family:
     ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
     "DejaVu Sans Mono", monospace;
@@ -226,10 +228,13 @@ nav a {
   position: relative;
   text-decoration: none;
 }
+/* The active tab: taller (10 px above its text) and joined to the frame by a
+   2 px bottom border over the frame's top border (the owner, 2026-11-04). */
 nav a.on {
   background: var(--panel);
   color: var(--fg-strong);
-  border-bottom: 1px solid var(--panel);
+  border-bottom: 2px solid var(--panel);
+  padding-top: 10px;
   z-index: 2;
 }
 #frame {
@@ -408,12 +413,11 @@ a.id-link:focus-visible {
   text-decoration: underline;
 }
 /*
- * The row such a link led to, in both themes: the selection's tint, and an
- * inset glow in the link color (the owner, 2026-11-03). On the row, so that
- * no cell background covers the glow.
+ * The row such a link led to, in both themes: an inset glow in the link color
+ * (the owner, 2026-11-03), and no background of its own (2026-11-04). On the
+ * row, so that no cell background covers the glow.
  */
 tr.highlight {
-  background: var(--sel);
   box-shadow: inset 0px 0px 7px var(--link);
 }
 .pair {
@@ -434,6 +438,11 @@ tr.highlight {
 }
 .toolbar input[type="text"] {
   width: 22rem;
+  max-width: 100%;
+}
+/* A toolbar's list (History's Kind) as wide as its longest choice. */
+.toolbar select {
+  width: auto;
   max-width: 100%;
 }
 /*

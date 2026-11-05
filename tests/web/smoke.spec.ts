@@ -166,6 +166,7 @@ const LOADED: Record<string, string> = {
   Inbox: "table.inbox tr[data-item]",
   Messages: "table.messages tr[data-message]",
   Wakes: "table.wakes tr[data-wake]",
+  History: "table.history tr[data-entry]",
   Settings: "table.settings tr[data-key]",
   Help: "article h2",
 }
@@ -189,6 +190,7 @@ test("admin: Agents shows smoke:agent under machine smoke, Hosts its host", asyn
     "Inbox",
     "Messages",
     "Wakes",
+    "History",
     "Settings",
     "Help",
   ])
@@ -715,17 +717,17 @@ test("link: a host ID on Agents opens Hosts with its row highlighted; the tab cl
   const row = page.locator('table.hosts tr[data-host="smoke:host:1"]')
   await expect(row).toHaveClass(/\bhighlight\b/)
   await expect(row).toBeInViewport()
-  // The highlight (the owner, 2026-11-03): the row in the selection's tint,
-  // with an inset glow in the link color; its cells let the row show.
+  // The highlight (the owner, 2026-11-03/04): an inset glow in the link
+  // color, and no background of its own: it looks as another row does.
   for (const theme of ["one", "the other"]) {
     const look = await looks(page, "hosts", "data-host")
     expect(look.highlight, theme).toEqual({
-      row: look.sel,
+      row: look.other?.row,
       shadow: `${look.link} 0px 0px 7px 0px inset`,
-      cell: "rgba(0, 0, 0, 0)",
+      cell: look.other?.cell,
     })
+    expect(look.highlight?.row, theme).not.toBe(look.sel)
     expect(look.other?.shadow, theme).toBe("none")
-    expect(look.other?.row, theme).not.toBe(look.sel)
     await page.getByRole("button", { name: "Light or dark" }).click()
   }
   await page.getByRole("link", { name: "Hosts", exact: true }).click()
@@ -915,6 +917,7 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
     "Inbox",
     "Messages",
     "Wakes",
+    "History",
     "Settings",
   ]) {
     await openTab(page, tab)
@@ -962,7 +965,8 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
       const name = `${tab}: ${cell.text}`
       // Kept as it is, a space around the ID would show.
       expect(cell.raw, name).toBe(cell.text)
-      if (cell.text === "—") continue
+      // No ID: a dash, or an empty cell (History: an entry without one).
+      if (cell.text === "—" || cell.text === "") continue
       expect(cell.parts.join(""), name).toBe(cell.text)
       expect(cell.spaces, name).toEqual(["normal"])
       // Every line but the last ends with a separator.
@@ -987,6 +991,8 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
   expect(seen.Messages.some((id) => /^m_\w+$/.test(id))).toBe(true)
   expect(seen.Inbox).toContain(LONG.agent)
   expect(seen.Settings).toContain("min_interval")
+  expect(seen.History).toContain("smoke:agent")
+  expect(seen.History).toContain("smoke:host:1")
 })
 
 // "Updated Ns ago." sits in a footer at the bottom of the page, at the left;
@@ -995,7 +1001,14 @@ test("layout: Updated is in the footer, at the bottom left of the page", async (
   page,
 }) => {
   await signIn(page, admin)
-  for (const tab of ["Hosts", "Agents", "Inbox", "Messages", "Wakes"]) {
+  for (const tab of [
+    "Hosts",
+    "Agents",
+    "Inbox",
+    "Messages",
+    "Wakes",
+    "History",
+  ]) {
     await openTab(page, tab)
     const footer = page.locator("#frame footer")
     await expect(footer, tab).toHaveText(/^Updated \d+s ago\.$/)
@@ -1085,6 +1098,44 @@ test("layout: the forms are full width and start collapsed", async ({
 
 // The tabs have 2 px rounded top corners (the owner, 2026-11-03); the Help
 // page's contents links stay square.
+// The active tab (the owner, 2026-11-04): 10 px above its text, a 2 px bottom
+// border in the frame's color over the frame's top border, still in front
+// (z-index 2); the others keep theirs.
+test("layout: the active tab has 10 px above its text and a 2 px bottom border", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "Agents")
+  const look = (selector: string) =>
+    page.locator(selector).evaluate((a) => {
+      const s = getComputedStyle(a)
+      const probe = document.createElement("span")
+      probe.style.color = "var(--panel)"
+      document.body.append(probe)
+      const panel = getComputedStyle(probe).color
+      probe.remove()
+      return {
+        paddingTop: s.paddingTop,
+        bottom: s.borderBottomWidth,
+        bottomColor: s.borderBottomColor === panel,
+        zIndex: s.zIndex,
+      }
+    })
+  expect(await look("nav:not(.toc) > a.on")).toEqual({
+    paddingTop: "10px",
+    bottom: "2px",
+    bottomColor: true,
+    zIndex: "2",
+  })
+  const other = await look("nav:not(.toc) > a:not(.on) >> nth=0")
+  expect(other.paddingTop).toBe("7.2px")
+  expect(other.bottom).toBe("1px")
+  // the tabs still sit on the frame's top edge
+  const tab = (await page.locator("nav:not(.toc) > a.on").boundingBox())!
+  const frame = (await page.locator("#frame").boundingBox())!
+  expect(tab.y + tab.height).toBeGreaterThanOrEqual(frame.y)
+})
+
 test("layout: tabs have 2 px rounded top corners", async ({ page }) => {
   await signIn(page, admin)
   await openTab(page, "Help")
@@ -1101,7 +1152,8 @@ test("layout: tabs have 2 px rounded top corners", async ({ page }) => {
       }),
     )
   const tabs = await radii("nav:not(.toc) > a")
-  expect(tabs.length).toBe(7)
+  expect(tabs.length).toBe(await page.locator("nav:not(.toc) > a").count())
+  expect(tabs.length).toBeGreaterThanOrEqual(8)
   expect(new Set(tabs)).toEqual(new Set(["2px 2px 0px 0px"]))
   expect(new Set(await radii("nav.toc a"))).toEqual(
     new Set(["0px 0px 0px 0px"]),
@@ -1218,6 +1270,192 @@ test("Help: under 900 px the contents are a row above the text", async ({
   expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
 })
 
+/*
+ * History (the owner, 2026-11-04): every server event, newest first, with its
+ * time, kind, agent and host (links to their pages), session and data (a
+ * summary; the whole data as JSON on a click anywhere in the cell).
+ */
+test("History: the fixture's events show, newest first, with links to Agents and Hosts", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "History")
+  await expect(page.locator("table.history thead th")).toHaveText([
+    "Time",
+    "Kind",
+    "Agent",
+    "Host",
+    "Session",
+    "Data",
+  ])
+  const times = await page
+    .locator("table.history td.time")
+    .evaluateAll((all) => all.map((td) => td.getAttribute("title") ?? ""))
+  expect(times.length).toBeGreaterThan(5)
+  expect([...times].sort().reverse()).toEqual(times)
+  // smoke:agent's registration (its kind chosen, so that it is on the page).
+  await page
+    .getByLabel("Kind", { exact: true })
+    .selectOption("agent.registered")
+  await expect(page).toHaveURL(/\/history\?kind=agent\.registered$/)
+  const registered = page
+    .locator("table.history tr[data-entry]")
+    .filter({ has: page.locator("td.agent", { hasText: /^smoke:agent$/ }) })
+    .first()
+  await expect(registered.locator("td.kind")).toHaveText("agent.registered")
+  await expect(registered.locator("td.data")).toHaveText(
+    "description: made by the smoke test",
+  )
+  await expect(registered.locator("td.host")).toHaveText("smoke:host:1")
+  await registered.locator("td.agent a.id-link").click()
+  await expect(page).toHaveURL(/\/agents\?agent=smoke(:|%3A)agent$/)
+  await expect(
+    page.locator('table.agents tr[data-agent="smoke:agent"]'),
+  ).toHaveClass(/\bhighlight\b/)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/history\?kind=agent\.registered$/)
+  await registered.locator("td.host a.id-link").click()
+  await expect(page).toHaveURL(/\/hosts\?host=smoke(:|%3A)host(:|%3A)1$/)
+  await expect(
+    page.locator('table.hosts tr[data-host="smoke:host:1"]'),
+  ).toHaveClass(/\bhighlight\b/)
+})
+
+/*
+ * The filters: an agent pattern (a second after the last key, Enter at once)
+ * and a kind (a group like agent.*, or one kind with its count); both go into
+ * the address, so Back keeps them; a bad pattern shows the server's message.
+ */
+test("History: filters by an agent pattern and by kind; the address keeps them", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "History")
+  const match = page.getByLabel("Agent", { exact: true })
+  await match.fill("smoke:*")
+  await expect(page).toHaveURL(/\/history\?match=smoke(:|%3A)\*$/)
+  const agents = page.locator("table.history td.agent")
+  await expect(agents.first()).toHaveText(/^smoke:/)
+  for (const agent of await agents.allTextContents())
+    expect(agent).toMatch(/^smoke:/)
+  const kind = page.getByLabel("Kind", { exact: true })
+  await kind.selectOption("agent.*")
+  await expect(page).toHaveURL(/match=smoke(:|%3A)\*&kind=agent\.\*$/)
+  const kinds = page.locator("table.history td.kind")
+  await expect(kinds.first()).toHaveText(/^agent\./)
+  for (const k of await kinds.allTextContents()) expect(k).toMatch(/^agent\./)
+  // One kind, with its count in the list.
+  const option = kind.locator("option", { hasText: /^agent\.registered \(/ })
+  await expect(option).toHaveText(/^agent\.registered \(\d+\)$/)
+  await kind.selectOption("agent.registered")
+  await expect(kinds.first()).toHaveText("agent.registered")
+  // Away and Back: the filters stay.
+  await page.getByRole("link", { name: "Wakes", exact: true }).click()
+  await page.goBack()
+  await expect(match).toHaveValue("smoke:*")
+  await expect(kind).toHaveValue("agent.registered")
+  await expect(kinds.first()).toHaveText("agent.registered")
+  // A bad pattern: the server's message in the toolbar.
+  await match.fill("a b")
+  await match.press("Enter")
+  await expect(page.locator(".toolbar .result .errmsg")).toHaveText(/pattern/)
+})
+
+// The toolbar is one row: Refresh at the left, Agent and Kind at the right.
+test("History: the toolbar is one row at 1280 and 1024 px", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "History")
+  for (const width of [1280, 1024]) {
+    await page.setViewportSize({ width, height: 800 })
+    const middles = await page
+      .locator(
+        "#frame .toolbar > button, #frame .toolbar > input, " +
+          "#frame .toolbar > select",
+      )
+      .evaluateAll((all) =>
+        all.map((e) => {
+          const box = e.getBoundingClientRect()
+          return Math.round(box.top + box.height / 2)
+        }),
+      )
+    expect(middles.length, `${width}`).toBe(3)
+    expect(new Set(middles).size, `${width}: ${middles}`).toBe(1)
+  }
+})
+
+// A row's Data opens as JSON on a click anywhere in its cell, and folds again.
+test("History: a row's Data opens as JSON and folds again", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "History")
+  const cell = page.locator("table.history td.data.folds").first()
+  const more = cell.locator(".more")
+  const summary = (await more.textContent()) ?? ""
+  expect(summary).toMatch(/^\w+: /)
+  await expect(cell).toHaveCSS("cursor", "pointer")
+  await cell.click({ position: { x: 3, y: 3 } })
+  await expect(more).toHaveAttribute("aria-expanded", "true")
+  await expect(more).toHaveClass(/\bjson\b/)
+  const json = (await more.textContent()) ?? ""
+  expect(() => JSON.parse(json)).not.toThrow()
+  expect(json).toContain("\n  ")
+  expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+  await more.click()
+  await expect(more).toHaveAttribute("aria-expanded", "false")
+  await expect(more).toHaveText(summary)
+})
+
+/*
+ * Older: with more than 100 entries, the next 100 come under the first; it
+ * goes when a page comes back short. The test makes 120 entries of its own
+ * (a wake set and cancelled 60 times).
+ */
+test("History: Older loads the next entries when there are more than 100", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  try {
+    for (let i = 0; i < 60; i++) {
+      const set = await api.put("/v1/me/wakes/history-paging", {
+        headers: bearer(sessionToken),
+        data: { text: `Paging ${i}.`, trigger: "fire-only" },
+      })
+      expect(set.ok(), await set.text()).toBe(true)
+      const gone = await api.delete("/v1/me/wakes/history-paging", {
+        headers: bearer(sessionToken),
+      })
+      expect(gone.ok(), await gone.text()).toBe(true)
+    }
+  } finally {
+    await api.dispose()
+  }
+  await signIn(page, admin)
+  await openTab(page, "History")
+  const rows = page.locator("table.history tr[data-entry]")
+  await expect(rows).toHaveCount(100)
+  const older = page.getByRole("button", { name: "Older", exact: true })
+  await expect(older).toBeVisible()
+  const last = Number(await rows.last().getAttribute("data-entry"))
+  await older.click()
+  await expect.poll(() => rows.count()).toBeGreaterThan(100)
+  // The ones Older added are all older than the first page's last.
+  const added = await rows.evaluateAll((all) =>
+    all.slice(100).map((r) => Number(r.getAttribute("data-entry"))),
+  )
+  for (const id of added) expect(id).toBeLessThan(last)
+  // Narrowed to these 120, two pages: Older goes after the second.
+  await page.getByLabel("Kind", { exact: true }).selectOption("wake.*")
+  await page.getByLabel("Agent", { exact: true }).fill("smoke:agent")
+  await page.getByLabel("Agent", { exact: true }).press("Enter")
+  await expect(rows).toHaveCount(100)
+  await older.click()
+  await expect.poll(() => rows.count()).toBeGreaterThan(120)
+  await expect(older).toHaveCount(0)
+})
+
 async function refused(page: Page, token: string, says: string) {
   await page.goto("/")
   await page.getByLabel("Token").fill(token)
@@ -1263,7 +1501,14 @@ for (const width of [1280]) {
     const host = page.locator(`table.hosts tr[data-host="${LONG.host}"]`)
     await expect(host.locator("td.folder")).toHaveText(LONG.directory)
     expect(await overflow(page), "Hosts").toEqual({ frame: 0, page: 0 })
-    for (const tab of ["Inbox", "Messages", "Wakes", "Settings", "Help"]) {
+    for (const tab of [
+      "Inbox",
+      "Messages",
+      "Wakes",
+      "History",
+      "Settings",
+      "Help",
+    ]) {
       await openTab(page, tab)
       expect(await overflow(page), tab).toEqual({ frame: 0, page: 0 })
     }
@@ -1285,6 +1530,7 @@ test("layout: at 1024 px a wide page scrolls inside the frame", async ({
     "Inbox",
     "Messages",
     "Wakes",
+    "History",
     "Settings",
     "Help",
   ]) {
@@ -1471,8 +1717,15 @@ test("layout: the title and every bold text have font weight 500", async ({
   expect(await weight(".sign-in h2")).toBe("500")
   await signIn(page, admin)
   expect(await weight("header h1")).toBe("500")
-  for (const tab of ["Hosts", "Agents", "Inbox", "Messages", "Wakes"]) {
-    await page.getByRole("link", { name: tab }).click()
+  for (const tab of [
+    "Hosts",
+    "Agents",
+    "Inbox",
+    "Messages",
+    "Wakes",
+    "History",
+  ]) {
+    await page.getByRole("link", { name: tab, exact: true }).click()
     await expect(page.locator("table th").first()).toBeVisible()
     const panel = page.locator("details.panel summary")
     if (await panel.count()) {
@@ -1683,6 +1936,14 @@ test("layout: the text is 15 px", async ({ page }) => {
     "table.wakes tr.group th",
     "table.wakes td.text",
   ])
+  await openTab(page, "History")
+  const history = await sizes([
+    "label[for=history-match]",
+    "#history-match",
+    "#history-kind",
+    "table.history td.data",
+    "table.history td.agent",
+  ])
   await openTab(page, "Help")
   const help = await sizes([
     "nav.toc a",
@@ -1697,6 +1958,7 @@ test("layout: the text is 15 px", async ({ page }) => {
     ...inbox,
     ...messages,
     ...wakes,
+    ...history,
     ...help,
   }))
     expect(size, item).toBe("15px")
@@ -2070,5 +2332,7 @@ test.describe("in Pacific time", () => {
     await openTab(page, "Wakes")
     const wake = page.locator('table.wakes tr[data-wake="smoke-check"]')
     await expect(wake.locator("td.next")).toHaveText(time)
+    await openTab(page, "History")
+    await expect(page.locator("table.history td.time").first()).toHaveText(time)
   })
 })

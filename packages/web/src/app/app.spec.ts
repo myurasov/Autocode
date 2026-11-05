@@ -117,6 +117,7 @@ describe('App (shell)', () => {
       'Inbox',
       'Messages',
       'Wakes',
+      'History',
       'Settings',
       'Help',
     ]);
@@ -128,6 +129,7 @@ describe('App (shell)', () => {
       '/inbox',
       '/messages',
       '/wakes',
+      '/history',
       '/settings',
       '/help',
     ]);

@@ -39,8 +39,9 @@ const LIST = [
   { id: 'web-inbox', n: '5.3', label: 'Inbox', sub: true },
   { id: 'web-messages', n: '5.4', label: 'Messages', sub: true },
   { id: 'web-wakes', n: '5.5', label: 'Wakes', sub: true },
-  { id: 'web-settings', n: '5.6', label: 'Settings', sub: true },
-  { id: 'web-help', n: '5.7', label: 'Help', sub: true },
+  { id: 'web-history', n: '5.6', label: 'History', sub: true },
+  { id: 'web-settings', n: '5.7', label: 'Settings', sub: true },
+  { id: 'web-help', n: '5.8', label: 'Help', sub: true },
   { id: 'settings', n: '6', label: 'Settings' },
   { id: 'trouble', n: '7', label: 'Troubleshooting' },
 ] as const;

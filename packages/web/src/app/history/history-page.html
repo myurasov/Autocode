@@ -1,0 +1,124 @@
+<!--
+  The History page: Refresh (a failed load's message beside it), the Agent
+  filter and the Kind list; the entries, newest first (agent and host IDs link
+  to their pages; Data shows the whole data on a click anywhere in its cell);
+  Older, while there may be more; and when the list last loaded.
+-->
+
+<div class="toolbar">
+  <button type="button" (click)="refresh()">Refresh</button>
+  <span class="result">
+    @if (error()) {
+      <span class="errmsg" role="alert">{{ error() }}</span>
+    }
+  </span>
+  <label for="history-match">Agent</label>
+  <input
+    id="history-match"
+    type="text"
+    spellcheck="false"
+    placeholder="for example kaggle:* or a:b,c:* (empty shows all)"
+    [value]="pattern()"
+    (input)="typed($any($event.target).value)"
+    (keydown.enter)="applyMatch()"
+  />
+  <label for="history-kind">Kind</label>
+  <select id="history-kind" (change)="chooseKind($any($event.target).value)">
+    <option value="" [selected]="!kind()">All kinds</option>
+    @if (extraKind(); as k) {
+      <option [value]="k" [selected]="true">{{ k }}</option>
+    }
+    <optgroup label="Groups">
+      @for (g of groups(); track g) {
+        <option [value]="g" [selected]="kind() === g">{{ g }}</option>
+      }
+    </optgroup>
+    <optgroup label="Kinds">
+      @for (k of kinds(); track k.kind) {
+        <option
+          [value]="k.kind"
+          [selected]="kind() === k.kind"
+          >{{ k.kind }} ({{ k.count }})</option
+        >
+      }
+    </optgroup>
+  </select>
+</div>
+
+<table class="history">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Kind</th>
+      <th>Agent</th>
+      <th>Host</th>
+      <th>Session</th>
+      <th>Data</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (e of entries(); track e.id) {
+      <tr [attr.data-entry]="e.id">
+        <td class="time" [title]="e.at" [appTime]="e.at"></td>
+        <td class="kind id-like"><code [appId]="e.kind"></code></td>
+        <td class="agent id-like">
+          @if (e.agent) {
+            <app-agent-link [id]="e.agent" />
+          }
+        </td>
+        <td class="host id-like">
+          @if (e.host) {
+            <app-host-link [id]="e.host" />
+          }
+        </td>
+        <td class="session id-like">
+          @if (e.session) {
+            <code [appId]="e.session"></code>
+          }
+        </td>
+        <!--
+          The data: its summary; a click anywhere in the cell (or Enter on it)
+          shows the whole as JSON, the next folds it.
+        -->
+        <td class="data" [class.folds]="hasData(e)" (click)="cellClick(e)">
+          @if (hasData(e)) {
+            <span
+              class="more"
+              role="button"
+              tabindex="0"
+              [class.json]="isOpen(e)"
+              [attr.aria-expanded]="isOpen(e)"
+              (keydown.enter)="toggle(e)"
+              (keydown.space)="$event.preventDefault(); toggle(e)"
+              >{{ shown(e) }}</span
+            >
+          } @else {
+            <span class="muted">—</span>
+          }
+        </td>
+      </tr>
+    } @empty {
+      <tr>
+        <td class="muted" colspan="6">
+          @if (!loaded()) {
+            Loading...
+          } @else if (match() || kind()) {
+            No entries match these filters.
+          } @else {
+            No history yet.
+          }
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+@if (more()) {
+  <div class="buttons older">
+    <button type="button" [disabled]="loadingOlder()" (click)="older()">
+      Older
+    </button>
+  </div>
+}
+
+<footer class="muted"><app-updated [at]="updatedAt()" /></footer>

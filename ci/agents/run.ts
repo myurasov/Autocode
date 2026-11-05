@@ -556,10 +556,10 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
     const wakes = await wakesOf(ctx)
     const w = wakes.find((x) => x.trigger === "fire-only")
     if (!w) return `no fire-only wake (${wakeList(wakes)})`
-    const before = await idleTime(ctx)
     const setupEnded = Date.now()
+    let fired: any
     try {
-      await until(
+      fired = await until(
         async () =>
           (
             await ac(
@@ -576,7 +576,10 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
       return "the job did not fire the wake (autocode fire me ...)"
     }
     // the turn Autocode's prompt starts (OpenCode's own background shell may
-    // wake the session first, when the job's command ends)
+    // wake the session first, when the job's command ends); a job shorter
+    // than the setup turn fires during it, and its prompt comes as that turn
+    // ends: so from the fire, not from the end of the setup
+    const firedAt = Date.parse(fired.at)
     let sent: any
     try {
       sent = await until(
@@ -587,18 +590,15 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
               "/v1/history?kind=injection.sent&agent=" +
                 encodeURIComponent(ctx.id),
             )
-          ).history.find((h: any) => Date.parse(h.at) >= setupEnded),
+          ).history.find((h: any) => Date.parse(h.at) >= firedAt),
         turnMs,
         "Autocode's prompt for the wake",
       )
     } catch {
       return "the wake fired, but its prompt was never sent"
     }
-    await idleAfter(
-      ctx,
-      Math.max(before, Date.parse(sent.at)),
-      "the woken turn",
-    )
+    // the turn that prompt started: it ends after the prompt was sent
+    await idleAfter(ctx, Date.parse(sent.at), "the woken turn")
     // the job itself must fire the wake: its own command, not a later check
     const shells = (await toolCalls(ctx))
       .filter(([name]) => name === "shell" || name === "bash")
@@ -608,7 +608,7 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
       return "the job's command does not fire the wake (no autocode fire in it)"
     if (shells.some((c) => fires.test(c) && !/sleep 20/.test(c)))
       return "fired the wake by hand instead of from the job"
-    if (!/finished/i.test(await textSince(ctx, setupEnded)))
+    if (!/finished/i.test(await textSince(ctx, Math.min(setupEnded, firedAt))))
       return "woken, but did not report what job.txt says"
     return misuse(ctx, true)
   },

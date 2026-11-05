@@ -59,6 +59,31 @@ export interface Agent {
   error?: AgentError | null;
 }
 
+// A history entry: a server event, newest first by time, then ID.
+export interface HistoryEntry {
+  id: number;
+  at: string;
+  kind: string;
+  agent?: string;
+  host?: string;
+  session?: string;
+  data: Record<string, unknown>;
+}
+
+export interface HistoryKind {
+  kind: string;
+  count: number;
+}
+
+// A page of the history: an agent pattern, a kind (or a prefix like wake.*),
+// only entries older than before (an entry's ID), at most limit of them.
+export interface HistoryQuery {
+  match?: string;
+  kind?: string;
+  before?: number;
+  limit?: number;
+}
+
 export interface Host {
   id: string;
   machine: string;
@@ -304,6 +329,31 @@ export class Api {
         this.http.post<{ agent: Agent }>(`/v1/agents/${path(id)}/retry`, {}),
       )
     ).agent;
+  }
+
+  // A page of the history, newest first (see HistoryQuery).
+  async history(query: HistoryQuery = {}): Promise<HistoryEntry[]> {
+    let params = new HttpParams();
+    if (query.match?.trim()) params = params.set('match', query.match.trim());
+    if (query.kind) params = params.set('kind', query.kind);
+    if (query.before !== undefined)
+      params = params.set('before', String(query.before));
+    if (query.limit !== undefined)
+      params = params.set('limit', String(query.limit));
+    return (
+      await this.call(
+        this.http.get<{ history: HistoryEntry[] }>('/v1/history', { params }),
+      )
+    ).history;
+  }
+
+  // The kinds of entries there are, with how many of each, most first.
+  async historyKinds(): Promise<HistoryKind[]> {
+    return (
+      await this.call(
+        this.http.get<{ kinds: HistoryKind[] }>('/v1/history/kinds'),
+      )
+    ).kinds;
   }
 
   async hosts(): Promise<Host[]> {

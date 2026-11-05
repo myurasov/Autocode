@@ -1,11 +1,12 @@
 /*
  * The history: stores each server event (a kind, the agent, host and session
  * involved, and data) in the database, lists them newest first, filtered by
- * agent, kind and time, and deletes those older than the days kept.
+ * agent (or an agent pattern), kind (or a kind prefix), time and paging, says
+ * which kinds there are, and deletes those older than the days kept.
  */
 
 import type { Database } from "bun:sqlite"
-import { AutocodeError } from "@autocode/shared"
+import { AutocodeError, matchesPattern, parsePattern } from "@autocode/shared"
 
 export interface HistoryFields {
   agent?: string | null
@@ -26,9 +27,14 @@ export interface HistoryEntry {
 
 export interface HistoryFilter {
   agent?: string
+  // an agent pattern or list (kaggle:*, a:b,c:*)
+  match?: string
+  // a kind, or a prefix ending in .* (wake.*)
   kind?: string
   since?: string
   until?: string
+  // an entry's ID: only entries older than it (paging)
+  before?: string
   limit?: string
 }
 
@@ -71,9 +77,34 @@ export class History {
       where.push("agent = ?")
       args.push(filter.agent)
     }
-    if (filter.kind) {
+    if (filter.kind?.endsWith(".*")) {
+      const prefix = filter.kind.slice(0, -1)
+      if (!/^[a-z_]+(\.[a-z_]+)*\.$/.test(prefix))
+        throw new AutocodeError(
+          "bad_request",
+          "kind takes a kind, or a prefix like wake.*",
+        )
+      where.push("substr(kind, 1, ?) = ?")
+      args.push(prefix.length, prefix)
+    } else if (filter.kind?.includes("*"))
+      throw new AutocodeError(
+        "bad_request",
+        "kind takes a kind, or a prefix like wake.*",
+      )
+    else if (filter.kind) {
       where.push("kind = ?")
       args.push(filter.kind)
+    }
+    if (filter.before !== undefined) {
+      const id = Number(filter.before)
+      if (!Number.isInteger(id) || id < 1)
+        throw new AutocodeError("bad_request", "before takes an entry's ID")
+      const at = this.db.query("SELECT at FROM history WHERE id = ?").get(id) as
+        | { at: number }
+        | undefined
+      // older than that entry, in the list's order (time, then ID)
+      where.push("(at < ? OR (at = ? AND id < ?))")
+      args.push(at?.at ?? 0, at?.at ?? 0, id)
     }
     if (filter.since) {
       where.push("at >= ?")
@@ -89,11 +120,21 @@ export class History {
         "bad_request",
         "limit must be a whole number from 1 to 1000",
       )
+    const pattern = filter.match ? parsePattern(filter.match) : null
     const sql =
       "SELECT * FROM history " +
       `${where.length ? `WHERE ${where.join(" AND ")}` : ""} ` +
-      "ORDER BY at DESC, id DESC LIMIT ?"
-    const rows = this.db.query(sql).all(...args, limit) as any[]
+      "ORDER BY at DESC, id DESC"
+    let rows: any[]
+    if (!pattern) rows = this.db.query(`${sql} LIMIT ?`).all(...args, limit)
+    else {
+      // a pattern is matched here, in order, until the page is full
+      rows = []
+      for (const r of this.db.query(sql).iterate(...args) as Iterable<any>) {
+        if (r.agent && matchesPattern(pattern, r.agent)) rows.push(r)
+        if (rows.length >= limit) break
+      }
+    }
     return rows.map((r) => {
       const entry: HistoryEntry = {
         id: r.id,
@@ -106,6 +147,16 @@ export class History {
       if (r.session) entry.session = r.session
       return entry
     })
+  }
+
+  // The kinds there are, with how many of each, most first.
+  kinds(): { kind: string; count: number }[] {
+    return this.db
+      .query(
+        "SELECT kind, COUNT(*) AS count FROM history GROUP BY kind " +
+          "ORDER BY count DESC, kind",
+      )
+      .all() as { kind: string; count: number }[]
   }
 
   trim(days: number): number {

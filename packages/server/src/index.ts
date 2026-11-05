@@ -428,19 +428,30 @@ export async function startServer(
       method: "GET",
       path: "/v1/history",
       access: ["admin", "consumer"],
-      summary: "history, newest first (agent, kind, since, until, limit)",
+      summary:
+        "history, newest first (agent, match: an agent pattern, kind or a " +
+        "prefix like wake.*, since, until, before: an entry ID, limit)",
       handler: ({ url }) => {
         const q = url.searchParams
         return {
           history: history.list({
             agent: q.get("agent") ?? undefined,
+            match: q.get("match") ?? undefined,
             kind: q.get("kind") ?? undefined,
             since: q.get("since") ?? undefined,
             until: q.get("until") ?? undefined,
+            before: q.get("before") ?? undefined,
             limit: q.get("limit") ?? undefined,
           }),
         }
       },
+    },
+    {
+      method: "GET",
+      path: "/v1/history/kinds",
+      access: ["admin", "consumer"],
+      summary: "the kinds of history entries there are, with counts",
+      handler: () => ({ kinds: history.kinds() }),
     },
     // wakes
     {

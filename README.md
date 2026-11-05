@@ -139,6 +139,7 @@ Served by the server; sign in with the admin token. Light and dark.
 - **Inbox:** messages to you and alerts; answer or close.
 - **Messages:** every message; send one as the owner.
 - **Wakes:** every agent's wakes, when each runs next and was last set; Fire, Cancel, Set a Wake.
+- **History:** every event, newest first, filtered by agent pattern and kind, with Older for more.
 - **Settings:** server values, pattern rules, agents' own values, and what an agent resolves to.
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI.
 

@@ -559,3 +559,34 @@ turn ends `failed`; the session holds no error type, the `session.execution.fail
 
 **Complete CI** on the final code, run `20261105T002100Z`: `unit` 115, `api` 214, `plugin` 28, `one` 24, `two` 30,
 `restart` 4, `install` 3, `web` 57, `web-unit` 121 (cached), `agents` 36 of 36 (each model 6 of 6; $0.89).
+
+**After 0b3: the active tab** (the owner, 2026-11-04 20:1x PT): `padding-top: 10px` and `border-bottom: 2px solid
+var(--panel)`, z-index 2 kept. A check of the active tab's padding, bottom border and its color, z-index, and the
+other tabs': red `20261105T042759Z`, green `20261105T042825Z` (15: the new check, tab corners, header, Title Case,
+page fit, the 1024 frame scroll, frame padding, first item, Help). Screenshots at 3x in both themes. Build 27 on
+myspark3 and myspark2.
+- The highlighted row without a background (the owner, 20:3x PT: "rm bg color from hilighted tr"): only the inset
+  glow. The host-link check now requires the row's and cells' backgrounds to be another row's: red
+  `20261105T043739Z`, green `20261105T043803Z` (9: `link:`, cell padding, room above tables, first item, page fit,
+  the fixture, the error state). Close-ups in both themes. Build 28 on myspark3 and myspark2.
+
+**After 0b3: the History tab** (the owner, 2026-11-04 20:4x PT: "add history tab to web ui"; filters "Agent + kind,
+paging"). API, tests first: `match` (an agent pattern), `kind` with a prefix (`wake.*`), `before` (paging), `GET
+/v1/history/kinds`: 4 red, then `history.test.ts` 10, unit and API 333. Web (the web worker): the History tab after
+Wakes (Agent filter, Kind list with groups and counts, both in the address; Time, Kind, Agent and Host links,
+Session, Data folded at 200 characters and whole as JSON on a click; Older; the refresh merges the newest page);
+Help 5.6. Red `20261105T051501Z` (14 of 133 unit), `20261105T052233Z` (the toolbar on one row); green
+`20261105T052251Z` (133 unit, 40 browser: "History:", page fit, the 1024 frame scroll, links, the fixture, the error
+state, Help, id cells and the layout loops). Screenshots in both themes.
+
+
+**Before the 0b4 tag** (the owner's "commit/tag/push", 2026-11-04 21:3x PT; the tag `v0.1.0-0b4` by the owner's
+choice). Complete CI, run `20261105T053426Z`: `unit` 115, `api` 218, `plugin` 28, `one` 24, `two` 30, `restart` 4,
+`install` 3 all pass; `web` 62 of 63: the tab-corner check still counted 7 tabs (the History tab makes 8; it now
+counts the tabs there are), rerun `20261105T055025Z` 63 of 63; `agents` 33 of 36 ($0.91): Kimi K3 3 of 6. Kimi's
+provider was slow that night (its scenarios took 340–760 s where others took 20–80 s); two setup turns did not end
+within the harness's 8 minutes, with every Autocode call right up to there. Its job scenario showed a harness race:
+the 20 s job fired the wake while the setup turn still ran, and the harness looked for Autocode's prompt only from
+the end of that turn; it now looks from the fire. Kimi alone again, `20261105T055132Z` 4 of 6 (a slow setup turn, and
+the job race before the fix), `20261105T060640Z` 5 of 6 (a slow setup turn), and reminder, loop and polling once
+more, `20261105T061801Z`: 3 of 3 ($0.08). Kimi spend tonight $0.59 beyond the full run.

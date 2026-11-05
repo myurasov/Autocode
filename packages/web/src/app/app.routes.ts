@@ -1,12 +1,13 @@
 /*
- * The web UI's routes: /hosts, /agents, /inbox, /messages, /wakes, /settings
- * and /help; any other path goes to /agents. The page title stays "Autocode"
- * (index.html) on every page.
+ * The web UI's routes: /hosts, /agents, /inbox, /messages, /wakes, /history,
+ * /settings and /help; any other path goes to /agents. The page title stays
+ * "Autocode" (index.html) on every page.
  */
 
 import type { Routes } from '@angular/router';
 import { AgentsPage } from './agents/agents-page';
 import { HelpPage } from './help/help-page';
+import { HistoryPage } from './history/history-page';
 import { HostsPage } from './hosts/hosts-page';
 import { InboxPage } from './inbox/inbox-page';
 import { MessagesPage } from './messages/messages-page';
@@ -19,6 +20,7 @@ export const routes: Routes = [
   { path: 'inbox', component: InboxPage },
   { path: 'messages', component: MessagesPage },
   { path: 'wakes', component: WakesPage },
+  { path: 'history', component: HistoryPage },
   { path: 'settings', component: SettingsPage },
   { path: 'help', component: HelpPage },
   { path: '', pathMatch: 'full', redirectTo: 'agents' },

@@ -1,12 +1,14 @@
 /*
- * The history API: entries come newest first and filter by agent, kind, since
- * and limit; the consumer token may read them, a session token may not; entries
- * older than history_days are trimmed.
+ * The history API: entries come newest first and filter by agent (or an agent
+ * pattern), kind (or a kind prefix), since, before (paging) and limit; the
+ * kinds there are, with counts; the consumer token may read them, a session
+ * token may not; entries older than history_days are trimmed.
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import {
   call,
   hello,
+  registered,
   sessionToken,
   type TestServer,
   testServer,
@@ -117,5 +119,93 @@ describe("history", () => {
     expect(
       (await call(t.url, t.admin, "GET", "/v1/history?limit=0")).status,
     ).toBe(400)
+  })
+
+  // The web UI's History tab (the owner, 2026-11-04).
+  test("match takes an agent pattern or a list", async () => {
+    const t = await start()
+    await hello(t, "m:1")
+    const pairs: [string, string][] = [
+      ["ses_1", "team:a"],
+      ["ses_2", "team:b"],
+      ["ses_3", "other:c"],
+    ]
+    for (const [ses, id] of pairs) await registered(t, "m:1", ses, id)
+    const agents = async (q: string) =>
+      [
+        ...new Set(
+          (
+            await call(t.url, t.admin, "GET", `/v1/history?match=${q}`)
+          ).body.history.map((h: any) => h.agent),
+        ),
+      ].sort()
+    expect(await agents("team:*")).toEqual(["team:a", "team:b"])
+    expect(await agents(encodeURIComponent("team:a,other:*"))).toEqual([
+      "other:c",
+      "team:a",
+    ])
+  })
+
+  test("a kind ending in .* matches every kind it starts", async () => {
+    const t = await start()
+    await hello(t, "m:1")
+    await registered(t, "m:1", "ses_1", "team:a")
+    const kinds = async (q: string) => [
+      ...new Set(
+        (
+          await call(t.url, t.admin, "GET", `/v1/history?kind=${q}`)
+        ).body.history.map((h: any) => h.kind),
+      ),
+    ]
+    const agent = await kinds("agent.*")
+    expect(agent).toContain("agent.registered")
+    expect(agent.every((k) => String(k).startsWith("agent."))).toBe(true)
+    expect(await kinds("server.started")).toEqual(["server.started"])
+    expect(
+      (await call(t.url, t.admin, "GET", "/v1/history?kind=a*")).status,
+    ).toBe(400)
+  })
+
+  test("before pages back: the entries older than that one, newest first", async () => {
+    const t = await start()
+    await hello(t, "m:1")
+    for (let i = 0; i < 5; i++) {
+      t.clock.advance(1000)
+      await registered(t, "m:1", `ses_${i}`, `team:a${i}`)
+    }
+    const page = async (q: string) =>
+      (
+        await call(
+          t.url,
+          t.admin,
+          "GET",
+          `/v1/history?kind=agent.registered${q}`,
+        )
+      ).body.history
+    const first = await page("&limit=2")
+    expect(first.map((h: any) => h.agent)).toEqual(["team:a4", "team:a3"])
+    const second = await page(`&limit=2&before=${first.at(-1).id}`)
+    expect(second.map((h: any) => h.agent)).toEqual(["team:a2", "team:a1"])
+    const last = await page(`&limit=2&before=${second.at(-1).id}`)
+    expect(last.map((h: any) => h.agent)).toEqual(["team:a0"])
+    expect(
+      (await call(t.url, t.admin, "GET", "/v1/history?before=x")).status,
+    ).toBe(400)
+  })
+
+  test("kinds: every kind there is, with how many, most first", async () => {
+    const t = await start()
+    await hello(t, "m:1")
+    await registered(t, "m:1", "ses_1", "team:a")
+    await registered(t, "m:1", "ses_2", "team:b")
+    const res = await call(t.url, t.admin, "GET", "/v1/history/kinds")
+    expect(res.status).toBe(200)
+    const kinds = res.body.kinds as { kind: string; count: number }[]
+    expect(kinds.find((k) => k.kind === "agent.registered")?.count).toBe(2)
+    expect(kinds.find((k) => k.kind === "server.started")?.count).toBe(1)
+    for (let i = 1; i < kinds.length; i++)
+      expect(kinds[i - 1]!.count).toBeGreaterThanOrEqual(kinds[i]!.count)
+    const consumer = await call(t.url, t.consumer, "GET", "/v1/history/kinds")
+    expect(consumer.status).toBe(200)
   })
 })

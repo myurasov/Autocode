@@ -181,6 +181,10 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   anywhere in the cell shows it whole, another folds it; the check in a fixed-width font), end, who set it, when it
   was last set (its schedule counts from then), last fired), **Fire** one now or **Cancel** it; **Set a Wake** for
   any agent. `autocode wakes` shows the same, with a LAST SET column.
+- **History:** what happened, newest first: time, kind, agent, host, session and data (a summary; a click shows it
+  whole); an **Agent** filter (a pattern, like the Agents filter) and a **Kind** list (one kind with its count, or a
+  group like `wake.*`), both kept in the address; **Older** loads the next 100. `autocode history` is the same in
+  the CLI.
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI, with a numbered table of contents.
 - **Settings:** the server-wide values (each shown in its edit box: change it and **Save**, or **Reset** to the
   built-in default), the pattern rules, the agents' own values, and **Resolved for an Agent** (an agent's values

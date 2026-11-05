@@ -83,6 +83,36 @@ describe('Api', () => {
     expect(await gone).toEqual({ unregistered: 'kaggle:lead' });
   });
 
+  it('reads the history: a page by agent pattern, kind and before, and the kinds there are', async () => {
+    signedIn();
+    const all = api.history();
+    const plain = http.expectOne((r) => r.url === '/v1/history');
+    expect(plain.request.method).toBe('GET');
+    expect(plain.request.params.keys()).toEqual([]);
+    plain.flush({ history: [{ id: 1, kind: 'server.started', data: {} }] });
+    expect((await all).map((e) => e.id)).toEqual([1]);
+
+    const some = api.history({
+      match: ' kaggle:* ',
+      kind: 'wake.*',
+      before: 41,
+      limit: 100,
+    });
+    const filtered = http.expectOne((r) => r.url === '/v1/history');
+    expect(filtered.request.params.get('match')).toBe('kaggle:*');
+    expect(filtered.request.params.get('kind')).toBe('wake.*');
+    expect(filtered.request.params.get('before')).toBe('41');
+    expect(filtered.request.params.get('limit')).toBe('100');
+    filtered.flush({ history: [] });
+    expect(await some).toEqual([]);
+
+    const kinds = api.historyKinds();
+    http
+      .expectOne('/v1/history/kinds')
+      .flush({ kinds: [{ kind: 'wake.fired', count: 3 }] });
+    expect(await kinds).toEqual([{ kind: 'wake.fired', count: 3 }]);
+  });
+
   it("asks for a retry of an agent's failed turn now", async () => {
     signedIn();
     const retried = api.retry('kaggle:lead');

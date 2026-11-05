@@ -663,6 +663,20 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       one now, or Cancel it. Set a Wake sets one for any agent.
     </p>
 
+    <h3 id="web-history">
+      <span class="n">{{ sec['web-history'].n }}</span>
+      {{ sec['web-history'].label }}
+    </h3>
+    <p>
+      Every event the server noted, newest first, 100 at a time: its time,
+      kind, agent and host (links to their pages), session and data. Agent
+      filters by an ID pattern (like <code>kaggle:*</code>), a second after
+      you stop typing; Kind picks a group (like <code>wake.*</code>) or one
+      kind, with how many there are. The filters stay in the address, so Back
+      and links keep them. A click on a Data cell shows the whole data, the
+      next folds it. Older loads the next 100 under them.
+    </p>
+
     <h3 id="web-settings">
       <span class="n">{{ sec['web-settings'].n }}</span>
       {{ sec['web-settings'].label }}
