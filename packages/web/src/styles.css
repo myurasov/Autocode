@@ -327,6 +327,22 @@ table.settings td.value {
 .dot.off {
   background: var(--err);
 }
+/* An agent in error (its turns fail): the favicon's pink-red, not offline's. */
+.dot.err {
+  background: var(--tint);
+}
+/*
+ * Under an agent's error status: its error type and how its retries go, each
+ * on a line, lined up with the status word after the dot (0.6rem + 0.4rem).
+ */
+td.status .error-detail {
+  display: block;
+  padding-left: 1rem;
+  white-space: normal;
+}
+td.status .error-detail > * {
+  display: block;
+}
 /*
  * Inbox: an item's title, then its body and answer with their lines kept;
  * the field for an answer under them.

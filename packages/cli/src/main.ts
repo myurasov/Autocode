@@ -28,6 +28,7 @@ import {
   messages,
   pause,
   resumeAll,
+  retry,
   send,
   stopAll,
   wake,
@@ -59,6 +60,7 @@ owner:
   inbox [--all] | inbox close ID         the owner's inbox
   answer ID TEXT...                      answer a message to the owner
   pause AGENT | resume AGENT             pause or resume an agent's injections
+  retry AGENT                            retry an agent in the error state now
   stop-all | resume-all                  pause every agent and interrupt every
                                          turn; resume what stop-all paused
   wakes [AGENT]                          every wake, or one agent's
@@ -194,6 +196,8 @@ async function main(argv: string[]): Promise<number> {
       return pause(args, false)
     case "resume":
       return pause(args, true)
+    case "retry":
+      return retry(args)
     case "stop-all":
       return stopAll(args)
     case "resume-all":

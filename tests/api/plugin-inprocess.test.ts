@@ -722,10 +722,14 @@ describe("the plugin in-process, tier 0b", () => {
         error: { type: "rate_limit", message: "slow down" },
       }),
     )
-    await until(async () => (await agentOf("inproc:turns")).status === "idle", {
-      what: "the agent to be idle",
-    })
-    expect((await agentOf("inproc:turns")).last_outcome).toBe("failed")
+    // a failed turn: the error state, with OpenCode's error type (tier 0b3)
+    await until(
+      async () => (await agentOf("inproc:turns")).status === "error",
+      { what: "the agent to be in the error state" },
+    )
+    const failed = await agentOf("inproc:turns")
+    expect(failed.last_outcome).toBe("failed")
+    expect(failed.error.type).toBe("rate_limit")
   })
 
   test("the agent guide: the autocode skill for every session, the line only for registered ones and their Subagents", async () => {

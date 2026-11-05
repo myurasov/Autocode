@@ -1,7 +1,8 @@
 /*
  * The CLI's tier 0b commands: me, wakes and wake, fire, send and messages (an
  * agent's own, from a script in its shell, or the owner's for any agent), and
- * the owner's inbox, answer, pause, resume, stop-all and resume-all.
+ * the owner's inbox, answer, pause, resume, stop-all and resume-all; and
+ * retry (tier 0b3).
  */
 
 import { readFileSync, writeFileSync } from "node:fs"
@@ -332,6 +333,15 @@ export async function pause(args: Parsed, resume: boolean): Promise<number> {
     `/v1/agents/${enc(agent)}/${resume ? "resume" : "pause"}`,
   )
   print(args, res, () => `${agent} ${resume ? "resumed" : "paused"}`)
+  return 0
+}
+
+// A retry now for an agent in the error state (tier 0b3).
+export async function retry(args: Parsed): Promise<number> {
+  const [agent] = args.words
+  if (!agent) usage("retry AGENT")
+  const res = await connect(args).call("POST", `/v1/agents/${enc(agent)}/retry`)
+  print(args, res, () => `${agent}: a retry comes now`)
   return 0
 }
 

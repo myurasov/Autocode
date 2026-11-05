@@ -20,7 +20,6 @@ type Kind =
   | "usd"
   | "percent"
   | "compact"
-  | "retry"
   | "bool"
   | "timezone"
   | "listen"
@@ -131,11 +130,20 @@ export const SETTINGS: Record<string, SettingDef> = {
     default: "90%",
     help: "warn the agent at this share of a cap",
   },
-  retry: {
-    kind: "retry",
+  // Tier 0b3 (the owner, 2026-11-04): a failed turn is retried every
+  // retry_interval, at most retry_attempts times (0: no limit).
+  retry_interval: {
+    kind: "duration",
     scope: "agent",
-    default: "1m 2m 4m 8m 16m 30m max 10",
-    help: "waits between retries of a failed turn, and the most retries",
+    default: "1m",
+    help: "wait this long after a failed turn before a retry prompt",
+  },
+  retry_attempts: {
+    kind: "int",
+    scope: "agent",
+    default: 0,
+    min: 0,
+    help: "the most retries of failed turns in a row (0: no limit)",
   },
   expire_after: {
     kind: "duration",
@@ -326,18 +334,6 @@ export function normalizeSetting(key: string, value: unknown): SettingValue {
         )
       const p = percent(key, m[1] ?? "")
       return m[2] ? `${p} max ${Number(m[2])}` : p
-    }
-    case "retry": {
-      const m = /^((?:\S+\s+)*?\S+)\s+max\s+(\d+)$/.exec(String(text))
-      if (!m) fail(key, `expected waits and a maximum, like "1m 2m 4m max 10"`)
-      try {
-        const waits = (m[1] ?? "")
-          .split(/\s+/)
-          .map((w) => formatDuration(parseDuration(w)))
-        return `${waits.join(" ")} max ${Number(m[2])}`
-      } catch {
-        return fail(key, `expected waits and a maximum, like "1m 2m 4m max 10"`)
-      }
     }
     case "bool":
       if (text === true || text === "true" || text === "on") return true

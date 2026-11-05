@@ -25,6 +25,7 @@ import { Hosts } from "./hosts.ts"
 import { json, openapi, type Route, router } from "./http.ts"
 import { type FindService, findService, Loader } from "./loader.ts"
 import { Inbox, Messages } from "./messages.ts"
+import { Retries } from "./retries.ts"
 import { SettingsStore } from "./settings-store.ts"
 import { openStore } from "./store.ts"
 import {
@@ -135,6 +136,10 @@ export async function startServer(
   const wakes = new Wakes(db, history, now, tz)
   let messages: Messages
   const inbox = new Inbox(db, history, now, () => messages)
+  // a failed turn's error state and its retries (tier 0b3)
+  const retries = new Retries(db, history, settings, inbox, now)
+  hosts.onTurnEnded = (agent, outcome, error) =>
+    retries.turnEnded(agent, outcome, error)
   const delivery = new Delivery(
     db,
     history,
@@ -144,6 +149,7 @@ export async function startServer(
     () => messages,
     inbox,
     now,
+    retries,
     new Loader(
       history,
       options.machine ?? machineName(options.hostname ?? osHostname()),
@@ -376,6 +382,8 @@ export async function startServer(
             min_interval: value("min_interval"),
             inline_limit: value("inline_limit"),
             max_tool_wait: value("max_tool_wait"),
+            retry_interval: value("retry_interval"),
+            retry_attempts: value("retry_attempts"),
           },
           ...(agent
             ? {
@@ -621,6 +629,19 @@ export async function startServer(
       access: ["admin"],
       summary: "resume an agent's injections",
       handler: ({ params }) => ({ agent: agents.resume(String(params.id)) }),
+    },
+    {
+      method: "POST",
+      path: "/v1/agents/:id/retry",
+      access: ["admin"],
+      summary:
+        "retry an agent in the error state now (its last turn failed), also " +
+        "after a failure that is not retried or after the retries ran out",
+      handler: ({ params }) => {
+        const id = String(params.id)
+        retries.request(id, "owner")
+        return { agent: agents.get(id) }
+      },
     },
     {
       method: "POST",

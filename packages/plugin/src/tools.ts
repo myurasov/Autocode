@@ -109,7 +109,38 @@ function agentLine(a: any): string {
   return `${a.id}  ${a.status}  last active ${a.last_active}${desc}`
 }
 
-function statusLine(a: any): string {
+/*
+ * An agent in the error state (tier 0b3): its last turn failed; what
+ * Autocode does about it.
+ */
+function errorLine(a: any, me: any, c: Clock): string {
+  const e = a.error ?? {}
+  const at = localTime(Date.parse(e.at), c.tz)
+  const since =
+    e.since && e.since !== e.at
+      ? `, failing since ${localTime(Date.parse(e.since), c.tz)}`
+      : ""
+  const head =
+    `Status error: your last turn failed (${e.type}) ` + `at ${at}${since}.`
+  const wait = "your wakes and messages wait until a turn succeeds."
+  if (!e.retryable)
+    return `${head} It is not retried (the owner is told); ${wait}`
+  if (!e.next_retry)
+    return (
+      `${head} Autocode stopped after ${e.retries} retries (the owner is ` +
+      `told); ${wait}`
+    )
+  const max = Number(me?.settings?.retry_attempts) || 0
+  return (
+    `${head} Autocode sends a retry prompt every ` +
+    `${me?.settings?.retry_interval ?? "1m"} (${e.retries} sent, ` +
+    `${max ? `at most ${max}` : "no limit"}); the next at ` +
+    `${when(e.next_retry, c)}. Your wakes and messages come with it.`
+  )
+}
+
+function statusLine(a: any, me?: any, c?: Clock): string {
+  if (a.status === "error" && a.error && c) return errorLine(a, me, c)
   if (a.status === "paused")
     return (
       `Status paused by ${a.paused === "stop-all" ? "Stop All" : "the owner"}` +
@@ -163,7 +194,7 @@ export async function runMe(
       const a = me.agent
       const lines = [
         `Registered as ${a.id}${a.description ? `: ${a.description}` : ""}.`,
-        statusLine(a),
+        statusLine(a, me, c),
         ...serverLine(me, c),
       ]
       const set = me.settings

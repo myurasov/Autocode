@@ -83,6 +83,16 @@ describe('Api', () => {
     expect(await gone).toEqual({ unregistered: 'kaggle:lead' });
   });
 
+  it("asks for a retry of an agent's failed turn now", async () => {
+    signedIn();
+    const retried = api.retry('kaggle:lead');
+    const post = http.expectOne('/v1/agents/kaggle%3Alead/retry');
+    expect(post.request.method).toBe('POST');
+    expect(post.request.body).toEqual({});
+    post.flush({ agent: { id: 'kaggle:lead', status: 'error' } });
+    expect((await retried).status).toBe('error');
+  });
+
   it('reads hosts and settings, one agent resolved, and patches settings', async () => {
     signedIn();
     const hosts = api.hosts();

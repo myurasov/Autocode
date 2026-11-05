@@ -26,10 +26,24 @@ export interface WhoAmI {
   session?: string;
 }
 
+// An agent's error state: its last turn failed (tier 0b3).
+export interface AgentError {
+  // OpenCode's error type, like provider.internal, or "failed"
+  type: string;
+  // when the streak of failures started, and the last failure
+  since: string;
+  at: string;
+  // the retries sent so far, and when the next one comes
+  retries: number;
+  next_retry: string | null;
+  // false for failures that come back the same way: not retried
+  retryable: boolean;
+}
+
 export interface Agent {
   id: string;
   description: string;
-  // idle, working, paused or offline
+  // idle, working, paused, offline or error
   status: string;
   last_active: string;
   session?: string;
@@ -41,6 +55,8 @@ export interface Agent {
   paused?: string;
   idle_since?: string | null;
   last_outcome?: string | null;
+  // While its turns fail (also when paused or offline).
+  error?: AgentError | null;
 }
 
 export interface Host {
@@ -279,6 +295,15 @@ export class Api {
         {},
       ),
     );
+  }
+
+  // A retry of an agent's failed turn now (tier 0b3).
+  async retry(id: string): Promise<Agent> {
+    return (
+      await this.call(
+        this.http.post<{ agent: Agent }>(`/v1/agents/${path(id)}/retry`, {}),
+      )
+    ).agent;
   }
 
   async hosts(): Promise<Host[]> {

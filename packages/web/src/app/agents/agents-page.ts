@@ -3,9 +3,10 @@
  * machine, with their hosts (links to the Hosts page), refreshed every 10 s;
  * the agent a link led to (?agent=) highlighted and scrolled into view, a
  * filter that would hide it cleared, or a line that says it is not there.
- * The owner can edit an agent's description,
- * pause or resume its injections, give it a new token or unregister it (the
- * last two ask for a confirmation first), and stop all agents (after a
+ * An agent in the error state (its turns fail) shows its error type and how
+ * its retries go. The owner can edit an agent's description, pause or resume
+ * its injections, retry one in error now, give it a new token or unregister it
+ * (the last two ask for a confirmation first), and stop all agents (after a
  * confirmation) or resume the ones Stop All paused; each action's result shows
  * in the toolbar.
  */
@@ -19,8 +20,9 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { type Agent, Api, errorText } from '../api';
+import { type Agent, type AgentError, Api, errorText } from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
+import { localTime } from '../format';
 import { HostLink, highlightParam, scrollToHighlight } from '../links';
 import { Updated } from '../updated';
 
@@ -34,6 +36,43 @@ export function pausedText(agent: Agent): string {
   return agent.paused === 'stop-all'
     ? 'Paused by Stop All'
     : 'Paused by the owner';
+}
+
+// A wait as people say it: "40s", "2m 30s", "1h 5m" (rounded up to seconds).
+function waitText(ms: number): string {
+  const s = Math.ceil(ms / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m${s % 60 ? ` ${s % 60}s` : ''}`;
+  const m = Math.floor((s % 3600) / 60);
+  return `${Math.floor(s / 3600)}h${m ? ` ${m}m` : ''}`;
+}
+
+/*
+ * How an agent's retries go, at a time (the page's last load): the next one
+ * and when it comes, one under way, a failure that is not retried, or retries
+ * that ran out (retry_attempts); '' when it is not in the error state.
+ */
+export function retryState(agent: Agent, now: number): string {
+  const error = agent.error;
+  if (!error) return '';
+  if (error.next_retry) {
+    const wait = Date.parse(error.next_retry) - now;
+    return wait > 0
+      ? `retry ${error.retries + 1} in ${waitText(wait)}`
+      : 'retrying now';
+  }
+  if (agent.status === 'working') return 'retrying now';
+  return error.retryable ? 'retries ran out' : 'not retried';
+}
+
+// An error state's times in full, for its tooltip.
+export function errorTimes(error: AgentError): string {
+  const sent = `${error.retries} ${error.retries === 1 ? 'retry' : 'retries'}`;
+  return (
+    `Failing since ${localTime(error.since)}; ` +
+    `last failure ${localTime(error.at)}; ${sent} sent` +
+    (error.next_retry ? `; next retry ${localTime(error.next_retry)}` : '')
+  );
 }
 
 // Whether a filter shows an ID: IDs with * wildcards, separated by commas.
@@ -93,6 +132,7 @@ export class AgentsPage {
   protected readonly editing = signal<string | null>(null);
   protected readonly draft = signal('');
   protected readonly pausedText = pausedText;
+  protected readonly errorTimes = errorTimes;
 
   // The agent a link led to, and the filter the list on show was loaded with.
   protected readonly target = highlightParam('agent');
@@ -233,6 +273,20 @@ export class AgentsPage {
       return `Resumed ${agent.id}.`;
     });
     if (done) await this.refresh();
+  }
+
+  // A retry of an agent's failed turn now.
+  protected async retry(agent: Agent): Promise<void> {
+    const done = await this.act(async () => {
+      await this.api.retry(agent.id);
+      return `Retrying ${agent.id}.`;
+    });
+    if (done) await this.refresh();
+  }
+
+  // How an agent's retries go, as of the list's last load.
+  protected retryText(agent: Agent): string {
+    return retryState(agent, this.updatedAt() ?? Date.now());
   }
 
   protected async stopAll(): Promise<void> {

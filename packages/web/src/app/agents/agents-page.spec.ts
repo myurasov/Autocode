@@ -5,9 +5,10 @@
  * Unregister, each after a confirmation, each status's dot, Pause and Resume,
  * and Stop All (after a confirmation) and Resume All, with each action's
  * result in the toolbar and "Updated" in the footer; each agent's host, a link
- * to the Hosts page; and the agent a link led to (?agent=): highlighted,
+ * to the Hosts page; the agent a link led to (?agent=): highlighted,
  * scrolled into view once, kept across the refresh, a filter that would hide
- * it cleared, or a line that says it is not there.
+ * it cleared, or a line that says it is not there; and an agent in the error
+ * state: its status, what is going on with its retries, and Retry.
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -25,9 +26,14 @@ import {
   text,
   type,
 } from '../../testing/helpers';
-import type { Agent } from '../api';
+import type { Agent, AgentError } from '../api';
 import { localTime } from '../format';
-import { AgentsPage, FILTER_DELAY_MS, REFRESH_MS } from './agents-page';
+import {
+  AgentsPage,
+  FILTER_DELAY_MS,
+  REFRESH_MS,
+  retryState,
+} from './agents-page';
 
 const AGENTS: Agent[] = [
   {
@@ -402,10 +408,10 @@ describe('AgentsPage', () => {
     confirm.mockRestore();
   });
 
-  it('shows each status with its dot: idle and working green, paused amber, offline red', async () => {
+  it('shows each status with its dot: idle and working green, paused amber, offline red, error pink-red', async () => {
     signedIn();
     fixture = TestBed.createComponent(AgentsPage);
-    const statuses = ['idle', 'working', 'paused', 'offline'];
+    const statuses = ['idle', 'working', 'paused', 'offline', 'error'];
     load(
       statuses.map((status) => ({
         ...AGENTS[0]!,
@@ -425,6 +431,7 @@ describe('AgentsPage', () => {
       ['dot', 'ok'],
       ['dot', 'warn'],
       ['dot', 'off'],
+      ['dot', 'err'],
     ]);
     expect(
       statuses.map((s) => text(row(s).querySelector('td.status'))),
@@ -563,5 +570,133 @@ describe('AgentsPage', () => {
     );
     expect(page.querySelector('p.errmsg')).toBeNull();
     http.expectNone((r) => r.url === '/v1/agents');
+  });
+
+  describe('an agent in the error state', () => {
+    // An error with its next retry so long from now.
+    const error = (next: number | null, change: Partial<AgentError> = {}) => ({
+      type: 'provider.internal',
+      since: '2026-10-28T11:00:00.000Z',
+      at: '2026-10-28T11:20:00.000Z',
+      retries: 2,
+      next_retry:
+        next === null ? null : new Date(Date.now() + next).toISOString(),
+      retryable: true,
+      ...change,
+    });
+    const failing = (next: number | null = 40_000): Agent => ({
+      ...AGENTS[0]!,
+      id: 'kaggle:failing',
+      status: 'error',
+      error: error(next),
+    });
+
+    it('shows its status, the error type and when the next retry comes (full times in the tooltip)', async () => {
+      signedIn();
+      fixture = TestBed.createComponent(AgentsPage);
+      const agent = failing();
+      load([agent, AGENTS[1]!]);
+      await settle(fixture);
+      const cell = el(fixture).querySelector(
+        'tr[data-agent="kaggle:failing"] td.status',
+      )!;
+      expect([...cell.querySelector('.dot')!.classList]).toEqual([
+        'dot',
+        'err',
+      ]);
+      const detail = cell.querySelector('.error-detail')!;
+      expect(detail.classList).toContain('muted');
+      expect(text(detail.querySelector('.error-type'))).toBe(
+        'provider.internal',
+      );
+      expect(text(detail.querySelector('.retry-state'))).toBe('retry 3 in 40s');
+      expect(text(cell).replace(text(detail), '').trim()).toBe('error');
+      expect(detail.getAttribute('title')).toBe(
+        `Failing since ${localTime(agent.error!.since)}; last failure ` +
+          `${localTime(agent.error!.at)}; 2 retries sent; next retry ` +
+          `${localTime(agent.error!.next_retry)}`,
+      );
+      // An agent without an error has none of this.
+      const other = el(fixture).querySelector(
+        'tr[data-agent="kaggle:worker"] td.status',
+      )!;
+      expect(other.querySelector('.error-detail')).toBeNull();
+    });
+
+    it('says how the retries go: in how long, now, not retried, or ran out', () => {
+      const now = Date.parse('2026-10-28T12:00:00.000Z');
+      const at = (ms: number) => new Date(now + ms).toISOString();
+      const agent = (status: string, change: Partial<AgentError>): Agent => ({
+        ...AGENTS[0]!,
+        status,
+        error: { ...error(0), next_retry: at(40_000), ...change },
+      });
+      const state = (status: string, change: Partial<AgentError> = {}) =>
+        retryState(agent(status, change), now);
+      expect(state('error')).toBe('retry 3 in 40s');
+      expect(state('error', { next_retry: at(39_200) })).toBe('retry 3 in 40s');
+      expect(state('error', { next_retry: at(120_000) })).toBe('retry 3 in 2m');
+      expect(state('error', { next_retry: at(150_000) })).toBe(
+        'retry 3 in 2m 30s',
+      );
+      expect(state('error', { next_retry: at(3_900_000) })).toBe(
+        'retry 3 in 1h 5m',
+      );
+      expect(state('error', { retries: 0 })).toBe('retry 1 in 40s');
+      // Due, or sent and its turn running.
+      expect(state('error', { next_retry: at(0) })).toBe('retrying now');
+      expect(state('paused', { next_retry: at(-5_000) })).toBe('retrying now');
+      expect(state('working', { next_retry: null })).toBe('retrying now');
+      // A failure that comes back the same way.
+      expect(
+        state('error', {
+          type: 'provider.auth',
+          next_retry: null,
+          retryable: false,
+        }),
+      ).toBe('not retried');
+      // retry_attempts reached.
+      expect(state('error', { next_retry: null })).toBe('retries ran out');
+      expect(retryState(AGENTS[0]!, now)).toBe('');
+    });
+
+    it('admin retries it now: the result shows in the toolbar and the list reloads; only an agent in error has Retry', async () => {
+      signedIn();
+      fixture = TestBed.createComponent(AgentsPage);
+      load([failing(), AGENTS[1]!]);
+      await settle(fixture);
+      const page = el(fixture);
+      const row = (id: string) => page.querySelector(`tr[data-agent="${id}"]`)!;
+      expect(button(row('kaggle:worker'), 'Retry')).toBeUndefined();
+      const retry = button(row('kaggle:failing'), 'Retry')!;
+      expect(retry.closest('td.actions')).not.toBeNull();
+      retry.click();
+      const req = http.expectOne('/v1/agents/kaggle%3Afailing/retry');
+      expect(req.request.method).toBe('POST');
+      req.flush({ agent: failing(0) });
+      await settle(fixture);
+      load([failing(0), AGENTS[1]!]);
+      await settle(fixture);
+      expect(text(page.querySelector('.toolbar .notice'))).toBe(
+        'Retrying kaggle:failing.',
+      );
+      expect(text(row('kaggle:failing').querySelector('.retry-state'))).toBe(
+        'retrying now',
+      );
+
+      // The server refuses: its message in the toolbar, no reload.
+      button(row('kaggle:failing'), 'Retry')!.click();
+      apiError(
+        http.expectOne('/v1/agents/kaggle%3Afailing/retry'),
+        409,
+        'not_in_error',
+        'kaggle:failing is not in the error state',
+      );
+      await settle(fixture);
+      expect(text(page.querySelector('.toolbar .errmsg'))).toBe(
+        'kaggle:failing is not in the error state',
+      );
+      http.expectNone((r) => r.url === '/v1/agents');
+    });
   });
 });

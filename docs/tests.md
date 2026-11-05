@@ -518,3 +518,44 @@ two passed): the provider, not the model's use of Autocode; Sol 6.1 ran the job 
 whose end notification woke the session before Autocode's prompt, and the harness took that turn for the wake's. The
 job scenario now waits for Autocode's prompt (`injection.sent`) and the turn after it. The agents suite again on the
 final code, run `20261104T061059Z`: 36 of 36 (each model 6 of 6; $0.80). Tier 0b2 agents spend so far: $3.91.
+
+## Tier 0b3 (2026-11-04)
+
+**Why.** The inference hub was down for a while: the co-sa update loop on myspark2 could not answer its wakes (its
+turns failed with `provider.internal` at 14:51 and 15:22 PST), it still showed `idle`, and nothing retried; the hub
+was back by 15:52 (that wake's turn succeeded). The owner: mark such agents as in an error state, and retry every X
+minutes (a setting) up to X attempts (0: no limit, the default); answers: `retry_interval` 1m, only transient
+failures retried, wakes and messages go with the retries, built now as 0b3.
+
+**What was added and how it is tested.** Settings `retry_interval` and `retry_attempts` (the unused `retry`
+backoff gone); migration 6 (the agent's error state); `retries.ts` (the state from each turn's end, which failures
+retry, the owner's retry, the retry prompt's first part); delivery holds an agent in error and sends retry prompts
+with what waited; agent status `error` and an `error` view; `POST /v1/agents/{id}/retry`; `autocode retry`;
+`autocode_me status` and the guide explain it.
+
+- `unit`: `settings.test.ts` (defaults, values, refusals), `agent-guide.test.ts` (the status text: retried, not
+  retried, retries run out; the guide explains retries).
+- `api`: `retries.test.ts` (13: the state and the next retry; retries every interval and recovery; the interval
+  per agent; an interrupted turn; holding wakes and messages and carrying them; delivery as usual after recovery;
+  pause; `retry_attempts` and the alert; failures not retried and their alert; the owner's retry; a failure without
+  a type); `cli-0b.test.ts` (`autocode retry`, refused when not in error); two older tests pinned a failed turn's
+  `idle` status and now expect `error`.
+
+**Red first.** The 16 new unit and API tests failed before the code (and the CLI test), then passed: unit and API
+328, CLI 29.
+
+**Spike check 5's question, answered on the host** (OpenCode 2.2.0, a throwaway `opencode serve` and the fake
+model): a provider that keeps answering 500 gets 11 requests (OpenCode's own 10 retries) over about 85 s, then the
+turn ends `failed`; the session holds no error type, the `session.execution.failed` event does.
+
+- `e2e`: `retries.test.ts` on every node: the fake model answers 11 times 500, then a reply; the agent shows
+  `error` with `provider.internal` (as OpenCode names a 500), `[autocode] retry 1` reaches the model with "Your last
+  turn failed: provider.internal ... Continue where you left off.", and the agent is `idle` again, recovered after
+  one retry (`one` about 87 s, `two` about 92 s).
+- `web` (the web worker): the Agents page's error state (status `error`, the error and its retries under it, the
+  times in a tooltip) and Retry; Help (Agents, Settings, Troubleshooting, the commands, the retry prompt). Red
+  `20261105T000934Z` (7 of 121 unit), `20261105T001234Z`, `20261105T001519Z`; green `20261105T001748Z` (28 browser
+  checks: "error state:", the page fit, links, the layout loops). Screenshots in both themes.
+
+**Complete CI** on the final code, run `20261105T002100Z`: `unit` 115, `api` 214, `plugin` 28, `one` 24, `two` 30,
+`restart` 4, `install` 3, `web` 57, `web-unit` 121 (cached), `agents` 36 of 36 (each model 6 of 6; $0.89).

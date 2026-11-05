@@ -177,6 +177,76 @@ describe("autocode_me", () => {
     )
   })
 
+  // Tier 0b3: a failed turn, and Autocode's retries.
+  test("status: an error, retried, not retried, or retries run out", async () => {
+    const failing = (error: Record<string, unknown>, attempts = 0) =>
+      server({
+        "GET /v1/me": {
+          ...ME,
+          agent: { ...ME.agent, status: "error", error },
+          settings: {
+            ...ME.settings,
+            retry_interval: "1m",
+            retry_attempts: attempts,
+          },
+        },
+      }).call
+    const since = "2026-10-28T11:50:00.000Z"
+    const at = "2026-10-28T11:58:00.000Z"
+    const retried = await runMe(
+      { action: "status" },
+      failing({
+        type: "provider.internal",
+        since,
+        at,
+        retries: 3,
+        next_retry: "2026-10-28T12:01:00.000Z",
+        retryable: true,
+      }),
+    )
+    expect(retried).toContain(
+      "Status error: your last turn failed (provider.internal) at " +
+        "2026-10-28 04:58 PDT, failing since 2026-10-28 04:50 PDT. " +
+        "Autocode sends a retry prompt every 1m (3 sent, no limit); the " +
+        "next at 2026-10-28 05:01 PDT (in 1m). Your wakes and messages " +
+        "come with it.",
+    )
+    const auth = await runMe(
+      { action: "status" },
+      failing({
+        type: "provider.auth",
+        since: at,
+        at,
+        retries: 0,
+        next_retry: null,
+        retryable: false,
+      }),
+    )
+    expect(auth).toContain(
+      "Status error: your last turn failed (provider.auth) at " +
+        "2026-10-28 04:58 PDT. It is not retried (the owner is told); your " +
+        "wakes and messages wait until a turn succeeds.",
+    )
+    const out = await runMe(
+      { action: "status" },
+      failing(
+        {
+          type: "provider.internal",
+          since,
+          at,
+          retries: 5,
+          next_retry: null,
+          retryable: true,
+        },
+        5,
+      ),
+    )
+    expect(out).toContain(
+      "Autocode stopped after 5 retries (the owner is told); your wakes " +
+        "and messages wait until a turn succeeds.",
+    )
+  })
+
   test("help: the whole guide, one topic, or the topics there are", async () => {
     const { call } = server({})
     const guide = (topic?: string) => helpText(FACTS, topic)
@@ -381,6 +451,12 @@ describe("the guide", () => {
       "a background job you start can fire it as its last command",
       // time zones
       "the server's zone",
+      // a failed turn (tier 0b3)
+      "`[autocode] retry 2`",
+      "`retry_interval`",
+      "Continue where you left off",
+      // why a wake did not come: the error state too
+      "you are in the error state (`autocode_me status`)",
     ])
       expect(guide).toContain(answer)
   })

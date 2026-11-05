@@ -191,6 +191,17 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE queue ADD COLUMN trigger TEXT;
   `,
+  // 6 (tier 0b3): an agent's error state (its last turn failed) and its
+  // retries; the unused retry backoff setting gives way to retry_interval
+  // and retry_attempts.
+  `
+  ALTER TABLE agents ADD COLUMN error TEXT;
+  ALTER TABLE agents ADD COLUMN error_since INTEGER;
+  ALTER TABLE agents ADD COLUMN error_at INTEGER;
+  ALTER TABLE agents ADD COLUMN retries INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE agents ADD COLUMN retry_at INTEGER;
+  DELETE FROM settings WHERE key = 'retry';
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

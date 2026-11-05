@@ -113,10 +113,11 @@ ID before it sends a token. Every command takes `--json`.
 | `autocode token rotate AGENT` | replace an agent's session token |
 | `autocode settings ...` | see [Settings](#settings) |
 | `autocode history [--agent ID] [--kind KIND] [--since TIME] [--limit N]` | the history, newest first |
-| `autocode inbox [--all]` | the owner's inbox: messages to `owner` and alerts (three failed checks in a row) |
+| `autocode inbox [--all]` | the owner's inbox: messages to `owner` and alerts (three failed checks in a row; a failed turn not retried; retries run out) |
 | `autocode answer ITEM TEXT...` | answer a message in the inbox: the reply goes to the agent as a message from the owner |
 | `autocode inbox close ITEM` | close an inbox item (an alert, or a message you will not answer) |
 | `autocode pause AGENT` / `resume AGENT` | stop or restart an agent's injections (wakes and messages keep queuing) |
+| `autocode retry AGENT` | retry an agent in the error state now (also after an error that is not retried, or after the retries ran out) |
 | `autocode stop-all` / `resume-all` | pause every agent and interrupt every running turn; resume what stop-all paused (your own pauses stay) |
 | `autocode wakes [AGENT]` | every wake (agent, name, trigger, next run, check, text), or one agent's |
 | `autocode wake set AGENT NAME --trigger T --text TEXT [--check CMD] [--end TIME]` | set or replace an agent's wake |
@@ -142,8 +143,10 @@ Exit codes: 0 done, 1 refused or failed, 2 wrong usage, 3 the server cannot be r
   at the next start).
 - In use: `history_days` (history trimming, with message bodies, settled injections and closed inbox items),
   `min_interval`, `inline_limit`, `check_timeout`, `check_output`, `max_tool_wait` (a single wait is cut at 240 s
-  and waited again) and `timezone` (the default zone of `cron` and `at` wakes; a cron wake keeps the zone it was set
-  with). The other settings are stored and resolved now and used by the tiers that add their features.
+  and waited again), `timezone` (the default zone of `cron` and `at` wakes; a cron wake keeps the zone it was set
+  with), `retry_interval` (1m: the wait between a failed turn and its retry) and `retry_attempts` (0, no limit: the
+  most retries in a row before Autocode stops and tells you). The other settings are stored and resolved now and
+  used by the tiers that add their features.
 
 ## Web UI
 
@@ -159,11 +162,13 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   by default, so its folders stay online after the TUI exits, until OpenCode unloads a folder after an hour unused.
   **no shell values** under the process: that server's shells get no Autocode values, because the plugin cannot
   reach its local API (see Troubleshooting; `autocode hosts` shows a SHELL VALUES column).
-- **Agents:** the agents by machine (status: idle, working, paused or offline; host, folder, session, times), refreshed
-  every 10 s, with a pattern filter that applies a second after the last key (Enter or **Refresh** at once; **Show
-  All** clears it); edit a description, **Pause** or **Resume** an agent's injections, **New Token** (the same as
-  `autocode token rotate`), **Unregister**; **Stop All** (pause every agent and interrupt its session, after you
-  confirm) and **Resume All** (what Stop All paused). Like Hosts, it says how many seconds ago it last loaded.
+- **Agents:** the agents by machine (status: idle, working, error, paused or offline; host, folder, session, times),
+  refreshed every 10 s, with a pattern filter that applies a second after the last key (Enter or **Refresh** at once;
+  **Show All** clears it); edit a description, **Pause** or **Resume** an agent's injections, **New Token** (the same
+  as `autocode token rotate`), **Unregister**; **Stop All** (pause every agent and interrupt its session, after you
+  confirm) and **Resume All** (what Stop All paused). Like Hosts, it says how many seconds ago it last loaded. An
+  agent in the **error** state (its last turn failed) shows the error and its retries under its status (`retry 3 in
+  40s`, `retrying now`, `not retried`, `retries ran out`; the times in its tooltip), and **Retry** retries it now.
 - **Links:** an agent's ID anywhere else (Inbox, Messages, Wakes, Settings) opens the Agents page with that agent's
   row highlighted; a host's ID (on Agents) opens the Hosts page with that host's row highlighted.
 - **Inbox:** messages to `owner` and alerts (a wake whose check failed three times in a row); **Answer** a message
@@ -207,6 +212,7 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
 | A host is `online no` | Network or Tailscale between that machine and the server; the plugin retries with growing waits (up to 30 s). |
 | Plugin log: "superseded by a newer instance" | Two OpenCode processes use the same folder and data folder; the newest one holds the channel, the older one waits and takes over when the newer one is gone. Tools and shell variables keep working in both. |
 | An agent shows `offline` | Its host is offline (above), or its session was deleted (the ID can move to another session). |
+| An agent shows `error` | Its last turn failed: the Agents page (or `autocode agents --json`) shows the error (like `provider.internal`: the model's provider failed), the retries sent and the next. Autocode retries every `retry_interval` with what waited, until a turn succeeds (or `retry_attempts` run out: an inbox alert). Errors that come back the same way (`provider.auth`, `provider.invalid-request`, `provider.content-filter`, `provider.unknown`, `provider.unsupported-operation`) are not retried: fix the cause (a key, the model's name), then **Retry** or `autocode retry AGENT`. |
 | Registering says `id_taken` | The ID belongs to another session that still exists; unregister there, delete that session, or force the move: `autocode agents register ID --session SESSION --force`. |
 | A tool says `session_gone` | The session was deleted in OpenCode; a deleted session never gets a token again. |
 | A shell has no `AUTOCODE_TOKEN` | The plugin sets a session's shell values through its OpenCode server's local API before the session's first shell. The Hosts page marks the host **no shell values** (`autocode hosts`: SHELL VALUES `no`) when it cannot reach that API: a standalone server (`opencode run --standalone`, or a TUI with the service turned off), or `opencode serve` without `--port` or without `OPENCODE_SERVER_PASSWORD`; use the background service or start `opencode serve` with both. Otherwise the server was not reachable at that session's first shell; the next shell call sets them once the channel is back. The CLI in that shell refuses to run (it never falls back to the owner's tokens): open a new shell, or pass `--token`. |

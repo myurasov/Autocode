@@ -34,7 +34,10 @@ describe("settings", () => {
     expect(d.daily_usd).toBe("off")
     expect(d.total_usd).toBe("off")
     expect(d.cap_warn).toBe("90%")
-    expect(d.retry).toBe("1m 2m 4m 8m 16m 30m max 10")
+    // tier 0b3 (the owner, 2026-11-04): every minute, no limit
+    expect(d.retry_interval).toBe("1m")
+    expect(d.retry_attempts).toBe(0)
+    expect("retry" in d).toBe(false)
     expect(d.expire_after).toBe("14d")
     expect(d.history_days).toBe(30)
     expect(d.keep_failed).toBe("7d")
@@ -57,7 +60,9 @@ describe("settings", () => {
     expect(normalizeSetting("timezone", "America/Los_Angeles")).toBe(
       "America/Los_Angeles",
     )
-    expect(normalizeSetting("retry", "1m 5m max 3")).toBe("1m 5m max 3")
+    expect(normalizeSetting("retry_interval", "90s")).toBe("1m30s")
+    expect(normalizeSetting("retry_attempts", "5")).toBe(5)
+    expect(normalizeSetting("retry_attempts", 0)).toBe(0)
   })
 
   test("bad values and unknown keys are refused with the key in the message", () => {
@@ -68,6 +73,13 @@ describe("settings", () => {
       /question_mode/,
     )
     expect(() => normalizeSetting("inline_limit", -1)).toThrow(/inline_limit/)
+    expect(() => normalizeSetting("retry_attempts", -1)).toThrow(
+      /retry_attempts/,
+    )
+    expect(() => normalizeSetting("retry_interval", "soon")).toThrow(
+      /retry_interval/,
+    )
+    expect(() => normalizeSetting("retry", "1m max 3")).toThrow(/retry/)
     expect(() => normalizeSetting("daily_usd", -3)).toThrow(/daily_usd/)
     expect(() => normalizeSetting("cap_warn", "150%")).toThrow(/cap_warn/)
     expect(() => normalizeSetting("timezone", "Mars/Olympus")).toThrow(

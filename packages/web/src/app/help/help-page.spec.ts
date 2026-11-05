@@ -165,7 +165,40 @@ describe('HelpPage', () => {
       ['max_tool_wait', '5m'],
       ['timezone', "the server machine's"],
       ['history_days', '30'],
+      ['retry_interval', '1m'],
+      ['retry_attempts', '0'],
     ]);
+    const attempts = settings.find((r) => r[0] === 'retry_attempts')!;
+    expect(attempts[2]).toContain('0: no limit');
+    // Retries are no longer among the settings kept for later tiers.
+    expect(text(page.querySelector('table.settings-help + p'))).not.toContain(
+      'retries',
+    );
+  });
+
+  it('explains the error state, Retry and the failures not retried', async () => {
+    const page = await open();
+    const agents = text(page.querySelector('#web-agents + p'));
+    expect(agents).toContain('error');
+    expect(agents).toContain('Retry');
+    const trouble = rows(page.querySelector('table.trouble'));
+    const why = trouble.find((r) => r[0] === 'An agent shows error')?.[1] ?? '';
+    for (const part of [
+      'failed',
+      'retry_interval',
+      'wakes and messages',
+      'Retry',
+      'autocode retry AGENT',
+      'provider.auth',
+      'provider.invalid-request',
+      'provider.content-filter',
+      'provider.unknown',
+    ])
+      expect(why, part).toContain(part);
+    const commands = rows(page.querySelector('table.commands')).map(
+      (r) => r[0],
+    );
+    expect(commands).toContain('autocode retry AGENT');
   });
 
   it('helps when an agent ignores Autocode or a wake does not come', async () => {

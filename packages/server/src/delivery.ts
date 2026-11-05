@@ -21,6 +21,7 @@ import type { History } from "./history.ts"
 import type { Hosts } from "./hosts.ts"
 import type { Loader } from "./loader.ts"
 import type { Inbox, Messages } from "./messages.ts"
+import type { Retries, RetryNote } from "./retries.ts"
 import type { SettingsStore } from "./settings-store.ts"
 import type { WakeItem, Wakes } from "./wakes.ts"
 
@@ -64,6 +65,7 @@ export class Delivery {
     private readonly messages: () => Messages,
     private readonly inbox: Inbox,
     private readonly now: () => number,
+    private readonly retries: Retries,
     private readonly loader?: Loader,
   ) {}
 
@@ -151,9 +153,17 @@ export class Delivery {
     this.wakes.tick(this.enqueueWake)
     this.settle()
     this.watchdog()
-    const agents = this.db
-      .query("SELECT DISTINCT agent_id FROM queue ORDER BY agent_id")
-      .all() as { agent_id: string }[]
+    // agents with something waiting, and those whose retry is due
+    const agents = [
+      ...new Set([
+        ...(
+          this.db
+            .query("SELECT DISTINCT agent_id FROM queue ORDER BY agent_id")
+            .all() as { agent_id: string }[]
+        ).map((r) => r.agent_id),
+        ...this.retries.due(),
+      ]),
+    ].map((agent_id) => ({ agent_id }))
     for (const { agent_id } of agents)
       try {
         this.deliver(agent_id)
@@ -178,11 +188,21 @@ export class Delivery {
       }
   }
 
+  // Whether an injection was a retry prompt.
+  private isRetry(inj: any): boolean {
+    try {
+      return Boolean(JSON.parse(inj.reasons ?? "{}").retry)
+    } catch {
+      return false
+    }
+  }
+
   private close(inj: any, error: string | null) {
     this.db
       .query("UPDATE injections SET settled_at = ?, error = ? WHERE id = ?")
       .run(this.now(), error, inj.id)
     if (!error) return
+    if (this.isRetry(inj)) this.retries.unsent(inj.agent_id, true)
     this.db
       .query(
         "UPDATE sessions SET busy = 0, inject_pending_at = NULL " +
@@ -236,6 +256,7 @@ export class Delivery {
           "UPDATE sessions SET busy = 0, inject_pending_at = NULL WHERE id = ?",
         )
         .run(s.id)
+      if (s.agent) this.retries.noTurn(s.agent)
       this.history.record("injection.no_turn", {
         agent: s.agent ?? null,
         session: s.id,
@@ -265,6 +286,7 @@ export class Delivery {
           )
           .run(inj.session_id)
         this.requeue(inj)
+        if (this.isRetry(inj)) this.retries.unsent(agent, false)
       }
     for (const q of this.db
       .query(
@@ -284,7 +306,8 @@ export class Delivery {
   private deliver(agent: string) {
     const row = this.db
       .query(
-        `SELECT a.id, a.paused, a.last_injection_at, a.session_id,
+        `SELECT a.id, a.paused, a.last_injection_at, a.session_id, a.error,
+                a.error_since, a.error_at, a.retries, a.retry_at,
                 s.busy, s.deleted_at, s.directory, s.host_id, h.online,
                 h.machine, h.directory AS host_directory, h.process_kind
          FROM agents a JOIN sessions s ON s.id = a.session_id
@@ -302,6 +325,21 @@ export class Delivery {
     if (!row || row.paused || !row.online || row.deleted_at || row.busy) return
     const values = this.values(agent)
     const now = this.now()
+    // In the error state only retries go, every retry_interval, with what
+    // waits and is ready (wakes whose checks have not run wait until the
+    // error clears); min_interval does not apply to them.
+    if (row.error) {
+      const tz = String(this.settings.value("timezone")) || "UTC"
+      const note = this.retries.note(row, tz)
+      if (!note) return
+      const ready = (
+        this.db
+          .query("SELECT * FROM queue WHERE agent_id = ? ORDER BY id")
+          .all(agent) as any[]
+      ).filter((i) => !i.check_cmd)
+      this.inject(row, ready, values, note)
+      return
+    }
     const minInterval = parseDuration(String(values.min_interval))
     if (row.last_injection_at && now < row.last_injection_at + minInterval)
       return
@@ -449,7 +487,12 @@ export class Delivery {
     }
   }
 
-  private inject(row: any, items: any[], values: Record<string, unknown>) {
+  private inject(
+    row: any,
+    items: any[],
+    values: Record<string, unknown>,
+    retry?: RetryNote,
+  ) {
     // Wakes left with the same name or text: only the newest goes in.
     const seen = new Set<string>()
     const wakes = items
@@ -483,6 +526,7 @@ export class Delivery {
       reasons.push(
         `${messages.length} message${messages.length > 1 ? "s" : ""}`,
       )
+    if (retry) reasons.unshift(retry.header)
     const used = items.map((i) => i.id)
     if (!reasons.length) {
       for (const id of used)
@@ -490,7 +534,7 @@ export class Delivery {
       return
     }
     const inline = Number(values.inline_limit) || 0
-    const sections: string[] = []
+    const sections: string[] = retry ? [retry.text] : []
     const tz = String(this.settings.value("timezone")) || "UTC"
     for (const w of wakes) {
       const about = this.about(row.id, w, tz)
@@ -531,6 +575,7 @@ export class Delivery {
       header: reasons,
       wakes: wakes.map((w) => w.wake),
       messages: messages.map((m) => m.id),
+      ...(retry ? { retry: retry.n } : {}),
     }
     const kept = [
       ...wakes.map((w) => ({
@@ -582,6 +627,7 @@ export class Delivery {
       host: row.host_id,
       data: { id, ...summary },
     })
+    if (retry) this.retries.sent(row.id, retry)
   }
 
   // Settled injections (with the text they carried) go with the history.

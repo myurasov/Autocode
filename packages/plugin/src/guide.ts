@@ -95,6 +95,16 @@ function delivery(): string[] {
     "ends (or two minutes pass without a turn starting). Your wakes and",
     "what waits are kept by the server across restarts; a timed run missed",
     "while the server was down comes once when it is back.",
+    "",
+    "If a turn of yours fails (say the model's provider is down), you are",
+    "in the error state: your wakes and messages wait, and Autocode sends a",
+    "retry prompt every `retry_interval` (1 minute unless the owner set",
+    "another), up to `retry_attempts` times (no limit unless set):",
+    '`[autocode] retry 2`, then "Your last turn failed: provider.internal',
+    '(...). Continue where you left off.", then whatever waited. Pick up',
+    "the work where it stopped. A turn that succeeds ends the error state.",
+    "Errors that would fail again (authentication, a bad request) are not",
+    "retried; the owner is told.",
   ]
 }
 
@@ -300,7 +310,8 @@ function trouble(): string[] {
     "- A wake did not come: `autocode_wake list` (when is it due?),",
     "  `autocode_me status` (paused? the server's time?). It waits while a",
     "  turn runs and for `min_interval`; its check may have skipped it",
-    "  (exit 1) or failed.",
+    "  (exit 1) or failed; or you are in the error state (`autocode_me",
+    "  status`), and it comes with the next retry.",
     "- A tool's error says what was wrong and what it wants (a bad trigger",
     "  error shows what triggers look like).",
     "- Anything else: ask the owner with `autocode_message send to=owner`.",

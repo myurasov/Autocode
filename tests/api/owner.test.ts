@@ -37,7 +37,7 @@ beforeEach(async () => {
 afterEach(() => t.stop())
 
 describe("turn status", () => {
-  test("turn events make an agent working, then idle with the time it went idle", async () => {
+  test("turn events make an agent working, then idle with the time it went idle (in the error state after a failed turn)", async () => {
     await registered(t, HOST, "ses_a", "team:a")
     expect((await status("team:a")).status).toBe("idle")
     await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
@@ -51,12 +51,18 @@ describe("turn status", () => {
         error: "rate_limit",
       },
     ])
+    // a failed turn leaves it in the error state (tier 0b3)
     const agent = await status("team:a")
     expect(agent).toMatchObject({
-      status: "idle",
+      status: "error",
       idle_since: "2026-10-28T12:00:05.000Z",
       last_outcome: "failed",
+      error: { type: "rate_limit" },
     })
+    await report(t, HOST, [
+      { type: "turn.ended", session: "ses_a", outcome: "succeeded" },
+    ])
+    expect((await status("team:a")).status).toBe("idle")
   })
 
   test("a hello says which sessions are busy now (after a reconnect)", async () => {

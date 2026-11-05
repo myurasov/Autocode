@@ -70,6 +70,9 @@ export class Hosts {
   // may fake).
   private readonly lastPoll = new Map<string, number>()
   private readonly waiters = new Map<string, Set<() => void>>()
+  // Called when a registered agent's turn ends (the retries, tier 0b3).
+  onTurnEnded: (agent: string, outcome: string, error: string | null) => void =
+    () => {}
 
   constructor(
     private readonly db: Database,
@@ -316,12 +319,14 @@ export class Hosts {
         .query("SELECT id FROM agents WHERE session_id = ?")
         .get(session) as any
     )?.id
-    if (agent)
+    if (agent) {
       this.history.record("turn.ended", {
         agent,
         session,
         data: { outcome, ...(error ? { error } : {}) },
       })
+      this.onTurnEnded(agent, outcome, error)
+    }
   }
 
   sessionsOf(id: string): string[] {

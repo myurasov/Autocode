@@ -753,6 +753,114 @@ test("link: an agent or host that is not there now says so", async ({
   )
 })
 
+/*
+ * The error state (tier 0b3, the owner, 2026-11-04): an agent whose turn
+ * failed shows error with a dot of its own, its error type and when the next
+ * retry comes (full times in a tooltip), and Retry, which asks for one now
+ * (its result in the toolbar); a failure that is not retried says so; a turn
+ * that succeeds clears it. The page still fits 1280 px.
+ */
+test("error state: an agent whose turn failed shows error, its retries and Retry", async ({
+  page,
+}) => {
+  const failing = "smoke:failing"
+  const session = "ses_smoke_failing"
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const turn = (outcome: string, error?: string) =>
+    api.post("/v1/hosts/smoke:host:1/events", {
+      headers: bearer(consumer),
+      data: {
+        instance: "i1",
+        events: [
+          {
+            type: "turn.ended",
+            session,
+            outcome,
+            ...(error ? { error } : {}),
+          },
+        ],
+      },
+    })
+  try {
+    const issued = await api.post(
+      `/v1/hosts/smoke:host:1/sessions/${session}/token`,
+      { headers: bearer(consumer), data: {} },
+    )
+    expect(issued.ok(), await issued.text()).toBe(true)
+    const registered = await api.post("/v1/agents", {
+      headers: bearer((await issued.json()).token),
+      data: { id: failing, description: "fails its turns" },
+    })
+    expect([200, 201], await registered.text()).toContain(registered.status())
+    const failed = await turn("failed", "provider.internal")
+    expect(failed.ok(), await failed.text()).toBe(true)
+
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await signIn(page, admin)
+    const row = page.locator(`table.agents tr[data-agent="${failing}"]`)
+    const status = row.locator("td.status")
+    const detail = status.locator(".error-detail")
+    await expect(detail.locator(".error-type")).toHaveText("provider.internal")
+    // retry_interval is 1m: the first retry comes within a minute.
+    await expect(detail.locator(".retry-state")).toHaveText(
+      /^retry 1 in (1m|\d+s)$/,
+    )
+    await expect(status).toContainText(/^\s*error/)
+    await expect(detail).toHaveAttribute(
+      "title",
+      /^Failing since .+; last failure .+; 0 retries sent; next retry .+$/,
+    )
+    // A dot of its own, not offline's.
+    const colors = await page.evaluate(() => {
+      const dot = (kind: string) => {
+        const d = document.createElement("span")
+        d.className = `dot ${kind}`
+        document.body.append(d)
+        const color = getComputedStyle(d).backgroundColor
+        d.remove()
+        return color
+      }
+      return { err: dot("err"), off: dot("off") }
+    })
+    expect(colors.err).not.toBe(colors.off)
+    await expect(status.locator(".dot")).toHaveCSS(
+      "background-color",
+      colors.err,
+    )
+    // Only an agent in error has Retry; the page still fits.
+    const retry = row.getByRole("button", { name: "Retry", exact: true })
+    await expect(
+      page
+        .locator("table.agents td.actions")
+        .getByRole("button", { name: "Retry", exact: true }),
+    ).toHaveCount(1)
+    expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+    await retry.click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      `Retrying ${failing}.`,
+    )
+    await expect(detail.locator(".retry-state")).toHaveText(
+      /^(retrying now|retry 2 in (1m|\d+s))$/,
+    )
+    // A failure that comes back the same way is not retried.
+    const auth = await turn("failed", "provider.auth")
+    expect(auth.ok(), await auth.text()).toBe(true)
+    await page.getByRole("button", { name: "Refresh", exact: true }).click()
+    await expect(detail.locator(".error-type")).toHaveText("provider.auth")
+    await expect(detail.locator(".retry-state")).toHaveText("not retried")
+    // A turn that succeeds clears it.
+    const ok = await turn("succeeded")
+    expect(ok.ok(), await ok.text()).toBe(true)
+    await page.getByRole("button", { name: "Refresh", exact: true }).click()
+    await expect(detail).toHaveCount(0)
+    await expect(retry).toHaveCount(0)
+    await expect(status).not.toContainText("error")
+  } finally {
+    await api.delete(`/v1/agents/${failing}`, { headers: bearer(admin) })
+    await api.dispose()
+  }
+})
+
 test("admin: sets, fires and cancels a wake on the Wakes page", async ({
   page,
 }) => {

@@ -284,6 +284,30 @@ describe("owner commands", () => {
     )
   })
 
+  // Tier 0b3: a retry now for an agent in the error state.
+  test("retry: an agent in the error state now; one that is not is refused", async () => {
+    const refused = await cli(["retry", "kaggle:worker"], asAdmin())
+    expect(refused.code).toBe(1)
+    expect(refused.stderr).toContain("not in the error state")
+    await report(t, "m:1", [
+      {
+        type: "turn.ended",
+        session: "ses_2",
+        outcome: "failed",
+        error: "provider.internal",
+      },
+    ])
+    expect((await cli(["agents"], asAdmin())).stdout).toMatch(
+      /kaggle:worker\s+error/,
+    )
+    const res = await cli(["retry", "kaggle:worker"], asAdmin())
+    expect(res.code).toBe(0)
+    expect(res.stdout).toContain("kaggle:worker: a retry comes now")
+    await report(t, "m:1", [
+      { type: "turn.ended", session: "ses_2", outcome: "succeeded" },
+    ])
+  })
+
   test("usage errors exit 2", async () => {
     for (const args of [
       ["wake", "set", "me", "x", "--text", "no trigger"],
@@ -292,6 +316,7 @@ describe("owner commands", () => {
       ["send", "kaggle:worker"],
       ["answer", "ib_x"],
       ["pause"],
+      ["retry"],
       ["messages", "read"],
     ]) {
       const res = await cli(args, asAdmin())

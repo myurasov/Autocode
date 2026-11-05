@@ -350,6 +350,10 @@ autocode plugin install --url http://SERVER:4848 \
         Fire delivers a wake at once and skips its check; the prompt says who
         fired it.
       </li>
+      <li>
+        While an agent is in the error state (its last turn failed), its
+        wakes and messages wait and go with the next retry.
+      </li>
     </ul>
 
     <h3 id="messages">
@@ -389,14 +393,17 @@ autocode plugin install --url http://SERVER:4848 \
     <pre>
 [autocode] wake "check-training"
 [autocode] wake "training-done" fired by the owner
-[autocode] wake "standup", 2 messages</pre
+[autocode] wake "standup", 2 messages
+[autocode] retry 3</pre
     >
     <p>
       Below it come the parts: each wake with its text, and each message with
-      its sender and subject. What others wrote, and a check's output, is
-      quoted: each such line starts with <code>&gt; </code>, so it cannot pass
-      for Autocode's own words. A last line says that the prompt comes from
-      Autocode, not from you, and how the agent lists its wakes and gets help.
+      its sender and subject; a retry first says what failed and asks the
+      agent to continue where it left off. What others wrote, and a check's
+      output, is quoted: each such line starts with <code>&gt; </code>, so it
+      cannot pass for Autocode's own words. A last line says that the prompt
+      comes from Autocode, not from you, and how the agent lists its wakes and
+      gets help.
     </p>
 
     <h2 id="cli">
@@ -457,6 +464,10 @@ autocode plugin install --url http://SERVER:4848 \
         <tr>
           <td><code>autocode token rotate AGENT</code></td>
           <td>replace an agent's session token</td>
+        </tr>
+        <tr>
+          <td><code>autocode retry AGENT</code></td>
+          <td>retry an agent's failed turn now</td>
         </tr>
         <tr>
           <td><code>autocode settings</code></td>
@@ -602,8 +613,12 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       {{ sec['web-agents'].label }}
     </h3>
     <p>
-      The agents by machine, with status (idle, working, paused or offline),
-      host (a link to its row on the Hosts page), folder, session and times.
+      The agents by machine, with status (idle, working, paused, offline or
+      error), host (a link to its row on the Hosts page), folder, session and
+      times. An agent in error (its last turn failed) shows the error type
+      under its status, and when the next retry comes, that one is under way,
+      that the failure is not retried, or that the retries ran out; Retry asks
+      for one now.
       An agent's link from another page leads here with its row highlighted;
       a filter that would hide it goes. The filter takes an ID pattern and
       applies a second after you stop typing. Edit a description, Pause or
@@ -723,11 +738,26 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
             server-wide only
           </td>
         </tr>
+        <tr>
+          <td><code>retry_interval</code></td>
+          <td>1m</td>
+          <td>
+            how long after a failed turn a retry comes (and between retries)
+          </td>
+        </tr>
+        <tr>
+          <td><code>retry_attempts</code></td>
+          <td>0</td>
+          <td>
+            how many retries come before Autocode stops and tells you (0: no
+            limit)
+          </td>
+        </tr>
       </tbody>
     </table>
     <p>
-      The others (questions, permissions, approvals, compaction, caps, retries,
-      expiry, jobs) are stored now and used by later tiers.
+      The others (questions, permissions, approvals, compaction, caps, expiry,
+      jobs) are stored now and used by later tiers.
       <code>listen</code> takes effect at the next start.
     </p>
 
@@ -795,6 +825,24 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
         <tr>
           <td>An agent shows offline</td>
           <td>Its host is offline, or its session was deleted.</td>
+        </tr>
+        <tr>
+          <td>An agent shows error</td>
+          <td>
+            Its last turn failed (the error type is under its status, like
+            <code>provider.internal</code> when the model's provider was
+            down). Autocode retries every <code>retry_interval</code> (1m),
+            each retry carrying the wakes and messages that waited, until a turn
+            succeeds or <code>retry_attempts</code> retries ran out. Retry on
+            the Agents page (or <code>autocode retry AGENT</code>) retries now.
+            Failures that come back the same way are not retried, and the Inbox
+            says so: an auth error (<code>provider.auth</code>), an invalid
+            request (<code>provider.invalid-request</code>), the content filter
+            (<code>provider.content-filter</code>), an unknown model
+            (<code>provider.unknown</code>) or an operation it does not support
+            (<code>provider.unsupported-operation</code>); fix the cause, then
+            Retry.
+          </td>
         </tr>
         <tr>
           <td>Registering says <code>id_taken</code></td>

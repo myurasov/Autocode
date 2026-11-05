@@ -16,6 +16,7 @@ import {
 } from "@autocode/shared"
 import type { History } from "./history.ts"
 import type { Hosts } from "./hosts.ts"
+import { type ErrorView, errorView } from "./retries.ts"
 import { type Caller, revokeSessionTokens } from "./tokens.ts"
 
 /*
@@ -28,7 +29,8 @@ import { type Caller, revokeSessionTokens } from "./tokens.ts"
 
 const SELECT = `
   SELECT a.id, a.description, a.session_id, a.registered_at, a.last_active,
-         a.paused, s.host_id, s.directory, s.deleted_at, s.busy,
+         a.paused, a.error, a.error_since, a.error_at, a.retries, a.retry_at,
+         s.host_id, s.directory, s.deleted_at, s.busy,
          s.idle_since, s.last_outcome, h.machine, h.online
   FROM agents a
   JOIN sessions s ON s.id = a.session_id
@@ -47,6 +49,8 @@ export interface AgentView {
   paused?: string
   idle_since?: string | null
   last_outcome?: string | null
+  // its last turn failed (tier 0b3)
+  error?: ErrorView
 }
 
 export class Agents {
@@ -61,11 +65,13 @@ export class Agents {
   ) {}
 
   // offline (its host gone or its session deleted), paused, working (a turn
-  // runs), else idle. Tier 0d adds waiting and 0e retrying.
+  // runs), error (its last turn failed: tier 0b3), else idle. Tier 0d adds
+  // waiting.
   private status(row: any): string {
     if (!row.online || row.deleted_at) return "offline"
     if (row.paused) return "paused"
-    return row.busy ? "working" : "idle"
+    if (row.busy) return "working"
+    return row.error ? "error" : "idle"
   }
 
   // The plugin of the session's host keeps the agent guide's line from these.
@@ -89,6 +95,7 @@ export class Agents {
         ? new Date(row.idle_since).toISOString()
         : null,
       last_outcome: row.last_outcome ?? null,
+      ...(row.error ? { error: errorView(row) } : {}),
     }
   }
 
@@ -189,7 +196,11 @@ export class Agents {
         )
       }
       this.db
-        .query("UPDATE agents SET session_id = ?, last_active = ? WHERE id = ?")
+        .query(
+          "UPDATE agents SET session_id = ?, last_active = ?, error = NULL, " +
+            "error_since = NULL, error_at = NULL, retries = 0, " +
+            "retry_at = NULL WHERE id = ?",
+        )
         .run(session, this.now(), id)
       this.history.record("agent.moved", {
         ...fields,
