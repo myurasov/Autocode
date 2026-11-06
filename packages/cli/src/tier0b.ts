@@ -1,8 +1,8 @@
 /*
  * The CLI's tier 0b commands: me, wakes and wake, fire, send and messages (an
  * agent's own, from a script in its shell, or the owner's for any agent), and
- * the owner's inbox, answer, pause, resume, stop-all and resume-all; and
- * retry (tier 0b3).
+ * the owner's inbox, answer, pause, resume, stop-all and resume-all; retry
+ * (tier 0b3); and locks (tier 0c: an agent's scripts and the owner).
  */
 
 import { readFileSync, writeFileSync } from "node:fs"
@@ -333,6 +333,55 @@ export async function pause(args: Parsed, resume: boolean): Promise<number> {
     `/v1/agents/${enc(agent)}/${resume ? "resume" : "pause"}`,
   )
   print(args, res, () => `${agent} ${resume ? "resumed" : "paused"}`)
+  return 0
+}
+
+// Every lock with its holders and queue, one row per holder (tier 0c).
+function lockTable(locks: any[]): string {
+  if (!locks.length) return "no locks"
+  const rows: string[][] = []
+  for (const l of locks) {
+    const queue = l.queue.map((q: any) => q.agent).join(", ")
+    const held = l.holders.length ? l.holders : [null]
+    for (const [i, h] of held.entries())
+      rows.push([
+        i ? "" : l.name,
+        i ? "" : String(l.max),
+        h?.agent ?? "",
+        h ? local(h.expires) : "",
+        i ? "" : queue,
+      ])
+  }
+  return table(rows, ["LOCK", "MAX", "HOLDER", "EXPIRES", "QUEUE"])
+}
+
+export async function locks(args: Parsed): Promise<number> {
+  const [first, name, agent] = args.words
+  const c = connect(args)
+  if (first === "release") {
+    if (!name || !agent) usage("locks release NAME AGENT")
+    const whoami = await c.call("GET", "/v1/whoami")
+    if (whoami.kind !== "admin")
+      throw new CliError(
+        "only the owner releases an agent's hold here; an agent releases " +
+          "its own in the conversation (autocode_lock action=release)",
+        2,
+      )
+    const res = await c.call("POST", `/v1/locks/${enc(name)}/release`, {
+      agent,
+    })
+    print(args, res, () =>
+      res.released === "queued"
+        ? `took ${agent} out of the queue of ${name}`
+        : `released ${agent}'s hold on ${name}`,
+    )
+    return 0
+  }
+  const res = await c.call(
+    "GET",
+    `/v1/locks${first ? `?match=${enc(first)}` : ""}`,
+  )
+  print(args, res.locks, () => lockTable(res.locks))
   return 0
 }
 

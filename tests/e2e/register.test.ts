@@ -74,7 +74,9 @@ describe("registration through autocode_me", () => {
     ).toContain("Registered")
     expect(
       await callTool(oc, s.id, "autocode_me", { action: "unregister" }),
-    ).toBe(`Unregistered ${id}; your wakes are removed.`)
+    ).toBe(
+      `Unregistered ${id}; your wakes are removed and your locks released.`,
+    )
     expect(
       await callTool(oc, s.id, "autocode_me", { action: "status" }),
     ).toStartWith("Not registered")

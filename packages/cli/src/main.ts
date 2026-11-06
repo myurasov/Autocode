@@ -24,6 +24,7 @@ import {
   answer,
   fire,
   inbox,
+  locks,
   me,
   messages,
   pause,
@@ -61,6 +62,8 @@ owner:
   answer ID TEXT...                      answer a message to the owner
   pause AGENT | resume AGENT             pause or resume an agent's injections
   retry AGENT                            retry an agent in the error state now
+  locks [PATTERN] | locks release NAME AGENT
+                                         every lock (holders, queue); free one
   stop-all | resume-all                  pause every agent and interrupt every
                                          turn; resume what stop-all paused
   wakes [AGENT]                          every wake, or one agent's
@@ -198,6 +201,8 @@ async function main(argv: string[]): Promise<number> {
       return pause(args, true)
     case "retry":
       return retry(args)
+    case "locks":
+      return locks(args)
     case "stop-all":
       return stopAll(args)
     case "resume-all":

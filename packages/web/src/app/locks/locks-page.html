@@ -1,0 +1,121 @@
+<!--
+  The Locks page: Refresh (a Release's or Remove's result, or a failed load's
+  message, beside it) and the Lock filter; each lock with its type, its
+  holders (agent links, until when, Release) and its queue in order (Remove);
+  and when the list last loaded.
+-->
+
+<div class="toolbar">
+  <button type="button" (click)="refresh()">Refresh</button>
+  <span class="result">
+    @if (failed()) {
+      <span class="errmsg" role="alert">{{ failed() }}</span>
+    } @else if (error()) {
+      <span class="errmsg" role="alert">{{ error() }}</span>
+    } @else if (notice()) {
+      <span class="notice" role="status">{{ notice() }}</span>
+    }
+  </span>
+  <label for="lock-match">Lock</label>
+  <input
+    id="lock-match"
+    type="text"
+    spellcheck="false"
+    placeholder="for example gpu-* or a,b:* (empty shows all)"
+    [value]="pattern()"
+    (input)="typed($any($event.target).value)"
+    (keydown.enter)="applyMatch()"
+  />
+</div>
+
+<table class="locks">
+  <thead>
+    <tr>
+      <th>Lock</th>
+      <th>Type</th>
+      <th>Holders</th>
+      <th>Queue</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (l of locks(); track l.name) {
+      <tr [attr.data-lock]="l.name">
+        <td class="name id-like"><code [appId]="l.name"></code></td>
+        <td class="capacity">{{ capacityText(l.max) }}</td>
+        <!--
+          The holders, one a row: the agent, until when (how long from now),
+          Release; and the queue in order: its place, the agent, since when,
+          Remove. Each a grid, its columns lined up.
+        -->
+        <td class="holders">
+          @if (l.holders.length) {
+            <div class="grid">
+              @for (h of l.holders; track h.agent) {
+                <div class="holder" [attr.data-agent]="h.agent">
+                  <app-agent-link class="id-like" [id]="h.agent" />
+                  <span class="until" [title]="h.expires"
+                    >until <span class="when" [appTime]="h.expires"></span
+                    >&ngsp;<span class="left">({{ left(h) }})</span></span
+                  >
+                  <button
+                    type="button"
+                    [disabled]="busy()"
+                    (click)="release(l, h)"
+                    title="The agent is told; the next in the queue gets it"
+                  >
+                    Release
+                  </button>
+                </div>
+              }
+            </div>
+          } @else {
+            <span class="muted">—</span>
+          }
+        </td>
+        <td class="queue">
+          @if (l.queue.length) {
+            <div class="grid">
+              @for (w of l.queue; track w.agent) {
+                <div class="waiter" [attr.data-agent]="w.agent">
+                  <span class="position">{{ w.position }}. </span
+                  ><app-agent-link class="id-like" [id]="w.agent" /><span
+                    class="since"
+                    [title]="w.since"
+                  >
+                    (since <span class="when" [appTime]="w.since"></span>)</span
+                  >
+                  <button
+                    type="button"
+                    [disabled]="busy()"
+                    (click)="remove(l, w)"
+                    title="The agent is told; the others move up"
+                  >
+                    Remove
+                  </button>
+                </div>
+              }
+            </div>
+          } @else {
+            <span class="muted">—</span>
+          }
+        </td>
+      </tr>
+    } @empty {
+      <tr>
+        <td class="muted" colspan="4">
+          @if (!loaded()) {
+            Loading...
+          } @else if (match()) {
+            No lock matches {{ match() }}.
+          } @else {
+            No locks. Agents create one with
+            <code>autocode_lock action=acquire</code>; it is gone when nobody
+            holds it or waits.
+          }
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<footer class="muted"><app-updated [at]="updatedAt()" /></footer>

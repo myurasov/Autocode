@@ -5,7 +5,10 @@
  * per min_interval, only while the session is idle, its host online and the
  * agent not paused; each injection one prompt with the [autocode] header, in
  * which what agents wrote is quoted, each wake says what kind it is and when
- * it runs next, and a footer says where the prompt comes from.
+ * it runs next, and a footer says where the prompt comes from. Notices (lock
+ * grants and expiries: messages from autocode) say what they are in the header
+ * and are Autocode's own text, not quoted (tier 0c). A message the agent read
+ * with the tool while it waited is not announced (the owner, 2026-11-05).
  */
 
 import type { Database } from "bun:sqlite"
@@ -303,7 +306,30 @@ export class Delivery {
           .run(q.id)
   }
 
+  /*
+   * Messages that wait to be announced but were read meanwhile (with the
+   * tool, during a turn) leave the queue: announcing them again repeats what
+   * the agent saw.
+   */
+  private dropRead(agent: string) {
+    const read = this.db
+      .query(
+        `SELECT q.id, q.message_id FROM queue q
+         JOIN messages m ON m.id = q.message_id
+         WHERE q.agent_id = ? AND q.kind = 'message' AND m.state = 'read'`,
+      )
+      .all(agent) as { id: number; message_id: string }[]
+    for (const r of read) {
+      this.db.query("DELETE FROM queue WHERE id = ?").run(r.id)
+      this.history.record("message.skipped", {
+        agent,
+        data: { id: r.message_id, why: "already read" },
+      })
+    }
+  }
+
   private deliver(agent: string) {
+    this.dropRead(agent)
     const row = this.db
       .query(
         `SELECT a.id, a.paused, a.last_injection_at, a.session_id, a.error,
@@ -511,16 +537,22 @@ export class Delivery {
         return true
       })
       .reverse()
-    const messages = items
+    const all = items
       .filter((i) => i.kind === "message")
       .map((i) => this.messages().row(i.message_id))
       .filter(Boolean)
-    const reasons: string[] = wakes.map(
-      (w) =>
-        `wake "${w.wake}"` +
-        (w.fired_by
-          ? ` fired by ${w.fired_by === "owner" ? "the owner" : w.fired_by}`
-          : ""),
+    // Autocode's own notices first, then what others sent
+    const notices = all.filter((m) => m.from_id === "autocode")
+    const messages = all.filter((m) => m.from_id !== "autocode")
+    const reasons: string[] = notices.map((m) => m.subject || "notice")
+    reasons.push(
+      ...wakes.map(
+        (w) =>
+          `wake "${w.wake}"` +
+          (w.fired_by
+            ? ` fired by ${w.fired_by === "owner" ? "the owner" : w.fired_by}`
+            : ""),
+      ),
     )
     if (messages.length)
       reasons.push(
@@ -535,6 +567,7 @@ export class Delivery {
     }
     const inline = Number(values.inline_limit) || 0
     const sections: string[] = retry ? [retry.text] : []
+    for (const m of notices) sections.push(String(m.body))
     const tz = String(this.settings.value("timezone")) || "UTC"
     for (const w of wakes) {
       const about = this.about(row.id, w, tz)
@@ -575,6 +608,7 @@ export class Delivery {
       header: reasons,
       wakes: wakes.map((w) => w.wake),
       messages: messages.map((m) => m.id),
+      ...(notices.length ? { notices: notices.map((m) => m.id) } : {}),
       ...(retry ? { retry: retry.n } : {}),
     }
     const kept = [
@@ -587,7 +621,7 @@ export class Delivery {
         trigger: w.trigger,
         check: null,
       })),
-      ...messages.map((m) => ({ kind: "message", id: m.id })),
+      ...all.map((m) => ({ kind: "message", id: m.id })),
     ]
     this.db.transaction(() => {
       this.db
@@ -619,6 +653,7 @@ export class Delivery {
         )
         .run(now, row.session_id)
     })()
+    for (const m of notices) this.messages().markRead(m.id, "read")
     for (const m of shown) this.messages().markRead(m, "read")
     for (const m of listed) this.messages().markRead(m, "delivered")
     this.history.record("injection.sent", {

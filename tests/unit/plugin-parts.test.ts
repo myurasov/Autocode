@@ -325,7 +325,9 @@ describe("plugin: autocode_me", () => {
       await runMe({ action: "unregister" }, async () => ({
         unregistered: "k:lead",
       })),
-    ).toBe("Unregistered k:lead; your wakes are removed.")
+    ).toBe(
+      "Unregistered k:lead; your wakes are removed and your locks released.",
+    )
     const seen: string[] = []
     const out = await runMe(
       { action: "discover", pattern: "k:*" },

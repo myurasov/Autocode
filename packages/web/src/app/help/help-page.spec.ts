@@ -3,8 +3,9 @@
  * numbered contents (sections, subsections indented), each entry a link to a
  * heading with the same number and title; the facts the owner looks up most
  * (the wake triggers, the owner's commands, the settings in use with their
- * defaults, the troubleshooting rows for agents and wakes); the web UI's long
- * texts and ID links; no hyphen where a dash belongs.
+ * defaults, the troubleshooting rows for agents and wakes); locks, for agents
+ * and on the Locks tab; the web UI's long texts and ID links; no hyphen where
+ * a dash belongs.
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -26,7 +27,8 @@ const CONTENTS = [
   ['3.2', 'Asking an Agent to Register'],
   ['3.3', 'Wakes'],
   ['3.4', 'Messages'],
-  ['3.5', 'What an Agent Sees'],
+  ['3.5', 'Locks'],
+  ['3.6', 'What an Agent Sees'],
   ['4', 'The CLI'],
   ['4.1', 'Your Commands'],
   ['4.2', "In an Agent's Shell"],
@@ -35,10 +37,11 @@ const CONTENTS = [
   ['5.2', 'Agents'],
   ['5.3', 'Inbox'],
   ['5.4', 'Messages'],
-  ['5.5', 'Wakes'],
-  ['5.6', 'History'],
-  ['5.7', 'Settings'],
-  ['5.8', 'Help'],
+  ['5.5', 'Locks'],
+  ['5.6', 'Wakes'],
+  ['5.7', 'History'],
+  ['5.8', 'Settings'],
+  ['5.9', 'Help'],
   ['6', 'Settings'],
   ['7', 'Troubleshooting'],
 ];
@@ -143,6 +146,8 @@ describe('HelpPage', () => {
       'autocode fire AGENT WAKE [--text TEXT]',
       'autocode send TO TEXT...',
       'autocode messages',
+      'autocode locks [PATTERN]',
+      'autocode locks release NAME AGENT',
     ])
       expect(commands, command).toContain(command);
     const scripts = text(page.querySelector('ul.scripts'));
@@ -175,6 +180,78 @@ describe('HelpPage', () => {
     expect(text(page.querySelector('table.settings-help + p'))).not.toContain(
       'retries',
     );
+  });
+
+  it('tells agents how to use locks, and the owner what the Locks tab shows', async () => {
+    const page = await open();
+    // A section's text: what comes after its heading, up to the next one.
+    const section = (id: string) => {
+      const out: string[] = [];
+      let node = page.querySelector(`#${id}`)!.nextElementSibling;
+      while (node && !/^H[23]$/.test(node.tagName)) {
+        out.push(text(node));
+        node = node.nextElementSibling;
+      }
+      return out.join(' ');
+    };
+    const locks = section('locks');
+    for (const part of [
+      'autocode_lock',
+      'action=acquire',
+      'ttl',
+      'max',
+      'mode=queue',
+      'mode=try',
+      'mode=wait',
+      'renew',
+      'release',
+      'list',
+      '[autocode] lock "gpu-0" granted',
+      '[autocode] lock "gpu-0" expired',
+      '[autocode] lock "gpu-0": out of the queue',
+      'puts the agent in the queue',
+      'stays in the queue',
+      'leave the queue',
+    ])
+      expect(locks, part).toContain(part);
+    // Generic examples: no project's names.
+    expect(locks).not.toMatch(/kaggle|casmi/i);
+    expect(text(page.querySelector('#learn + ul'))).toContain('autocode_lock');
+    expect(text(page.querySelector('#sees ~ pre'))).toContain(
+      '[autocode] lock "gpu-0" granted',
+    );
+    const tab = section('web-locks');
+    for (const part of [
+      'type',
+      'holders',
+      'queue',
+      'Mutex',
+      'places',
+      'Release',
+      'told',
+      'next in the queue',
+      'Remove',
+      'out of the queue',
+      'move up',
+      'pattern',
+    ])
+      expect(tab, part).toContain(part);
+    const commands = rows(page.querySelector('table.commands'));
+    const does = (command: string) =>
+      commands.find((r) => r[0] === command)?.[1] ?? '';
+    expect(does('autocode locks [PATTERN]')).toContain('queue');
+    expect(does('autocode locks release NAME AGENT')).toContain(
+      'take it out of the queue',
+    );
+    // A lock's waiting agents are its queue now, not its line (the owner,
+    // 2026-11-05).
+    for (const [where, words] of [
+      ['locks', locks],
+      ['web-locks', tab],
+      ['commands', does('autocode locks [PATTERN]')],
+      ['release', does('autocode locks release NAME AGENT')],
+    ])
+      expect(words, where).not.toMatch(/\bline\b/);
   });
 
   it('tells what the History tab shows, its filters and Older', async () => {

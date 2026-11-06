@@ -93,6 +93,10 @@ autocode plugin install --url http://<server address>:4848 --consumer-token-file
   already running keep the old, dead token).
 - Lost the admin token on another machine: read `~/.autocode/admin.token` on the server machine.
 
+A session's token is kept in OpenCode's plugin storage, so a plugin reload or a deploy uses it again (History shows a
+`session.token` row only when one is new). A session token unused for 30 days is revoked; a running job keeps the one
+it started with as long as it uses it. `autocode token rotate AGENT` and unregistering revoke all of a session's tokens.
+
 ## Everyday Commands
 
 The CLI reads its server and token from flags (`--url`, `--token`), then `AUTOCODE_URL`/`AUTOCODE_TOKEN`, then the
@@ -118,13 +122,15 @@ ID before it sends a token. Every command takes `--json`.
 | `autocode inbox close ITEM` | close an inbox item (an alert, or a message you will not answer) |
 | `autocode pause AGENT` / `resume AGENT` | stop or restart an agent's injections (wakes and messages keep queuing) |
 | `autocode retry AGENT` | retry an agent in the error state now (also after an error that is not retried, or after the retries ran out) |
+| `autocode locks [PATTERN]` | every lock: capacity, holders with their expiry, the queue (tier 0c) |
+| `autocode locks release NAME AGENT` | free an agent's hold on a lock (or take it out of the queue); the agent gets a notice, the next in the queue the lock |
 | `autocode stop-all` / `resume-all` | pause every agent and interrupt every running turn; resume what stop-all paused (your own pauses stay) |
 | `autocode wakes [AGENT]` | every wake (agent, name, trigger, next run, check, text), or one agent's |
 | `autocode wake set AGENT NAME --trigger T --text TEXT [--check CMD] [--end TIME]` | set or replace an agent's wake |
 | `autocode wake cancel AGENT NAME` | cancel a wake |
 | `autocode fire AGENT WAKE [--text TEXT]` | deliver a wake now (it skips its check); the prompt says the owner fired it |
 | `autocode send TO TEXT...` (or `--file PATH`) | send a message as the owner to an ID, a pattern or a list |
-| `autocode messages` | every message, newest first, with its state (queued, delivered, read) |
+| `autocode messages` | every message, newest first, with its state (queued, delivered, read); your views (here, `messages read`, the web UI) never change a state, only the agent reading it does |
 
 In an agent's shell the same binary acts as that agent: `autocode me`, `autocode wakes`, `autocode wake set me ...`,
 `autocode fire me WAKE`, `autocode send`, `autocode messages [--wait SECONDS]` and `autocode messages read ID [--out
@@ -181,6 +187,10 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   anywhere in the cell shows it whole, another folds it; the check in a fixed-width font), end, who set it, when it
   was last set (its schedule counts from then), last fired), **Fire** one now or **Cancel** it; **Set a Wake** for
   any agent. `autocode wakes` shows the same, with a LAST SET column.
+- **Locks:** every lock (tier 0c): its capacity (Mutex or N places), its holders with when each hold runs out and
+  **Release** (after you confirm; the agent is told and the next in the queue gets it), and its queue in order; a **Lock**
+  filter (a pattern, kept in the address). A lock exists only while someone holds it or waits. `autocode locks` is
+  the same in the CLI.
 - **History:** what happened, newest first: time, kind, agent, host, session and data (a summary; a click shows it
   whole); an **Agent** filter (a pattern, like the Agents filter) and a **Kind** list (one kind with its count, or a
   group like `wake.*`), both kept in the address; **Older** loads the next 100. `autocode history` is the same in
@@ -216,6 +226,7 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
 | A host is `online no` | Network or Tailscale between that machine and the server; the plugin retries with growing waits (up to 30 s). |
 | Plugin log: "superseded by a newer instance" | Two OpenCode processes use the same folder and data folder; the newest one holds the channel, the older one waits and takes over when the newer one is gone. Tools and shell variables keep working in both. |
 | An agent shows `offline` | Its host is offline (above), or its session was deleted (the ID can move to another session). |
+| A lock stays held | `autocode locks` shows the holder and when its hold runs out (its `ttl`); it is freed then, or at once with `autocode locks release NAME AGENT` (or Release on the Locks page). Unregistering an agent releases its locks. |
 | An agent shows `error` | Its last turn failed: the Agents page (or `autocode agents --json`) shows the error (like `provider.internal`: the model's provider failed), the retries sent and the next. Autocode retries every `retry_interval` with what waited, until a turn succeeds (or `retry_attempts` run out: an inbox alert). Errors that come back the same way (`provider.auth`, `provider.invalid-request`, `provider.content-filter`, `provider.unknown`, `provider.unsupported-operation`) are not retried: fix the cause (a key, the model's name), then **Retry** or `autocode retry AGENT`. |
 | Registering says `id_taken` | The ID belongs to another session that still exists; unregister there, delete that session, or force the move: `autocode agents register ID --session SESSION --force`. |
 | A tool says `session_gone` | The session was deleted in OpenCode; a deleted session never gets a token again. |

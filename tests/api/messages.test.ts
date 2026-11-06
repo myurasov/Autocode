@@ -2,7 +2,8 @@
  * Messages (spec, Messages): direct and group sends, refusals, the size limit,
  * text and binaries, the states of each copy, the injection that announces
  * them (whole within inline_limit, else listed by ID), messages to and from
- * the owner through the inbox, and waiting for one inside a tool call.
+ * the owner through the inbox, and waiting for one inside a tool call; a
+ * message the agent already read is not announced (the owner, 2026-11-05).
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import {
@@ -11,6 +12,7 @@ import {
   hello,
   instructions,
   registered,
+  report,
   type TestServer,
   testServer,
 } from "../helpers/server.ts"
@@ -181,6 +183,93 @@ describe("announcing", () => {
     expect(prompt.payload.text).toStartWith("[autocode] 3 messages\n")
     for (const text of ["one", "two", "three"])
       expect(prompt.payload.text).toContain(text)
+  })
+
+  // The owner, 2026-11-05: an agent read a reply with the tool during a
+  // turn; when the owner interrupted the turn, the reply was injected anyway.
+  test("a message read during a turn is not announced when the turn ends", async () => {
+    await report(t, HOST, [{ type: "turn.started", session: "ses_b" }])
+    const sent = await as(a, "POST", "/v1/messages", {
+      to: "team:b",
+      text: "the reply",
+    })
+    const id = sent.body.messages[0].id
+    expect(await promptFor("ses_b")).toBeUndefined()
+    expect(
+      (await as(b, "GET", `/v1/me/messages/${id}`)).body.message.text,
+    ).toBe("the reply")
+    await report(t, HOST, [
+      { type: "turn.ended", session: "ses_b", outcome: "interrupted" },
+    ])
+    expect(await promptFor("ses_b")).toBeUndefined()
+    const skipped = (
+      await owner("GET", "/v1/history?kind=message.skipped&agent=team:b")
+    ).body.history
+    expect(skipped[0].data).toMatchObject({ id, why: "already read" })
+    // nothing waits any more
+    t.clock.advance(5 * 60_000)
+    expect(await promptFor("ses_b")).toBeUndefined()
+  })
+
+  test("with a wake, only the wake comes; an unread message still does", async () => {
+    await owner("POST", "/v1/agents/team:b/pause")
+    const read = await as(a, "POST", "/v1/messages", {
+      to: "team:b",
+      text: "already seen",
+    })
+    await as(b, "GET", `/v1/me/messages/${read.body.messages[0].id}`)
+    await as(c, "POST", "/v1/messages", { to: "team:b", text: "new one" })
+    await owner("PUT", "/v1/agents/team:b/wakes/look", {
+      text: "Look.",
+      trigger: "fire-only",
+    })
+    await owner("POST", "/v1/agents/team:b/wakes/look/fire")
+    await owner("POST", "/v1/agents/team:b/resume")
+    const text = (await promptFor("ses_b")).payload.text
+    expect(text).toStartWith(
+      '[autocode] wake "look" fired by the owner, 1 message\n',
+    )
+    expect(text).toContain("> new one")
+    expect(text).not.toContain("already seen")
+  })
+
+  test("a notice read with the tool is not announced either", async () => {
+    await report(t, HOST, [{ type: "turn.started", session: "ses_b" }])
+    await as(a, "POST", "/v1/locks/gpu-0/acquire", { ttl: "10m" })
+    await as(b, "POST", "/v1/locks/gpu-0/acquire", { ttl: "10m" })
+    await as(a, "POST", "/v1/locks/gpu-0/release")
+    const [notice] = (await as(b, "GET", "/v1/me/messages")).body.messages
+    expect(notice.from).toBe("autocode")
+    await as(b, "GET", `/v1/me/messages/${notice.id}`)
+    await report(t, HOST, [
+      { type: "turn.ended", session: "ses_b", outcome: "succeeded" },
+    ])
+    expect(await promptFor("ses_b")).toBeUndefined()
+  })
+
+  // The owner, 2026-11-05: viewing or listing a message (web UI, CLI) does
+  // not make it read; only the agent's own read does.
+  test("the owner's list and read, and the agent's list, leave a message unread and announced", async () => {
+    await owner("POST", "/v1/agents/team:b/pause")
+    const sent = await as(a, "POST", "/v1/messages", {
+      to: "team:b",
+      text: "look later",
+    })
+    const id = sent.body.messages[0].id
+    await owner("GET", "/v1/messages")
+    await owner("GET", "/v1/messages?agent=team:b")
+    expect((await owner("GET", `/v1/messages/${id}`)).body.message.text).toBe(
+      "look later",
+    )
+    await as(b, "GET", "/v1/me/messages")
+    await as(b, "GET", "/v1/me/messages?all=1")
+    const mine = (await as(b, "GET", "/v1/me/messages")).body.messages
+    expect(mine).toMatchObject([{ id, state: "queued" }])
+    expect((await owner("GET", "/v1/messages")).body.messages[0]).toMatchObject(
+      { id, state: "queued" },
+    )
+    await owner("POST", "/v1/agents/team:b/resume")
+    expect((await promptFor("ses_b")).payload.text).toContain("> look later")
   })
 
   test("a reply says what it answers", async () => {

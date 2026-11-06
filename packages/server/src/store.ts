@@ -202,6 +202,40 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE agents ADD COLUMN retry_at INTEGER;
   DELETE FROM settings WHERE key = 'retry';
   `,
+  /*
+   * 7 (tier 0c): locks and semaphores. An entry is an agent's hold on a lock
+   * or its place in the lock's queue (arrival order: its ID). No foreign key
+   * to agents: unregistering releases the agent's entries itself, so the next
+   * in the queue are granted.
+   */
+  `
+  CREATE TABLE locks (
+    name TEXT PRIMARY KEY,
+    max INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE lock_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lock TEXT NOT NULL REFERENCES locks (name) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL,
+    held INTEGER NOT NULL DEFAULT 0,
+    ttl INTEGER NOT NULL,
+    queued_at INTEGER NOT NULL,
+    granted_at INTEGER,
+    expires_at INTEGER,
+    UNIQUE (lock, agent_id)
+  );
+  CREATE INDEX lock_entries_expiry ON lock_entries (held, expires_at);
+  CREATE INDEX lock_entries_agent ON lock_entries (agent_id);
+  `,
+  /*
+   * 8 (tier 0c, the owner 2026-11-05): when each session token was last used,
+   * so that one unused for 30 days is revoked (a running job keeps its own).
+   */
+  `
+  ALTER TABLE tokens ADD COLUMN used_at INTEGER;
+  UPDATE tokens SET used_at = created_at WHERE kind = 'session';
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

@@ -83,6 +83,29 @@ describe('Api', () => {
     expect(await gone).toEqual({ unregistered: 'kaggle:lead' });
   });
 
+  it("reads the locks (by name pattern) and releases an agent's hold", async () => {
+    signedIn();
+    const all = api.locks();
+    const plain = http.expectOne((r) => r.url === '/v1/locks');
+    expect(plain.request.method).toBe('GET');
+    expect(plain.request.params.keys()).toEqual([]);
+    plain.flush({ locks: [{ name: 'gpu-0', max: 1, holders: [], queue: [] }] });
+    expect((await all).map((l) => l.name)).toEqual(['gpu-0']);
+
+    const some = api.locks(' gpu-* ');
+    const filtered = http.expectOne((r) => r.url === '/v1/locks');
+    expect(filtered.request.params.get('match')).toBe('gpu-*');
+    filtered.flush({ locks: [] });
+    expect(await some).toEqual([]);
+
+    const released = api.releaseLock('gpu:0', 'team:a');
+    const post = http.expectOne('/v1/locks/gpu%3A0/release');
+    expect(post.request.method).toBe('POST');
+    expect(post.request.body).toEqual({ agent: 'team:a' });
+    post.flush({ released: 'held' });
+    expect(await released).toEqual({ released: 'held' });
+  });
+
   it('reads the history: a page by agent pattern, kind and before, and the kinds there are', async () => {
     signedIn();
     const all = api.history();

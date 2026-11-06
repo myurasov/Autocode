@@ -1,7 +1,8 @@
 /*
  * Starts the Autocode server: opens the database in the data folder, defines
  * the API routes, serves the API and the web UI on the listen addresses, and
- * runs the scheduler (wakes and injections) and maintenance on timers.
+ * runs the scheduler (lock expiry, wakes and injections) and maintenance on
+ * timers.
  */
 
 import type { Database } from "bun:sqlite"
@@ -11,6 +12,7 @@ import { join } from "node:path"
 import {
   AutocodeError,
   checkId,
+  localTime,
   machineName,
   parseDuration,
   parseListen,
@@ -24,7 +26,8 @@ import { History } from "./history.ts"
 import { Hosts } from "./hosts.ts"
 import { json, openapi, type Route, router } from "./http.ts"
 import { type FindService, findService, Loader } from "./loader.ts"
-import { Inbox, Messages } from "./messages.ts"
+import { formatTtl, type LockNotice, Locks } from "./locks.ts"
+import { Inbox, MAX_WAIT_SECONDS, Messages } from "./messages.ts"
 import { Retries } from "./retries.ts"
 import { SettingsStore } from "./settings-store.ts"
 import { openStore } from "./store.ts"
@@ -33,6 +36,7 @@ import {
   ensureOwnerTokens,
   issueSessionToken,
   pruneTokens,
+  touchToken,
 } from "./tokens.ts"
 import { notRegistered, Wakes } from "./wakes.ts"
 import { type WebFiles, webHandler } from "./web.ts"
@@ -164,15 +168,79 @@ export async function startServer(
     delivery.enqueueMessage,
     () => inbox,
   )
+  /*
+   * Locks and semaphores (tier 0c): grants, expiries and the owner's
+   * releases are notices, messages from autocode. A grant while the agent's
+   * own wait call is open (its caller still there) is told by that call; one
+   * the caller left before its answer becomes a notice after all.
+   */
+  const lockWaits = new Map<
+    string,
+    Set<{ signal: AbortSignal; held?: LockNotice }>
+  >()
+  const tellLock = (n: LockNotice) => {
+    const [subject, text] = noticeText(n)
+    messages.notice(n.agent, subject, text)
+  }
+  const noticeText = (n: LockNotice): [string, string] => {
+    const when = (ms: number) => localTime(ms, tz())
+    const name = `lock "${n.lock}"`
+    switch (n.kind) {
+      case "granted":
+        return [
+          `${name} granted`,
+          `You hold ${name} now` +
+            (n.max > 1 ? ` (one of its ${n.max} places)` : "") +
+            `, until ${when(n.expires!)}: its ttl of ` +
+            `${formatTtl(n.ttl!)} counts from the grant. Renew it before ` +
+            "then (autocode_lock " +
+            `action=renew name=${n.lock}); release it when you are done ` +
+            "(action=release).",
+        ]
+      case "expired":
+        return [
+          `${name} expired`,
+          `Your hold on ${name} ran out at ${when(n.at!)} (its ttl was ` +
+            `${formatTtl(n.ttl!)}) and was freed; another agent may hold ` +
+            "it now. Acquire it again if you still need it.",
+        ]
+      case "released":
+        return [
+          `${name} released by the owner`,
+          `The owner released your hold on ${name} at ${when(n.at!)}; ` +
+            "another agent may hold it now. Acquire it again if you still " +
+            "need it.",
+        ]
+      case "removed":
+        return [
+          `${name}: out of the queue`,
+          `The owner took you out of the queue of ${name} at ` +
+            `${when(n.at!)}; it will not be granted to you. Acquire it ` +
+            "again if you still need it.",
+        ]
+    }
+  }
+  const locks = new Locks(db, history, now, (n) => {
+    const open = [...(lockWaits.get(`${n.agent}\n${n.lock}`) ?? [])].find(
+      (w) => !w.signal.aborted,
+    )
+    if (n.kind === "granted" && open) open.held = n
+    else tellLock(n)
+  })
   const agents = new Agents(
     db,
     history,
     hosts,
     now,
-    (agent) => inbox.closeForAgent(agent),
+    (agent) => {
+      inbox.closeForAgent(agent)
+      locks.unregistered(agent)
+      messages.dropNotices(agent)
+    },
     (agent) => delivery.cancelPending(agent),
   )
   history.record("server.started", { data: { id, version: VERSION } })
+  locks.sweep()
 
   // The calling session's agent ID; a session that is not registered has no
   // wakes or messages.
@@ -180,6 +248,17 @@ export async function startServer(
     const agent = caller?.session ? agents.agentOfSession(caller.session) : ""
     if (!agent) throw notRegistered()
     return agent
+  }
+  // Whose lock: the calling agent's, or for the owner the registered agent
+  // it names.
+  const lockAgent = (caller: any, b: any): string => {
+    if (caller?.kind !== "admin") return me(caller)
+    if (typeof b?.agent !== "string" || !b.agent)
+      throw new AutocodeError(
+        "bad_request",
+        "the owner names the agent: {agent: ID}",
+      )
+    return agents.get(b.agent).id
   }
   // Who acts: the owner (admin token) or the calling agent.
   const actor = (caller: any): string =>
@@ -389,6 +468,7 @@ export async function startServer(
             ? {
                 wakes: wakes.summary(agent),
                 unread: messages.list(agent).length,
+                locks: locks.of(agent),
               }
             : {}),
         }
@@ -668,6 +748,108 @@ export async function startServer(
       summary: "resume the agents stop-all paused",
       handler: () => agents.resumeAll(),
     },
+    // locks and semaphores (tier 0c)
+    {
+      method: "GET",
+      path: "/v1/locks",
+      access: ["admin", "session"],
+      summary: "every lock (?match= a pattern): capacity, holders, queue",
+      handler: ({ url }) => ({
+        locks: locks.list(url.searchParams.get("match")),
+      }),
+    },
+    {
+      method: "POST",
+      path: "/v1/locks/:name/acquire",
+      access: ["admin", "session"],
+      summary:
+        "acquire a lock {ttl, max, mode: try|queue|wait, seconds}; the first " +
+        "acquire creates it with max (default 1)",
+      handler: async ({ caller, params, body, req }) => {
+        const b = (await body()) ?? {}
+        const agent = lockAgent(caller, b)
+        const mode = b.mode ?? "queue"
+        let seconds = 0
+        let maxWait = 0
+        if (mode === "wait") {
+          seconds = Number(b.seconds ?? 0)
+          if (!Number.isFinite(seconds) || seconds <= 0)
+            throw new AutocodeError(
+              "bad_request",
+              "a wait needs seconds, more than 0",
+            )
+          // the most a wait may take in all (max_tool_wait), and this one
+          const values = resolveSettings(settings.layers(), agent).values
+          maxWait = parseDuration(String(values.max_tool_wait)) / 1000
+          seconds = Math.min(seconds, maxWait, MAX_WAIT_SECONDS)
+        }
+        const name = String(params.name)
+        const key = `${agent}\n${name}`
+        // an agent's own wait is told of its grant in the answer
+        const waiter =
+          seconds && caller?.kind !== "admin"
+            ? { signal: req.signal, held: undefined as LockNotice | undefined }
+            : undefined
+        if (waiter) {
+          const set = lockWaits.get(key) ?? new Set()
+          lockWaits.set(key, set.add(waiter))
+        }
+        try {
+          const res = locks.acquire(agent, name, {
+            ttl: b.ttl,
+            max: b.max ?? undefined,
+            mode,
+          })
+          if (res.granted || !seconds) return res
+          const end = await locks.wait(agent, name, seconds * 1000, req.signal)
+          return {
+            granted: end.held,
+            ...(end.held
+              ? { expires: end.expires }
+              : end.position
+                ? { position: end.position }
+                : {}),
+            waited: seconds,
+            max_wait: maxWait,
+            lock: locks.get(name) ?? res.lock,
+          }
+        } finally {
+          if (waiter) {
+            const set = lockWaits.get(key)
+            set?.delete(waiter)
+            if (!set?.size) lockWaits.delete(key)
+            // granted, but the caller left before the answer: a notice
+            if (waiter.held && req.signal.aborted) tellLock(waiter.held)
+          }
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/v1/locks/:name/renew",
+      access: ["admin", "session"],
+      summary: "renew a hold {ttl: default the one it was taken with}",
+      handler: async ({ caller, params, body }) => {
+        const b = (await body()) ?? {}
+        return locks.renew(lockAgent(caller, b), String(params.name), b.ttl)
+      },
+    },
+    {
+      method: "POST",
+      path: "/v1/locks/:name/release",
+      access: ["admin", "session"],
+      summary:
+        "release a hold or leave the queue (the owner: {agent}; the agent is " +
+        "told)",
+      handler: async ({ caller, params, body }) => {
+        const b = (await body()) ?? {}
+        return locks.release(
+          lockAgent(caller, b),
+          String(params.name),
+          caller?.kind === "admin" ? "owner" : "self",
+        )
+      },
+    },
   ]
   routes.push({
     method: "GET",
@@ -681,8 +863,10 @@ export async function startServer(
     routes,
     (req) => {
       const caller = authenticate(db, req.headers.get("authorization"))
-      if (caller?.kind === "session" && caller.session)
+      if (caller?.kind === "session" && caller.session) {
         agents.touch(caller.session)
+        touchToken(db, req.headers.get("authorization"), now())
+      }
       return caller
     },
     log,
@@ -769,6 +953,11 @@ export async function startServer(
       : setInterval(maintenance, options.maintenanceEvery ?? 5000)
   const tick = () => {
     try {
+      locks.tick()
+    } catch (err) {
+      log(`locks: ${(err as Error).message}`)
+    }
+    try {
       delivery.tick()
     } catch (err) {
       log(`scheduler: ${(err as Error).message}`)
@@ -787,7 +976,10 @@ export async function startServer(
     firstStartTokens,
     db,
     maintenance,
-    tick: () => delivery.tick(),
+    tick: () => {
+      locks.tick()
+      delivery.tick()
+    },
     enqueue: (host, type, payload) => hosts.enqueue(host, type, payload),
     instruction: (instructionId) => hosts.instruction(instructionId),
     checkpoint: async () => {
@@ -799,6 +991,7 @@ export async function startServer(
       if (rebind) clearInterval(rebind)
       hosts.close()
       messages.close()
+      locks.close()
       await Promise.all(servers.map((s) => s.stop(true)))
       db.close()
     },

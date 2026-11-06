@@ -206,8 +206,9 @@ autocode plugin install --url http://SERVER:4848 \
       <li>
         The tools: <code>autocode_me</code> (register, status, discover other
         agents, help), <code>autocode_wake</code> (set, list, show, cancel and
-        fire wakes) and <code>autocode_message</code> (send, list, read and
-        wait for messages). <code>autocode_me action=help</code> gives the
+        fire wakes), <code>autocode_message</code> (send, list, read and wait
+        for messages) and <code>autocode_lock</code> (acquire, renew, release
+        and list locks). <code>autocode_me action=help</code> gives the
         guide to agents that do not load skills.
       </li>
       <li>
@@ -383,6 +384,52 @@ autocode plugin install --url http://SERVER:4848 \
       </li>
     </ul>
 
+    <h3 id="locks">
+      <span class="n">{{ sec.locks.n }}</span> {{ sec.locks.label }}
+    </h3>
+    <p>
+      A lock is shared by every agent on the server, on any machine: a mutex
+      (one holder at a time) or a semaphore of N places. Agents take one when
+      only one of them (or N) may do something at a time: use a GPU, submit,
+      refresh shared data. Ask in plain words, for example:
+    </p>
+    <ul class="examples">
+      <li>
+        Take the lock gpu-0 for 2 hours before you train, and release it when
+        the run ends.
+      </li>
+      <li>Run the evaluations under the semaphore gpu-pool, with 2 places.</li>
+    </ul>
+    <ul>
+      <li>
+        <code>autocode_lock action=acquire name=gpu-0 ttl=2h</code>: a
+        <code>ttl</code> is required, how long the agent holds it from the
+        grant. The first acquire creates the lock with its capacity,
+        <code>max</code> (1 by default).
+      </li>
+      <li>
+        <code>mode=queue</code> (the default) holds it at once when a place is
+        free and nobody waits, else puts the agent in the queue, in arrival
+        order; <code>mode=try</code> holds it now or is refused;
+        <code>mode=wait</code> waits inside the tool call (up to
+        <code>max_tool_wait</code>), then stays in the queue.
+      </li>
+      <li>
+        <code>renew</code> before the ttl runs out; <code>release</code> when
+        done (or to leave the queue); <code>list</code> shows each lock with
+        its holders and queue. Unregistering releases all of an agent's locks.
+      </li>
+      <li>
+        Autocode tells the agent in a prompt:
+        <code>[autocode] lock "gpu-0" granted</code> when its turn comes,
+        <code>[autocode] lock "gpu-0" expired</code> when its hold ran out and
+        was freed; and, from the Locks tab, <code>[autocode] lock "gpu-0"
+        released by the owner</code> when you release its hold and
+        <code>[autocode] lock "gpu-0": out of the queue</code> when you take
+        it out of the queue.
+      </li>
+    </ul>
+
     <h3 id="sees">
       <span class="n">{{ sec.sees.n }}</span> {{ sec.sees.label }}
     </h3>
@@ -394,12 +441,14 @@ autocode plugin install --url http://SERVER:4848 \
 [autocode] wake "check-training"
 [autocode] wake "training-done" fired by the owner
 [autocode] wake "standup", 2 messages
-[autocode] retry 3</pre
+[autocode] retry 3
+[autocode] lock "gpu-0" granted</pre
     >
     <p>
       Below it come the parts: each wake with its text, and each message with
       its sender and subject; a retry first says what failed and asks the
-      agent to continue where it left off. What others wrote, and a check's
+      agent to continue where it left off; a lock's notice says until when
+      the agent holds it. What others wrote, and a check's
       output, is quoted: each such line starts with <code>&gt; </code>, so it
       cannot pass for Autocode's own words. A last line says that the prompt
       comes from Autocode, not from you, and how the agent lists its wakes and
@@ -548,6 +597,20 @@ autocode plugin install --url http://SERVER:4848 \
           <td><code>autocode messages</code></td>
           <td>every message, newest first, with its state</td>
         </tr>
+        <tr>
+          <td><code>autocode locks [PATTERN]</code></td>
+          <td>
+            the locks (<code>gpu-*</code>): capacity, holders until when, and
+            the queue
+          </td>
+        </tr>
+        <tr>
+          <td><code>autocode locks release NAME AGENT</code></td>
+          <td>
+            free an agent's hold (or take it out of the queue); the agent is
+            told and the next in the queue gets it
+          </td>
+        </tr>
       </tbody>
     </table>
 
@@ -573,6 +636,7 @@ autocode plugin install --url http://SERVER:4848 \
         example when a job ends;
       </li>
       <li><code>autocode send TO TEXT...</code>: send a message;</li>
+      <li><code>autocode locks [PATTERN]</code>: the locks;</li>
       <li>
         <code>autocode messages [--wait SECONDS]</code>,
         <code>autocode messages read ID</code>: its messages.
@@ -648,6 +712,20 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       anywhere in its cell to see it whole, and again to fold it. Reading a
       message here leaves its state. Send a Message opens from its title and
       sends as the owner, to an ID, a pattern or a list.
+    </p>
+
+    <h3 id="web-locks">
+      <span class="n">{{ sec['web-locks'].n }}</span>
+      {{ sec['web-locks'].label }}
+    </h3>
+    <p>
+      Every lock the agents share: its type (Mutex, or so many places), its
+      holders with when each hold runs out, and its queue in order. The
+      filter takes a pattern of lock names (like <code>gpu-*</code>) and
+      applies a second after you stop typing. Release frees a hold after you
+      confirm: the agent is told and the next in the queue gets it. Remove
+      takes an agent out of the queue after you confirm: the agent is told and
+      the others move up. A lock is gone when nobody holds it or waits.
     </p>
 
     <h3 id="web-wakes">

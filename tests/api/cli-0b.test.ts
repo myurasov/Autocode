@@ -11,6 +11,7 @@ import { join, resolve } from "node:path"
 import { generate } from "../../packages/cli/build.ts"
 import {
   ack,
+  call,
   hello,
   instructions,
   registered,
@@ -308,6 +309,68 @@ describe("owner commands", () => {
     ])
   })
 
+  // Tier 0c: locks, listed by the owner and an agent's scripts; the owner
+  // releases a hold.
+  // The owner, 2026-11-05: viewing or listing a message does not make it
+  // read.
+  test("messages and messages read by the owner leave a message unread", async () => {
+    const sent = await cli(["send", "kaggle:worker", "for", "later"], asLead())
+    const id = /(m_\w+)/.exec(sent.stdout)![1]!
+    const all = await cli(["messages"], asAdmin())
+    expect(all.stdout).toContain(id)
+    const whole = await cli(["messages", "read", id], asAdmin())
+    expect(whole.stdout).toContain("for later")
+    const json = JSON.parse(
+      (await cli(["messages", "--json"], asAdmin())).stdout,
+    )
+    expect(json.find((m: any) => m.id === id)?.state).toBe("queued")
+    const mine = await cli(["messages"], asWorker())
+    expect(mine.stdout).toMatch(new RegExp(`${id}.*queued`))
+    // the agent reads it; then it is read
+    await cli(["messages", "read", id], asWorker())
+    const after = JSON.parse(
+      (await cli(["messages", "--json"], asAdmin())).stdout,
+    )
+    expect(after.find((m: any) => m.id === id)?.state).toBe("read")
+  })
+
+  test("locks: holders and queues, by pattern; the owner releases a hold", async () => {
+    const acquire = (token: string, name: string, body: object) =>
+      call(t.url, token, "POST", `/v1/locks/${name}/acquire`, body)
+    await acquire(lead, "gpu:0", { ttl: "1h" })
+    await acquire(worker, "gpu:0", { ttl: "10m" })
+    await acquire(worker, "data:x", { ttl: "10m", max: 2 })
+    const all = await cli(["locks"], asAdmin())
+    expect(all.code).toBe(0)
+    expect(all.stdout).toMatch(/LOCK\s+MAX\s+HOLDER\s+EXPIRES\s+QUEUE/)
+    expect(all.stdout).toMatch(
+      /gpu:0\s+1\s+kaggle:lead\s+\S+ \S+\s+kaggle:worker/,
+    )
+    expect(all.stdout).toMatch(/data:x\s+2\s+kaggle:worker/)
+    const mine = await cli(["locks", "gpu:*"], asLead())
+    expect(mine.stdout).toContain("gpu:0")
+    expect(mine.stdout).not.toContain("data:x")
+    const json = JSON.parse((await cli(["locks", "--json"], asAdmin())).stdout)
+    expect(json.map((l: any) => l.name)).toEqual(["data:x", "gpu:0"])
+    const freed = await cli(
+      ["locks", "release", "gpu:0", "kaggle:lead"],
+      asAdmin(),
+    )
+    expect(freed.code).toBe(0)
+    expect(freed.stdout).toContain("released kaggle:lead's hold on gpu:0")
+    expect((await cli(["locks", "gpu:0"], asAdmin())).stdout).toMatch(
+      /gpu:0\s+1\s+kaggle:worker/,
+    )
+    const shell = await cli(
+      ["locks", "release", "gpu:0", "kaggle:worker"],
+      asLead(),
+    )
+    expect(shell.code).toBe(2)
+    for (const name of ["gpu:0", "data:x"])
+      await call(t.url, worker, "POST", `/v1/locks/${name}/release`, {})
+    expect((await cli(["locks"], asAdmin())).stdout.trim()).toBe("no locks")
+  })
+
   test("usage errors exit 2", async () => {
     for (const args of [
       ["wake", "set", "me", "x", "--text", "no trigger"],
@@ -317,6 +380,7 @@ describe("owner commands", () => {
       ["answer", "ib_x"],
       ["pause"],
       ["retry"],
+      ["locks", "release"],
       ["messages", "read"],
     ]) {
       const res = await cli(args, asAdmin())

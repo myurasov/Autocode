@@ -1,7 +1,8 @@
 /*
  * The API's tokens: admin, consumer and session tokens, kept as SHA-256 hashes.
  * Checks a request's bearer token, creates the owner's tokens at the first
- * start, and issues and revokes session tokens.
+ * start, and issues and revokes session tokens; a session token unused for
+ * 30 days is revoked (the owner, 2026-11-05).
  */
 
 import type { Database } from "bun:sqlite"
@@ -122,7 +123,27 @@ export function ensureOwnerTokens(
 }
 
 // A revoked token is deleted a day after it was revoked.
+export const SESSION_TOKEN_IDLE_MS = 30 * 86_400_000
+
+// Notes that a session token was used (at most once a minute is written).
+export function touchToken(db: Database, header: string | null, now: number) {
+  const m = /^Bearer\s+(\S+)$/i.exec(header ?? "")
+  if (!m?.[1]) return
+  db.query(
+    "UPDATE tokens SET used_at = ? WHERE hash = ? AND kind = 'session' " +
+      "AND (used_at IS NULL OR used_at < ?)",
+  ).run(now, hashToken(m[1]), now - 60_000)
+}
+
+/*
+ * Revokes session tokens unused for 30 days, and deletes revoked tokens a day
+ * after.
+ */
 export function pruneTokens(db: Database, now: number) {
+  db.query(
+    "UPDATE tokens SET revoked_at = ? WHERE kind = 'session' " +
+      "AND revoked_at IS NULL AND COALESCE(used_at, created_at) < ?",
+  ).run(now, now - SESSION_TOKEN_IDLE_MS)
   db.query(
     "DELETE FROM tokens WHERE revoked_at IS NOT NULL AND revoked_at < ?",
   ).run(now - 24 * 3600_000)
@@ -135,9 +156,9 @@ export function issueSessionToken(
 ): string {
   const token = newToken("session")
   db.query(
-    "INSERT INTO tokens (hash, kind, session_id, created_at) " +
-      "VALUES (?, 'session', ?, ?)",
-  ).run(hashToken(token), session, now)
+    "INSERT INTO tokens (hash, kind, session_id, created_at, used_at) " +
+      "VALUES (?, 'session', ?, ?, ?)",
+  ).run(hashToken(token), session, now, now)
   return token
 }
 

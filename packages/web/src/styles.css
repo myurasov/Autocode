@@ -368,6 +368,36 @@ table.inbox tr.closed .title {
   font-weight: normal;
 }
 /*
+ * Locks: a lock's holders, and its queue, each a grid of one agent a row, the
+ * columns lined up (the agent, until when, Release; the place, the agent,
+ * since when, Remove); a time wraps only between its date and its clock, and
+ * how long from now stays whole.
+ */
+table.locks .grid {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: start;
+  align-items: center;
+  gap: 0.3rem 0.6rem;
+}
+table.locks .holder,
+table.locks .waiter {
+  display: contents;
+}
+table.locks td.queue .grid {
+  grid-template-columns: auto auto auto auto;
+}
+table.locks .holder button,
+table.locks .waiter button {
+  margin-right: 0;
+  justify-self: start;
+}
+table.locks td.capacity,
+table.locks .when > span,
+table.locks .left {
+  white-space: nowrap;
+}
+/*
  * Wakes: a text or a check as long as a sentence wraps anywhere it must (a
  * trigger wraps like any cell: the owner, 2026-11-03).
  */

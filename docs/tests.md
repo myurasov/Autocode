@@ -496,7 +496,7 @@ build 21; `autocode wakes` there shows SET for the co-sa agent's two wakes, and 
   loops, Messages, Wakes, Settings, Help). Screenshots in both themes and in Pacific time.
 - IDs wrap as normal text (the owner, 16:0x PT: "instead of white-space: pre, use normal"): the parts keep the
   break points after `:` and `_`, and the browser's own (after `-`) come back; never inside a word. The "id cells:"
-  check now walks each cell's characters and requires every line but the last to end with a separator, and the long
+  check now walks each cell's characters and requires every queue but the last to end with a separator, and the long
   wake name to wrap: red `20261104T000006Z`. "Set" renamed "Last Set" (web column, the CLI's LAST SET, the agents'
   list `last set ...`): red `agent-guide` and `cli-0b` (2 of 26) and the Wakes unit spec (`20261104T000044Z`). Green
   `20261104T000145Z`: unit 116, browser 31 (ID cells, page fit 1280, the 1024 frame scroll, links, the layout loops,
@@ -590,3 +590,96 @@ the 20 s job fired the wake while the setup turn still ran, and the harness look
 the end of that turn; it now looks from the fire. Kimi alone again, `20261105T055132Z` 4 of 6 (a slow setup turn, and
 the job race before the fix), `20261105T060640Z` 5 of 6 (a slow setup turn), and reminder, loop and polling once
 more, `20261105T061801Z`: 3 of 3 ($0.08). Kimi spend tonight $0.59 beyond the full run.
+
+## Tier 0c (2026-11-05)
+
+**Why.** The plan's tier 0c, Coordination: named locks and semaphores shared by agents on every machine (the owner's
+go, 2026-11-04: "when done self compact and implement 0c").
+
+**What was added and how it is tested.** Migration 7 (`locks`, `lock_entries`); `locks.ts` (creation and capacity,
+try, the line in arrival order, the ttl from the grant, renew, release, expiry, grants as places free, removal of
+empty locks, unregister); routes `POST /v1/locks/{name}/acquire|renew|release` (the owner's release names the agent)
+and `GET /v1/locks`; notices as messages from `autocode`, shown in a prompt as Autocode's own text with their subject
+in the header; `wait` inside the call (no notice when granted there); `/v1/me` `locks`; `autocode_lock`, the status
+line, the guide's `locks` topic; `autocode locks`, `autocode locks release`.
+
+- `unit`: `locks.test.ts` (15: the class on an in-memory store with a fake clock), `lock-tool.test.ts` (9: the
+  tool's description, acquire granted, queued, try and the errors, a wait asked again past 240 s, granted in the
+  call, renew, release, list, status, the guide's part).
+- `api`: `locks.test.ts` (15: the routes and their codes; history; the grant's prompt; a semaphore's; expiry with
+  its holder told and the next granted; a notice with a message; held while paused; a wait granted in the call or
+  not; `max_tool_wait`; the owner's release told; `/v1/me`; unregister; two stress tests: 12 agents on a semaphore
+  of 3 with random timing, three rounds, never more than 3 holders and granted in arrival order, and waits racing
+  releases); `cli-0b.test.ts` (`autocode locks`, the pattern, `--json`, the owner's release, refused in an agent's
+  shell).
+- `e2e`: `locks.test.ts` on every node (three agents, the first on the first machine): a mutex in arrival order with
+  the grant as a notice; a semaphore of 2 with a wait granted inside the tool call and the owner's release told;
+  a 5 s hold that expires, its holder told and the next granted; unregister frees it. `one` 27, `two` 33, run
+  `20261105T192419Z`.
+
+**Red first.** The 30 unit and API lock tests failed before the code (`Cannot find module`, 0 of 15 API), then passed;
+the stress tests three runs in a row. `lock-tool.test.ts` and the CLI test failed, then passed. Unit and API 372, CLI
+30.
+
+- `web` (the web worker): the Locks tab after Messages (a Lock filter in the address; Lock, Capacity as Mutex or N
+  places, Holders with the agent link, until when and Release after a confirm, Line in order; the empty page);
+  `autocode` shown as a plain word on Messages (lock notices come from it); Help 3.5 (locks for agents) and 5.5 (the
+  page), the commands. Red `20261105T193214Z` (16 of 146 unit); green `20261105T194409Z` (146 unit, 45 browser:
+  "Locks:", the page fit, the 1024 frame scroll, links, the fixture, the error state, History, Help, id cells, the
+  9 tabs' corners and the layout loops), `20261105T194555Z` (the "Locks:" checks on a fresh server). Screenshots in
+  both themes. Not run red in the browser (the red run stops at the unit tests).
+
+
+**The review** (an adversarial reviewer subagent, read only, 2026-11-05; the first separate review since 0b2): no way
+past a capacity or out of arrival order; three bugs and seven risks fixed, test first (13 tests red, then green):
+- a plugin `wait` asked again without end: the server now answers `max_wait` (`max_tool_wait`) and the plugin stops
+  there; `seconds` is required;
+- a grant to a wait whose caller left (the tool call stopped: OpenCode's `context.signal`, now passed on) was told
+  to nobody: it comes as a notice; the owner's own wait no longer holds back the agent's notice;
+- the owner could act for an unregistered or reserved ID, whose failed notice cut off the next one's and answered
+  500: only registered agents; one notice failing does not stop the others or the waits;
+- a hold past its ttl counted as held until the tick (renew, re-acquire ahead of the queue): it is freed before any
+  change to its lock;
+- entries of agents gone after a crash are swept at the start; notices waiting for an unregistered agent are
+  dropped; the owner taking an agent out of a line tells it (`out of the queue`); one in the queue acquiring again takes
+  the new ttl, `try` from it is refused; lock expiry and delivery have their own error handling; waits end at stop;
+  the tool's texts (another `max` is refused; unregister releases locks; the clock call failing does not turn a
+  grant into an error; a wait that ends out of line says so); the CLI's refusal names the tool for the conversation.
+- Not changed: a ttl counts from the grant also while the notice waits (the guide and howto say so); notices are
+  written right after their transaction, not inside it (a crash between loses one notice; the sweep at the start
+  covers the entries).
+Unit and API 391; the lock API tests 22, three runs in a row.
+
+**Complete CI** on the final code (with the review's fixes), run `20261105T211059Z`: `unit` 150, `api` 241, `plugin`
+28, `one` 27, `two` 33, `restart` 4, `install` 3, `web` 67, `web-unit` 146 (cached), `agents` 36 of 36 (each model 6 of
+6; $1.08). Build 30 on myspark3 and myspark2 (schema 7; schema-6 backups `autocode-schema6-20261105.db` on each).
+
+**After the 0c CI: Remove, "queue" and "Type"** (the owner, 2026-11-05 13:4x–13:5x PT: a button to take an agent out
+of a lock's queue; "rename to queue"; "rename Capacity col to Type"). Server, plugin, CLI, tests and docs: "line"
+became "queue" (the notice `lock "NAME": out of the queue`, the tool's texts, the guide, the CLI's `QUEUE` column);
+unit and API 391. Web (the web worker): Remove per waiter with a confirm and its notice, the Queue and Type headers,
+Help: red `20261106T055142Z` (4 of 148 unit), `20261106T055807Z` (5 of 148), browser red `20261106T055847Z` (3 checks
+naming the old words); green `20261106T060054Z` (148 unit, 31 browser). Then `one` 27, `two` 33, `web` 68, run
+`20261106T060521Z`. Screenshots in both themes. Build 31 on myspark3 and myspark2.
+
+**A read message is not announced** (the owner, 2026-11-05 22:1x PT: on myspark2, `co-sa:meeting-imports` read a reply
+with the tool at 22:57:41 during a turn; when the owner interrupted it at 23:02:35, the reply was injected at
+23:02:36). Delivery now leaves a waiting message out once the agent has read it (`message.skipped`, "already read").
+And (the owner, 22:2x PT) the owner's views never mark a message read: pinned for `GET /v1/messages`,
+`/v1/messages/{id}`, the agent's `list`, and the CLI's `messages` and `messages read` as the owner. Tests first:
+`messages.test.ts` (a read during a turn, with a wake and an unread one, a lock notice read with the tool; the
+owner's and the agent's views) 3 red then green; `cli-0b.test.ts`; the guide (red, then green). Unit and API 396;
+`one` 27, `two` 33, run `20261106T071213Z`. The web UI calls only the owner's routes.
+
+**Session tokens kept and expired** (the owner, 2026-11-05 23:3x PT: "yes" to cleaning up a session's older tokens;
+then "Reuse + expire unused", since a running job keeps the token it started with). The plugin keeps each session's
+token in OpenCode's plugin storage (`ctx.storage`, keyed by server URL and session) and uses it again after a reload,
+replacing it once when the server refuses it; a deleted session's is removed. The server notes each session token's
+last use (migration 8, `tokens.used_at`, at most one write a minute) and maintenance revokes those unused for 30 days.
+Tests first: `tokens.test.ts` (a token unused 30 days revoked, one in use kept, owner tokens untouched) and
+`plugin-inprocess.test.ts` (a reload reuses the stored token: still one token; a revoked stored one is replaced: two),
+both red then green. Unit and API 398; `plugin` 28, `one` 27, `two` 33, `restart` 4, run `20261106T073347Z`.
+
+**Before the 0c tag** (the owner's "commit and tag v0.1.0-0c, push", 2026-11-05 23:4x PT). Complete CI on the final
+code, run `20261106T074328Z`: `unit` 150, `api` 248, `plugin` 28, `one` 27, `two` 33, `restart` 4, `install` 3, `web`
+68, `web-unit` 148 (cached), `agents` 36 of 36 (each model 6 of 6; $1.05). Build 33 on both machines is this code.

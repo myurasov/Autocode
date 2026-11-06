@@ -5,9 +5,9 @@ session that registers becomes an **agent**: Autocode can wake it later with a p
 when it has been idle, or when a script or another agent fires it), agents can message each other and you, and a
 turn that fails is retried. You watch and steer them from a web UI and a CLI.
 
-_Version 0.1.0, Phase 0 in progress. Tiers 0a, 0b and 0b2 are tagged (`v0.1.0-0b2`); tier 0b3 (the error state and
-retries) is built and deployed, not yet tagged. Locks, questions and approvals, resumes, cost caps and spawned jobs
-come in the next tiers: see [What Works Now](#what-works-now)._
+_Version 0.1.0, Phase 0 in progress. Tiers 0a to 0b4 are tagged (`v0.1.0-0b4`); tier 0c (locks and semaphores) is
+built, not yet tagged. Questions and approvals, resumes, cost caps and spawned jobs come in the next tiers: see
+[What Works Now](#what-works-now)._
 
 - [How It Works](#how-it-works)
 - [What Works Now](#what-works-now)
@@ -26,10 +26,10 @@ talk to the same server.
 - **The plugin** (one file, installed into OpenCode's global plugin folder by `autocode plugin install`) connects
   each OpenCode folder to the server over a long-polled channel: it reports turns, runs wakes' checks, types
   Autocode's prompts into idle sessions, and gives agents the tools and the guide.
-- **Agents** use three tools in the conversation: `autocode_me` (register, status, discover, help),
-  `autocode_wake` (set, list, show, cancel, fire) and `autocode_message` (send, list, read, wait). The `autocode`
-  skill, and `autocode_me action=help`, is their exact reference. Scripts and background jobs in an agent's shell
-  use the same binary as a CLI (`autocode fire me job-done`).
+- **Agents** use four tools in the conversation: `autocode_me` (register, status, discover, help), `autocode_wake`
+  (set, list, show, cancel, fire), `autocode_message` (send, list, read, wait) and `autocode_lock` (acquire, renew,
+  release, list). The `autocode` skill, and `autocode_me action=help`, is their exact reference. Scripts and
+  background jobs in an agent's shell use the same binary as a CLI (`autocode fire me job-done`).
 - Autocode only types into a session while it is **idle**, never into a running turn, and at most once per
   `min_interval` (1 minute by default). What comes meanwhile goes into one prompt, starting with `[autocode]`.
 
@@ -42,7 +42,7 @@ talk to the same server.
 | Messages | to an agent, a pattern, a list, or the owner; text or files; inline or by ID; `wait` | — |
 | Inbox | messages to the owner, answered from the CLI or web UI; alerts | questions, permissions, approvals (0d) |
 | Failures | a failed turn puts the agent in the `error` state; a retry prompt every `retry_interval` (1m), up to `retry_attempts` (0: no limit); errors that would fail again are not retried | resuming turns cut by a crash (0e) |
-| Coordination | — | locks and semaphores (0c) |
+| Coordination | named locks (a mutex) and semaphores (N places) shared by agents on every machine: `try`, a queue in arrival order with a notice when granted, or `wait` in the call; a required `ttl`, renewal, expiry with a notice | — |
 | Costs | — | cost tracking, caps, compaction, expiry (0e) |
 | Jobs | — | spawned runs on a schedule or on request (0f) |
 
@@ -123,9 +123,10 @@ owner's commands; in an agent's shell it acts as that agent and never as the own
 | `autocode send TO TEXT...` / `messages` | send as the owner; every message |
 | `autocode inbox` / `answer ITEM TEXT...` | the owner's inbox |
 | `autocode pause AGENT` / `resume` / `retry` / `stop-all` / `resume-all` | the owner's controls |
+| `autocode locks [PATTERN]` / `locks release NAME AGENT` | every lock with its holders and line; free a hold |
 | `autocode settings [set KEY VALUE [--agent ID \| --match PATTERN]]` | settings: server-wide, per pattern, per agent |
 | `autocode history [--agent ID] [--kind KIND]` | what happened |
-| in an agent's shell: `autocode me`, `wakes`, `wake set me ...`, `fire me WAKE`, `send`, `messages [--wait S]` | scripts and background jobs act as their agent |
+| in an agent's shell: `autocode me`, `wakes`, `wake set me ...`, `fire me WAKE`, `send`, `messages [--wait S]`, `locks` | scripts and background jobs act as their agent |
 
 `autocode --help` lists them all.
 
@@ -139,6 +140,7 @@ Served by the server; sign in with the admin token. Light and dark.
 - **Inbox:** messages to you and alerts; answer or close.
 - **Messages:** every message; send one as the owner.
 - **Wakes:** every agent's wakes, when each runs next and was last set; Fire, Cancel, Set a Wake.
+- **Locks:** every lock with its capacity, holders (until when; Release) and line.
 - **History:** every event, newest first, filtered by agent pattern and kind, with Older for more.
 - **Settings:** server values, pattern rules, agents' own values, and what an agent resolves to.
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI.

@@ -1,12 +1,12 @@
 /*
  * Unit tests of the Messages page against a mocked server: every message,
  * newest first, with its ID, time, sender and recipient (an agent's a link
- * to its row on the Agents page), subject, text, kind, size and state; a long
- * text's first 200 characters, the whole text on a click anywhere in its cell
- * (read once) and back on the next; the Send a Message form, collapsed
- * until opened, that sends as the owner to one ID, a pattern or a list (the
- * recipients on success, the server's message on failure); "Updated" in the
- * footer; and the 10 s refresh (one at a time).
+ * to its row on the Agents page; the owner and autocode are words), subject,
+ * text, kind, size and state; a long text's first 200 characters, the whole
+ * text on a click anywhere in its cell (read once) and back on the next; the
+ * Send a Message form, collapsed until opened, that sends as the owner to one
+ * ID, a pattern or a list (the recipients on success, the server's message on
+ * failure); "Updated" in the footer; and the 10 s refresh (one at a time).
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -202,6 +202,26 @@ describe('MessagesPage', () => {
   // A long text's toggle: a button to the keyboard and to screen readers.
   const toggle = (page: HTMLElement, id: string) =>
     cell(page, id).querySelector('.more') as HTMLElement | null;
+
+  it("shows Autocode's own notice (a lock granted) from autocode, a word and not a link", async () => {
+    const notice: Message = {
+      ...MESSAGES[0]!,
+      id: 'msg_9',
+      send_id: 'snd_9',
+      from: 'autocode',
+      to: 'kaggle:lead',
+      subject: 'lock "gpu-0" granted',
+      preview: 'You hold lock "gpu-0".',
+      size: 22,
+    };
+    const page = await open([notice, ...MESSAGES]);
+    const row = page.querySelector('tr[data-message="msg_9"]')!;
+    expect(row.querySelector('td.sender a')).toBeNull();
+    expect(parts(row.querySelector('td.sender'))).toEqual(['autocode']);
+    expect(
+      row.querySelector('td.recipient a.id-link')!.getAttribute('href'),
+    ).toBe('/agents?agent=kaggle:lead');
+  });
 
   it("shows a long text's first 200 characters; a click anywhere in its cell shows it whole (read once), the next folds it", async () => {
     expect(LONG_TEXT.length).toBeGreaterThan(200);

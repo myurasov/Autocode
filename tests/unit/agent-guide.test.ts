@@ -457,6 +457,8 @@ describe("the guide", () => {
       "Continue where you left off",
       // why a wake did not come: the error state too
       "you are in the error state (`autocode_me status`)",
+      // a message read with the tool is not announced again (2026-11-05)
+      "one you already read with `read` is left out",
     ])
       expect(guide).toContain(answer)
   })

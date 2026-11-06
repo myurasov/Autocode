@@ -1,8 +1,9 @@
 <!--
   The Messages page: the form to send a message as the owner (collapsed until
   its title is clicked), every message, newest first (agent IDs link to the
-  Agents page; a long text shows its first 200 characters until its cell is
-  clicked), and when the list last loaded.
+  Agents page; the owner, and autocode with its notices, are words; a long
+  text shows its first 200 characters until its cell is clicked), and when the
+  list last loaded.
 -->
 
 <div class="toolbar">
@@ -80,8 +81,8 @@
         <td class="id id-like"><code [appId]="m.id"></code></td>
         <td class="time" [title]="m.created_at" [appTime]="m.created_at"></td>
         <td class="sender id-like">
-          @if (m.from === 'owner') {
-            <span appId="owner"></span>
+          @if (m.from === 'owner' || m.from === 'autocode') {
+            <span [appId]="m.from"></span>
           } @else {
             <app-agent-link [id]="m.from" />
           }

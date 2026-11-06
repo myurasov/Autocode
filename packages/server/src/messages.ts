@@ -2,7 +2,8 @@
  * Messages and the owner's inbox (spec, Messages; Owner Controls): sending to
  * one agent, a pattern or a list (one copy each, never to the sender), to and
  * from the owner; each copy's state (queued, delivered, read); reading and
- * waiting; the inbox of messages to the owner and alerts, answered or closed.
+ * waiting; Autocode's own notices (locks: tier 0c); the inbox of messages to
+ * the owner and alerts, answered or closed.
  */
 
 import type { Database } from "bun:sqlite"
@@ -266,6 +267,55 @@ export class Messages {
       },
     })
     return { send_id: sendId, recipients: to, skipped, messages }
+  }
+
+  /*
+   * A notice from Autocode itself to an agent (a lock granted, expired,
+   * released by the owner or its place in the queue taken away: tier 0c),
+   * announced like any message.
+   */
+  notice(agent: string, subject: string, text: string): string {
+    const id = randomId("m_")
+    this.db
+      .query(
+        `INSERT INTO messages (id, send_id, from_id, to_id, to_spec, subject,
+           body, size, created_at)
+         VALUES (?, ?, 'autocode', ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        randomId("s_"),
+        agent,
+        agent,
+        subject,
+        text,
+        text.length,
+        this.now(),
+      )
+    this.announce(agent, id)
+    this.wake(agent)
+    this.history.record("message.sent", {
+      agent,
+      data: {
+        from: "autocode",
+        to: agent,
+        recipients: [agent],
+        size: text.length,
+        kind: "notice",
+        subject,
+      },
+    })
+    return id
+  }
+
+  // An agent unregistered: Autocode's notices to it that wait are dropped.
+  dropNotices(agent: string) {
+    this.db
+      .query(
+        "DELETE FROM messages WHERE to_id = ? AND from_id = 'autocode' " +
+          "AND state = 'queued'",
+      )
+      .run(agent)
   }
 
   markRead(id: string, state: "delivered" | "read") {

@@ -59,6 +59,31 @@ export interface Agent {
   error?: AgentError | null;
 }
 
+// A lock or semaphore (tier 0c): its capacity (1: a mutex), the agents that
+// hold it (until when) and the ones in its queue, in order.
+export interface LockHolder {
+  agent: string;
+  since: string;
+  expires: string;
+  ttl: string;
+}
+
+export interface LockWaiter {
+  agent: string;
+  // 1: the next to hold it
+  position: number;
+  since: string;
+  ttl: string;
+}
+
+export interface Lock {
+  name: string;
+  max: number;
+  created_at: string;
+  holders: LockHolder[];
+  queue: LockWaiter[];
+}
+
 // A history entry: a server event, newest first by time, then ID.
 export interface HistoryEntry {
   id: number;
@@ -329,6 +354,29 @@ export class Api {
         this.http.post<{ agent: Agent }>(`/v1/agents/${path(id)}/retry`, {}),
       )
     ).agent;
+  }
+
+  // Every lock, or those whose names match a pattern (gpu-*, a,b:*).
+  async locks(match?: string): Promise<Lock[]> {
+    const params = match?.trim()
+      ? new HttpParams().set('match', match.trim())
+      : undefined;
+    return (
+      await this.call(this.http.get<{ locks: Lock[] }>('/v1/locks', { params }))
+    ).locks;
+  }
+
+  // The owner frees an agent's hold on a lock (or takes it out of the queue).
+  releaseLock(
+    name: string,
+    agent: string,
+  ): Promise<{ released: 'held' | 'queued' }> {
+    return this.call(
+      this.http.post<{ released: 'held' | 'queued' }>(
+        `/v1/locks/${path(name)}/release`,
+        { agent },
+      ),
+    );
   }
 
   // A page of the history, newest first (see HistoryQuery).

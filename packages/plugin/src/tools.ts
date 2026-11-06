@@ -1,7 +1,8 @@
 /*
  * The agent tools: autocode_me (register, unregister, status, discover,
- * help), autocode_wake (set, list, show, cancel, fire) and autocode_message
- * (send, list, read, wait); later tiers add actions and tools. Their
+ * help), autocode_wake (set, list, show, cancel, fire), autocode_message
+ * (send, list, read, wait) and autocode_lock (acquire, renew, release, list:
+ * tier 0c); later tiers add actions and tools. Their
  * descriptions say enough to use them without the guide (OpenCode sends them
  * with every model call); their results say when things will happen, in the
  * server's zone and from now.
@@ -24,9 +25,9 @@ export const ME_TOOL = {
     "message each other. Use the autocode_* tools, not the autocode CLI " +
     "(that is for scripts). Actions: register (id, description), " +
     "unregister, status (your registration, the server's time and zone, " +
-    "your wakes and unread messages), discover (pattern), help (topic: " +
-    "the exact rules for wakes, checks, delivery, messages, prompts, " +
-    "scripts).",
+    "your wakes, unread messages and locks), discover (pattern), help " +
+    "(topic: the exact rules for wakes, checks, delivery, messages, " +
+    "locks, prompts, scripts).",
   input: {
     type: "object",
     properties: {
@@ -52,7 +53,7 @@ export const ME_TOOL = {
         type: "string",
         description:
           "help: overview, delivery, wakes, checks, recipes, messages, " +
-          "prompts, scripts, trouble, or all (the default)",
+          "locks, prompts, scripts, trouble, or all (the default)",
       },
     },
     required: ["action"],
@@ -178,7 +179,10 @@ export async function runMe(
     }
     case "unregister": {
       const res = await call("DELETE", "/v1/me")
-      return `Unregistered ${res.unregistered}; your wakes are removed.`
+      return (
+        `Unregistered ${res.unregistered}; your wakes are removed and ` +
+        "your locks released."
+      )
     }
     case "status": {
       const me = await call("GET", "/v1/me")
@@ -221,6 +225,22 @@ export async function runMe(
             ? `Unread messages: ${me.unread}. See autocode_message list.`
             : "Unread messages: none.",
         )
+      const l = me.locks
+      if (l && (l.held.length || l.queued.length)) {
+        const until = (iso: string) =>
+          `${localTime(Date.parse(iso), c.tz)}, ` +
+          fromNow(Date.parse(iso), c.now)
+        const parts = [
+          ...l.held.map(
+            (h: any) => `you hold "${h.name}" (until ${until(h.expires)})`,
+          ),
+          ...l.queued.map(
+            (q: any) =>
+              `you wait for "${q.name}" (number ${q.position} in the queue)`,
+          ),
+        ]
+        lines.push(`Locks: ${parts.join("; ")}. See autocode_lock list.`)
+      }
       lines.push(help)
       return lines.join("\n")
     }
@@ -381,7 +401,79 @@ export const MESSAGE_TOOL = {
   },
 }
 
-export const TOOLS = [ME_TOOL, WAKE_TOOL, MESSAGE_TOOL]
+export interface LockInput {
+  action: "acquire" | "renew" | "release" | "list"
+  name?: string
+  ttl?: string
+  max?: number
+  mode?: "try" | "queue" | "wait"
+  seconds?: number
+  pattern?: string
+}
+
+export const LOCK_TOOL = {
+  name: "autocode_lock",
+  description:
+    "Autocode locks: a named lock shared by agents on every machine, a " +
+    "mutex (max 1) or a semaphore (max N places). Actions: acquire (name, " +
+    "ttl: required, how long you hold it, like 10m or 6h; max: the " +
+    "capacity, set by the acquire that creates it; mode: queue (default: " +
+    'wait in the queue; a notice [autocode] lock "NAME" granted comes when ' +
+    "it is yours), try (now or refused), wait (seconds: hold this call " +
+    "up to max_tool_wait, then stay in the queue)), renew (name; ttl), " +
+    "release (name: free it, or leave the queue), list (pattern). A hold " +
+    "that runs past its ttl is freed, and a notice says so. Exact rules: " +
+    "autocode_me action=help topic=locks.",
+  input: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        enum: ["acquire", "renew", "release", "list"],
+      },
+      name: {
+        type: "string",
+        description:
+          "the lock's name (letters, digits, - _ . :), like gpu:0 or " +
+          "data-refresh; shared by every agent on the server",
+      },
+      ttl: {
+        type: "string",
+        description:
+          "acquire (required), renew (default: the same): how long you " +
+          "hold it from the grant, like 10m, 2h, 1d",
+      },
+      max: {
+        type: "number",
+        description:
+          "acquire: the capacity of a new lock (1 a mutex, the default; N " +
+          "a semaphore); leave it out for an existing lock: another " +
+          "capacity is refused",
+      },
+      mode: {
+        type: "string",
+        enum: ["queue", "try", "wait"],
+        description:
+          "acquire: queue (default; a notice when granted), try (now or " +
+          "refused), wait (wait in this call up to seconds)",
+      },
+      seconds: {
+        type: "number",
+        description:
+          "acquire with mode=wait: at most this long in the call (up to " +
+          "max_tool_wait); then you stay in the queue",
+      },
+      pattern: {
+        type: "string",
+        description: "list: which locks, like gpu:* (default: all)",
+      },
+    },
+    required: ["action"],
+    additionalProperties: false,
+  },
+}
+
+export const TOOLS = [ME_TOOL, WAKE_TOOL, MESSAGE_TOOL, LOCK_TOOL]
 
 const enc = encodeURIComponent
 
@@ -636,5 +728,141 @@ export async function runMessage(
     }
     default:
       return "error: action must be send, list, read or wait"
+  }
+}
+
+// Who holds a lock, for its text.
+function heldBy(lock: any, me?: string): string {
+  const who = (lock?.holders ?? []).map((h: any) =>
+    h.agent === me ? `${h.agent} (you)` : h.agent,
+  )
+  return who.length ? who.join(", ") : "nobody"
+}
+
+const places = (max: number) => (max > 1 ? ` (${max} places)` : "")
+
+const QUEUE_TAIL =
+  ' When it is yours, a notice comes: [autocode] lock "NAME" granted ' +
+  "(your ttl counts from then). Release it to leave the queue."
+
+export async function runLock(input: LockInput, call: Call): Promise<string> {
+  const name = input?.name?.trim()
+  const path = (action: string) => `/v1/locks/${enc(name!)}/${action}`
+  switch (input?.action) {
+    case "acquire": {
+      if (!name || !input.ttl)
+        return (
+          "error: acquire needs a name and a ttl (how long you hold it, " +
+          "like 10m or 6h)"
+        )
+      const mode = input.mode ?? "queue"
+      if (mode === "wait" && !(Number(input.seconds) > 0))
+        return "error: mode=wait needs seconds (at most max_tool_wait)"
+      const body = {
+        ttl: input.ttl,
+        mode,
+        ...(input.max === undefined ? {} : { max: input.max }),
+      }
+      let res: any
+      let waited = 0
+      if (mode !== "wait") res = await call("POST", path("acquire"), body)
+      else {
+        /*
+         * The server answers within 240 s, and says the most a wait may
+         * take in all (max_tool_wait): ask again for the rest, never past
+         * that.
+         */
+        let total = Math.round(Number(input.seconds))
+        for (;;) {
+          res = await call("POST", path("acquire"), {
+            ...body,
+            seconds: total - waited,
+          })
+          waited += Number(res.waited) || 0
+          if (res.max_wait) total = Math.min(total, Number(res.max_wait))
+          if (res.granted || !res.position || !res.waited) break
+          if (waited >= total) break
+        }
+      }
+      // the server's clock and zone for the times; the local one without
+      const me = await call("GET", "/v1/me").catch(() => undefined)
+      const c = clockOf(me)
+      if (res.granted)
+        return (
+          `You hold lock "${name}" until ${when(res.expires, c)}. Renew it ` +
+          "before then (action=renew); release it when you are done."
+        )
+      if (!res.position)
+        return (
+          `You are no longer in the queue of lock "${name}" (released, or ` +
+          "taken out by the owner). Acquire it again if you still need it."
+        )
+      const tail = QUEUE_TAIL.replace("NAME", name)
+      if (mode === "wait")
+        return (
+          `Lock "${name}" was not free within ${waited} seconds; it is held ` +
+          `by ${heldBy(res.lock, me?.agent?.id)} and you are number ` +
+          `${res.position} in the queue.${tail}`
+        )
+      return (
+        `Lock "${name}"${places(res.lock.max)} is held by ` +
+        `${heldBy(res.lock, me?.agent?.id)}; you are number ${res.position} ` +
+        `in the queue.${tail}`
+      )
+    }
+    case "renew": {
+      if (!name) return "error: renew needs the lock's name"
+      const res = await call(
+        "POST",
+        path("renew"),
+        input.ttl ? { ttl: input.ttl } : {},
+      )
+      const me = await call("GET", "/v1/me").catch(() => undefined)
+      return `Renewed: you hold lock "${name}" until ${when(
+        res.expires,
+        clockOf(me),
+      )}.`
+    }
+    case "release": {
+      if (!name) return "error: release needs the lock's name"
+      const res = await call("POST", path("release"), {})
+      return res.released === "queued"
+        ? `Left the queue of lock "${name}".`
+        : `Released lock "${name}".`
+    }
+    case "list": {
+      const pattern = input.pattern?.trim()
+      const me = await call("GET", "/v1/me")
+      const res = await call(
+        "GET",
+        `/v1/locks${pattern ? `?match=${enc(pattern)}` : ""}`,
+      )
+      if (!res.locks.length)
+        return pattern
+          ? `No locks match ${pattern}.`
+          : "No locks. The first acquire creates one."
+      const c = clockOf(me)
+      const self = me?.agent?.id
+      const lines = [`Server time ${localTime(c.now, c.tz)} (${c.tz}).`]
+      for (const l of res.locks) {
+        const kind = l.max > 1 ? `${l.max} places` : "mutex"
+        const held = l.holders.length
+          ? `held by ${l.holders
+              .map(
+                (h: any) =>
+                  `${h.agent === self ? `${h.agent} (you)` : h.agent} ` +
+                  `until ${when(h.expires, c)}`,
+              )
+              .join(", ")}`
+          : "free"
+        const queue = l.queue.length
+          ? `; queued: ${l.queue.map((q: any) => q.agent).join(", ")}`
+          : ""
+        lines.push(`${l.name} (${kind}): ${held}${queue}`)
+      }
+      return lines.join("\n")
+    }
+    default:
+      return "error: action must be acquire, renew, release or list"
   }
 }

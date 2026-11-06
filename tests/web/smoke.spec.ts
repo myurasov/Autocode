@@ -1,7 +1,8 @@
 /*
  * The web UI in a real browser against a real server: sign-in, the Hosts,
- * Agents, Inbox, Messages and Wakes pages (Pause and Resume, an answer, a
- * message sent, a wake set, fired and cancelled), a settings change, refused
+ * Agents, Inbox, Messages, Locks and Wakes pages (Pause and Resume, an answer,
+ * a message sent, a hold released, a wake set, fired and cancelled), History,
+ * a settings change, refused
  * tokens, and the layout (the pages fit their frame, the frame's padding, the
  * header's items are centered, the main text is 15 px, a page's first item has
  * no top margin, buttons are as tall as text fields, headings are in Title
@@ -9,6 +10,7 @@
  * full width and collapsed, the table cells' padding).
  */
 import {
+  type APIRequestContext,
   expect,
   type Locator,
   type Page,
@@ -146,10 +148,38 @@ test.beforeAll(async () => {
       data: { server: { min_interval: null } },
     })
     expect(reset.ok(), await reset.text()).toBe(true)
+    await makeLocks(api)
   } finally {
     await api.dispose()
   }
 })
+
+// An agent's acquire of a lock (queued when it is taken).
+async function acquire(
+  api: APIRequestContext,
+  token: string,
+  name: string,
+  data: { ttl: string; max?: number },
+) {
+  const res = await api.post(`/v1/locks/${name}/acquire`, {
+    headers: bearer(token),
+    data,
+  })
+  expect(res.ok(), await res.text()).toBe(true)
+  return res.json()
+}
+
+/*
+ * The fixture's locks (tier 0c): a mutex gpu-0 that smoke:agent holds and the
+ * long agent waits for, and a semaphore gpu-pool of 2 places that both hold.
+ * Acquiring again renews a hold or keeps a place, so this can run again.
+ */
+async function makeLocks(api: APIRequestContext) {
+  await acquire(api, sessionToken, "gpu-0", { ttl: "1h" })
+  await acquire(api, longToken, "gpu-0", { ttl: "1h" })
+  await acquire(api, sessionToken, "gpu-pool", { ttl: "2h", max: 2 })
+  await acquire(api, longToken, "gpu-pool", { ttl: "2h", max: 2 })
+}
 
 async function signIn(page: Page, token: string) {
   await page.goto("/")
@@ -165,6 +195,7 @@ const LOADED: Record<string, string> = {
   Agents: "table.agents tr[data-agent]",
   Inbox: "table.inbox tr[data-item]",
   Messages: "table.messages tr[data-message]",
+  Locks: "table.locks tr[data-lock]",
   Wakes: "table.wakes tr[data-wake]",
   History: "table.history tr[data-entry]",
   Settings: "table.settings tr[data-key]",
@@ -189,6 +220,7 @@ test("admin: Agents shows smoke:agent under machine smoke, Hosts its host", asyn
     "Agents",
     "Inbox",
     "Messages",
+    "Locks",
     "Wakes",
     "History",
     "Settings",
@@ -916,6 +948,7 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
     "Hosts",
     "Inbox",
     "Messages",
+    "Locks",
     "Wakes",
     "History",
     "Settings",
@@ -993,6 +1026,9 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
   expect(seen.Settings).toContain("min_interval")
   expect(seen.History).toContain("smoke:agent")
   expect(seen.History).toContain("smoke:host:1")
+  expect(seen.Locks).toContain("gpu-0")
+  expect(seen.Locks).toContain("smoke:agent")
+  expect(seen.Locks).toContain(LONG.agent)
 })
 
 // "Updated Ns ago." sits in a footer at the bottom of the page, at the left;
@@ -1006,6 +1042,7 @@ test("layout: Updated is in the footer, at the bottom left of the page", async (
     "Agents",
     "Inbox",
     "Messages",
+    "Locks",
     "Wakes",
     "History",
   ]) {
@@ -1456,6 +1493,288 @@ test("History: Older loads the next entries when there are more than 100", async
   await expect(older).toHaveCount(0)
 })
 
+/*
+ * Locks (tier 0c): each lock with its type (a mutex, or N places), its
+ * holders (links to Agents; until when, with how long that is from now) and
+ * its queue in order. The fixture's mutex gpu-0 has smoke:agent holding it
+ * and the long agent in its queue; its semaphore gpu-pool has 2 places, both
+ * taken.
+ */
+test("Locks: a mutex with a holder and one in its queue, and a semaphore of 2 places; agents link to Agents", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "Locks")
+  await expect(page.locator("table.locks thead th")).toHaveText([
+    "Lock",
+    "Type",
+    "Holders",
+    "Queue",
+  ])
+  const mutex = page.locator('table.locks tr[data-lock="gpu-0"]')
+  await expect(mutex.locator("td.capacity")).toHaveText("Mutex")
+  const holder = mutex.locator(".holder")
+  await expect(holder).toHaveCount(1)
+  await expect(holder.locator("app-agent-link")).toHaveText("smoke:agent")
+  const until = holder.locator(".until")
+  await expect(until).toHaveText(/^until .+ \(in \d+[smh]( \d+[sm])?\)$/)
+  await expect(until).toHaveAttribute(
+    "title",
+    /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/,
+  )
+  await expect(
+    holder.getByRole("button", { name: "Release", exact: true }),
+  ).toBeVisible()
+  const waiter = mutex.locator("td.queue .waiter")
+  await expect(waiter).toHaveCount(1)
+  await expect(waiter).toHaveText(
+    new RegExp(`^1\\. ${LONG.agent} \\(since .+\\) Remove\\s*$`),
+  )
+  const pool = page.locator('table.locks tr[data-lock="gpu-pool"]')
+  await expect(pool.locator("td.capacity")).toHaveText("2 places")
+  await expect(pool.locator(".holder app-agent-link")).toHaveText([
+    "smoke:agent",
+    LONG.agent,
+  ])
+  await expect(pool.locator("td.queue")).toHaveText("—")
+  expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+  // A holder's link leads to its row on Agents; Back returns.
+  await holder.locator("a.id-link").click()
+  await expect(page).toHaveURL(/\/agents\?agent=smoke(:|%3A)agent$/)
+  await expect(
+    page.locator('table.agents tr[data-agent="smoke:agent"]'),
+  ).toHaveClass(/\bhighlight\b/)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/locks$/)
+  await waiter.locator("a.id-link").click()
+  await expect(
+    page.locator(`table.agents tr[data-agent="${LONG.agent}"]`),
+  ).toHaveClass(/\bhighlight\b/)
+})
+
+// The Lock filter: a pattern, in the address, so Back keeps it; a bad one
+// shows the server's message in the toolbar.
+test("Locks: filters by a lock pattern; the address keeps it", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "Locks")
+  const match = page.getByLabel("Lock", { exact: true })
+  await match.fill("gpu-p*")
+  await expect(page).toHaveURL(/\/locks\?match=gpu-p\*$/)
+  await expect(page.locator("table.locks tr[data-lock]")).toHaveCount(1)
+  await expect(page.locator("table.locks tr[data-lock]")).toHaveAttribute(
+    "data-lock",
+    "gpu-pool",
+  )
+  await page.getByRole("link", { name: "Wakes", exact: true }).click()
+  await page.goBack()
+  await expect(match).toHaveValue("gpu-p*")
+  await expect(page.locator("table.locks tr[data-lock]")).toHaveCount(1)
+  await match.fill("disk-*")
+  await match.press("Enter")
+  // The row that says so: the only one, across the table.
+  await expect(page.locator("table.locks tbody td[colspan]")).toHaveText(
+    "No lock matches disk-*.",
+  )
+  await expect(page.locator("table.locks tr[data-lock]")).toHaveCount(0)
+  await match.fill("a b")
+  await match.press("Enter")
+  await expect(page.locator(".toolbar .result .errmsg")).toHaveText(/pattern/)
+})
+
+/*
+ * Release (the owner's): it asks first; then the hold is freed, the agent is
+ * told, and the next in the queue holds the lock. The notice to the agent is
+ * from autocode, which is no agent link on the Messages page.
+ */
+test("Locks: Release asks first, then frees the hold and the queue moves up", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const name = "smoke-release"
+  try {
+    await acquire(api, sessionToken, name, { ttl: "1h" })
+    await acquire(api, longToken, name, { ttl: "30m" })
+    await signIn(page, admin)
+    await openTab(page, "Locks")
+    const lock = page.locator(`table.locks tr[data-lock="${name}"]`)
+    const release = lock.getByRole("button", { name: "Release", exact: true })
+    const asked: string[] = []
+    page.once("dialog", (dialog) => {
+      asked.push(dialog.message())
+      void dialog.dismiss()
+    })
+    await release.click()
+    await expect.poll(() => asked.length).toBe(1)
+    expect(asked[0]).toBe(
+      `Release smoke:agent's hold on ${name}?\n\n` +
+        "The agent is told and the next in the queue gets it.",
+    )
+    await expect(lock.locator(".holder app-agent-link")).toHaveText(
+      "smoke:agent",
+    )
+    page.once("dialog", (dialog) => void dialog.accept())
+    await release.click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      `Released smoke:agent's hold on ${name}.`,
+    )
+    await expect(lock.locator(".holder app-agent-link")).toHaveText(LONG.agent)
+    await expect(lock.locator(".until")).toHaveText(/\(in (30m|29m)\)$/)
+    await expect(lock.locator("td.queue")).toHaveText("—")
+    await openTab(page, "Messages")
+    const granted = page
+      .locator("table.messages tr[data-message]")
+      .filter({ hasText: `lock "${name}" granted` })
+      .first()
+    await expect(granted.locator("td.sender")).toHaveText("autocode")
+    await expect(granted.locator("td.sender a")).toHaveCount(0)
+    await expect(granted.locator("td.recipient")).toHaveText(LONG.agent)
+  } finally {
+    for (const agent of ["smoke:agent", LONG.agent])
+      await api.post(`/v1/locks/${name}/release`, {
+        headers: bearer(admin),
+        data: { agent },
+      })
+    await api.dispose()
+  }
+})
+
+/*
+ * Remove (the owner, 2026-11-05): the owner takes a waiter out of a lock's
+ * queue after confirming; the agent is told, the others move up, and nothing
+ * else changes. Remove looks like Release and lines up in the queue's grid.
+ */
+test("Locks: Remove takes a waiter out of the queue", async ({ page }) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const name = "smoke-queue"
+  const third = "smoke:waiter"
+  try {
+    const issued = await api.post(
+      "/v1/hosts/smoke:host:1/sessions/ses_smoke_waiter/token",
+      { headers: bearer(consumer), data: {} },
+    )
+    expect(issued.ok(), await issued.text()).toBe(true)
+    const token = (await issued.json()).token
+    const registered = await api.post("/v1/agents", {
+      headers: bearer(token),
+      data: { id: third, description: "waits for locks" },
+    })
+    expect([200, 201], await registered.text()).toContain(registered.status())
+    await acquire(api, longToken, name, { ttl: "1h" })
+    await acquire(api, sessionToken, name, { ttl: "1h" })
+    await acquire(api, token, name, { ttl: "1h" })
+    await signIn(page, admin)
+    await openTab(page, "Locks")
+    // The other locks' agents, to see that they stay as they are.
+    const others = () =>
+      page
+        .locator(
+          `table.locks tr[data-lock]:not([data-lock="${name}"]) ` +
+            "app-agent-link",
+        )
+        .allTextContents()
+    const before = await others()
+    expect(before.length).toBeGreaterThan(0)
+    const lock = page.locator(`table.locks tr[data-lock="${name}"]`)
+    const waiters = lock.locator("td.queue .waiter")
+    await expect(waiters).toHaveText([
+      /^1\. smoke:agent \(since .+\) Remove\s*$/,
+      /^2\. smoke:waiter \(since .+\) Remove\s*$/,
+    ])
+    const removes = lock.getByRole("button", { name: "Remove", exact: true })
+    await expect(removes).toHaveCount(2)
+    // As Release looks, and lined up, one under the other.
+    const look = (button: Locator) =>
+      button.evaluateAll((all) =>
+        all.map((b) => {
+          const s = getComputedStyle(b)
+          const box = b.getBoundingClientRect()
+          return {
+            left: Math.round(box.left),
+            height: Math.round(box.height),
+            style: [s.fontSize, s.padding, s.borderWidth, s.backgroundColor],
+          }
+        }),
+      )
+    const [release] = await look(
+      lock.getByRole("button", { name: "Release", exact: true }),
+    )
+    const [first, second] = await look(removes)
+    expect(first!.left).toBe(second!.left)
+    for (const remove of [first!, second!]) {
+      expect(remove.height).toBe(release!.height)
+      expect(remove.style).toEqual(release!.style)
+    }
+    const asked: string[] = []
+    page.once("dialog", (dialog) => {
+      asked.push(dialog.message())
+      void dialog.accept()
+    })
+    await removes.first().click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      `Took smoke:agent out of the queue of ${name}.`,
+    )
+    expect(asked).toEqual([
+      `Take smoke:agent out of the queue of ${name}?\n\n` +
+        "The agent is told; the others move up.",
+    ])
+    await expect(waiters).toHaveText([
+      /^1\. smoke:waiter \(since .+\) Remove\s*$/,
+    ])
+    await expect(lock.locator(".holder app-agent-link")).toHaveText(LONG.agent)
+    expect(await others()).toEqual(before)
+    // The agent was told, by a notice from autocode.
+    await openTab(page, "Messages")
+    const told = page
+      .locator("table.messages tr[data-message]")
+      .filter({ hasText: `lock "${name}": out of the queue` })
+      .first()
+    await expect(told.locator("td.sender")).toHaveText("autocode")
+    await expect(told.locator("td.recipient")).toHaveText("smoke:agent")
+  } finally {
+    await api.delete(`/v1/agents/${third}`, { headers: bearer(admin) })
+    for (const agent of ["smoke:agent", LONG.agent])
+      await api.post(`/v1/locks/${name}/release`, {
+        headers: bearer(admin),
+        data: { agent },
+      })
+    await api.dispose()
+  }
+})
+
+// With every lock released, the page says how locks come and go; the
+// fixture's locks come back after.
+test("Locks: the empty page after every lock is released", async ({ page }) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  try {
+    for (let round = 0; round < 5; round++) {
+      const res = await api.get("/v1/locks", { headers: bearer(admin) })
+      const { locks } = await res.json()
+      if (!locks.length) break
+      for (const lock of locks)
+        for (const entry of [...lock.queue, ...lock.holders])
+          await api.post(`/v1/locks/${lock.name}/release`, {
+            headers: bearer(admin),
+            data: { agent: entry.agent },
+          })
+    }
+    await signIn(page, admin)
+    await page.getByRole("link", { name: "Locks", exact: true }).click()
+    const empty = page.locator("table.locks tbody td[colspan]")
+    await expect(empty).toHaveText(
+      "No locks. Agents create one with autocode_lock action=acquire; " +
+        "it is gone when nobody holds it or waits.",
+    )
+    await expect(page.locator("#frame footer")).toHaveText(
+      /^Updated \d+s ago\.$/,
+    )
+  } finally {
+    await makeLocks(api)
+    await api.dispose()
+  }
+})
+
 async function refused(page: Page, token: string, says: string) {
   await page.goto("/")
   await page.getByLabel("Token").fill(token)
@@ -1504,6 +1823,7 @@ for (const width of [1280]) {
     for (const tab of [
       "Inbox",
       "Messages",
+      "Locks",
       "Wakes",
       "History",
       "Settings",
@@ -1529,6 +1849,7 @@ test("layout: at 1024 px a wide page scrolls inside the frame", async ({
     "Hosts",
     "Inbox",
     "Messages",
+    "Locks",
     "Wakes",
     "History",
     "Settings",
@@ -1722,6 +2043,7 @@ test("layout: the title and every bold text have font weight 500", async ({
     "Agents",
     "Inbox",
     "Messages",
+    "Locks",
     "Wakes",
     "History",
   ]) {
@@ -1929,6 +2251,14 @@ test("layout: the text is 15 px", async ({ page }) => {
     "#send-text",
     "table.messages td.subject",
   ])
+  await openTab(page, "Locks")
+  const locks = await sizes([
+    "label[for=lock-match]",
+    "#lock-match",
+    "table.locks td.capacity",
+    "table.locks .until",
+    "table.locks .waiter",
+  ])
   await openTab(page, "Wakes")
   const wakes = await sizes([
     "#wake-trigger",
@@ -1957,6 +2287,7 @@ test("layout: the text is 15 px", async ({ page }) => {
     ...hosts,
     ...inbox,
     ...messages,
+    ...locks,
     ...wakes,
     ...history,
     ...help,
@@ -2334,5 +2665,10 @@ test.describe("in Pacific time", () => {
     await expect(wake.locator("td.next")).toHaveText(time)
     await openTab(page, "History")
     await expect(page.locator("table.history td.time").first()).toHaveText(time)
+    await openTab(page, "Locks")
+    const until = page.locator('table.locks tr[data-lock="gpu-0"] .until')
+    await expect(until).toHaveText(
+      /^until \d\d-[A-Z][a-z]{2}-\d\d \d\d:\d\d:\d\d PT \(in \S+( \S+)?\)$/,
+    )
   })
 })

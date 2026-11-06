@@ -273,6 +273,27 @@ describe("session tokens", () => {
     expect((await call(t.url, two, "GET", "/v1/me")).status).toBe(200)
   })
 
+  // The owner, 2026-11-05: older session tokens are cleaned up; a running
+  // job keeps the token it started with, so only unused ones go.
+  test("a session token unused for 30 days is revoked; one in use is kept", async () => {
+    const t = await start({})
+    await hello(t, "m:1")
+    const old = await sessionToken(t, "m:1", "ses_one")
+    const used = await sessionToken(t, "m:1", "ses_one")
+    const DAY = 86_400_000
+    for (let day = 0; day < 29; day++) {
+      t.clock.advance(DAY)
+      expect((await call(t.url, used, "GET", "/v1/me")).status).toBe(200)
+    }
+    t.clock.advance(2 * DAY)
+    t.server.maintenance()
+    expect((await call(t.url, old, "GET", "/v1/me")).status).toBe(401)
+    expect((await call(t.url, used, "GET", "/v1/me")).status).toBe(200)
+    // the owner's tokens never expire this way
+    expect((await call(t.url, t.admin, "GET", "/v1/info")).status).toBe(200)
+    expect((await call(t.url, t.consumer, "GET", "/v1/hosts")).status).toBe(200)
+  })
+
   test("a token for a session needs a host that said hello, and valid IDs", async () => {
     const t = await start({})
     const res = await call(

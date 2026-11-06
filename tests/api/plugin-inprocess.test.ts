@@ -196,11 +196,14 @@ interface Fake {
   skills: () => any[]
 }
 
+// OpenCode's plugin storage (ctx.storage), shared by instances, as on disk.
+const storage = new Map<string, unknown>()
+
 /*
  * A plugin context with what the plugin uses: sessions (get, list, prompt,
- * interrupt, hooks), tool and shell hooks, skills, and an event stream that
- * carries every folder's events, as OpenCode's does. OpenCode runs as
- * `opencode serve` with the fake local API unless told otherwise.
+ * interrupt, hooks), tool and shell hooks, skills, storage, and an event
+ * stream that carries every folder's events, as OpenCode's does. OpenCode runs
+ * as `opencode serve` with the fake local API unless told otherwise.
  */
 async function startPlugin(
   directory: string,
@@ -218,6 +221,20 @@ async function startPlugin(
   const ctx = {
     location: { directory },
     app: { version: "2.2.0" },
+    storage: {
+      get: async (key: string) => structuredClone(storage.get(key)),
+      set: async (key: string, value: unknown) => {
+        storage.set(key, structuredClone(value))
+      },
+      remove: async (key: string) => {
+        storage.delete(key)
+      },
+      scan: async ({ prefix }: { prefix: string }) => ({
+        entries: [...storage]
+          .filter(([k]) => k.startsWith(prefix))
+          .map(([key, value]) => ({ key, value })),
+      }),
+    },
     session: {
       get: async ({ sessionID }: { sessionID: string }) => {
         const s = sessions.find((x) => x.id === sessionID)
@@ -468,6 +485,46 @@ describe("the plugin in-process", () => {
     expect((await call(t.url, fresh!, "GET", "/v1/me")).body.agent.id).toBe(
       "inproc:rot",
     )
+  })
+
+  // The owner, 2026-11-05: a plugin reload or a deploy does not mint a new
+  // session token; the one in OpenCode's plugin storage is used again.
+  test("a reloaded plugin uses the session's stored token again; a dead one is replaced", async () => {
+    const dir = join(root, "work-store")
+    const sessions: Session[] = [{ id: "ses_keep", directory: dir }]
+    const tokens = () =>
+      (
+        t.server.db
+          .query(
+            "SELECT COUNT(*) AS n FROM tokens WHERE session_id = 'ses_keep'",
+          )
+          .get() as { n: number }
+      ).n
+    const first = await connected(() => startPlugin(dir, sessions))
+    await me(first).execute(
+      { action: "register", id: "inproc:keep" },
+      { sessionID: "ses_keep" },
+    )
+    expect(tokens()).toBe(1)
+    // OpenCode loads the plugin again (an update, a reload)
+    const again = await connected(() => startPlugin(dir, sessions))
+    const out = await me(again).execute(
+      { action: "status" },
+      { sessionID: "ses_keep" },
+    )
+    expect(out.content).toContain("Registered as inproc:keep")
+    expect(tokens()).toBe(1)
+    // a stored token the server no longer takes is replaced once
+    t.server.db
+      .query("UPDATE tokens SET revoked_at = 1 WHERE session_id = 'ses_keep'")
+      .run()
+    const third = await connected(() => startPlugin(dir, sessions))
+    const after = await me(third).execute(
+      { action: "status" },
+      { sessionID: "ses_keep" },
+    )
+    expect(after.content).toContain("Registered as inproc:keep")
+    expect(tokens()).toBe(2)
   })
 
   test("hello says whether the plugin can set shell values; where it cannot, a shell call sets nothing", async () => {

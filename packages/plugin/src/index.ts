@@ -27,10 +27,13 @@ import { log } from "./log.ts"
 import { SessionTokens } from "./sessions.ts"
 import {
   type Call,
+  LOCK_TOOL,
+  type LockInput,
   ME_TOOL,
   MESSAGE_TOOL,
   type MeInput,
   type MessageInput,
+  runLock,
   runMe,
   runMessage,
   runWake,
@@ -121,7 +124,20 @@ export default {
       },
     })
 
+    // Tokens kept in OpenCode's plugin storage, per server URL and session.
+    const tokenKey = (session: string) =>
+      `token/${encodeURIComponent(config.url)}/${session}`
     const tokens = new SessionTokens({
+      store: ctx.storage
+        ? {
+            get: async (session) => {
+              const v = await ctx.storage.get(tokenKey(session))
+              return typeof v === "string" ? v : undefined
+            },
+            set: (session, token) => ctx.storage.set(tokenKey(session), token),
+            remove: (session) => ctx.storage.remove(tokenKey(session)),
+          }
+        : undefined,
       parentOf: async (sessionID) => {
         const info = await ctx.session.get({ sessionID })
         return info?.parentID || undefined
@@ -159,19 +175,28 @@ export default {
       path: string,
       body?: unknown,
       timeoutMs = 10_000,
+      signal?: AbortSignal,
     ) => {
       const root = await tokens.root(sessionID)
       for (let attempt = 0; ; attempt++) {
         const token = await tokens.token(root)
         try {
-          return await request(config.url, token, method, path, body, timeoutMs)
+          return await request(
+            config.url,
+            token,
+            method,
+            path,
+            body,
+            timeoutMs,
+            signal,
+          )
         } catch (err) {
           if (
             err instanceof ServerError &&
             err.status === 401 &&
             attempt === 0
           ) {
-            tokens.drop(root)
+            await tokens.drop(root)
             continue
           }
           throw err
@@ -237,7 +262,7 @@ export default {
         case "token":
           // The owner rotated the session's token: the old one is dead; get a
           // new one now, and put it into the shells that had the old one.
-          tokens.drop(session)
+          await tokens.drop(session)
           await tokens.token(session)
           await renewShellValues(session)
           return { renewed: true }
@@ -297,7 +322,13 @@ export default {
     })
     const asTool = (
       tool: { name: string; description: string; input: unknown },
-      run: (input: any, call: Call, sessionID: string) => Promise<string>,
+      run: (
+        input: any,
+        call: Call,
+        sessionID: string,
+        // OpenCode's: aborted when the session stops the call
+        signal?: AbortSignal,
+      ) => Promise<string>,
     ) => ({
       ...tool,
       options: { codemode: false },
@@ -305,7 +336,9 @@ export default {
         try {
           const call: Call = (method, path, body) =>
             callAs(tctx.sessionID, method, path, body)
-          return { content: await run(input, call, tctx.sessionID) }
+          return {
+            content: await run(input, call, tctx.sessionID, tctx.signal),
+          }
         } catch (err) {
           const e = err as ServerError
           const code = e instanceof ServerError ? ` (${e.code})` : ""
@@ -342,6 +375,22 @@ export default {
               if (res.messages?.length || Date.now() >= end - 1000) return res
             }
           }),
+        ),
+      )
+      tools.add(
+        asTool(LOCK_TOOL, (input: LockInput, _call, sessionID, signal) =>
+          runLock(input, (method, path, body: any) =>
+            // a wait holds the request up to its seconds; a stopped call
+            // ends it, so the server tells a grant by a notice
+            callAs(
+              sessionID,
+              method,
+              path,
+              body,
+              (Math.min(Number(body?.seconds) || 0, 240) + 15) * 1000,
+              signal,
+            ),
+          ),
         ),
       )
     })
@@ -432,9 +481,11 @@ export default {
             const data = event?.data
             if (typeof data?.sessionID !== "string") continue
             const session = data.sessionID as string
-            if (event.type === "session.deleted")
+            if (event.type === "session.deleted") {
               channel.report({ type: "session.deleted", session })
-            else if (event.type === "session.created") {
+              // its token is dead: no need to keep it
+              void tokens.drop(session)
+            } else if (event.type === "session.created") {
               if (!data.parentID && data.location?.directory === directory) {
                 mine.add(session)
                 channel.report({ type: "session.created", session, directory })

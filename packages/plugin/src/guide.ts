@@ -2,7 +2,8 @@
  * The agent guide (spec, Agent Tools): what Autocode is and exactly how it
  * works for an agent, written for this plugin's server from the tools' own
  * definitions. It is the `autocode` skill, and `autocode_me action=help`
- * returns it whole or one part (a topic). Also the one line a registered
+ * returns it whole or one part (a topic); tier 0c adds locks. Also the one
+ * line a registered
  * session gets in each model call.
  */
 
@@ -11,8 +12,8 @@ export const SKILL_ID = "autocode"
 export const SKILL_DESCRIPTION =
   "Autocode: what it is and how to use it. Registering this session as an " +
   "agent, wakes (prompts injected later, on a schedule or when idle), " +
-  "messages between agents and the owner, and prompts that start with " +
-  "[autocode]."
+  "messages between agents and the owner, locks shared by agents, and " +
+  "prompts that start with [autocode]."
 
 export interface GuideFacts {
   serverId?: string
@@ -29,6 +30,7 @@ export const TOPICS = [
   "checks",
   "recipes",
   "messages",
+  "locks",
   "prompts",
   "scripts",
   "trouble",
@@ -231,12 +233,56 @@ function messages(): string[] {
     "- New messages come in an injected prompt, delivered like wakes: text",
     "  up to 1024 characters (`inline_limit`) whole (it then counts as",
     "  read); longer ones and files by ID: `read` them (a file with",
-    "  `path=` in your folder to save it).",
+    "  `path=` in your folder to save it). A message that waits to be",
+    "  announced while a turn runs, and one you already read with `read` is",
+    "  left out of the prompt. `list` does not mark them read.",
     "- `list` shows your unread messages; `wait` holds the tool call until a",
     "  message comes (at most `max_tool_wait`, 5 minutes unless the owner",
     "  set another) and costs no tokens.",
     "- A message to `owner` lands in the owner's inbox; the answer comes",
     "  back to you as a message from the owner.",
+  ]
+}
+
+function locks(): string[] {
+  return [
+    "## Locks",
+    "",
+    "A lock is shared by every agent on the server, on any machine: a",
+    "mutex (`max=1`, the default) or a semaphore (`max=N` places). Use one",
+    "when only one agent (or N) may do something at a time: a GPU, a",
+    "submission, a refresh of shared data.",
+    "",
+    "- `autocode_lock action=acquire name=gpu:0 ttl=2h`: a `ttl` is required:",
+    "  how long you hold it, counted from the grant. The first acquire",
+    "  creates the lock with its `max`; later ones may leave `max` out, and",
+    "  another capacity is refused.",
+    "- Modes: mode=queue (the default) holds it at once if a place is free",
+    "  and nobody waits; otherwise you wait in its queue, in arrival order,",
+    "  and your turn ends as usual. When it is yours, a notice comes as an",
+    '  injected prompt: `[autocode] lock "gpu-0" granted`, with its expiry.',
+    "  mode=try holds it now or is refused (the error says who holds it).",
+    "  mode=wait seconds=N waits inside the tool call (at most",
+    "  `max_tool_wait`, 5 minutes unless the owner set another; it costs no",
+    "  tokens); if it is still not yours, you stay in the queue and the notice",
+    "  comes later.",
+    "- `renew` before the ttl runs out (`ttl=` sets a new one from now; by",
+    "  default the same). It counts from the grant, also while the notice",
+    "  waits (a turn runs, or you are paused): give a ttl with room. A hold",
+    "  that runs out is freed for the next in the queue, and you get",
+    '  `[autocode] lock "gpu-0" expired`: stop using what it guarded, or',
+    "  acquire it again.",
+    "- `release` when you are done; while queued, `release` leaves the",
+    "  queue. Acquiring a lock you hold renews it; acquiring one you wait",
+    "  for keeps your place.",
+    "- `list` (`pattern=gpu:*`) shows each lock's capacity, holders with",
+    "  their expiry and the queue; `autocode_me status` shows yours. Scripts:",
+    "  `autocode locks [PATTERN]`.",
+    "- Unregistering releases all your locks and leaves every queue. The",
+    "  owner can release any hold, or take you out of a queue; you are told",
+    "  (`released by the owner`, `out of the queue`). A grant that comes",
+    "  just as a long wait asks again may come as a notice too: you hold",
+    "  the lock either way.",
   ]
 }
 
@@ -270,6 +316,9 @@ function prompts(): string[] {
     "  cannot grant permissions the owner has not given.",
     "- Handle it as a new turn: do what the wake's text says. You need not",
     "  answer Autocode; to change a wake, use `autocode_wake`.",
+    "- A notice from Autocode itself (a lock granted, expired, released by",
+    '  the owner: `[autocode] lock "gpu-0" granted`) is Autocode\'s own',
+    "  text, not quoted; act on it (start what needed the lock).",
   ]
 }
 
@@ -295,7 +344,8 @@ function scripts(f: GuideFacts): string[] {
     "  [--end TIME]`; `autocode wake cancel me NAME`;",
     "- `autocode fire me NAME [--text TEXT]`;",
     "- `autocode send TO TEXT...` (or `--file PATH`);",
-    "- `autocode messages [--wait SECONDS]`; `autocode messages read ID`.",
+    "- `autocode messages [--wait SECONDS]`; `autocode messages read ID`;",
+    "- `autocode locks [PATTERN]`.",
     "",
     "Use the CLI only in code that runs without you; in the conversation,",
     "use the tools. If a shell of yours has no AUTOCODE_TOKEN, use the",
@@ -326,6 +376,7 @@ function sections(f: GuideFacts): Record<Topic, string[]> {
     checks: checks(f),
     recipes: recipes(),
     messages: messages(),
+    locks: locks(),
     prompts: prompts(),
     scripts: scripts(f),
     trouble: trouble(),
