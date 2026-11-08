@@ -35,9 +35,8 @@ let longToken = ""
 const LONG = {
   host: "layout:host:1",
   session: "ses_e7d5a9981ffeMI0at2ZTpikxTp",
-  agent: "live:mymbp4:glm-5.3:20261028T1314",
-  directory:
-    "/Users/someone/MY-Solaris/projects/my/autocode/source/__out/live/project",
+  agent: "live:laptop:glm-5.3:20261028T1314",
+  directory: "/Users/someone/work/projects/autocode/source/__out/live/project",
 }
 
 /*
@@ -79,7 +78,7 @@ test.beforeAll(async () => {
       headers: bearer(consumer),
       data: {
         instance: "i2",
-        machine: "mymbp4",
+        machine: "laptop",
         directory: LONG.directory,
         sessions: [LONG.session],
         process: { pid: 31337, kind: "serve" },
@@ -149,10 +148,41 @@ test.beforeAll(async () => {
     })
     expect(reset.ok(), await reset.text()).toBe(true)
     await makeLocks(api)
+    await setJob(api, "smoke-report", {
+      description: "Reports on the smoke test",
+      trigger: "every 24h",
+    })
   } finally {
     await api.dispose()
   }
 })
+
+/*
+ * A job on the fixture's host (tier 0f), set through the API: a model that
+ * never runs here (the fixture's host has no plugin, so a run stays starting
+ * until it fails), a prompt and a trigger.
+ */
+async function setJob(
+  api: APIRequestContext,
+  name: string,
+  change: Record<string, unknown> = {},
+) {
+  const res = await api.put(`/v1/jobs/${name}`, {
+    headers: bearer(admin),
+    data: {
+      host: "smoke:host:1",
+      model: "test/model",
+      prompt: "Report on the smoke test.",
+      trigger: "fire-only",
+      ...change,
+    },
+  })
+  expect(res.ok(), await res.text()).toBe(true)
+}
+
+async function deleteJob(api: APIRequestContext, name: string) {
+  await api.delete(`/v1/jobs/${name}`, { headers: bearer(admin) })
+}
 
 // An agent's acquire of a lock (queued when it is taken).
 async function acquire(
@@ -197,6 +227,7 @@ const LOADED: Record<string, string> = {
   Messages: "table.messages tr[data-message]",
   Locks: "table.locks tr[data-lock]",
   Wakes: "table.wakes tr[data-wake]",
+  Jobs: "table.jobs tr[data-job]",
   History: "table.history tr[data-entry]",
   Settings: "table.settings tr[data-key]",
   Help: "article h2",
@@ -222,6 +253,7 @@ test("admin: Agents shows smoke:agent under machine smoke, Hosts its host", asyn
     "Messages",
     "Locks",
     "Wakes",
+    "Jobs",
     "History",
     "Settings",
     "Help",
@@ -303,6 +335,7 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
     "Time",
     "Kind",
     "Agent",
+    "Sent To",
     "Item",
     "",
   ])
@@ -311,8 +344,9 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
       hasText: 'Message from smoke:agent: "Smoke"',
     })
     .first()
-  await expect(item.locator("td.kind")).toHaveText("message")
+  await expect(item.locator("td.kind")).toHaveText("Message")
   await expect(item.locator("td.agent")).toHaveText("smoke:agent")
+  await expect(item.locator("td.sent-to")).toHaveText("owner")
   const body = item.locator(".body")
   await expect(body).toContainText("A second line.")
   await expect(body).toHaveCSS("white-space", "pre-wrap")
@@ -326,7 +360,6 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
     "To",
     "Subject",
     "Text",
-    "Kind",
     "Size",
     "State",
   ])
@@ -341,7 +374,6 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
   await expect(message.locator("td.text .more")).toHaveCount(0)
   await expect(message.locator("td.sender")).toHaveText("smoke:agent")
   await expect(message.locator("td.recipient")).toHaveText("owner")
-  await expect(message.locator("td.kind")).toHaveText("text")
   await expect(message.locator("td.state")).toHaveText("delivered")
 
   await openTab(page, "Wakes")
@@ -351,7 +383,6 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
     "Next",
     "Text",
     "Check",
-    "End",
     "Set By",
     "Last Set",
     "Last Fired",
@@ -580,9 +611,9 @@ test("admin: a long wake text and check are truncated to 200 characters; a click
     "and what the owner would want it to look like.\n" +
     "Then fix the worst one first."
   const check =
-    'test -n "$(find /home/someone/MY-Solaris/projects/my/autocode/' +
+    'test -n "$(find /home/someone/work/projects/team-tools/autocode/' +
     "source/__out/live/project -name '*.png' -newer " +
-    "/home/someone/MY-Solaris/projects/my/autocode/source/__out/live/" +
+    "/home/someone/work/projects/team-tools/autocode/source/__out/live/" +
     'project/.last-look -print -quit)"'
   expect(long.length).toBeGreaterThan(200)
   expect(check.length).toBeGreaterThan(200)
@@ -931,10 +962,12 @@ test("admin: sets, fires and cancels a wake on the Wakes page", async ({
  * setting keys, patterns, machine names) wrap as normal text, so they break
  * at their separators (after ":" and "_", which the page marks, and where the
  * browser breaks, as after "-"), never inside a word (the owner, 2026-11-03:
- * "instead of white-space: pre, use normal"). At 1024 px: every line of such
- * a cell but the last ends with a separator, a long wake name breaks at its
- * hyphens, nothing is added around the ID, and the fixture's long IDs are
- * among them.
+ * "instead of white-space: pre, use normal"), except the ID and session
+ * columns, which break anywhere (the owner, 2026-11-07: a message or
+ * session ID's random part has no separator). At 1024 px: every line of
+ * such a cell but the last ends with a separator (in those columns, any
+ * character), a long wake name breaks at its hyphens, nothing is added
+ * around the ID, and the fixture's long IDs are among them.
  */
 test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async ({
   page,
@@ -950,6 +983,7 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
     "Messages",
     "Locks",
     "Wakes",
+    "Jobs",
     "History",
     "Settings",
   ]) {
@@ -963,6 +997,7 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
         return {
           raw: e.textContent ?? "",
           text: (e.textContent ?? "").trim(),
+          anywhere: getComputedStyle(e).lineBreak === "anywhere",
           parts: parts.map((p) => p.textContent ?? ""),
           spaces: [
             ...new Set(parts.map((p) => getComputedStyle(p).whiteSpace)),
@@ -1002,11 +1037,13 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
       if (cell.text === "—" || cell.text === "") continue
       expect(cell.parts.join(""), name).toBe(cell.text)
       expect(cell.spaces, name).toEqual(["normal"])
-      // Every line but the last ends with a separator.
-      expect(
-        cell.ends.filter((ch) => !/[:_\-/.]/.test(ch)),
-        name,
-      ).toEqual([])
+      // Every line but the last ends with a separator (ID and session
+      // columns: anywhere).
+      if (!cell.anywhere)
+        expect(
+          cell.ends.filter((ch) => !/[:_\-/.]/.test(ch)),
+          name,
+        ).toEqual([])
       lines[name] = cell.lines
     }
     seen[tab] = cells.map((cell) => cell.text)
@@ -1014,7 +1051,7 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
   // The long ones are among them.
   for (const id of [LONG.agent, LONG.session, LONG.host])
     expect(seen.Agents, id).toContain(id)
-  expect(seen.Agents).toContain("mymbp4")
+  expect(seen.Agents).toContain("laptop")
   expect(seen.Hosts).toContain(LONG.host)
   expect(seen.Wakes).toContain("layout-check-of-a-long-wake-name")
   // A long wake name wraps at its hyphens now (it did not with pre).
@@ -1029,6 +1066,24 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
   expect(seen.Locks).toContain("gpu-0")
   expect(seen.Locks).toContain("smoke:agent")
   expect(seen.Locks).toContain(LONG.agent)
+  expect(seen.Jobs).toContain("smoke-report")
+  // The ID and session columns break anywhere; the other id-like ones not.
+  const breaks = await page.evaluate(() => {
+    const probe = (cls: string) => {
+      const td = document.createElement("td")
+      td.className = cls
+      document.body.append(td)
+      const v = getComputedStyle(td).lineBreak
+      td.remove()
+      return v
+    }
+    return {
+      id: probe("id id-like"),
+      session: probe("session id-like"),
+      other: probe("from id-like"),
+    }
+  })
+  expect(breaks).toEqual({ id: "anywhere", session: "anywhere", other: "auto" })
 })
 
 // "Updated Ns ago." sits in a footer at the bottom of the page, at the left;
@@ -1044,6 +1099,7 @@ test("layout: Updated is in the footer, at the bottom left of the page", async (
     "Messages",
     "Locks",
     "Wakes",
+    "Jobs",
     "History",
   ]) {
     await openTab(page, tab)
@@ -1099,7 +1155,7 @@ test("layout: an action's result shows in the toolbar after its buttons", async 
 // The Send a Message and Set a Wake forms span the frame and start
 // collapsed: one clickable line with their title, which opens them; the
 // title in the neutral text color, 2 px further from its fold marker (the
-// owner, 2026-11-02).
+// owner, 2026-11-02), the line padded 6 px (the owner, 2026-11-07).
 test("layout: the forms are full width and start collapsed", async ({
   page,
 }) => {
@@ -1116,9 +1172,11 @@ test("layout: the forms are full width and start collapsed", async ({
     await expect(form, tab).not.toHaveAttribute("open")
     await expect(page.locator(field), tab).toBeHidden()
     await expect(summary, tab).toHaveCSS("cursor", "pointer")
-    // the text color of the default (dark) theme, not the link color
-    await expect(summary, tab).toHaveCSS("color", "rgb(213, 219, 225)")
+    // the label color of the default (dark) theme (--fg-label; the owner,
+    // 2026-11-07), not the link color
+    await expect(summary, tab).toHaveCSS("color", "rgb(174, 183, 192)")
     await expect(summary.locator("span"), tab).toHaveCSS("margin-left", "2px")
+    await expect(summary, tab).toHaveCSS("padding", "6px")
     const widths = await page.evaluate(() => {
       const width = (s: string) =>
         document.querySelector(s)!.getBoundingClientRect().width
@@ -1775,6 +1833,619 @@ test("Locks: the empty page after every lock is released", async ({ page }) => {
   }
 })
 
+/*
+ * Messages are text only (the owner, 2026-11-07): no Kind column, no file in a
+ * Text cell, and the Send a Message form has nothing to attach.
+ */
+test("Messages: every message is text; no Kind column, no file to send", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "Messages")
+  await expect(page.locator("table.messages thead th")).not.toContainText([
+    "Kind",
+  ])
+  await expect(page.locator("table.messages td.kind")).toHaveCount(0)
+  const texts = page.locator("table.messages td.text")
+  await expect(texts.first()).toBeVisible()
+  await expect(texts.filter({ hasText: / file$/ })).toHaveCount(0)
+  // ID, Time, From, To, Subject, Text, Size and State.
+  await expect(page.locator("table.messages thead th")).toHaveCount(8)
+  const form = page.locator("details.panel")
+  await form.locator("summary", { hasText: "Send a Message" }).click()
+  await expect(form.locator("input[type=file]")).toHaveCount(0)
+  expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+})
+
+/*
+ * A wake has no end (the owner, 2026-11-07): the Set a Wake form has no End
+ * field, and the table no End column.
+ */
+test("Wakes: no End in the Set a Wake form or the table", async ({ page }) => {
+  await signIn(page, admin)
+  await openTab(page, "Wakes")
+  await expect(page.locator("table.wakes thead th")).not.toContainText(["End"])
+  await expect(page.locator("table.wakes td.end")).toHaveCount(0)
+  await expect(page.locator("table.wakes tr.group th").first()).toHaveAttribute(
+    "colspan",
+    "9",
+  )
+  const form = page.locator("details.panel")
+  await form.locator("summary", { hasText: "Set a Wake" }).click()
+  await expect(form.locator("label")).toHaveText([
+    "Agent ID",
+    "Name",
+    "Trigger",
+    "Text",
+    "Check",
+  ])
+  await expect(page.getByLabel("End", { exact: true })).toHaveCount(0)
+  expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+})
+
+// The Settings page shows the settings the server has, one row each, and no
+// others (the owner removed four on 2026-11-07).
+test("Settings: one row per setting the server has", async ({ page }) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  let keys: string[] = []
+  try {
+    const res = await api.get("/v1/settings", { headers: bearer(admin) })
+    expect(res.ok(), await res.text()).toBe(true)
+    keys = Object.keys((await res.json()).schema).sort()
+  } finally {
+    await api.dispose()
+  }
+  await signIn(page, admin)
+  await openTab(page, "Settings")
+  const shown = await page
+    .locator("table.settings tr[data-key]")
+    .evaluateAll((rows) => rows.map((r) => r.getAttribute("data-key") ?? ""))
+  expect([...shown].sort()).toEqual(keys)
+})
+
+// What the plugin reports when smoke:agent's turn asks something (tier 0d):
+// the question tool's form, or a permission prompt.
+async function openAsk(api: APIRequestContext, event: Record<string, unknown>) {
+  const res = await api.post("/v1/hosts/smoke:host:1/events", {
+    headers: bearer(consumer),
+    data: {
+      instance: "i1",
+      events: [{ type: "ask.opened", session: "ses_smoke1", ...event }],
+    },
+  })
+  expect(res.ok(), await res.text()).toBe(true)
+}
+
+// A question of smoke:agent's, with two options; its header is unique.
+function question(header: string) {
+  return {
+    kind: "question",
+    ref: `frm_${header}`,
+    title: "Questions",
+    questions: [
+      {
+        key: "q0",
+        header,
+        question: `Which fold split should I use (${header})?`,
+        multiple: false,
+        options: [
+          { label: "v3", description: "folds v3" },
+          { label: "v2", description: "the old ones" },
+        ],
+      },
+    ],
+  }
+}
+
+// A permission prompt of smoke:agent's.
+function permission(command: string) {
+  return {
+    kind: "permission",
+    ref: `per_${command.replace(/\W+/g, "_")}`,
+    title: "shell",
+    action: "shell",
+    resources: [command],
+    save: ["rm *"],
+  }
+}
+
+// An approval smoke:agent asks for itself; its ID.
+async function askApproval(api: APIRequestContext, text: string) {
+  const res = await api.post("/v1/me/approvals", {
+    headers: bearer(sessionToken),
+    data: { text, options: ["now", "tonight"], expires: "1h" },
+  })
+  expect(res.status(), await res.text()).toBe(201)
+  return (await res.json()).approval.id as string
+}
+
+// The open asks in the owner's inbox.
+async function openAsks(api: APIRequestContext) {
+  const res = await api.get("/v1/inbox", { headers: bearer(admin) })
+  return ((await res.json()).items as any[]).filter((i) =>
+    ["question", "permission", "approval"].includes(i.kind),
+  )
+}
+
+// Every open ask answered (rejected where it can be), so smoke:agent is no
+// longer waiting.
+async function answerAsks(api: APIRequestContext) {
+  for (const ask of await openAsks(api))
+    await api.post(`/v1/asks/${ask.id}/answer`, {
+      headers: bearer(admin),
+      data: ask.kind === "question" ? { text: "done" } : { decision: "reject" },
+    })
+}
+
+/*
+ * Asks (tier 0d): a question in the Inbox, with its kind, agent, Sent To and
+ * options; a click on an option answers it at once, and it is gone, after a
+ * reload too; Show Closed shows its answer.
+ */
+test("Inbox: a question answered by an option button", async ({ page }) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const header = `Fold ${Date.now()}`
+  try {
+    await openAsk(api, question(header))
+    await signIn(page, admin)
+    await openTab(page, "Inbox")
+    const row = page.locator("table.inbox tr[data-item]", { hasText: header })
+    await expect(row.locator("td.kind")).toHaveText("Question")
+    await expect(row.locator("td.agent")).toHaveText("smoke:agent")
+    await expect(row.locator("td.sent-to")).toHaveText("owner")
+    await expect(row.locator(".title")).toHaveText(
+      `Question from smoke:agent: ${header}`,
+    )
+    const options = row.locator("button.option")
+    await expect(options).toHaveText(["v3", "v2"])
+    await options.first().click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      "Answered question from smoke:agent.",
+    )
+    await expect(row).toHaveCount(0)
+    await page.reload()
+    await expect(
+      page.locator("#frame table.inbox tr[data-item]").first(),
+    ).toBeVisible()
+    await expect(row).toHaveCount(0)
+    await page.getByLabel("Show Closed").check()
+    await expect(row.locator(".answer")).toHaveText("Answer: v3 (by the owner)")
+    await expect(row.locator("td.actions")).toHaveText("answered")
+    await expect(row.locator("button")).toHaveCount(0)
+  } finally {
+    await answerAsks(api)
+    await api.dispose()
+  }
+})
+
+// A permission prompt: its action and command; Allow Once lets it run.
+test("Inbox: a permission allowed once", async ({ page }) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const command = `rm -rf build-${Date.now()}`
+  try {
+    await openAsk(api, permission(command))
+    await signIn(page, admin)
+    await openTab(page, "Inbox")
+    const row = page.locator("table.inbox tr[data-item]", { hasText: command })
+    await expect(row.locator("td.kind")).toHaveText("Permission")
+    await expect(row.locator(".action")).toHaveText("Action: shell")
+    await expect(row.locator(".resources code")).toHaveText([command])
+    for (const name of ["Allow Once", "Allow Always", "Reject"])
+      await expect(row.getByRole("button", { name, exact: true })).toBeVisible()
+    await expect(
+      row.getByRole("textbox", { name: "Reason to reject" }),
+    ).toBeVisible()
+    await row.getByRole("button", { name: "Allow Once", exact: true }).click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      "Answered permission from smoke:agent.",
+    )
+    await expect(row).toHaveCount(0)
+    await page.getByLabel("Show Closed").check()
+    await expect(row.locator(".answer")).toHaveText(
+      "Answer: once (by the owner)",
+    )
+  } finally {
+    await answerAsks(api)
+    await api.dispose()
+  }
+})
+
+// An approval smoke:agent asked for: approved with an option and a note; the
+// agent's own view of it says so.
+test("Inbox: an approval approved with an option", async ({ page }) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const what = `Deploy the new model ${Date.now()}.`
+  try {
+    const id = await askApproval(api, what)
+    await signIn(page, admin)
+    await openTab(page, "Inbox")
+    const row = page.locator("table.inbox tr[data-item]", { hasText: what })
+    await expect(row.locator("td.kind")).toHaveText("Approval")
+    await expect(row.locator(".ask-text")).toHaveText(what)
+    // its text once (the owner, 2026-11-07): the title names the agent
+    await expect(row.locator(".title")).toHaveText("Approval for smoke:agent")
+    expect((await row.locator("td.item").innerText()).split(what).length).toBe(
+      2,
+    )
+    await expect(row.locator(".expires")).toHaveText(
+      /^expires .+ \(in (59m|1h)\)$/,
+    )
+    await row.getByLabel("tonight", { exact: true }).check()
+    await row.getByRole("textbox", { name: "Note" }).fill("after 22:00")
+    await row.getByRole("button", { name: "Approve", exact: true }).click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      "Answered approval from smoke:agent.",
+    )
+    await expect(row).toHaveCount(0)
+    const res = await api.get(`/v1/me/approvals/${id}`, {
+      headers: bearer(sessionToken),
+    })
+    const { approval } = await res.json()
+    expect(approval).toMatchObject({ option: "tonight", note: "after 22:00" })
+    expect(approval.state).toMatch(/^(answered|approved)$/)
+  } finally {
+    await answerAsks(api)
+    await api.dispose()
+  }
+})
+
+/*
+ * Someone answered first (here the owner, through the API): the page's answer
+ * is refused with the server's message, and the ask is gone after the list
+ * reloads.
+ */
+test("Inbox: an ask answered first elsewhere says so and goes", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const header = `First ${Date.now()}`
+  try {
+    await openAsk(api, question(header))
+    await signIn(page, admin)
+    await openTab(page, "Inbox")
+    const row = page.locator("table.inbox tr[data-item]", { hasText: header })
+    await expect(row.locator("button.option")).toHaveCount(2)
+    const ask = (await openAsks(api)).find((a) => a.title.includes(header))
+    const first = await api.post(`/v1/asks/${ask.id}/answer`, {
+      headers: bearer(admin),
+      data: { text: "v2" },
+    })
+    expect(first.ok(), await first.text()).toBe(true)
+    await row.locator("button.option").first().click()
+    await expect(page.locator(".toolbar .errmsg")).toHaveText(
+      /already answered by the owner/,
+    )
+    await expect(row).toHaveCount(0)
+  } finally {
+    await answerAsks(api)
+    await api.dispose()
+  }
+})
+
+/*
+ * An ask sent to another agent (question_mode=agent:<id> for smoke:agent):
+ * Sent To links to that agent, and its note (it cannot answer) shows under
+ * the title; the owner can still answer.
+ */
+test("Inbox: an ask sent to another agent shows Sent To and its note", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const header = `Routed ${Date.now()}`
+  const mode = (value: string | null) =>
+    api.patch("/v1/settings", {
+      headers: bearer(admin),
+      data: { agents: { "smoke:agent": { question_mode: value } } },
+    })
+  try {
+    expect((await mode(`agent:${LONG.agent}`)).ok()).toBe(true)
+    await openAsk(api, question(header))
+    const ask = (await openAsks(api)).find((a) => a.title.includes(header))
+    expect(ask.routed).toBe(`agent:${LONG.agent}`)
+    const escalated = await api.post(`/v1/asks/${ask.id}/escalate`, {
+      headers: bearer(longToken),
+      data: { text: "not my area" },
+    })
+    expect(escalated.ok(), await escalated.text()).toBe(true)
+    await signIn(page, admin)
+    await openTab(page, "Inbox")
+    const row = page.locator("table.inbox tr[data-item]", { hasText: header })
+    await expect(row.locator("td.sent-to")).toHaveText(LONG.agent)
+    await expect(row.locator("td.sent-to a.id-link")).toHaveAttribute(
+      "href",
+      /\/agents\?agent=/,
+    )
+    await expect(row.locator(".note")).toHaveText(
+      `Note: ${LONG.agent} cannot answer: not my area`,
+    )
+    await row.locator("button.option").first().click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      "Answered question from smoke:agent.",
+    )
+    await expect(row).toHaveCount(0)
+  } finally {
+    await mode(null)
+    await answerAsks(api)
+    await api.dispose()
+  }
+})
+
+/*
+ * The Inbox with a question, a permission and an approval open: it fits 1280
+ * px (at 1024 px it may scroll inside the frame, never the window); its
+ * buttons are in Title Case (an option is the agent's words) and their text
+ * is 15 px.
+ */
+test("Inbox: the layout with a question, a permission and an approval at 1280 and 1024", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const stamp = Date.now()
+  try {
+    await openAsk(api, question(`Layout ${stamp}`))
+    await openAsk(api, permission(`rm -rf layout-${stamp}`))
+    await askApproval(api, `Approve the layout ${stamp}.`)
+    await signIn(page, admin)
+    for (const width of [1280, 1024]) {
+      await page.setViewportSize({ width, height: 800 })
+      await openTab(page, "Inbox")
+      const asks = page.locator("table.inbox tr[data-item]", {
+        hasText: String(stamp),
+      })
+      await expect(asks).toHaveCount(3)
+      const over = await overflow(page)
+      if (width === 1280)
+        expect(over, `${width}`).toEqual({ frame: 0, page: 0 })
+      else expect(over.page, `${width}`).toBe(0)
+      const buttons = await asks
+        .locator("button:not(.option)")
+        .evaluateAll((all) =>
+          all.map((b) => ({
+            text: (b.textContent ?? "").trim(),
+            size: getComputedStyle(b).fontSize,
+          })),
+        )
+      expect(buttons.map((b) => b.text)).toEqual([
+        "Answer",
+        "Allow Once",
+        "Allow Always",
+        "Reject",
+        "Approve",
+        "Reject",
+      ])
+      for (const b of buttons) {
+        expect(titleCase(b.text), b.text).toBe(true)
+        expect(b.size, b.text).toBe("15px")
+      }
+      const sizes = await asks
+        .locator('.ask-text, .action, .resources, label, input[type="text"]')
+        .evaluateAll((all) => [
+          ...new Set(all.map((e) => getComputedStyle(e).fontSize)),
+        ])
+      expect(sizes, `${width}`).toEqual(["15px"])
+    }
+  } finally {
+    await answerAsks(api)
+    await api.dispose()
+  }
+})
+
+/*
+ * Jobs (tier 0f): the owner sets a job through the Set a Job form, on an
+ * online host (machine and folder); the job shows where it runs, its model,
+ * trigger, next run and destination; the server's message when it refuses.
+ */
+test("Jobs: a job set through the form on the fixture's host", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const name = `smoke-form-${Date.now()}`
+  try {
+    // The fixture's host has no plugin: an empty report says it is there.
+    const seen = await api.post("/v1/hosts/smoke:host:1/events", {
+      headers: bearer(consumer),
+      data: { instance: "i1", events: [] },
+    })
+    expect(seen.ok(), await seen.text()).toBe(true)
+    await signIn(page, admin)
+    await openTab(page, "Jobs")
+    const form = page.locator("details.panel")
+    await form.locator("summary", { hasText: "Set a Job" }).click()
+    await expect(page.getByLabel("To", { exact: true })).toHaveValue("owner")
+    await expect(page.getByLabel("Time Limit", { exact: true })).toHaveValue(
+      "1h",
+    )
+    await expect(page.getByLabel("Run Cap", { exact: true })).toHaveValue("off")
+    await expect(page.getByLabel("Delete Session")).toBeChecked()
+    await page.getByLabel("Name", { exact: true }).fill(name)
+    await page
+      .getByLabel("Host", { exact: true })
+      .selectOption({ label: "smoke — /work" })
+    await page.getByLabel("Model", { exact: true }).fill("test/model")
+    await page.getByLabel("Prompt", { exact: true }).fill("Report.")
+    await page.getByLabel("Trigger", { exact: true }).fill("idle 30m")
+    const set = form.getByRole("button", { name: "Set Job", exact: true })
+    await set.click()
+    await expect(form.locator(".errmsg")).toHaveText(
+      /every, at, cron or fire-only/,
+    )
+    await page.getByLabel("Trigger", { exact: true }).fill("every 1h")
+    await page.getByLabel("Run Cap", { exact: true }).fill("2")
+    await set.click()
+    await expect(form.locator(".notice")).toHaveText(`Set job ${name}.`)
+    const row = page.locator(`table.jobs tr[data-job="${name}"]`)
+    await expect(row.locator("td.where")).toHaveText("smoke /work")
+    await expect(row.locator("td.model")).toHaveText("test/model")
+    await expect(row.locator("td.trigger")).toHaveText("every 1h")
+    await expect(row.locator("td.next")).toHaveText(/\(in (59m|1h)\)$/)
+    await expect(row.locator("td.to")).toHaveText("owner")
+    await expect(row.locator("td.last")).toHaveText("—")
+    const res = await api.get("/v1/jobs", { headers: bearer(admin) })
+    const job = (await res.json()).jobs.find((j: any) => j.name === name)
+    expect(job).toMatchObject({ run_usd: 2, delete_session: true })
+  } finally {
+    await deleteJob(api, name)
+    await api.dispose()
+  }
+})
+
+/*
+ * Run Now starts a run with the text typed beside it (the fixture's host has
+ * no plugin, so it stays starting); its row shows below, and the job's Last
+ * Run links to it; a second Run Now is refused while it runs; the Job filter
+ * shows that job's runs.
+ */
+test("Jobs: Run Now starts a run; a second one is refused", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const name = `smoke-run-${Date.now()}`
+  try {
+    await setJob(api, name)
+    await signIn(page, admin)
+    await openTab(page, "Jobs")
+    const row = page.locator(`table.jobs tr[data-job="${name}"]`)
+    await row.getByRole("textbox", { name: "Text for the run" }).fill("Now.")
+    await row.getByRole("button", { name: "Run Now", exact: true }).click()
+    const notice = page.locator(".toolbar .notice")
+    await expect(notice).toHaveText(
+      new RegExp(`^Started run ${name}:\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d\\.$`),
+    )
+    const id = (await notice.textContent())!.slice("Started run ".length, -1)
+    const run = page.locator(`table.runs tr[data-run="${id}"]`)
+    await expect(run.locator("td.state")).toHaveText(/^(Starting|Running)$/)
+    await expect(run.locator("td.by")).toHaveText("owner")
+    await expect(row.locator("td.last")).toHaveText(/^(Starting|Running) /)
+    await row.locator("td.last a.run-link").click()
+    await expect(page).toHaveURL(/\/jobs\?run=/)
+    await expect(run).toHaveClass(/\bhighlight\b/)
+    await row.getByRole("button", { name: "Run Now", exact: true }).click()
+    await expect(page.locator(".toolbar .errmsg")).toHaveText(
+      new RegExp(`job ${name} is running: ${id}|started this minute`),
+    )
+    await page.getByLabel("Job", { exact: true }).selectOption(name)
+    await expect(page.locator("table.runs tr[data-run]")).toHaveCount(1)
+    await expect(run).toBeVisible()
+  } finally {
+    await deleteJob(api, name)
+    await api.dispose()
+  }
+})
+
+// Edit fills the Set a Job form with the job; Set Job replaces it. Delete
+// asks first, then the job is gone.
+test("Jobs: Edit fills the form; Delete asks first", async ({ page }) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const name = `smoke-edit-${Date.now()}`
+  try {
+    await setJob(api, name, {
+      description: "Edited by the smoke test",
+      trigger: "every 2h",
+      run_usd: 3,
+      delete_session: false,
+    })
+    await signIn(page, admin)
+    await openTab(page, "Jobs")
+    const row = page.locator(`table.jobs tr[data-job="${name}"]`)
+    await row.getByRole("button", { name: "Edit", exact: true }).click()
+    const form = page.locator("details.panel")
+    await expect(form).toHaveAttribute("open", "")
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue(name)
+    await expect(page.getByLabel("Description", { exact: true })).toHaveValue(
+      "Edited by the smoke test",
+    )
+    await expect(page.getByLabel("Host", { exact: true })).toHaveValue(
+      "smoke:host:1",
+    )
+    await expect(page.getByLabel("Trigger", { exact: true })).toHaveValue(
+      "every 2h",
+    )
+    await expect(page.getByLabel("Run Cap", { exact: true })).toHaveValue("3")
+    await expect(page.getByLabel("Delete Session")).not.toBeChecked()
+    await page.getByLabel("Trigger", { exact: true }).fill("every 3h")
+    await form.getByRole("button", { name: "Set Job", exact: true }).click()
+    await expect(form.locator(".notice")).toHaveText(`Set job ${name}.`)
+    await expect(row.locator("td.trigger")).toHaveText("every 3h")
+    const asked: string[] = []
+    page.once("dialog", (dialog) => {
+      asked.push(dialog.message())
+      void dialog.dismiss()
+    })
+    const remove = row.getByRole("button", { name: "Delete", exact: true })
+    await remove.click()
+    await expect.poll(() => asked.length).toBe(1)
+    expect(asked[0]).toBe(`Delete job ${name}?\n\nIts runs' history stays.`)
+    await expect(row).toHaveCount(1)
+    page.once("dialog", (dialog) => void dialog.accept())
+    await remove.click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      `Deleted job ${name}.`,
+    )
+    await expect(row).toHaveCount(0)
+  } finally {
+    await deleteJob(api, name)
+    await api.dispose()
+  }
+})
+
+/*
+ * The Jobs page with two more jobs and their runs: it fits 1280 px (at 1024
+ * px it may scroll inside the frame, never the window); its buttons are in
+ * Title Case and their text is 15 px.
+ */
+test("Jobs: the layout with jobs and runs at 1280 and 1024", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const stamp = Date.now()
+  const names = [`layout-check-of-a-long-job-name-${stamp}`, `smoke-${stamp}`]
+  try {
+    await setJob(api, names[0]!, {
+      trigger: 'cron "0 9 * * 1-5"',
+      to: LONG.agent,
+      variant: "high",
+      agent: "build",
+      run_usd: 5,
+    })
+    await setJob(api, names[1]!, { trigger: "every 30m" })
+    for (const name of names) {
+      const res = await api.post(`/v1/jobs/${name}/run`, {
+        headers: bearer(admin),
+        data: { text: "For the layout." },
+      })
+      expect(res.status(), await res.text()).toBe(201)
+    }
+    await signIn(page, admin)
+    for (const width of [1280, 1024]) {
+      await page.setViewportSize({ width, height: 800 })
+      await openTab(page, "Jobs")
+      await expect(
+        page.locator("table.runs tr[data-run]", { hasText: String(stamp) }),
+      ).toHaveCount(2)
+      const over = await overflow(page)
+      if (width === 1280)
+        expect(over, `${width}`).toEqual({ frame: 0, page: 0 })
+      else expect(over.page, `${width}`).toBe(0)
+      const buttons = await page
+        .locator("table.jobs button, table.runs button")
+        .evaluateAll((all) =>
+          all.map((b) => ({
+            text: (b.textContent ?? "").trim(),
+            size: getComputedStyle(b).fontSize,
+          })),
+        )
+      expect(buttons.length).toBeGreaterThan(6)
+      for (const b of buttons) {
+        expect(titleCase(b.text), b.text).toBe(true)
+        expect(b.size, b.text).toBe("15px")
+      }
+    }
+  } finally {
+    for (const name of names) await deleteJob(api, name)
+    await api.dispose()
+  }
+})
+
 async function refused(page: Page, token: string, says: string) {
   await page.goto("/")
   await page.getByLabel("Token").fill(token)
@@ -1825,6 +2496,7 @@ for (const width of [1280]) {
       "Messages",
       "Locks",
       "Wakes",
+      "Jobs",
       "History",
       "Settings",
       "Help",
@@ -1851,6 +2523,7 @@ test("layout: at 1024 px a wide page scrolls inside the frame", async ({
     "Messages",
     "Locks",
     "Wakes",
+    "Jobs",
     "History",
     "Settings",
     "Help",
@@ -2045,6 +2718,7 @@ test("layout: the title and every bold text have font weight 500", async ({
     "Messages",
     "Locks",
     "Wakes",
+    "Jobs",
     "History",
   ]) {
     await page.getByRole("link", { name: tab, exact: true }).click()
@@ -2266,6 +2940,13 @@ test("layout: the text is 15 px", async ({ page }) => {
     "table.wakes tr.group th",
     "table.wakes td.text",
   ])
+  await openTab(page, "Jobs")
+  const jobs = await sizes([
+    "table.jobs td.where",
+    "table.jobs td.trigger",
+    "table.jobs input[type=text]",
+    "details.panel summary",
+  ])
   await openTab(page, "History")
   const history = await sizes([
     "label[for=history-match]",
@@ -2289,6 +2970,7 @@ test("layout: the text is 15 px", async ({ page }) => {
     ...messages,
     ...locks,
     ...wakes,
+    ...jobs,
     ...history,
     ...help,
   }))
@@ -2358,10 +3040,11 @@ test("headings, table headers and buttons are in Title Case on every page", asyn
   const headings = async () =>
     page.locator("h1, h2, h3, thead th, button, summary").evaluateAll((all) =>
       all.map((e) => {
-        // Code and the header's server ID are data: they count as one
-        // capitalized word.
+        // Code, the header's server ID and an ask's options (the agent's
+        // words) are data: they count as one capitalized word.
         const copy = e.cloneNode(true) as Element
-        for (const data of copy.querySelectorAll("code, small"))
+        if (copy.matches(".data")) return "Data"
+        for (const data of copy.querySelectorAll("code, small, .data"))
           data.replaceWith("Data")
         return (copy.textContent ?? "").trim()
       }),
@@ -2520,8 +3203,8 @@ test("layout: every button's text is 15 px", async ({ page }) => {
 })
 
 // Settings: Save and Reset sit as close as the Agents row buttons and are as
-// tall as the edit field; the Value column is 1.5 times its old 304 px at
-// 1280 px.
+// tall as the edit field; the Value column is 25rem (400 px; the owner,
+// 2026-11-07) at 1280 px.
 test("layout: Settings' Save and Reset beside the field, in a wide Value column", async ({
   page,
 }) => {
@@ -2546,7 +3229,7 @@ test("layout: Settings' Save and Reset beside the field, in a wide Value column"
   expect(reset.left - save.right, "Save to Reset").toBeCloseTo(rowGap, 0)
   expect(save.height, "Save").toBeCloseTo(field.height, 0)
   expect(reset.height, "Reset").toBeCloseTo(field.height, 0)
-  expect((await box(value)).width, "the Value column").toBeCloseTo(456, 0)
+  expect((await box(value)).width, "the Value column").toBeCloseTo(400, 0)
 })
 
 // The header: the title "Autocode" is 17 px; the "admin" badge has no border.
@@ -2569,8 +3252,8 @@ test("layout: the header's title is 1.25rem, the version has a 3 px top margin, 
 
 /*
  * A checked checkbox is a neutral grey (the theme's dim text color; the owner,
- * 2026-11-02), on the sign-in form, in Settings and on the Inbox, in dark (the
- * default) and light.
+ * 2026-11-02), on the sign-in form and on the Inbox, in dark (the default) and
+ * light. (No setting is a switch since the owner's 2026-11-07 changes.)
  */
 test("checkboxes are a neutral grey", async ({ page }) => {
   const dark = "rgb(154, 164, 174)"
@@ -2579,13 +3262,11 @@ test("checkboxes are a neutral grey", async ({ page }) => {
   const stay = page.locator(".sign-in input[type=checkbox]")
   await expect(stay).toHaveCSS("accent-color", dark)
   await signIn(page, admin)
-  await page.getByRole("link", { name: "Settings" }).click()
-  const box = page.locator("table.settings input[type=checkbox]").first()
-  await expect(box).toHaveCSS("accent-color", dark)
-  await page.getByRole("button", { name: "Light or dark" }).click()
-  await expect(box).toHaveCSS("accent-color", light)
   await page.getByRole("link", { name: "Inbox" }).click()
-  await expect(page.getByLabel("Show Closed")).toHaveCSS("accent-color", light)
+  const closed = page.getByLabel("Show Closed")
+  await expect(closed).toHaveCSS("accent-color", dark)
+  await page.getByRole("button", { name: "Light or dark" }).click()
+  await expect(closed).toHaveCSS("accent-color", light)
 })
 
 // Dropdowns draw their own arrow, the same on every browser, with its right
@@ -2596,9 +3277,9 @@ test("dropdowns draw their arrow 9 px from the right border", async ({
 }) => {
   await signIn(page, admin)
   await page.getByRole("link", { name: "Settings" }).click()
-  const select = page.locator(
-    'table.settings tr[data-key="question_mode"] select',
-  )
+  // The Setting list of agents' own values (no setting's value is a list
+  // since the mode settings take agent:<id> too, 2026-11-07).
+  const select = page.locator("#agent-value-key")
   await expect(select).toHaveCSS("appearance", "none")
   await expect(select).toHaveCSS("background-image", /svg/)
   await expect(select).toHaveCSS(
@@ -2665,6 +3346,11 @@ test.describe("in Pacific time", () => {
     await expect(wake.locator("td.next")).toHaveText(time)
     await openTab(page, "History")
     await expect(page.locator("table.history td.time").first()).toHaveText(time)
+    await openTab(page, "Jobs")
+    const job = page.locator('table.jobs tr[data-job="smoke-report"]')
+    await expect(job.locator("td.next")).toHaveText(
+      /^\d\d-[A-Z][a-z]{2}-\d\d \d\d:\d\d:\d\d PT \(in \S+( \S+)?\)$/,
+    )
     await openTab(page, "Locks")
     const until = page.locator('table.locks tr[data-lock="gpu-0"] .until')
     await expect(until).toHaveText(

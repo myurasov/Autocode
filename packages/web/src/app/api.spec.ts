@@ -7,7 +7,13 @@
 import type { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { ADMIN, apiError, setup, signedIn } from '../testing/helpers';
-import { API_TIMEOUT_MS, Api, ApiError } from './api';
+import {
+  API_TIMEOUT_MS,
+  Api,
+  ApiError,
+  type AskAnswer,
+  type JobInput,
+} from './api';
 
 describe('Api', () => {
   let http: HttpTestingController;
@@ -309,6 +315,87 @@ describe('Api', () => {
     expect(close.request.method).toBe('POST');
     close.flush({ item: { id: 'ib_2', closed_at: '2026-10-28T10:00:00Z' } });
     expect((await closed).closed_at).toBe('2026-10-28T10:00:00Z');
+  });
+
+  it('answers an ask: a question, a permission or an approval', async () => {
+    signedIn();
+    const bodies: AskAnswer[] = [
+      { text: 'v3' },
+      { answers: ['train, extra', '12'] },
+      { decision: 'reject', text: 'not the build folder' },
+      { decision: 'approve', option: 'tonight', text: 'after 22:00' },
+    ];
+    for (const body of bodies) {
+      const answered = api.answerAsk('ask_1', body);
+      const post = http.expectOne('/v1/asks/ask_1/answer');
+      expect(post.request.method).toBe('POST');
+      expect(post.request.body).toEqual(body);
+      post.flush({ ask: { id: 'ask_1', state: 'answered' } });
+      expect((await answered).state).toBe('answered');
+    }
+  });
+
+  it('lists, sets, runs and deletes jobs; lists runs and deletes a kept session', async () => {
+    signedIn();
+    const list = api.jobs();
+    const get = http.expectOne('/v1/jobs');
+    expect(get.request.method).toBe('GET');
+    get.flush({ jobs: [{ name: 'report' }] });
+    expect((await list).map((j) => j.name)).toEqual(['report']);
+
+    const input: JobInput = {
+      host: 'm:1',
+      model: 'openai/gpt-5',
+      prompt: 'Report.',
+      trigger: 'every 1h',
+      to: 'owner',
+      timeout: '1h',
+      run_usd: 2,
+      delete_session: true,
+    };
+    const set = api.setJob('team:report', input);
+    const put = http.expectOne('/v1/jobs/team%3Areport');
+    expect(put.request.method).toBe('PUT');
+    expect(put.request.body).toEqual(input);
+    put.flush({ job: { name: 'team:report' } });
+    expect((await set).name).toBe('team:report');
+
+    const run = api.runJob('report', 'Only today.');
+    const post = http.expectOne('/v1/jobs/report/run');
+    expect(post.request.method).toBe('POST');
+    expect(post.request.body).toEqual({ text: 'Only today.' });
+    post.flush({ run: { id: 'report:2026-11-08T10:00' } });
+    expect((await run).id).toBe('report:2026-11-08T10:00');
+    const bare = api.runJob('report');
+    const plain = http.expectOne('/v1/jobs/report/run');
+    expect(plain.request.body).toEqual({});
+    plain.flush({ run: { id: 'report:2026-11-08T10:01' } });
+    await bare;
+
+    const all = api.runs();
+    const runs = http.expectOne((r) => r.url === '/v1/runs');
+    expect(runs.request.params.keys()).toEqual([]);
+    runs.flush({ runs: [] });
+    expect(await all).toEqual([]);
+    const some = api.runs('report');
+    const one = http.expectOne((r) => r.url === '/v1/runs');
+    expect(one.request.params.get('job')).toBe('report');
+    one.flush({ runs: [{ id: 'report:2026-11-08T10:00' }] });
+    expect((await some).length).toBe(1);
+
+    const gone = api.deleteJob('report');
+    const del = http.expectOne('/v1/jobs/report');
+    expect(del.request.method).toBe('DELETE');
+    del.flush({ deleted: 'report' });
+    expect(await gone).toEqual({ deleted: 'report' });
+
+    const session = api.deleteRunSession('report:2026-11-08T10:00');
+    const delSession = http.expectOne(
+      '/v1/runs/report%3A2026-11-08T10%3A00/session',
+    );
+    expect(delSession.request.method).toBe('DELETE');
+    delSession.flush({ deleted: 'ses_run1' });
+    expect(await session).toEqual({ deleted: 'ses_run1' });
   });
 
   it("turns failures into errors that carry the server's message", async () => {

@@ -320,16 +320,6 @@ describe("release, renew, expiry", () => {
     ])
   })
 
-  test("close ends the waits", async () => {
-    locks.acquire("team:a", "gpu-0", { ttl: "10m" })
-    locks.acquire("team:b", "gpu-0", { ttl: "10m" })
-    const started = Date.now()
-    const waiting = locks.wait("team:b", "gpu-0", 20_000)
-    locks.close()
-    expect(await waiting).toMatchObject({ held: false, position: 1 })
-    expect(Date.now() - started).toBeLessThan(2000)
-  })
-
   test("entries of agents that are gone are cleared at the start", () => {
     locks.acquire("team:a", "gpu-0", { ttl: "10m" })
     locks.acquire("team:b", "gpu-0", { ttl: "10m" })

@@ -11,7 +11,6 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -629,7 +628,7 @@ describe("the plugin in-process", () => {
 /*
  * Tier 0b in the plugin: the server's instructions (inject, interrupt, check,
  * registration), turn events, the agent guide (the autocode skill and the line
- * for registered sessions), and the wake and message tools with files.
+ * for registered sessions), and the wake and message tools.
  */
 describe("the plugin in-process, tier 0b", () => {
   const tool = (fake: Fake, name: string) =>
@@ -843,7 +842,7 @@ describe("the plugin in-process, tier 0b", () => {
     })
   })
 
-  test("the wake and message tools, with files inside the agent's folder only", async () => {
+  test("the wake and message tools (text messages only)", async () => {
     const dir = join(root, "work-0b-tools")
     const fake = await connected(() =>
       startPlugin(dir, [
@@ -885,66 +884,24 @@ describe("the plugin in-process, tier 0b", () => {
         "ses_tool_b",
       ),
     ).toBe('Fired wake "daily" of tools:a: it comes when that session is idle.')
-    writeFileSync(join(dir, "notes.txt"), "plain words")
-    writeFileSync(join(dir, "plot.png"), Buffer.from([137, 80, 78, 71, 0, 1]))
+    // text only (the owner, 2026-11-07): no file, no path
+    expect(
+      await run(
+        "autocode_message",
+        { action: "send", to: "tools:b", subject: "plot", text: "see it" },
+        "ses_tool_a",
+      ),
+    ).toMatch(/^Sent to tools:b \(m_\w+\)\.$/)
+    const list = await run("autocode_message", { action: "list" }, "ses_tool_b")
+    expect(list).toContain("from tools:a")
+    expect(list).toContain('"plot"')
+    expect(list).not.toContain("text/")
     expect(
       await run(
         "autocode_message",
         { action: "send", to: "tools:b", file: "notes.txt" },
         "ses_tool_a",
       ),
-    ).toMatch(/^Sent to tools:b \(m_\w+\)\.$/)
-    const sent = await run(
-      "autocode_message",
-      { action: "send", to: "tools:b", subject: "plot", file: "plot.png" },
-      "ses_tool_a",
-    )
-    const binary = /\((m_\w+)\)/.exec(sent)![1]!
-    expect(
-      await run(
-        "autocode_message",
-        { action: "send", to: "tools:b", file: "../outside.txt" },
-        "ses_tool_a",
-      ),
-    ).toContain("outside your folder")
-    const list = await run("autocode_message", { action: "list" }, "ses_tool_b")
-    expect(list).toContain("from tools:a")
-    expect(list).toContain('"plot"  image/png')
-    const unsaved = await run(
-      "autocode_message",
-      { action: "read", id: binary },
-      "ses_tool_b",
-    )
-    expect(unsaved).toContain("Read it again with a path")
-    const saved = await run(
-      "autocode_message",
-      { action: "read", id: binary, path: "in/plot-copy.png" },
-      "ses_tool_b",
-    )
-    expect(saved).toContain(
-      `saved image/png to ${join(dir, "in/plot-copy.png")}`,
-    )
-    expect([...readFileSync(join(dir, "in/plot-copy.png"))]).toEqual([
-      137, 80, 78, 71, 0, 1,
-    ])
-    expect(
-      await run(
-        "autocode_message",
-        { action: "read", id: binary, path: "/tmp/x.png" },
-        "ses_tool_b",
-      ),
-    ).toContain("outside your folder")
-    // a link in the folder that leads outside is never written through
-    const outside = join(root, "outside-target.txt")
-    writeFileSync(outside, "keep me")
-    symlinkSync(outside, join(dir, "link.png"))
-    expect(
-      await run(
-        "autocode_message",
-        { action: "read", id: binary, path: "link.png" },
-        "ses_tool_b",
-      ),
-    ).toContain("is a link")
-    expect(readFileSync(outside, "utf8")).toBe("keep me")
+    ).toBe("error: send needs text")
   })
 })

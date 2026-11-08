@@ -69,7 +69,7 @@ step.
 
 ### Tier 0a (Foundation)
 
-2026-10-28, OpenCode 2.2.0, CI host myspark3 (Linux ARM64, Docker 29.6.2, Compose 5.2.0), Mac check on mymbp4.
+2026-10-28, OpenCode 2.2.0, CI host machine-a (Linux ARM64, Docker 29.6.2, Compose 5.2.0), Mac check on laptop.
 
 **Suites** (`ci/run.sh` run `20261028T132927Z`, 06:29 to 06:37 PT; the web UI's unit tests ran in the identical web
 image's build at 06:28 PT):
@@ -95,15 +95,15 @@ hook, on the same environment object, which is where the plugin applies each ses
 processes on one data folder see each other's sessions (so a newer plugin instance never reports the older one's live
 sessions gone).
 
-**Live checks** (`ci/live-check.ts`; the server as a development process on myspark3, the session in a throwaway
-OpenCode 2.2.0 on mymbp4 over Tailscale; variant `high`): each model registered through `autocode_me`, was seen by
+**Live checks** (`ci/live-check.ts`; the server as a development process on machine-a, the session in a throwaway
+OpenCode 2.2.0 on laptop over Tailscale; variant `high`): each model registered through `autocode_me`, was seen by
 the server on the other machine (`autocode agents 'live:*'` there), stayed registered across a server restart, and
 its next `autocode_me status` reached the restarted server.
 
 | Model | Agent | Result | Cost |
 |---|---|---|---|
-| `nvidia-ih/nvidia/moonshotai/kimi-k3` | `live:mymbp4:kimi-k3:20261028T1313` | all 9 steps pass | $0.0460 |
-| `nvidia-ih/nvidia/zai-org/glm-5.3` | `live:mymbp4:glm-5.3:20261028T1314` | all 9 steps pass | $0.0184 |
+| `nvidia-ih/nvidia/moonshotai/kimi-k3` | `live:laptop:kimi-k3:20261028T1313` | all 9 steps pass | $0.0460 |
+| `nvidia-ih/nvidia/zai-org/glm-5.3` | `live:laptop:glm-5.3:20261028T1314` | all 9 steps pass | $0.0184 |
 
 Total live-check spend: $0.064.
 
@@ -163,7 +163,7 @@ titles with an en dash; the version as `v0.1.0`; buttons as tall as the text fie
 headings 15 px; the favicon an outlined pink-red pyramid; the Agents filter applies a second after the last key.
 New checks (a Hosts page unit spec, grouping, the live filter, Title Case, no spaced hyphen in page text, the
 favicon, button heights) failed first, then passed: `ci/run.sh web` run `20261030T103829Z`, `web-unit` 49 and `web`
-17. `autocode uninstall` now keeps the binary (the owner's `uninstall` on myspark3 had removed `~/.autocode/bin/`):
+17. `autocode uninstall` now keeps the binary (the owner's `uninstall` on machine-a had removed `~/.autocode/bin/`):
 the install check failed first (exit 127), then `ci/run.sh unit install` run `20261030T103425Z` passed (`unit` 69,
 `install` 3). Then three more, each red first: the favicon is a flat outlined triangle (one closed path, no inner
 edge; web run `20261030T104311Z`); Hosts and Agents say "Updated Xs ago.", counting up every second, instead of the
@@ -210,7 +210,7 @@ run red first. Full run `20261102T082548Z`: `web-unit` 55, `unit` 68, `one` 16, 
 `web` 28 passed; `api` (4) and `plugin` (1) failed on two test mistakes (the runner's `OPENCODE_PASSWORD` won over the
 test's password; the Autocode plugin, installed beside the probe, set the session's environment over the spike's own),
 fixed: run `20261102T083532Z`, `api` 111, `plugin` 25. Then the Hosts page lost its Machine column for machine groups,
-as on Agents, and Online became Status (red first): web run `20261102T084218Z`, `web` 28. Live on myspark3 at 00:43
+as on Agents, and Online became Status (red first): web run `20261102T084218Z`, `web` 28. Live on machine-a at 00:43
 PT: the service's host reports `service 2164472` with shell values, and this session's own shells got their values.
 
 **Published OpenCode interfaces only (2026-11-02, owner's standing rule):** the plugin finds the background service
@@ -224,18 +224,18 @@ start-up (api; its red run was spoiled by an edit of mine, so it was not seen re
 and a standalone server reporting `serve` (`tests/e2e/process.test.ts`). Full run `20261102T091249Z`: `web-unit` 55,
 `unit` 67, `api` 111, `plugin` 25, `one` 16, `two` 22, `restart` 4, `install` 3, `web` 28. `ci/dist.sh` now runs
 `bun install` every time (it had skipped it when `node_modules` existed, so the build missed the new package). Live on
-myspark3 at 01:22 PT: both folder hosts report `service 2164472` with shell values, and this session's shell token
+machine-a at 01:22 PT: both folder hosts report `service 2164472` with shell values, and this session's shell token
 resolves to this session.
 
 **The frame's padding (2026-11-02, owner):** the web UI's frame has 1.25rem (20 px) on all four sides (it was 1.2rem
 by 1.6rem); phones keep their own 0.7rem. A browser check of the padding on the sign-in page and every tab, red first
 (run `20261102T093453Z`: `19.2px 25.6px`), then web run `20261102T093547Z`: `web-unit` 55, `web` 29. Screenshots of
-the four pages looked at by eye. Live on myspark3 at 01:38 PT.
+the four pages looked at by eye. Live on machine-a at 01:38 PT.
 
 **"bg service" (2026-11-02, owner):** the Hosts page calls the background service "bg service" (the CLI prints the
 kind, `service`, unchanged). The two web unit cases and the browser check expect the new label, red first (run
 `20261102T094029Z`, the web unit tests in the image build), then web run `20261102T094045Z`: `web-unit` 55, `web` 29;
-the Hosts page looked at by eye. Live on myspark3 at 01:42 PT.
+the Hosts page looked at by eye. Live on machine-a at 01:42 PT.
 
 **Numbered builds and the "v" (2026-11-02, owner, spec draft 19):** Autocode's version is the release plus the build,
 `0.1.0-build<n>` for a `ci/dist.sh` build and `0.1.0-dev` for any other (`packages/shared/src/version.ts`; the number
@@ -311,10 +311,10 @@ a resync from `ctx.session.get` for hosts without OpenCode's local API (the watc
 the common cases), re-sending the very same injection once after an explicit failure, and loading a folder for
 pending instructions (only queued wakes and messages trigger it).
 
-**Deployed** on myspark3 as build 3 (04:4x PT): database schema 3 to 4 (backup
+**Deployed** on machine-a as build 3 (04:4x PT): database schema 3 to 4 (backup
 `~/.autocode-dev/backup/autocode-schema3-20261102.db`), plugin reinstalled; both live hosts on `0.1.0-build3`.
 
-**Live checks** (`ci/live-check-0b.ts`, 04:4x–05:00 PT; the server as build 4 on myspark3, the sessions in myspark3's
+**Live checks** (`ci/live-check-0b.ts`, 04:4x–05:00 PT; the server as build 4 on machine-a, the sessions in machine-a's
 OpenCode background service, each model in a scratch folder under `~/.autocode-dev/live/`; variant `high`). Steps:
 the folder's plugin connects; two sessions on the model; agent A registers and sets a fire-only wake through the
 tools; agent B registers and messages A, and the injection wakes A; the owner fires A's wake and A answers; B's
@@ -344,7 +344,7 @@ test-name filter); runs with `CI_GREP="header"` (6 browser checks; the unit spec
 check tightened to the letters' baseline and height after the screenshots, red `20261102T230400Z`, green
 `20261102T230422Z` and `20261102T230534Z` (`web-unit` 90, `web` 6). The full CI did not run (the owner's rule).
 Screenshots of both rounds looked at by eye (the worker's and mine). **Deployed** as build 5 (no schema change),
-plugin reinstalled; the live UI on myspark3 looked at in a read-only screenshot run.
+plugin reinstalled; the live UI on machine-a looked at in a read-only screenshot run.
 Round 3 (the owner: the header triangle 2.5 times bigger): the header browser check now wants it about 1.7 em tall
 and centered on the capitals (it stood on the baseline before); red `20261102T231830Z` (0.69 em, with `CI_GREP`
 on that one check), green `20261102T231848Z` (`web-unit` 90, `web` 1), then the six header checks
@@ -380,28 +380,28 @@ the header whose light/dark button still works, and on a 1024×420 window below 
 reachable: red `20261103T060928Z` (256 px off), green `20261103T060947Z` (the theme check then read the class before
 Angular set it: it waits now, `20261103T061111Z`), the short window's centering red `20261103T061201Z`, green
 `20261103T061207Z` with the other sign-in checks. Screenshots in both themes and the short window. Deployed as build 13
-on myspark3 only (myspark2 keeps build 12: the owner's rule); the live sign-in page looked at.
+on machine-a only (machine-b keeps build 12: the owner's rule); the live sign-in page looked at.
 Round 13 (the owner: the sign-in form's texts): one line above the field ("Paste the admin token below."), no visible
 "Token" label (the field keeps the name Token for assistive tech), the checkbox "Stay signed in": unit red
 `20261103T062707Z`, green `20261103T062730Z` (with the other sign-in checks) and `20261103T062805Z` (Title Case,
-button heights, frame padding). Screenshots in both themes. Deployed as build 14 on myspark3 only; the live page
+button heights, frame padding). Screenshots in both themes. Deployed as build 14 on machine-a only; the live page
 looked at.
 Round 14 (the owner: the token field's placeholder "admin token", the field 30% shorter): unit red
 `20261103T063212Z` (the placeholder), the width check red `20261103T063230Z` (570 px), green `20261103T063257Z` (8
 checks: sign-in, page fit, button heights). The field is 25rem (400 px), Sign In right after it. Screenshots in both
-themes. Deployed as build 15 on myspark3 only (myspark2 stays on build 14); the live page looked at.
+themes. Deployed as build 15 on machine-a only (machine-b stays on build 14); the live page looked at.
 Round 15 (the owner: the sign-in form just as wide as its content): a check that the frame is the token row plus
 its padding and border, at 1280 and 1024: red `20261103T063522Z` (704 px), then `fit-content`, which made the field
 shrink to its natural width (a flex basis does not count toward fit-content; the field takes a width now): red
 `20261103T063547Z`, green `20261103T063628Z` (8 sign-in and layout checks). Screenshots in both themes, with a refused
-token's message (it widens the form, still centered) and in a short window. Deployed as build 16 on myspark3 only.
+token's message (it widens the form, still centered) and in a short window. Deployed as build 16 on machine-a only.
 Round 16 (the owner: the sign-in intro line removed): unit red `20261103T063800Z`, green `20261103T063833Z` (5 sign-in
-and layout checks). Screenshots in both themes. Deployed as build 17 on myspark3, and on myspark2 on the owner's word
-("deploy to myspark2": server reinstalled and restarted, schema 4, plugin reinstalled, every online folder on plugin
+and layout checks). Screenshots in both themes. Deployed as build 17 on machine-a, and on machine-b on the owner's word
+("deploy to machine-b": server reinstalled and restarted, schema 4, plugin reinstalled, every online folder on plugin
 build 17); both live sign-in pages looked at.
 Round 17 (the owner: the sign-in heading's bottom margin 0.6rem): red `20261103T064420Z` (4.8 px), green
-`20261103T064453Z` (6 sign-in and layout checks). Screenshots in both themes. Deployed as build 18 on myspark3 and, on
-the owner's word, myspark2 (every online folder on plugin build 18); both live sign-in pages looked at.
+`20261103T064453Z` (6 sign-in and layout checks). Screenshots in both themes. Deployed as build 18 on machine-a and, on
+the owner's word, machine-b (every online folder on plugin build 18); both live sign-in pages looked at.
 
 **Before the tier 0b commit** (the owner's go, 2026-11-02 22:5x PT): typecheck and Biome clean; every changed line of
 code within 80 columns (test titles and the dropdown arrow's data URL excepted, as in tier 0a); `unit` and `api`
@@ -413,7 +413,7 @@ Messages table's new ID column (never matched by the per-round filters), fixed; 
 
 ## Tier 0b2 (2026-11-02/03)
 
-**Why.** An agent on myspark2 (`co-sa:update-loop:myspark2`, Opus 5.5) could not tell from the guide when an idle
+**Why.** An agent on machine-b (`team:update-loop:machine-b`, Opus 5.5) could not tell from the guide when an idle
 wake falls due, what an injected turn or a skipped check does to it, whether wakes merge, the `end` format or a
 check's environment; it read the plugin's bundled code and the binary to find out, and moved its scheduling into
 check scripts that use the CLI. Tier 0b2 makes the guide an exact reference and the tools usable first.
@@ -429,7 +429,7 @@ a 100-character preview; the CLI's no-token message points to the tools. Web (th
 numbered table of contents, wake and message texts shortened to 100 characters that expand on a click.
 
 - `unit`: `triggers.test.ts` (`in`, `localTime`, the help text), `agent-guide.test.ts` (descriptions, status, set,
-  list, show, help, the guide answers the co-sa agent's questions, the line), `agents-schedule.test.ts` (the agents
+  list, show, help, the guide answers the update-loop agent's questions, the line), `agents-schedule.test.ts` (the agents
   suite's work-hours check).
 - `api`: `agent-info.test.ts` (status, `due`, idle from the set time, cancel drops waiting runs, prompt sections and
   footer), `messages.test.ts` (preview), `cli-0b.test.ts` (no token: use the tools); older tests pinned old texts and
@@ -470,10 +470,10 @@ Last Fired), the CLI's `autocode wakes` (SET, before TEXT) and the agents' `auto
 the Wakes unit spec in the web image build (`20261103T171944Z`). Green: unit/api 38 (`agent-guide`, `cli-0b`,
 `plugin-inprocess`), `20261103T172022Z` web-unit 103 and 16 Wakes and layout checks (page fit at 1280 and 1024 px),
 `20261103T172138Z` 7 Help and layout checks after the Help text. Screenshots in both themes. Deployed as build 21 on
-myspark3 only (it has no wakes now, so the live table was empty).
-Deployed as build 21 on myspark2 too, on the owner's word (2026-11-03 12:5x PT): its database backed up at schema 4
+machine-a only (it has no wakes now, so the live table was empty).
+Deployed as build 21 on machine-b too, on the owner's word (2026-11-03 12:5x PT): its database backed up at schema 4
 (`~/.autocode/backup/autocode-schema4-20261103.db` there), then migrated to 5; plugin reinstalled, every online folder on
-build 21; `autocode wakes` there shows SET for the co-sa agent's two wakes, and its `idle 30m repeat` wake fell due
+build 21; `autocode wakes` there shows SET for the update-loop agent's two wakes, and its `idle 30m repeat` wake fell due
 30 minutes after the session's last turn ended (12:26 to 12:56 PST) and was being handled.
 
 **After 0b2: folding, links and IDs** (the owner, 2026-11-03 13:0x–14:0x PT; the web worker, then me):
@@ -521,7 +521,7 @@ final code, run `20261104T061059Z`: 36 of 36 (each model 6 of 6; $0.80). Tier 0b
 
 ## Tier 0b3 (2026-11-04)
 
-**Why.** The inference hub was down for a while: the co-sa update loop on myspark2 could not answer its wakes (its
+**Why.** The model provider was down for a while: the update loop on machine-b could not answer its wakes (its
 turns failed with `provider.internal` at 14:51 and 15:22 PST), it still showed `idle`, and nothing retried; the hub
 was back by 15:52 (that wake's turn succeeded). The owner: mark such agents as in an error state, and retry every X
 minutes (a setting) up to X attempts (0: no limit, the default); answers: `retry_interval` 1m, only transient
@@ -564,11 +564,11 @@ turn ends `failed`; the session holds no error type, the `session.execution.fail
 var(--panel)`, z-index 2 kept. A check of the active tab's padding, bottom border and its color, z-index, and the
 other tabs': red `20261105T042759Z`, green `20261105T042825Z` (15: the new check, tab corners, header, Title Case,
 page fit, the 1024 frame scroll, frame padding, first item, Help). Screenshots at 3x in both themes. Build 27 on
-myspark3 and myspark2.
+machine-a and machine-b.
 - The highlighted row without a background (the owner, 20:3x PT: "rm bg color from hilighted tr"): only the inset
   glow. The host-link check now requires the row's and cells' backgrounds to be another row's: red
   `20261105T043739Z`, green `20261105T043803Z` (9: `link:`, cell padding, room above tables, first item, page fit,
-  the fixture, the error state). Close-ups in both themes. Build 28 on myspark3 and myspark2.
+  the fixture, the error state). Close-ups in both themes. Build 28 on machine-a and machine-b.
 
 **After 0b3: the History tab** (the owner, 2026-11-04 20:4x PT: "add history tab to web ui"; filters "Agent + kind,
 paging"). API, tests first: `match` (an agent pattern), `kind` with a prefix (`wake.*`), `before` (paging), `GET
@@ -652,7 +652,7 @@ Unit and API 391; the lock API tests 22, three runs in a row.
 
 **Complete CI** on the final code (with the review's fixes), run `20261105T211059Z`: `unit` 150, `api` 241, `plugin`
 28, `one` 27, `two` 33, `restart` 4, `install` 3, `web` 67, `web-unit` 146 (cached), `agents` 36 of 36 (each model 6 of
-6; $1.08). Build 30 on myspark3 and myspark2 (schema 7; schema-6 backups `autocode-schema6-20261105.db` on each).
+6; $1.08). Build 30 on machine-a and machine-b (schema 7; schema-6 backups `autocode-schema6-20261105.db` on each).
 
 **After the 0c CI: Remove, "queue" and "Type"** (the owner, 2026-11-05 13:4x–13:5x PT: a button to take an agent out
 of a lock's queue; "rename to queue"; "rename Capacity col to Type"). Server, plugin, CLI, tests and docs: "line"
@@ -660,9 +660,9 @@ became "queue" (the notice `lock "NAME": out of the queue`, the tool's texts, th
 unit and API 391. Web (the web worker): Remove per waiter with a confirm and its notice, the Queue and Type headers,
 Help: red `20261106T055142Z` (4 of 148 unit), `20261106T055807Z` (5 of 148), browser red `20261106T055847Z` (3 checks
 naming the old words); green `20261106T060054Z` (148 unit, 31 browser). Then `one` 27, `two` 33, `web` 68, run
-`20261106T060521Z`. Screenshots in both themes. Build 31 on myspark3 and myspark2.
+`20261106T060521Z`. Screenshots in both themes. Build 31 on machine-a and machine-b.
 
-**A read message is not announced** (the owner, 2026-11-05 22:1x PT: on myspark2, `co-sa:meeting-imports` read a reply
+**A read message is not announced** (the owner, 2026-11-05 22:1x PT: on machine-b, `team:importer` read a reply
 with the tool at 22:57:41 during a turn; when the owner interrupted it at 23:02:35, the reply was injected at
 23:02:36). Delivery now leaves a waiting message out once the agent has read it (`message.skipped`, "already read").
 And (the owner, 22:2x PT) the owner's views never mark a message read: pinned for `GET /v1/messages`,
@@ -683,3 +683,182 @@ both red then green. Unit and API 398; `plugin` 28, `one` 27, `two` 33, `restart
 **Before the 0c tag** (the owner's "commit and tag v0.1.0-0c, push", 2026-11-05 23:4x PT). Complete CI on the final
 code, run `20261106T074328Z`: `unit` 150, `api` 248, `plugin` 28, `one` 27, `two` 33, `restart` 4, `install` 3, `web`
 68, `web-unit` 148 (cached), `agents` 36 of 36 (each model 6 of 6; $1.05). Build 33 on both machines is this code.
+
+## Tier 0d (2026-11-07)
+
+**Why.** The plan's tier 0d, Owner in the Loop, with the owner's 2026-11-07 additions: another agent can answer
+questions, permission prompts and approvals (`agent:<id>`, `autocode_message answer|escalate`), the first answer
+counts, only the owner allows a permission always, and approvals have `ask` and `wait` only.
+
+**Spike** (the published interfaces, then live in e2e): permissions through `ctx.permission` (list, reply) and their
+events; the question tool's forms through OpenCode's local API (`GET /api/session/{id}/form`, `POST
+.../form/{id}/reply`, `DELETE .../form/{id}?message=`, as `@opencode/client` 2.2.0 calls them), since the plugin
+context has no forms; the form's fields `q0..qN`; a reply continues the turn. Checks 3 and 4 pass.
+
+- `unit`: `plugin-asks.test.ts` (10: a form and a permission as events, a form that is not the question tool's,
+  carrying out answers, bad decisions; `autocode_message answer|escalate`; `autocode_approval ask|wait`; the guide's
+  `asks` part); `settings.test.ts` (the `mode` kind).
+- `api`: `asks.test.ts` (24: ask, auto, a session that is no agent's, settled in the TUI, reported again; a
+  permission once/always/reject and approve; `agent:<id>` with its notice and answer, the owner first, only the one
+  sent to, a delegated permission's `always` refused, escalate as a note, its own ask and an unregistered agent to
+  the owner, `job:` to the owner until 0f, the mode values; `waiting` and wakes held, a deleted session, `/v1/me`;
+  approvals with options and a wait, expiry, approve and `agent:<id>`, bad input; the inbox lists every kind) red
+  (22 of 24), then green; `cli-0b.test.ts` (the inbox's asks with TO; `answer` for a question and a permission; a
+  late answer refused).
+- `e2e`: `asks.test.ts` on every node (the question tool answered by the owner, reaching the turn; a permission
+  prompt from the session's own `shell: ask` rule, once by the owner, then by `approve`; a question sent to another
+  agent and answered by it with the tool; an approval asked, approved with an option, told by a notice): first run
+  failed (the plugin context has no forms), then green. `one` 31, `two` 37, `plugin` 28, run `20261108T014928Z`.
+- `agents`: two new scenarios, `answerer` (a second session of the model asks with the question tool, sent to the
+  agent, which answers from its notes) and `approval` (a risky step asked as an approval, done only once approved):
+  glm-5.3 and haiku-5.5 4 of 4 ($0.03) on a filtered run.
+- A lock stress test (simplification 4's) raced when both holders left before an acquire (the lock came back with
+  capacity 1): the test now gives `max` each time; 30 runs green.
+
+## Tier 0e (2026-11-07)
+
+**Why.** The plan's tier 0e, Reliability, with the owner's 2026-11-07 simplifications: one cap (`daily_usd`, with
+`cap_warn` configurable), and only the machine's background OpenCode service restarted.
+
+- `api`: `reliability.test.ts` (12: steps' costs per agent and day in the server's zone, a session that is no
+  agent's, bad cost events; the `cap_warn` notice once, the pause after the turn past the cap and its alert, lifted
+  by a higher cap and a new day while an owner's pause stays, `cap_warn` set; compaction past `compact_at` before
+  the next injection, `off`, `/v1/me/compact` after the turn; a turn cut while OpenCode was away resumed, an idle
+  one not; expiry after `expire_after`) and `loader.test.ts` (the background service gone: started with
+  `@opencode/client`'s `ensure`, then the folder loaded; another kind of OpenCode: one alert) red, then green.
+- `unit`: `plugin-costs.test.ts` (a step's cost event, its context and the model's window; `autocode_me compact`;
+  status's spend; the guide's `costs` part).
+- `e2e`: `costs.test.ts` (with the fake model's usage: the steps' cost, the cap's pause and its lifting; a
+  compaction by OpenCode before a wake); first run failed (a session without its own model: the plugin now asks
+  OpenCode's default model), then green. `restart`: a turn cut by restarting OpenCode under it, then resumed.
+- The Docker CI but the agents suite, run `20261108T022723Z`: `unit` 161, `api` 281, `plugin` 28, `one` 33, `two` 39,
+  `restart` 5, `install` 3, `web` 77, `web-unit` 160. Build 35 on both machines (schema 10; schema-8 backups).
+
+## Tier 0f (2026-11-07)
+
+**Why.** The plan's tier 0f, Spawned Agents, with the owner's 2026-11-07 simplifications: a fixed run ID
+`<job>:<start minute>` and a failed run's session kept until the owner deletes it.
+
+**Spike** (check 7, published interfaces only): the plugin context has `ctx.session.create` (location, model,
+variant, agent), `ctx.session.remove` and `ctx.session.context`; the first prompt's ID must be OpenCode's `msg_...`
+form (found in e2e; `promptId` is shared now).
+
+- `api`: `jobs.test.ts` (15: set, list, delete, what agents see; the checks of a job; the owner's run spawned,
+  registered under the run's ID and prompted with the starter's text; one run at a time (refused, skipped); a
+  scheduled run; finish with the result in the owner's inbox, the agent gone, the session removed; the last reply as
+  the result; an agent's run with the result as its notice; the time limit (interrupted, an alert, the session kept,
+  then deleted by the owner); `run_usd`; a spawn that fails; `job:<name>` asks answered by a run, and the owner's
+  while the job is busy; the prompt ID) red (12 of 13), then green; `cli-0b.test.ts` (`autocode job
+  set|list|run|runs|delete`, a busy run refused, usage errors).
+- `unit`: `plugin-jobs.test.ts` (6: the spawn's session input, the last reply, `autocode_me jobs|run|finish`, the
+  guide's `jobs` part).
+- `e2e`: `jobs.test.ts` in `two` (an agent on one machine starts a run on the other; the run's session finishes
+  with the tool; its result comes to the starter as a notice; the session is removed): failed first (the host's
+  machine name; then the prompt ID), then green, run `20261108T025104Z`.
+
+## Adversarial Review of 0d to 0f (2026-11-07)
+
+**Why.** A read-only adversarial review of tiers 0d, 0e and 0f and the simplifications before them found 42 points:
+bugs, risks, spec deviations, misleading texts and stale comments. Each behaviour fix got a test first (red, then
+green). Migration 12 holds the fixes' columns, and deletes the settings the simplifications removed.
+
+- **Asks** (`asks.test.ts` "review of 0d", 8; `plugin-asks.test.ts` "review of 0d", 5): a settled form reported again
+  opens no second ask (the `ref` stays; the plugin skips forms not `pending`); a turn's end closes its open questions
+  and permissions; the plugin's `asks.pending` after each hello closes the ones OpenCode no longer has; the owner
+  closes an ask (`POST /v1/asks/{id}/close`); an answer the plugin could not carry out (no local API, a reply OpenCode
+  refused) opens the ask again with a note and an alert; a Subagent's form or request is answered in its own session
+  (`form_session`); answer keys are the form's own; a `job:` ask whose job cannot start a run goes to the owner; the
+  approval wait loop stops when the server answered early; a permission list's `{data}` is unwrapped; the answering
+  agent's texts (the option before the note; an approval's answer says the asker is told).
+- **Costs** (`reliability.test.ts` "review of 0e", 9; `plugin-costs.test.ts`): no second compaction until an
+  injection went out (the compaction's own step no longer counts as the context); `compact_at` at least 10,000; a
+  `turn.ended` right after a hello undoes the cut (no false resume after a deploy); the owner's pause and Stop All
+  replace a cap's; the owner's resume of a capped agent holds for the day (one alert); a step sent twice counts once
+  (its message ID); a repeated turn event at the same time applies once; stored removed settings no longer block a
+  change; a deleted session's agent stays `offline` with its locks freed (the spec now says so); expiry skips agents
+  with an open ask or the owner's pause; the plugin chains a session's steps and reports its turn's end after them;
+  a cap's pause says how it ends in `autocode_me status`.
+- **Jobs** (`jobs.test.ts` "review of 0f", 14; `plugin-jobs.test.ts`, 2): a run with a wake, a lock wait or a prompt
+  in flight does not end at its reply; the hello names the host's run sessions (a restarted plugin forgot them); a
+  run whose turns fail and are not retried fails; a run's cost counts all its days; a running run's session cannot
+  be deleted, a removal goes to the session's own host; a run never takes an ID another live session holds (no
+  force), and does not unregister it; `owner` in a destination list reaches the inbox; the whole result stays in
+  the run (the message is cut, and says where); with `delete_session` the session goes when the run's last turn ends;
+  a scheduled run refused in the same minute is recorded as skipped; how a run started has its own column (an agent
+  named `schedule` is no schedule); `every` keeps its anchor; the failure alert names `autocode job delete-session`;
+  an offline host's run waits for it (the folder loaded again) up to the time limit, a spawn sent again when its
+  instruction expired, and a late spawn's session removed; the last reply is the newest message with text.
+- **CLI** (`cli-0b.test.ts`): `--keep-session` is a switch; `autocode job delete-session RUN`; the agent-shell guard
+  names the setup commands it allows.
+- **Docs and comments**: the spec's lock actions, the scripts' commands, the job routes, `cap_warn` once a day (no
+  `run_usd` warning), the cap's pause, the restart's rule, deleted sessions; stale comments in `asks.ts`, `agents.ts`,
+  `hosts.ts`, `delivery.ts`, `costs.ts`, `messages.ts`, `store.ts`, `tools.ts` and one test name.
+- Unit and API 502; the Docker CI but the agents suite, run `20261108T051614Z` (`unit` 174, `plugin` 28, `one` 34,
+  `two` 40, `restart` 5, `install` 3, `web` 81) and `api` 328 (`20261108T052230Z`, after one CLI test timed out
+  under load: it now has 30 s).
+- The complete CI `20261108T052404Z`: every suite green but `agents` (36 of 48). Two causes. (1) `owner`, all six
+  models: they now ask the owner through `autocode_approval` (an ask), and the scenario answers what the inbox lists
+  through `POST /v1/inbox/{id}/answer`, which knew only messages (404 `no_item`). The inbox's answer and close routes
+  now take the asks they list too (`asks.test.ts`, "an ask is answered and closed through the inbox's own routes
+  too", red then green), and an approval's text answer may put punctuation after its word ("Yes, you may ...").
+  (2) `kimi-k3`, six scenarios: the model stopped after a tool call and never ended its turn (8 minute limit); its
+  `register` took 144 s against 9 to 26 s in the runs before. The provider stalled; no Autocode cause found.
+- The second complete CI `20261108T055549Z`: `unit` 174, `api` 329, `plugin` 28, `one` 34, `two` 40, `restart` 5,
+  `install` 3, `web` 81 (`web-unit` 175), `agents` 44 of 48 ($1.14): `opus-5.5`, `sol-6.1`, `glm-5.3`, `haiku-5.5`
+  and `luna-6` 8 of 8 (`owner` passes for all six now); `kimi-k3` 4 of 8 (`reminder`, `job`, `loop` timed out
+  waiting for a turn that never ended; `answerer`'s asker never called the question tool). Outside Autocode,
+  `opencode run` with `kimi-k3` took 122 s for a one-word reply, then 4 s: the provider stalls, as in the run before.
+- The owner's pick (2026-11-07), `agents` with `AGENT_MODELS=opus-5.5,sol-6.1,sonnet-5.5`, run `20261108T063701Z`:
+  24 of 24 in 64 s ($1.33): `opus-5.5` 8 of 8 ($0.41), `sol-6.1` 8 of 8 ($0.38), `sonnet-5.5` 8 of 8 ($0.54).
+  `sonnet-5.5` (`nvidia-ih/aws/anthropic/bedrock-claude-sonnet-5-5`, variant high) joined `ci/agents/models.json`.
+
+## The Owner's Round of 2026-11-07 Evening
+
+- **An approval's text once in the Inbox** (`inbox-page.spec.ts`, the approval and Show Closed tests; `smoke.spec.ts`
+  "Inbox: an approval approved with an option"; red, then green): the page's title for an approval names the agent
+  only ("Approval for team:lead"), the text shows once under it with its lines, a closed approval keeps its text.
+  The server's title stays as it was for the CLI's `inbox` table and `autocode_me status`.
+- **Form titles in the label colour** (`smoke.spec.ts`, the collapsed forms test): `details.panel > summary` is
+  `var(--fg-label)` (dark `rgb(174, 183, 192)`).
+- Web 81 and web-unit 175 (`20261108T064631Z`); screenshots of the Inbox and Wakes, light at 1024 and dark at 1280,
+  looked at.
+- **A script reads its own locks** (`cli-0b.test.ts` "me --json: the agent's own held locks"): `autocode me --json`
+  in an agent's shell lists the agent's own holds and nothing of another agent's. The basis of the fix given to the
+  update loop of another project, whose check's `autocode locks` is refused in the shell.
+
+## Adversarial Review of 0b2 (2026-11-08)
+
+**Why.** Tier 0b2 (the agent guide, the Help tab, the agents suite) had no review of its own. A read-only reviewer
+found 18 points; each behaviour fix got a test first (red, then green). What held: the `due` a wake shows comes
+from the values the scheduler fires on; cron's fall-back hour runs once; `in` runs once; the web pages build their
+text with `textContent` only.
+
+- **Durations** (`triggers.test.ts` "refuses durations too long or not finite"; `wakes.test.ts` "a trigger too long
+  is refused and leaves no wake"): a trigger's duration is at most 520w (ten years) and finite; a wake whose view
+  cannot be built is rolled back (a savepoint), so no row is left to break the agent's list, its status and the
+  owner's Wakes page.
+- **Tools' texts** (`agent-guide.test.ts` "review of 0b2", 4; `cli-0b.test.ts`): `send` names the recipients a list
+  skipped (the tool and the CLI); an idle wake listed or set during a turn of a waiting or paused agent counts from
+  the end of this turn (`/v1/me` adds the agent's `busy`); `set` says the wake is set when the status call after it
+  fails; the check's limit is the owner's `check_timeout`, 60 s by default; a one-time `at` (an `in` too) shows in the
+  server's zone, not UTC; the guide's sentence on messages left out of a prompt (only a read one).
+- **CLI times** (`cli-0b.test.ts` "wakes: times in the server's zone, named"): times to the minute with the zone's
+  name.
+- **Web** (`wakes-page.spec.ts`, `help-page.spec.ts`): an idle wake's Next shows its `due`, marked "if idle"; Help says
+  Fire waits for an idle session and `min_interval`; a run's ID is its start minute in UTC; the Wakes tab's next run.
+- **Agents suite** (`agents-checks.test.ts`, 6; `ci-runner.test.ts`, 2): the misuse check (now `ci/agents/checks.ts`)
+  finds the plugin's code read with any tool, the API called with the session's token, and the CLI only at a
+  command's start (prose about autocode is no misuse); the owner's OpenCode config is read as real JSONC; the run
+  cleans up its scratch folders (the copy of the provider's key) on SIGTERM, SIGINT and SIGHUP, and `ci/run.sh` removes
+  them after a kill; OpenCode, the models' shells and the checks get a scratch HOME and a short environment; the
+  `answerer` scenario's asker counts in the spend and gets its transcript; `CI_PARALLEL` must be a whole number from 1.
+- **Docs** (`docs.test.ts`, 4): howto lists every help topic (from `TOPICS`), says where notices come from, no longer
+  offers the API to a script, and keeps prose to 120 columns.
+- **Tests and comments**: the actions' checks match whole words, in the guide's own text (not its copy of the tools'
+  descriptions); spike 11 checks that a compaction call carries no line; stale comments in `wakes.ts`, `delivery.ts`,
+  `guide.ts` and `ci/agents/run.ts`.
+- The complete CI on the final code, `20261108T105941Z`: `unit` 190, `api` 333, `plugin` 29, `one` 34, `two` 40,
+  `restart` 5, `install` 3, `web` 81 (`web-unit` 176), `agents` 54 of 56 ($2.10): `opus-5.5`, `sol-6.1`,
+  `sonnet-5.5`, `glm-5.3`, `haiku-5.5` and `luna-6` 8 of 8; `kimi-k3` 6 of 8 (`job` and `loop` timed out waiting for
+  a turn that never ended, after correct tool calls: the provider's stalls, as before). The asker's transcript is
+  written now; no scratch folder was left.

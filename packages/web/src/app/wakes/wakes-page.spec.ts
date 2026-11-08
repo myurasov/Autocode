@@ -2,12 +2,12 @@
  * Unit tests of the Wakes page against a mocked server: every wake by agent
  * (a link to the agent on the Agents page) with its trigger, next time, text
  * and check (a long one's first 200 characters, whole on a click anywhere in
- * its cell; the check as code), end, setter (an agent's a link), when it was
- * set and last firing; Fire,
- * and Cancel after a confirmation (the list refreshes after each), with the
- * result in the toolbar; the Set a Wake form, collapsed until opened, for any
- * agent (and the server's message when it refuses); "Updated" in the footer;
- * and the 10 s refresh (one at a time).
+ * its cell; the check as code), setter (an agent's a link), when it was set
+ * and last firing (a wake has no end); Fire, and Cancel after a confirmation
+ * (the list refreshes after each), with the result in the toolbar; the Set a
+ * Wake form, collapsed until opened, for any agent (and the server's message
+ * when it refuses); "Updated" in the footer; and the 10 s refresh (one at a
+ * time).
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -42,7 +42,6 @@ const WAKES: Wake[] = [
     text: 'Report your progress.\nThen go on.',
     trigger: 'every 30m',
     check: 'test -f /tmp/go',
-    end: '2026-12-31T08:00:00.000Z',
     next: '2026-10-28T12:00:00.000Z',
     set_by: 'owner',
     last_fired_at: '2026-10-28T11:30:00.000Z',
@@ -54,7 +53,6 @@ const WAKES: Wake[] = [
     text: 'Clean up.',
     trigger: 'cron "0 2 * * *" UTC',
     check: null,
-    end: null,
     next: '2026-10-29T02:00:00.000Z',
     set_by: 'kaggle:lead',
     last_fired_at: null,
@@ -66,8 +64,21 @@ const WAKES: Wake[] = [
     text: 'Ping.',
     trigger: 'fire-only',
     check: null,
-    end: null,
     next: null,
+    set_by: 'alpha:one',
+    last_fired_at: null,
+  },
+  // an idle wake: no time of its own, but when it falls due if the session
+  // stays idle (the server's `due`)
+  {
+    ...BASE,
+    agent: 'alpha:one',
+    name: 'nudge',
+    text: 'Nudge.',
+    trigger: 'idle 30m',
+    check: null,
+    next: null,
+    due: '2026-10-28T12:15:00.000Z',
     set_by: 'alpha:one',
     last_fired_at: null,
   },
@@ -118,7 +129,6 @@ describe('WakesPage', () => {
       'Next',
       'Text',
       'Check',
-      'End',
       'Set By',
       'Last Set',
       'Last Fired',
@@ -156,7 +166,8 @@ describe('WakesPage', () => {
     expect(short.querySelector('.more')).toBeNull();
     expect(short.getAttribute('title')).toBeNull();
     expect(cell(standup, 'check')).toBe('test -f /tmp/go');
-    expect(cell(standup, 'end')).toBe(localTime('2026-12-31T08:00:00.000Z'));
+    // A wake has no end (the owner, 2026-11-07).
+    expect(standup.querySelector('td.end')).toBeNull();
     expect(cell(standup, 'by')).toBe('owner');
     expect(standup.querySelector('td.by code')).toBeNull();
     expect(standup.querySelector('td.by a')).toBeNull();
@@ -179,7 +190,6 @@ describe('WakesPage', () => {
     const ping = row(page, 'alpha:one', 'ping');
     expect(cell(ping, 'next')).toBe('—');
     expect(cell(ping, 'check')).toBe('—');
-    expect(cell(ping, 'end')).toBe('—');
     expect(cell(ping, 'fired')).toBe('—');
     expect(cell(ping, 'text')).toBe('Ping.');
     expect(parts(ping.querySelector('td.by code'))).toEqual(['alpha:', 'one']);
@@ -194,11 +204,14 @@ describe('WakesPage', () => {
       );
     expect(parts(standup.querySelector('td.name code'))).toEqual(['standup']);
     expect(parts(standup.querySelector('td.by'))).toEqual(['owner']);
+    expect(
+      groups[1]!.querySelector('tr.group th')!.getAttribute('colspan'),
+    ).toBe('9');
     expect(parts(groups[1]!.querySelector('tr.group th'))).toEqual([
       'kaggle:',
       'lead',
     ]);
-    for (const c of ['trigger', 'next', 'text', 'check', 'end', 'set'])
+    for (const c of ['trigger', 'next', 'text', 'check', 'set'])
       expect(standup.querySelector(`td.${c}`)!.classList, c).not.toContain(
         'id-like',
       );
@@ -215,10 +228,10 @@ describe('WakesPage', () => {
     'and write down what you changed and why in runs/latest/NOTES.md, ' +
     'with the step and the loss at that step.';
   const CHECK =
-    "test -n \"$(find /home/misha/kaggle/runs/latest -name '*.ckpt' " +
-    '-newer /home/misha/kaggle/runs/latest/.last-check -print -quit)" && ' +
-    'touch /home/misha/kaggle/runs/latest/.last-check && ' +
-    'grep -q DONE /home/misha/kaggle/runs/latest/status.txt';
+    "test -n \"$(find /home/someone/kaggle/runs/latest -name '*.ckpt' " +
+    '-newer /home/someone/kaggle/runs/latest/.last-check -print -quit)" && ' +
+    'touch /home/someone/kaggle/runs/latest/.last-check && ' +
+    'grep -q DONE /home/someone/kaggle/runs/latest/status.txt';
 
   it("shows a long text's first 200 characters; a click anywhere in its cell shows it whole, the next folds it; it stays open across the refresh", async () => {
     expect(LONG.length).toBeGreaterThan(200);
@@ -283,6 +296,20 @@ describe('WakesPage', () => {
     code().dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
     await settle(fixture);
     expect(code().textContent).toBe(`${CHECK.slice(0, 200).trimEnd()}…`);
+  });
+
+  // The review of 0b2: the owner sees an idle wake's due time too.
+  it("shows an idle wake's due time in Next, marked if idle", async () => {
+    const page = await open();
+    const nudge = row(page, 'alpha:one', 'nudge');
+    const next = nudge.querySelector('td.next')!;
+    expect(text(next)).toBe(`${localTime('2026-10-28T12:15:00.000Z')} if idle`);
+    expect(next.getAttribute('title')).toBe(
+      '2026-10-28T12:15:00.000Z, if the session stays idle',
+    );
+    expect(text(row(page, 'alpha:one', 'ping').querySelector('td.next'))).toBe(
+      '—',
+    );
   });
 
   it('shows a one-time trigger at its local time', () => {
@@ -375,6 +402,15 @@ describe('WakesPage', () => {
     expect(
       (page.querySelector('#wake-trigger') as HTMLInputElement).placeholder,
     ).toBe('every 30m, at 09:00, cron "0 9 * * 1-5", idle 30m, fire-only');
+    // Its fields: no End, as a wake has none (the owner, 2026-11-07).
+    expect([...form.querySelectorAll('label')].map((l) => text(l))).toEqual([
+      'Agent ID',
+      'Name',
+      'Trigger',
+      'Text',
+      'Check',
+    ]);
+    expect(page.querySelector('#wake-end')).toBeNull();
     const set = () => button(form, 'Set Wake')!;
     expect(set().disabled).toBe(true);
     type(page.querySelector('#wake-agent'), ' kaggle:worker ');
@@ -409,7 +445,6 @@ describe('WakesPage', () => {
     type(page.querySelector('#wake-trigger'), 'idle 30m');
     type(page.querySelector('#wake-text'), 'Go on.');
     type(page.querySelector('#wake-check'), 'test -f go');
-    type(page.querySelector('#wake-end'), '2026-12-31 18:00');
     await settle(fixture);
     set().click();
     const full = http.expectOne('/v1/agents/kaggle%3Aworker/wakes/until');
@@ -417,7 +452,6 @@ describe('WakesPage', () => {
       text: 'Go on.',
       trigger: 'idle 30m',
       check: 'test -f go',
-      end: '2026-12-31 18:00',
     });
     full.flush({ wake: WAKES[0] });
     await settle(fixture);

@@ -307,10 +307,17 @@ describe("autocode CLI", () => {
         { AUTOCODE_SESSION: "ses_x" },
       ]
       for (const shell of shells) {
+        // the owner's commands are not there (the owner, 2026-11-07)
         const rm = await cli(["agents", "rm", "cli:victim"], shell, own)
-        expect(rm.code).toBe(1)
-        expect(rm.stderr).toContain("AUTOCODE_TOKEN")
-        expect((await cli(["hosts", "--json"], shell, own)).code).toBe(1)
+        expect(rm.code).toBe(2)
+        expect(rm.stderr).toContain("only me, fire and send")
+        // the agent's own ones need its token, never the owner's
+        const me = await cli(["me"], shell, own)
+        expect(me.code).toBe(1)
+        expect(me.stderr).toContain("AUTOCODE_TOKEN")
+        expect((await cli(["send", "cli:victim", "hi"], shell, own)).code).toBe(
+          1,
+        )
       }
       expect(
         (await call(t.url, t.admin, "GET", "/v1/agents/cli:victim")).status,
@@ -373,7 +380,7 @@ describe("autocode CLI", () => {
       expect(
         (
           await cli(
-            ["agents", "--json"],
+            ["me", "--json"],
             { ...shell, AUTOCODE_SERVER_ID: "someone-else" },
             own,
           )
@@ -382,7 +389,7 @@ describe("autocode CLI", () => {
       expect(
         (
           await cli(
-            ["agents", "--json"],
+            ["me", "--json"],
             { ...shell, AUTOCODE_SERVER_ID: "api-test" },
             own,
           )
@@ -478,7 +485,8 @@ describe("autocode CLI", () => {
       )
       const reader = proc.stdout.getReader()
       let out = ""
-      const deadline = Date.now() + 10_000
+      // 30 s: the first start under a loaded CI host can take more than 10 s
+      const deadline = Date.now() + 30_000
       while (!out.includes("saved") && Date.now() < deadline) {
         const chunk = await Promise.race([
           reader.read(),
@@ -493,7 +501,7 @@ describe("autocode CLI", () => {
     } finally {
       rmSync(own, { recursive: true, force: true })
     }
-  })
+  }, 60_000)
 
   test("plugin install puts the plugin into OpenCode's plugin folder and writes the client config", async () => {
     const own = mkdtempSync(join(tmpdir(), "autocode-cli-home-"))

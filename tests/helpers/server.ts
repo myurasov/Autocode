@@ -37,6 +37,7 @@ export async function testServer(
     takeoverGraceMs?: number
     presets?: boolean
     machine?: string
+    ensureService?: () => Promise<void>
     findService?: () => Promise<
       { url: string; authorization?: string } | undefined
     >
@@ -58,6 +59,7 @@ export async function testServer(
     // no background service unless a test gives one
     machine: options.machine ?? "api-test-machine",
     findService: options.findService ?? (async () => undefined),
+    ensureService: options.ensureService ?? (async () => {}),
     presetTokens:
       options.presets === false
         ? undefined

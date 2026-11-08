@@ -3,7 +3,7 @@
  * boolean switches.
  */
 
-const SWITCHES = new Set(["json", "force", "help", "all"])
+const SWITCHES = new Set(["json", "force", "help", "all", "keep-session"])
 
 export class CliError extends Error {
   constructor(

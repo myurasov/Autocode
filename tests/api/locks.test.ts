@@ -1,10 +1,10 @@
 /*
- * Locks and semaphores over the API (tier 0c): acquire (try, queue, wait),
+ * Locks and semaphores over the API (tier 0c): acquire (try, queue),
  * renew, release and list, with their errors; grants, expiries and the
  * owner's releases come as notices from Autocode, in a prompt of their own
- * (held while the agent is paused); a wait that is granted answers in the
- * call instead; /v1/me says what an agent holds; unregistering releases
- * everything; many agents at once never exceed a lock's capacity.
+ * (held while the agent is paused); there is no mode=wait; /v1/me says what
+ * an agent holds; unregistering releases everything; many agents at once
+ * never exceed a lock's capacity.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import {
@@ -218,54 +218,16 @@ describe("notices", () => {
   })
 })
 
-describe("wait", () => {
-  test("granted inside the call: the call says so, and no notice comes", async () => {
+// The owner, 2026-11-07: no mode=wait; queue and the grant notice do it.
+describe("no wait", () => {
+  test("mode=wait is refused; try and queue are the modes", async () => {
     await lock(a, "gpu-0", "acquire", { ttl: "10m" })
-    const started = Date.now()
-    const waiting = lock(b, "gpu-0", "acquire", {
-      ttl: "10m",
-      mode: "wait",
-      seconds: 20,
-    })
-    await Bun.sleep(300)
-    await lock(a, "gpu-0", "release")
-    const res = await waiting
-    expect(res.body).toMatchObject({ granted: true })
-    expect(Date.now() - started).toBeLessThan(5000)
-    expect(await tick()).toEqual({})
-    const mine = (await call(t.url, b, "GET", "/v1/me/messages?all=1")).body
-    expect(mine.messages).toEqual([])
-  })
-
-  test("not granted in time: it stays in the queue, and the notice comes later", async () => {
-    await lock(a, "gpu-0", "acquire", { ttl: "10m" })
-    const res = await lock(b, "gpu-0", "acquire", {
-      ttl: "10m",
-      mode: "wait",
-      seconds: 1,
-    })
-    expect(res.body).toMatchObject({ granted: false, position: 1, waited: 1 })
-    await lock(a, "gpu-0", "release")
-    expect((await tick()).ses_b).toStartWith('[autocode] lock "gpu-0" granted')
-  })
-
-  test("a wait is at most max_tool_wait; seconds are required and positive", async () => {
-    await owner("PATCH", "/v1/settings", { server: { max_tool_wait: "1s" } })
-    await lock(a, "gpu-0", "acquire", { ttl: "10m" })
-    const started = Date.now()
-    const res = await lock(b, "gpu-0", "acquire", {
-      ttl: "10m",
-      mode: "wait",
-      seconds: 100,
-    })
-    expect(res.body).toMatchObject({ granted: false, waited: 1 })
-    expect(Date.now() - started).toBeLessThan(4000)
-    const bad = await lock(c, "gpu-0", "acquire", {
-      ttl: "10m",
-      mode: "wait",
-      seconds: -1,
-    })
-    expect(bad.status).toBe(400)
+    const res = await lock(b, "gpu-0", "acquire", { ttl: "10m", mode: "wait" })
+    expect(res.status).toBe(400)
+    expect(res.body.error.message).toBe("mode is try or queue")
+    const old = await lock(b, "gpu-0", "acquire", { ttl: "10m", seconds: 20 })
+    expect(old.body.error.message).toBe("unknown field seconds")
+    expect(await list()).toMatchObject([{ queue: [] }])
   })
 })
 
@@ -338,72 +300,6 @@ describe("review findings", () => {
       ttl: "10m",
     })
     expect(ok.body.granted).toBe(true)
-  })
-
-  test("a wait whose caller went away: the grant still comes as a notice", async () => {
-    await lock(a, "gpu-0", "acquire", { ttl: "10m" })
-    const gone = new AbortController()
-    const waiting = fetch(`${t.url}/v1/locks/gpu-0/acquire`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${b}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ ttl: "10m", mode: "wait", seconds: 20 }),
-      signal: gone.signal,
-    }).catch(() => "aborted")
-    await Bun.sleep(300)
-    gone.abort()
-    expect(await waiting).toBe("aborted")
-    await Bun.sleep(100)
-    await lock(a, "gpu-0", "release")
-    expect((await tick()).ses_b).toStartWith('[autocode] lock "gpu-0" granted')
-  })
-
-  test("a granted wait that the caller abandoned still tells the agent", async () => {
-    await lock(a, "gpu-0", "acquire", { ttl: "10m" })
-    const gone = new AbortController()
-    const waiting = fetch(`${t.url}/v1/locks/gpu-0/acquire`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${b}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ ttl: "10m", mode: "wait", seconds: 20 }),
-      signal: gone.signal,
-    }).catch(() => "aborted")
-    await Bun.sleep(300)
-    // the grant and the caller's leaving at once
-    await Promise.all([lock(a, "gpu-0", "release"), gone.abort()])
-    await waiting
-    await Bun.sleep(200)
-    expect(await holders("gpu-0")).toEqual(["team:b"])
-    expect((await tick()).ses_b).toStartWith('[autocode] lock "gpu-0" granted')
-  })
-
-  test("a wait answers how long it was allowed, at most max_tool_wait", async () => {
-    await owner("PATCH", "/v1/settings", { server: { max_tool_wait: "1s" } })
-    await lock(a, "gpu-0", "acquire", { ttl: "10m" })
-    const res = await lock(b, "gpu-0", "acquire", {
-      ttl: "10m",
-      mode: "wait",
-      seconds: 30,
-    })
-    expect(res.body).toMatchObject({ granted: false, waited: 1, max_wait: 1 })
-  })
-
-  test("the owner's own wait does not hold back the agent's notice", async () => {
-    await lock(a, "gpu-0", "acquire", { ttl: "10m" })
-    const waiting = owner("POST", "/v1/locks/gpu-0/acquire", {
-      agent: "team:b",
-      ttl: "10m",
-      mode: "wait",
-      seconds: 5,
-    })
-    await Bun.sleep(300)
-    await lock(a, "gpu-0", "release")
-    expect((await waiting).body.granted).toBe(true)
-    expect((await tick()).ses_b).toStartWith('[autocode] lock "gpu-0" granted')
   })
 
   test("the owner taking an agent out of the queue tells it", async () => {
@@ -503,31 +399,24 @@ describe("concurrency", () => {
     }
   }, 60_000)
 
-  test("waits racing releases: never more holders than places", async () => {
+  test("acquires racing releases: never more holders than places", async () => {
     const tokens: string[] = []
     for (let i = 0; i < 8; i++)
-      tokens.push(await registered(t, HOST, `ses_w${i}`, `wait:${i}`))
+      tokens.push(await registered(t, HOST, `ses_w${i}`, `race:${i}`))
     for (const tok of tokens.slice(0, 2))
       await lock(tok, "pair", "acquire", { ttl: "1h", max: 2 })
-    const results = await Promise.all([
+    await Promise.all([
       ...tokens.slice(2).map(async (tok) => {
         await Bun.sleep(Math.random() * 50)
-        return (
-          await lock(tok, "pair", "acquire", {
-            ttl: "1h",
-            mode: "wait",
-            seconds: 3,
-          })
-        ).body
+        // max each time: when both holders leave first, the lock is gone and
+        // the next acquire makes it again
+        await lock(tok, "pair", "acquire", { ttl: "1h", max: 2 })
       }),
       ...tokens.slice(0, 2).map(async (tok) => {
-        await Bun.sleep(100 + Math.random() * 300)
+        await Bun.sleep(Math.random() * 50)
         await lock(tok, "pair", "release")
-        return null
       }),
     ])
-    const granted = results.filter((r) => r?.granted).length
-    expect(granted).toBe(2)
     const state = (await list()).find((l: any) => l.name === "pair")
     expect(state.holders.length).toBe(2)
     expect(state.queue.length).toBe(4)

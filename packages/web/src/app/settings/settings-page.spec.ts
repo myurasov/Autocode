@@ -31,7 +31,7 @@ function view(change: Partial<SettingsView> = {}): SettingsView {
       min_interval: '1m',
       question_mode: 'ask',
       history_days: 30,
-      restart_opencode: true,
+      sample_switch: true,
     },
     server: {},
     rules: [
@@ -59,11 +59,13 @@ function view(change: Partial<SettingsView> = {}): SettingsView {
         default: 30,
         help: 'days of history kept',
       },
-      restart_opencode: {
+      // No setting of the server is a switch now (the owner, 2026-11-07):
+      // one made up here, for the checkbox.
+      sample_switch: {
         kind: 'bool',
         scope: 'server',
         default: true,
-        help: 'restart missing OpenCode servers on this machine',
+        help: 'a switch, for this test only',
       },
     },
     ...change,
@@ -140,7 +142,7 @@ describe('SettingsPage', () => {
     expect(shown(page, 'history_days')).toBe('7');
     expect(text(days.querySelector('td.from'))).toBe('set server-wide');
     expect(text(days.querySelector('td.scope'))).toBe('server');
-    expect(shown(page, 'restart_opencode')).toBe(true);
+    expect(shown(page, 'sample_switch')).toBe(true);
   });
 
   it('admin sets a value as typed and sees the saved one', async () => {
@@ -240,16 +242,16 @@ describe('SettingsPage', () => {
     first.flush(withServer({ question_mode: 'auto' }));
     await settle(fixture);
 
-    const box = row(page, 'restart_opencode').querySelector(
+    const box = row(page, 'sample_switch').querySelector(
       'input[type=checkbox]',
     ) as HTMLInputElement;
     expect(box.checked).toBe(true);
     box.checked = false;
     box.dispatchEvent(new Event('change'));
     await settle(fixture);
-    button(row(page, 'restart_opencode'), 'Save')!.click();
+    button(row(page, 'sample_switch'), 'Save')!.click();
     expect(patch().request.body).toEqual({
-      server: { restart_opencode: false },
+      server: { sample_switch: false },
     });
   });
 

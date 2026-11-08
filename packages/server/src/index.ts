@@ -14,20 +14,31 @@ import {
   checkId,
   localTime,
   machineName,
+  matchesPattern,
+  onlyFields,
   parseDuration,
   parseListen,
   resolveSettings,
   VERSION,
 } from "@autocode/shared"
 import { Agents } from "./agents.ts"
+import { Asks } from "./asks.ts"
 import { ensureDataDir, resolveServerId, tailscaleAddress } from "./config.ts"
+import { Costs } from "./costs.ts"
 import { Delivery } from "./delivery.ts"
 import { History } from "./history.ts"
 import { Hosts } from "./hosts.ts"
 import { json, openapi, type Route, router } from "./http.ts"
-import { type FindService, findService, Loader } from "./loader.ts"
+import { Jobs } from "./jobs.ts"
+import {
+  type EnsureService,
+  ensureService,
+  type FindService,
+  findService,
+  Loader,
+} from "./loader.ts"
 import { formatTtl, type LockNotice, Locks } from "./locks.ts"
-import { Inbox, MAX_WAIT_SECONDS, Messages } from "./messages.ts"
+import { Inbox, Messages } from "./messages.ts"
 import { Retries } from "./retries.ts"
 import { SettingsStore } from "./settings-store.ts"
 import { openStore } from "./store.ts"
@@ -65,6 +76,7 @@ export interface ServerOptions {
   // how to find its background service (tests replace both).
   machine?: string
   findService?: FindService
+  ensureService?: EnsureService
   presetTokens?: { admin?: string; consumer?: string }
   hostname?: string
   web?: WebFiles
@@ -142,8 +154,35 @@ export async function startServer(
   const inbox = new Inbox(db, history, now, () => messages)
   // a failed turn's error state and its retries (tier 0b3)
   const retries = new Retries(db, history, settings, inbox, now)
-  hosts.onTurnEnded = (agent, outcome, error) =>
-    retries.turnEnded(agent, outcome, error)
+  // unloaded folders, and the background service restarted (tier 0e)
+  const loader = new Loader(
+    history,
+    options.machine ?? machineName(options.hostname ?? osHostname()),
+    options.findService ?? findService,
+    now,
+    60_000,
+    options.ensureService ?? ensureService,
+    (host) =>
+      inbox.open("alert", {
+        title:
+          `OpenCode of ${host.id} (${host.directory}) is gone; Autocode ` +
+          "restarts only the background service: start it again",
+        body:
+          "Its agents' wakes and messages wait until it is back. Run " +
+          "OpenCode as the background service (opencode serve --service, " +
+          "the default) to have Autocode restart it.",
+      }),
+  )
+  hosts.onHello = (host, body) => {
+    loader.online(host)
+    // the forms and requests OpenCode still has (the review of 0d)
+    if (body?.pending && typeof body.pending === "object")
+      asks.stillPending(body.pending)
+  }
+  hosts.onSessionTurnEnded = (session) => {
+    asks.turnEnded(session)
+    jobs.sessionTurnEnded(session)
+  }
   const delivery = new Delivery(
     db,
     history,
@@ -154,12 +193,7 @@ export async function startServer(
     inbox,
     now,
     retries,
-    new Loader(
-      history,
-      options.machine ?? machineName(options.hostname ?? osHostname()),
-      options.findService ?? findService,
-      now,
-    ),
+    loader,
   )
   messages = new Messages(
     db,
@@ -168,20 +202,8 @@ export async function startServer(
     delivery.enqueueMessage,
     () => inbox,
   )
-  /*
-   * Locks and semaphores (tier 0c): grants, expiries and the owner's
-   * releases are notices, messages from autocode. A grant while the agent's
-   * own wait call is open (its caller still there) is told by that call; one
-   * the caller left before its answer becomes a notice after all.
-   */
-  const lockWaits = new Map<
-    string,
-    Set<{ signal: AbortSignal; held?: LockNotice }>
-  >()
-  const tellLock = (n: LockNotice) => {
-    const [subject, text] = noticeText(n)
-    messages.notice(n.agent, subject, text)
-  }
+  // Locks and semaphores (tier 0c): grants, expiries and the owner's
+  // releases are notices, messages from autocode.
   const noticeText = (n: LockNotice): [string, string] => {
     const when = (ms: number) => localTime(ms, tz())
     const name = `lock "${n.lock}"`
@@ -221,12 +243,100 @@ export async function startServer(
     }
   }
   const locks = new Locks(db, history, now, (n) => {
-    const open = [...(lockWaits.get(`${n.agent}\n${n.lock}`) ?? [])].find(
-      (w) => !w.signal.aborted,
-    )
-    if (n.kind === "granted" && open) open.held = n
-    else tellLock(n)
+    const [subject, text] = noticeText(n)
+    messages.notice(n.agent, subject, text)
   })
+  /*
+   * Questions, permission prompts and approvals (tier 0d): answers go back
+   * to the plugin as instructions; what an agent must know comes as a notice.
+   */
+  const asks = new Asks(
+    db,
+    history,
+    settings,
+    now,
+    (o) => {
+      if (!o.host) return null
+      const { host, ...payload } = o
+      return hosts.enqueue(host, "answer", payload)
+    },
+    (n) => messages.notice(n.agent, n.subject, n.text),
+    (agent) => !!db.query("SELECT 1 FROM agents WHERE id = ?").get(agent),
+  )
+  // Costs, the daily cap, compaction, cut turns and expiry (tier 0e).
+  const costs = new Costs(
+    db,
+    history,
+    settings,
+    inbox,
+    now,
+    (n) => messages.notice(n.agent, n.subject, n.text),
+    (agent) =>
+      !!(
+        db
+          .query(
+            "SELECT s.busy FROM agents a JOIN sessions s " +
+              "ON s.id = a.session_id WHERE a.id = ?",
+          )
+          .get(agent) as any
+      )?.busy,
+  )
+  delivery.costs = costs
+  hosts.onTurnEnded = (agent, outcome, error, reply) => {
+    retries.turnEnded(agent, outcome, error)
+    costs.uncut(agent)
+    costs.turnEnded(agent)
+    /*
+     * A run of a job: past run_usd it fails; idle with its reply it ends,
+     * unless something of its own is pending (spec: no queued injection, no
+     * open question or approval, no lock wait, no wake of its own).
+     */
+    const pending =
+      !!db.query("SELECT 1 FROM queue WHERE agent_id = ?").get(agent) ||
+      !!db.query("SELECT 1 FROM wakes WHERE agent_id = ?").get(agent) ||
+      !!db
+        .query("SELECT 1 FROM lock_entries WHERE agent_id = ? AND held = 0")
+        .get(agent) ||
+      !!(
+        db
+          .query(
+            "SELECT s.inject_pending_at FROM agents a JOIN sessions s " +
+              "ON s.id = a.session_id WHERE a.id = ?",
+          )
+          .get(agent) as any
+      )?.inject_pending_at ||
+      asks.of(agent).length > 0
+    jobs.turnEnded(agent, outcome === "succeeded" ? reply : null, pending)
+  }
+  // an answer's instruction, followed to its ack (the review of 0d)
+  const answerAck = (instructionId: string) => hosts.instruction(instructionId)
+  const answerAlert = (agent: string, title: string, body: string) =>
+    inbox.open("alert", { agent, title, body })
+  hosts.onCost = (event) => {
+    const agent = agents.agentOfSession(String(event.session))
+    if (agent) costs.step(agent, event)
+  }
+  hosts.onCut = (session) => {
+    const agent = agents.agentOfSession(session)
+    if (agent) costs.cut(agent)
+  }
+  hosts.onAsk = (host, event) => {
+    if (event.type === "asks.pending") {
+      if (event.pending && typeof event.pending === "object")
+        asks.stillPending(event.pending)
+      return
+    }
+    if (event.type === "ask.settled") {
+      asks.settled(
+        String(event.session),
+        String(event.ref ?? ""),
+        String(event.how ?? "answered"),
+      )
+      return
+    }
+    const agent = agents.agentOfSession(String(event.session))
+    if (agent) asks.opened(host, agent, event)
+  }
   const agents = new Agents(
     db,
     history,
@@ -235,10 +345,75 @@ export async function startServer(
     (agent) => {
       inbox.closeForAgent(agent)
       locks.unregistered(agent)
+      asks.unregistered(agent)
       messages.dropNotices(agent)
     },
     (agent) => delivery.cancelPending(agent),
   )
+  agents.extra = (agent) => ({ cost: costs.view(agent) })
+  /*
+   * Jobs and their runs (tier 0f): a run's session is registered by the
+   * owner's rule; its result is a message from autocode, or an inbox item for
+   * the owner.
+   */
+  const jobs = new Jobs({
+    db,
+    history,
+    now,
+    tz,
+    enqueue: (host, type, payload) => hosts.enqueue(host, type, payload),
+    instruction: (instructionId) => hosts.instruction(instructionId),
+    noteSession: (host, session) => {
+      const row = db
+        .query("SELECT directory FROM hosts WHERE id = ?")
+        .get(host) as any
+      hosts.noteSessions(host, [
+        { id: session, directory: row?.directory ?? "" },
+      ])
+    },
+    // never forced: an ID another live session holds is not taken
+    register: (agentId, session, description) =>
+      agents.register({ kind: "admin" } as any, {
+        id: agentId,
+        session,
+        description,
+      }),
+    unregister: (agentId) => agents.unregister(agentId, "owner"),
+    // the owner (the inbox) and agents, a pattern or a list of both
+    tell: (to, subject, text) => {
+      const parts = to.split(",").map((x) => x.trim())
+      if (parts.includes("owner"))
+        inbox.open("alert", {
+          title: subject.replace(/^./, (c) => c.toUpperCase()),
+          body: text,
+        })
+      const agentParts = parts.filter((x) => x && x !== "owner")
+      if (!agentParts.length) return
+      for (const id of db
+        .query("SELECT id FROM agents ORDER BY id")
+        .all()
+        .map((r: any) => r.id as string))
+        if (agentParts.some((part) => matchesPattern([part], id)))
+          messages.notice(id, subject, text)
+    },
+    alert: (title, body) => inbox.open("alert", { title, body }),
+    spent: (agent) => costs.total(agent),
+    askText: (ask) => asks.askText(ask),
+    released: (agent) => asks.unregistered(agent),
+    load: (hostId) => {
+      const h = db
+        .query(
+          "SELECT id, machine, directory, process_kind FROM hosts WHERE id = ?",
+        )
+        .get(hostId) as any
+      if (h) loader.load(h)
+    },
+  })
+  asks.jobIdle = (job) => jobs.idle(job)
+  asks.startJob = (job, ask) =>
+    jobs.start(job, "ask", "ask", undefined, ask)?.id ?? null
+  retries.onGivenUp = (agent, reason) => jobs.turnsFailed(agent, reason)
+  hosts.runsOf = (host) => jobs.runSessionsOf(host)
   history.record("server.started", { data: { id, version: VERSION } })
   locks.sweep()
 
@@ -269,15 +444,23 @@ export async function startServer(
     return agent
   }
 
+  /*
+   * A deleted session: its asks close and its agent's locks go (no turn of
+   * it can release them); the agent stays, offline, so its ID can move to
+   * a new session with its wakes (spec, Registration), until expire_after.
+   */
   const sessionDeleted = (session: string) => {
+    asks.gone(session)
     const row = db
       .query("SELECT host_id FROM sessions WHERE id = ?")
       .get(session) as any
+    const agent = agents.agentOfSession(session) ?? null
     history.record("session.deleted", {
       session,
       host: row?.host_id ?? null,
-      agent: agents.agentOfSession(session) ?? null,
+      agent,
     })
+    if (agent) locks.unregistered(agent)
   }
 
   const routes: Route[] = [
@@ -469,10 +652,96 @@ export async function startServer(
                 wakes: wakes.summary(agent),
                 unread: messages.list(agent).length,
                 locks: locks.of(agent),
+                asks: asks.of(agent),
+                cost: costs.view(agent),
               }
             : {}),
         }
       },
+    },
+    {
+      method: "POST",
+      path: "/v1/me/compact",
+      access: ["session"],
+      summary: "compact the calling session after its current turn (tier 0e)",
+      handler: ({ caller }) => {
+        costs.wantCompact(me(caller))
+        return { compact: "after this turn" }
+      },
+    },
+    // jobs and runs (tier 0f)
+    {
+      method: "GET",
+      path: "/v1/jobs",
+      access: ["admin", "session"],
+      summary: "every job (an agent sees names and descriptions)",
+      handler: ({ caller }) => ({
+        jobs: caller?.kind === "admin" ? jobs.list() : jobs.listForAgents(),
+      }),
+    },
+    {
+      method: "PUT",
+      path: "/v1/jobs/:name",
+      access: ["admin"],
+      summary:
+        "set a job {host, model, prompt, trigger, to, description, variant, " +
+        "agent, timeout, run_usd, delete_session}",
+      handler: async ({ params, body }) => {
+        const res = jobs.set(params.name, await body())
+        return json({ job: res.job }, res.status)
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/v1/jobs/:name",
+      access: ["admin"],
+      summary: "delete a job (its runs' history stays)",
+      handler: ({ params }) => jobs.remove(params.name),
+    },
+    {
+      method: "POST",
+      path: "/v1/jobs/:name/run",
+      access: ["admin", "session"],
+      summary:
+        "start a run now {text: added to the prompt}; refused while one runs",
+      handler: async ({ caller, params, body }) => {
+        const b = (await body()) ?? {}
+        onlyFields(b, ["text"])
+        const by = actor(caller)
+        return json(
+          {
+            run: jobs.start(
+              params.name,
+              by === "owner" ? "owner" : "agent",
+              by,
+              b.text,
+            ),
+          },
+          201,
+        )
+      },
+    },
+    {
+      method: "GET",
+      path: "/v1/runs",
+      access: ["admin"],
+      summary: "runs, newest first (?job=)",
+      handler: ({ url }) => ({ runs: jobs.runs(url.searchParams.get("job")) }),
+    },
+    {
+      method: "DELETE",
+      path: "/v1/runs/:id/session",
+      access: ["admin"],
+      summary: "delete a failed run's kept session",
+      handler: ({ params }) => jobs.deleteSession(String(params.id)),
+    },
+    {
+      method: "POST",
+      path: "/v1/me/finish",
+      access: ["session"],
+      summary: "a run ends with its result {result}",
+      handler: async ({ caller, body }) =>
+        jobs.finish(me(caller), await body()),
     },
     {
       method: "DELETE",
@@ -687,25 +956,127 @@ export async function startServer(
       path: "/v1/inbox",
       access: ["admin"],
       summary: "the owner's open inbox items (?all=1 for closed ones too)",
-      handler: ({ url }) => ({
-        items: inbox.list(url.searchParams.get("all") === "1"),
+      handler: ({ url }) => {
+        const all = url.searchParams.get("all") === "1"
+        // messages, alerts and asks in one list, oldest first
+        const items: any[] = [
+          ...inbox.list(all),
+          ...(all ? asks.all() : asks.open()),
+        ]
+        return {
+          items: items.sort((x, y) =>
+            x.created_at < y.created_at
+              ? -1
+              : x.created_at > y.created_at
+                ? 1
+                : 0,
+          ),
+        }
+      },
+    },
+    // questions, permissions and approvals (tier 0d)
+    {
+      method: "POST",
+      path: "/v1/asks/:id/answer",
+      access: ["admin", "session"],
+      summary:
+        "answer a question {text | answers}, a permission {decision: " +
+        "once|always|reject, text} or an approval {decision: " +
+        "approve|reject, option, text}; the owner, or the agent it was " +
+        "sent to (once or reject only); the first answer wins",
+      handler: async ({ caller, params, body }) => ({
+        ask: asks.answer(String(params.id), actor(caller), await body()),
       }),
+    },
+    {
+      method: "POST",
+      path: "/v1/asks/:id/close",
+      access: ["admin"],
+      summary:
+        "close an open ask the owner will not answer (one OpenCode lost); " +
+        "its agent stops waiting",
+      handler: ({ params }) => ({ ask: asks.closeByOwner(String(params.id)) }),
+    },
+    {
+      method: "POST",
+      path: "/v1/asks/:id/escalate",
+      access: ["session"],
+      summary:
+        "the agent an ask was sent to cannot answer it {text: why}: a note " +
+        "on the owner's item",
+      handler: async ({ caller, params, body }) => ({
+        ask: asks.escalate(String(params.id), me(caller), await body()),
+      }),
+    },
+    {
+      method: "POST",
+      path: "/v1/me/approvals",
+      access: ["session"],
+      summary:
+        "ask for an approval {text, options, expires}; routed by " +
+        "approval_mode",
+      handler: async ({ caller, body }) =>
+        json(
+          {
+            approval: asks.approval(me(caller), caller!.session!, await body()),
+          },
+          201,
+        ),
+    },
+    {
+      method: "GET",
+      path: "/v1/me/approvals/:id",
+      access: ["session"],
+      summary:
+        "an approval of the caller (?wait=seconds waits until it closes, " +
+        "up to max_tool_wait)",
+      handler: async ({ caller, params, url, req }) => {
+        const agent = me(caller)
+        const id = String(params.id)
+        const wait = Number(url.searchParams.get("wait") ?? 0)
+        if (!Number.isFinite(wait) || wait < 0)
+          throw new AutocodeError("bad_request", "wait must be seconds")
+        if (!wait) return { approval: asks.ownApproval(agent, id) }
+        const values = resolveSettings(settings.layers(), agent).values
+        const most = parseDuration(String(values.max_tool_wait)) / 1000
+        const seconds = Math.min(wait, most, 240)
+        return {
+          approval: await asks.waitApproval(
+            agent,
+            id,
+            seconds * 1000,
+            req.signal,
+          ),
+        }
+      },
     },
     {
       method: "POST",
       path: "/v1/inbox/:id/answer",
       access: ["admin"],
-      summary: "answer a message to the owner (the reply goes to the agent)",
-      handler: async ({ params, body }) => ({
-        item: inbox.answer(String(params.id), await body()),
-      }),
+      summary:
+        "answer a message to the owner (the reply goes to the agent), or an " +
+        "ask the inbox lists (as POST /v1/asks/{id}/answer)",
+      handler: async ({ params, body }) => {
+        const id = String(params.id)
+        return {
+          item: id.startsWith("ask_")
+            ? asks.answer(id, "owner", await body())
+            : inbox.answer(id, await body()),
+        }
+      },
     },
     {
       method: "POST",
       path: "/v1/inbox/:id/close",
       access: ["admin"],
-      summary: "close an inbox item",
-      handler: ({ params }) => ({ item: inbox.close(String(params.id)) }),
+      summary: "close an inbox item (an ask too: POST /v1/asks/{id}/close)",
+      handler: ({ params }) => {
+        const id = String(params.id)
+        return {
+          item: id.startsWith("ask_") ? asks.closeByOwner(id) : inbox.close(id),
+        }
+      },
     },
     {
       method: "POST",
@@ -763,65 +1134,16 @@ export async function startServer(
       path: "/v1/locks/:name/acquire",
       access: ["admin", "session"],
       summary:
-        "acquire a lock {ttl, max, mode: try|queue|wait, seconds}; the first " +
-        "acquire creates it with max (default 1)",
-      handler: async ({ caller, params, body, req }) => {
+        "acquire a lock {ttl, max, mode: try|queue}; the first acquire " +
+        "creates it with max (default 1)",
+      handler: async ({ caller, params, body }) => {
         const b = (await body()) ?? {}
-        const agent = lockAgent(caller, b)
-        const mode = b.mode ?? "queue"
-        let seconds = 0
-        let maxWait = 0
-        if (mode === "wait") {
-          seconds = Number(b.seconds ?? 0)
-          if (!Number.isFinite(seconds) || seconds <= 0)
-            throw new AutocodeError(
-              "bad_request",
-              "a wait needs seconds, more than 0",
-            )
-          // the most a wait may take in all (max_tool_wait), and this one
-          const values = resolveSettings(settings.layers(), agent).values
-          maxWait = parseDuration(String(values.max_tool_wait)) / 1000
-          seconds = Math.min(seconds, maxWait, MAX_WAIT_SECONDS)
-        }
-        const name = String(params.name)
-        const key = `${agent}\n${name}`
-        // an agent's own wait is told of its grant in the answer
-        const waiter =
-          seconds && caller?.kind !== "admin"
-            ? { signal: req.signal, held: undefined as LockNotice | undefined }
-            : undefined
-        if (waiter) {
-          const set = lockWaits.get(key) ?? new Set()
-          lockWaits.set(key, set.add(waiter))
-        }
-        try {
-          const res = locks.acquire(agent, name, {
-            ttl: b.ttl,
-            max: b.max ?? undefined,
-            mode,
-          })
-          if (res.granted || !seconds) return res
-          const end = await locks.wait(agent, name, seconds * 1000, req.signal)
-          return {
-            granted: end.held,
-            ...(end.held
-              ? { expires: end.expires }
-              : end.position
-                ? { position: end.position }
-                : {}),
-            waited: seconds,
-            max_wait: maxWait,
-            lock: locks.get(name) ?? res.lock,
-          }
-        } finally {
-          if (waiter) {
-            const set = lockWaits.get(key)
-            set?.delete(waiter)
-            if (!set?.size) lockWaits.delete(key)
-            // granted, but the caller left before the answer: a notice
-            if (waiter.held && req.signal.aborted) tellLock(waiter.held)
-          }
-        }
+        onlyFields(b, ["agent", "ttl", "max", "mode"])
+        return locks.acquire(lockAgent(caller, b), String(params.name), {
+          ttl: b.ttl,
+          max: b.max ?? undefined,
+          mode: b.mode ?? "queue",
+        })
       },
     },
     {
@@ -945,6 +1267,15 @@ export async function startServer(
     messages.trim(days)
     delivery.trim(days)
     inbox.trim(days)
+    asks.trim(days)
+    costs.trim(days)
+    jobs.trim(days)
+    // agents past expire_after since their last turn (tier 0e)
+    for (const agent of costs.expired())
+      try {
+        agents.unregister(agent, "expired")
+        history.record("agent.expired", { agent })
+      } catch {}
   }
   maintenance()
   const timer =
@@ -954,8 +1285,12 @@ export async function startServer(
   const tick = () => {
     try {
       locks.tick()
+      asks.tick()
+      asks.checkAnswers(answerAck, answerAlert)
+      costs.tick()
+      jobs.tick()
     } catch (err) {
-      log(`locks: ${(err as Error).message}`)
+      log(`locks, asks and caps: ${(err as Error).message}`)
     }
     try {
       delivery.tick()
@@ -978,6 +1313,10 @@ export async function startServer(
     maintenance,
     tick: () => {
       locks.tick()
+      asks.tick()
+      asks.checkAnswers(answerAck, answerAlert)
+      costs.tick()
+      jobs.tick()
       delivery.tick()
     },
     enqueue: (host, type, payload) => hosts.enqueue(host, type, payload),
@@ -991,7 +1330,7 @@ export async function startServer(
       if (rebind) clearInterval(rebind)
       hosts.close()
       messages.close()
-      locks.close()
+      asks.close()
       await Promise.all(servers.map((s) => s.stop(true)))
       db.close()
     },

@@ -129,6 +129,20 @@ describe("parseTrigger", () => {
       expect(() => parseTrigger(bad, opts), bad).toThrow(/trigger/)
   })
 
+  // The review of 0b2 (2026-11-08): a duration past ten years, or one that
+  // is not a finite number, would break the wake's times (Invalid Date).
+  test("refuses durations too long or not finite", () => {
+    for (const bad of [
+      "every 20000000w",
+      "in 20000000w",
+      "idle 20000000w",
+      `idle ${"9".repeat(400)}s repeat`,
+      "every 521w2d",
+    ])
+      expect(() => parseTrigger(bad, opts), bad).toThrow(/trigger/)
+    expect(parseTrigger("every 520w", opts)).toMatchObject({ kind: "every" })
+  })
+
   test("formats back to text it reads again", () => {
     for (const text of [
       "every 30m",

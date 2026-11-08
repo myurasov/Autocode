@@ -72,6 +72,10 @@ export class Retries {
     private readonly now: () => number,
   ) {}
 
+  // An agent whose failed turns are not retried (or no longer): a run of a
+  // job fails then (tier 0f).
+  onGivenUp: (agent: string, reason: string) => void = () => {}
+
   private row(agent: string): any {
     return this.db.query("SELECT * FROM agents WHERE id = ?").get(agent)
   }
@@ -145,6 +149,9 @@ export class Retries {
       this.history.record("agent.error", { agent, data: { error: type } })
     const failed = { ...row, error: type }
     if (!retryable(type)) {
+      try {
+        this.onGivenUp(agent, `its turn failed (${type}); not retried`)
+      } catch {}
       // one alert as the agent comes to an error that is not retried
       if (first || retryable(row.error))
         this.inbox.open("alert", {
@@ -158,6 +165,12 @@ export class Retries {
       return
     }
     if (this.plan(agent, failed)) return
+    try {
+      this.onGivenUp(
+        agent,
+        `its turns still fail after ${row.retries} retries (${type})`,
+      )
+    } catch {}
     this.history.record("retry.exhausted", {
       agent,
       data: { error: type, retries: row.retries },

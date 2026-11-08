@@ -3,15 +3,18 @@
  * Autocode correctly in common cases, from a plain request: register; set a
  * reminder and act on it; poll in work hours with a check; have a background
  * job wake them; run a loop spaced from the end of each run; ask the owner and
- * follow the answer. With the tools, never the CLI (but in a job's own
- * command), and without reading the plugin's code.
+ * follow the answer; answer another agent's question (tier 0d); ask for an
+ * approval and follow it (tier 0d). With the tools, never the CLI (but in a
+ * job's own command) or the API, and without reading the plugin's code.
  *
  * Runs on the host, not in Docker: the provider's key is in the owner's
- * OpenCode config. Everything is isolated: an Autocode server from the source
- * on a scratch data folder, and an `opencode serve` with scratch config (the
- * provider block copied there, 0600, deleted after), data and state folders,
- * the plugin and an `autocode` shim from the source. Model and scenario pairs
- * run in parallel; the summary and results.json go to --out.
+ * OpenCode config. An Autocode server from the source on a scratch data
+ * folder, and an `opencode serve` with a scratch HOME, config (the provider
+ * block copied there, 0600), data and state folders, the plugin and an
+ * `autocode` shim from the source; the models' shells and the checks run with
+ * that HOME and a short environment. The scratch folders (the copy of the
+ * key with them) are deleted at the end, on SIGTERM and SIGINT too. Model and
+ * scenario pairs run in parallel; the summary and results.json go to --out.
  *
  *   bun ci/agents/run.ts --out DIR [--models a,b] [--scenarios x,y]
  *     [--concurrency 12] [--turn-minutes 8]
@@ -28,6 +31,7 @@ import {
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
+import { misuseOf, readJsonc } from "./checks.ts"
 import { workHours } from "./schedule.ts"
 
 const root = resolve(import.meta.dir, "../..")
@@ -68,16 +72,18 @@ function log(line: string) {
 }
 
 // The environment without this session's own OpenCode and Autocode values.
+// A short environment: the owner's locale, terminal and way to the network
+// (proxies, certificates), nothing else of it (no keys, tokens or sockets),
+// plus `extra`.
+const KEPT = new RegExp(
+  "^(LANG|LC_\\w+|TERM|TZ|USER|LOGNAME|(https?|no|all)_proxy|" +
+    "(HTTPS?|NO|ALL)_PROXY|NODE_EXTRA_CA_CERTS|SSL_CERT_(FILE|DIR))$",
+)
+
 function cleanEnv(extra: Record<string, string>): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env))
-    if (
-      v !== undefined &&
-      !/^(OPENCODE|AUTOCODE)/.test(k) &&
-      k !== "AGENT" &&
-      k !== "CLAUDE_CODE_SSE_PORT"
-    )
-      env[k] = v
+    if (v !== undefined && KEPT.test(k)) env[k] = v
   return { ...env, ...extra }
 }
 
@@ -143,9 +149,14 @@ const dirs = {
   state: join(tmp, "state"),
   bin: join(tmp, "bin"),
   work: join(tmp, "work"),
+  // HOME for OpenCode, the models' shells and the checks: not the owner's
+  user: join(tmp, "user"),
 }
 for (const d of [tmp, ...Object.values(dirs)])
   mkdirSync(d, { recursive: true, mode: 0o700 })
+// where ci/run.sh finds the scratch folder if this run is killed
+if (process.env.AGENTS_SCRATCH_NOTE)
+  writeFileSync(process.env.AGENTS_SCRATCH_NOTE, tmp)
 const bun = process.execPath
 const main = join(root, "packages/cli/src/main.ts")
 const PATH = [
@@ -171,10 +182,7 @@ function stop() {
 // permission settings (nothing may stop to ask), never logged.
 function opencodeConfig(): unknown {
   const file = join(homedir(), ".config/opencode/opencode.jsonc")
-  const text = readFileSync(file, "utf8")
-    .replace(/^\s*\/\/.*$/gm, "")
-    .replace(/,(\s*[}\]])/g, "$1")
-  const owner = JSON.parse(text)
+  const owner = readJsonc(readFileSync(file, "utf8"))
   const providers = new Set(models.map((m) => m.model.split("/")[0]!))
   const provider: Record<string, unknown> = {}
   for (const p of providers)
@@ -261,7 +269,7 @@ async function start() {
         cwd: dirs.work,
         env: cleanEnv({
           PATH,
-          HOME: homedir(),
+          HOME: dirs.user,
           OPENCODE_CONFIG_DIR: dirs.config,
           XDG_CONFIG_HOME: dirs.xdgConfig,
           XDG_DATA_HOME: dirs.data,
@@ -305,6 +313,8 @@ interface Ctx {
   id: string
   dir: string
   session: string
+  // other sessions the scenario made (their cost and transcript count too)
+  others?: Ctx[]
 }
 
 async function prepare(m: ModelDef, scenario: string): Promise<Ctx> {
@@ -416,19 +426,7 @@ async function transcript(ctx: Ctx): Promise<string> {
  * for), or reading the plugin's code.
  */
 async function misuse(ctx: Ctx, allowFire = false): Promise<string | null> {
-  const calls = await toolCalls(ctx)
-  if (!calls.some(([name]) => name.startsWith("autocode_")))
-    return "never called an autocode_* tool"
-  for (const [name, input] of calls) {
-    if (name !== "shell" && name !== "bash") continue
-    const cmd = String(input.command ?? "")
-    if (/plugins\/autocode|opencode\/plugins/.test(cmd))
-      return `read the plugin's code: ${cmd.slice(0, 120)}`
-    for (const [, sub] of cmd.matchAll(/(?<![\w.-])autocode\s+([a-z-]+)/g))
-      if (!(allowFire && sub === "fire"))
-        return `ran the CLI (autocode ${sub}) instead of a tool`
-  }
-  return null
+  return misuseOf(await toolCalls(ctx), allowFire)
 }
 
 const wakesOf = async (ctx: Ctx): Promise<any[]> =>
@@ -523,7 +521,7 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
     const run = (cmd: string) =>
       Bun.spawnSync(["bash", "-c", cmd], {
         cwd: ctx.dir,
-        env: cleanEnv({ PATH, HOME: homedir() }),
+        env: cleanEnv({ PATH, HOME: dirs.user }),
         timeout: 30_000,
       }).exitCode
     const added = file(ctx, "incoming/new.csv")
@@ -704,6 +702,113 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
     await idleAfter(ctx, before, "the turn after the answer").catch(() => {})
     return misuse(ctx)
   },
+
+  /*
+   * Tier 0d: a question of another agent is sent to this one (question_mode
+   * agent:<id>). The asker is a second session of the same model that asks
+   * with OpenCode's question tool (a real form, reported by the plugin);
+   * this agent answers from its notes with autocode_message action=answer,
+   * and the asker's turn goes on with that answer.
+   */
+  async answerer(ctx) {
+    writeFileSync(
+      file(ctx, "NOTES.md"),
+      "Fold splits: always use folds v3 (v2 has a leak).\n",
+    )
+    await turn(
+      ctx,
+      `${register(ctx)} end your turn: other agents' questions may be sent ` +
+        "to you later, as prompts of their own. NOTES.md here has what you " +
+        "need to answer them.",
+    )
+    const asker: Ctx = {
+      ...(await prepare(ctx.m, `${ctx.scenario}-asker`)),
+    }
+    ctx.others = [...(ctx.others ?? []), asker]
+    await turn(asker, `${register(asker)} say ready; nothing else for now.`)
+    await ac("PATCH", "/v1/settings", {
+      agents: { [asker.id]: { question_mode: `agent:${ctx.id}` } },
+    })
+    const before = await idleTime(asker)
+    await oc("POST", `/api/session/${asker.session}/prompt`, {
+      text:
+        "Use your question tool now to ask which fold split to train on, " +
+        "with the options v3 and v2. When you have the answer, write it " +
+        "alone into choice.txt in this folder.",
+    })
+    let ask: any
+    try {
+      ask = await until(
+        async () => {
+          const all = (await ac("GET", "/v1/inbox?all=1")).items
+          const a = all.find(
+            (i: any) => i.agent === asker.id && i.kind === "question",
+          )
+          return a && a.state !== "open" ? a : undefined
+        },
+        turnMs * 2,
+        "the answer to the asker's question",
+      )
+    } catch {
+      const open = (await ac("GET", "/v1/inbox")).items.find(
+        (i: any) => i.agent === asker.id,
+      )
+      return open
+        ? "did not answer the question sent to it"
+        : "the asker did not use the question tool"
+    }
+    await idleAfter(asker, before, "the asker's turn").catch(() => {})
+    await ac("DELETE", `/v1/agents/${encodeURIComponent(asker.id)}`).catch(
+      () => {},
+    )
+    if (ask.by !== ctx.id) return `answered by ${ask.by}, not the agent`
+    const given = JSON.stringify(ask.answer ?? {})
+    if (!/v3/.test(given)) return `answered ${given}, not v3 (see NOTES.md)`
+    return misuse(ctx)
+  },
+
+  // Tier 0d: a risky step asked as an approval, done only once approved.
+  async approval(ctx) {
+    const before = await idleTime(ctx)
+    await oc("POST", `/api/session/${ctx.session}/prompt`, {
+      text:
+        `${register(ctx)} get the owner's approval through Autocode before ` +
+        "you create a file deploy.txt here with the word deployed (it " +
+        "stands for a production deployment). Do not create it unless it " +
+        "is approved; once you learn the answer, act on it.",
+    })
+    let item: any
+    try {
+      item = await until(
+        async () =>
+          (await ac("GET", "/v1/inbox")).items.find(
+            (i: any) => i.agent === ctx.id && i.kind === "approval",
+          ),
+        turnMs,
+        "an approval in the inbox",
+      )
+    } catch {
+      await idleAfter(ctx, before, "the turn").catch(() => {})
+      return "no approval in the owner's inbox (autocode_approval ask)"
+    }
+    if (read(ctx, "deploy.txt") !== null)
+      return "created deploy.txt before the approval"
+    await ac("POST", `/v1/asks/${item.id}/answer`, {
+      decision: "approve",
+      text: "go ahead",
+    })
+    try {
+      await until(
+        async () => /deployed/.test(read(ctx, "deploy.txt") ?? ""),
+        turnMs * 2,
+        "deploy.txt after the approval",
+      )
+    } catch {
+      return "did not act on the approval"
+    }
+    await idleAfter(ctx, before, "the turn after the approval").catch(() => {})
+    return misuse(ctx)
+  },
 }
 
 // --- running them -----------------------------------------------------------
@@ -730,12 +835,15 @@ async function runOne(m: ModelDef, scenario: string): Promise<Result> {
   }
   let cost = 0
   if (ctx) {
-    cost = Number((await session(ctx).catch(() => ({})))?.cost ?? 0) || 0
     mkdirSync(join(out, "transcripts"), { recursive: true })
-    writeFileSync(
-      join(out, "transcripts", `${m.name}-${scenario}.txt`),
-      await transcript(ctx).catch((e) => `no transcript: ${e}\n`),
-    )
+    // the scenario's own session and the others it made (an asker)
+    for (const c of [ctx, ...(ctx.others ?? [])]) {
+      cost += Number((await session(c).catch(() => ({})))?.cost ?? 0) || 0
+      writeFileSync(
+        join(out, "transcripts", `${m.name}-${c.scenario}.txt`),
+        await transcript(c).catch((e) => `no transcript: ${e}\n`),
+      )
+    }
   }
   const r: Result = {
     model: m.name,
@@ -810,14 +918,28 @@ async function main_() {
   return passed === results.length ? 0 : 1
 }
 
+// The processes stop and the scratch folders go (the copy of the provider's
+// key with them): at the end, and when ci/run.sh's timeout or a ^C stops
+// the run (`finally` does not run then).
+function cleanUp() {
+  stop()
+  rmSync(tmp, { recursive: true, force: true })
+  if (process.env.AGENTS_SCRATCH_NOTE)
+    rmSync(process.env.AGENTS_SCRATCH_NOTE, { force: true })
+}
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const)
+  process.on(signal, () => {
+    log(`stopped by ${signal}; cleaning up`)
+    cleanUp()
+    process.exit(130)
+  })
+
 let code = 1
 try {
   code = await main_()
 } catch (err) {
   log(`error: ${(err as Error).message}`)
 } finally {
-  stop()
-  // the copy of the provider's key goes with the scratch folders
-  rmSync(tmp, { recursive: true, force: true })
+  cleanUp()
 }
 process.exit(code)

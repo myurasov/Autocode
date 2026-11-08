@@ -40,6 +40,9 @@ export function parseDuration(input: string | number): number {
   let total = 0
   for (const match of text.matchAll(/(\d+)(ms|s|m|h|d|w)/g))
     total += Number(match[1]) * (UNITS[match[2] ?? "s"] ?? 0)
+  // so many digits that the number is no longer finite
+  if (!Number.isFinite(total))
+    throw new AutocodeError("bad_duration", `bad duration: ${text}`)
   return total
 }
 

@@ -14,7 +14,7 @@ import { AgentLink, HostLink } from './links';
   template: `
     <p class="agent"><app-agent-link id="kaggle:lead" /></p>
     <p class="plain"><app-agent-link id="kaggle:lead" [plain]="true" /></p>
-    <p class="host"><app-host-link id="myspark2:MY-Co-SA:ea8173fe" /></p>
+    <p class="host"><app-host-link id="machine-b:My-Project:ea8173fe" /></p>
   `,
 })
 class Links {}
@@ -50,14 +50,14 @@ describe('AgentLink and HostLink', () => {
     const link = page.querySelector('p.host a')!;
     expect(link.classList).toContain('id-link');
     expect(link.getAttribute('href')).toBe(
-      '/hosts?host=myspark2:MY-Co-SA:ea8173fe',
+      '/hosts?host=machine-b:My-Project:ea8173fe',
     );
     expect(link.querySelector('code')!.textContent).toBe(
-      'myspark2:MY-Co-SA:ea8173fe',
+      'machine-b:My-Project:ea8173fe',
     );
     expect(parts(link.querySelector('code'))).toEqual([
-      'myspark2:',
-      'MY-Co-SA:',
+      'machine-b:',
+      'My-Project:',
       'ea8173fe',
     ]);
   });

@@ -24,9 +24,9 @@ import { HostsPage } from './hosts-page';
 
 const HOSTS: Host[] = [
   {
-    id: 'myspark3:1',
-    machine: 'myspark3',
-    directory: '/home/misha/kaggle',
+    id: 'machine-a:1',
+    machine: 'machine-a',
+    directory: '/home/someone/kaggle',
     online: true,
     instance: 'i1',
     opencode_version: '2.2.0',
@@ -38,9 +38,9 @@ const HOSTS: Host[] = [
     last_seen: '2026-10-28T11:31:00.000Z',
   },
   {
-    id: 'mymbp4:project:6f3d676f',
-    machine: 'mymbp4',
-    directory: '/Users/misha/work',
+    id: 'laptop:project:6f3d676f',
+    machine: 'laptop',
+    directory: '/Users/someone/work',
     online: false,
     instance: 'i2',
     opencode_version: '2.2.0',
@@ -102,13 +102,13 @@ describe('HostsPage', () => {
       ...page.querySelectorAll('table.hosts tbody[data-machine]'),
     ];
     expect(machines.map((m) => m.getAttribute('data-machine'))).toEqual([
-      'mymbp4',
-      'myspark3',
+      'laptop',
+      'machine-a',
     ]);
-    expect(text(machines[0]!.querySelector('tr.group'))).toBe('mymbp4');
+    expect(text(machines[0]!.querySelector('tr.group'))).toBe('laptop');
     expect(machines[0]!.querySelectorAll('tr[data-host]').length).toBe(1);
-    const row = machines[1]!.querySelector('tr[data-host="myspark3:1"]')!;
-    expect(text(row.querySelector('td.folder'))).toBe('/home/misha/kaggle');
+    const row = machines[1]!.querySelector('tr[data-host="machine-a:1"]')!;
+    expect(text(row.querySelector('td.folder'))).toBe('/home/someone/kaggle');
     expect(text(row.querySelector('td.status'))).toBe('online');
     expect(row.querySelector('.dot')!.classList).toContain('ok');
     expect(text(row.querySelector('td.opencode'))).toBe('v2.2.0');
@@ -119,7 +119,7 @@ describe('HostsPage', () => {
     const seen = row.querySelector('td.time')!;
     expect(seen.getAttribute('title')).toBe('2026-10-28T11:31:00.000Z');
     expect(text(seen)).toBe(localTime('2026-10-28T11:31:00.000Z'));
-    const off = page.querySelector('tr[data-host="mymbp4:project:6f3d676f"]')!;
+    const off = page.querySelector('tr[data-host="laptop:project:6f3d676f"]')!;
     expect(off.querySelector('.dot')!.classList).toContain('off');
     expect(text(off.querySelector('td.status'))).toBe('offline');
     // A plugin from before hosts reported their process and shell values.
@@ -176,19 +176,19 @@ describe('HostsPage', () => {
 
   it('breaks IDs only after ":"; machine names stay whole; a folder wraps after "/" (the text stays the same)', async () => {
     const page = await open();
-    const row = page.querySelector('tr[data-host="mymbp4:project:6f3d676f"]')!;
+    const row = page.querySelector('tr[data-host="laptop:project:6f3d676f"]')!;
     expect(row.querySelector('td.id')!.classList).toContain('id-like');
     expect(parts(row.querySelector('td.id code'))).toEqual([
-      'mymbp4:',
+      'laptop:',
       'project:',
       '6f3d676f',
     ]);
     const machine = page.querySelector('table.hosts tr.group th')!;
     expect(machine.classList).toContain('id-like');
-    expect(parts(machine)).toEqual(['mymbp4']);
+    expect(parts(machine)).toEqual(['laptop']);
     expect(row.querySelector('td.folder')!.classList).not.toContain('id-like');
     expect(row.querySelector('td.folder code')!.innerHTML).toBe(
-      '/<wbr>Users/<wbr>misha/<wbr>work',
+      '/<wbr>Users/<wbr>someone/<wbr>work',
     );
   });
 
@@ -241,9 +241,9 @@ describe('HostsPage', () => {
     }
 
     it('is highlighted and scrolled into view, centred', async () => {
-      const page = await arrive('/?host=mymbp4:project:6f3d676f');
+      const page = await arrive('/?host=laptop:project:6f3d676f');
       const row = page.querySelector(
-        'tr[data-host="mymbp4:project:6f3d676f"]',
+        'tr[data-host="laptop:project:6f3d676f"]',
       )!;
       expect(row.classList).toContain('highlight');
       expect(page.querySelectorAll('tr.highlight').length).toBe(1);

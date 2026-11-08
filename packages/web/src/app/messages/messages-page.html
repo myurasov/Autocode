@@ -70,7 +70,6 @@
       <th>To</th>
       <th>Subject</th>
       <th>Text</th>
-      <th>Kind</th>
       <th>Size</th>
       <th>State</th>
     </tr>
@@ -100,9 +99,7 @@
           the next folds it.
         -->
         <td class="text" [class.folds]="isLong(m)" (click)="cellClick(m)">
-          @if (m.kind !== 'text') {
-            <span class="muted">{{ m.mime ?? 'binary' }} file</span>
-          } @else if (isLong(m)) {
+          @if (isLong(m)) {
             <span
               class="more"
               role="button"
@@ -119,13 +116,12 @@
             <span class="whole">{{ m.preview ?? '' }}</span>
           }
         </td>
-        <td class="kind">{{ kindText(m) }}</td>
         <td class="num size">{{ sizeText(m) }}</td>
         <td class="state">{{ m.state }}</td>
       </tr>
     } @empty {
       <tr>
-        <td class="muted" colspan="9">
+        <td class="muted" colspan="8">
           {{ loaded() ? 'No messages yet.' : 'Loading...' }}
         </td>
       </tr>

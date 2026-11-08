@@ -10,10 +10,26 @@ import { connect } from "./connect.ts"
 // Owner commands (and the agent commands scripts use), each a thin wrapper over
 // the API. --json prints the API's own data; otherwise a plain table.
 
-function local(iso: string | undefined): string {
+// A time to the minute in this machine's zone, with the zone's name (the
+// review of 0b2: a time without its zone is ambiguous).
+export function local(iso: string | null | undefined): string {
   if (!iso) return ""
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("sv-SE")
+  if (Number.isNaN(d.getTime())) return iso
+  const parts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "short",
+  }).formatToParts(d)
+  const p = (t: string) => parts.find((x) => x.type === t)?.value ?? ""
+  return (
+    `${p("year")}-${p("month")}-${p("day")} ${p("hour")}:${p("minute")} ` +
+    p("timeZoneName")
+  )
 }
 
 export function table(rows: string[][], header: string[]): string {

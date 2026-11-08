@@ -15,6 +15,7 @@ import {
   SETTINGS,
   type SettingsLayers,
   type SettingValue,
+  settingDef,
 } from "@autocode/shared"
 
 /*
@@ -25,19 +26,34 @@ import {
 export class SettingsStore {
   constructor(private readonly db: Database) {}
 
+  /*
+   * The stored layers. A setting no longer known (one the simplifications
+   * removed, like total_usd) is left out, so it never blocks a change.
+   */
   layers(): SettingsLayers {
     const out: SettingsLayers = {
       server: record(),
       rules: [],
       agents: record(),
     }
+    const known = (values: Record<string, unknown>) => {
+      const kept = record<SettingValue>()
+      for (const [k, v] of Object.entries(values ?? {}))
+        if (settingDef(k)) kept[k] = v as SettingValue
+      return kept
+    }
     for (const row of this.db
       .query("SELECT scope, key, value FROM settings")
       .all() as any[]) {
       const value = JSON.parse(row.value)
-      if (row.scope === "server") out.server[row.key] = value
-      else if (row.scope === "rules") out.rules = value
-      else if (row.scope === "agent") out.agents[row.key] = value
+      if (row.scope === "server") {
+        if (settingDef(row.key)) out.server[row.key] = value
+      } else if (row.scope === "rules")
+        out.rules = (Array.isArray(value) ? value : []).map((r: any) => ({
+          ...r,
+          settings: known(r?.settings),
+        }))
+      else if (row.scope === "agent") out.agents[row.key] = known(value)
     }
     return out
   }

@@ -88,6 +88,26 @@ describe("spike check 11: the agent guide", () => {
     expect(systemOf(a)).toBe(systemOf(b))
   })
 
+  // The spec (Agent Tools): compaction calls get no line (the review of 0b2,
+  // 2026-11-08: nothing checked it).
+  test("a registered session's compaction call carries no line", async () => {
+    const s = await oc.createSession({})
+    const id = `guide:${run}:compacted`
+    expect(
+      await callTool(oc, s.id, "autocode_me", { action: "register", id }),
+    ).toContain(`Registered as ${id}`)
+    await oc.run(s.id, "a turn before the compaction")
+    await oc.api("POST", `/api/session/${s.id}/compact`, {})
+    const compaction = await until(
+      async () =>
+        (await fake.requests()).find(
+          (r) => r.session === s.id && r.kind === "compaction",
+        ),
+      { timeoutMs: 60_000, intervalMs: 500, what: "the compaction's request" },
+    )
+    expect(systemOf(compaction)).not.toMatch(LINE)
+  })
+
   test("a Subagent of a registered session gets the same line", async () => {
     const s = await oc.createSession({})
     const id = `guide:${run}:parent`

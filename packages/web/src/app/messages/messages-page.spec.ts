@@ -2,11 +2,12 @@
  * Unit tests of the Messages page against a mocked server: every message,
  * newest first, with its ID, time, sender and recipient (an agent's a link
  * to its row on the Agents page; the owner and autocode are words), subject,
- * text, kind, size and state; a long text's first 200 characters, the whole
- * text on a click anywhere in its cell (read once) and back on the next; the
- * Send a Message form, collapsed until opened, that sends as the owner to one
- * ID, a pattern or a list (the recipients on success, the server's message on
- * failure); "Updated" in the footer; and the 10 s refresh (one at a time).
+ * text (every message is text), size and state; a long text's first 200
+ * characters, the whole text on a click anywhere in its cell (read once) and
+ * back on the next; the Send a Message form, collapsed until opened, that
+ * sends as the owner to one ID, a pattern or a list (the recipients on
+ * success, the server's message on failure); "Updated" in the footer; and the
+ * 10 s refresh (one at a time).
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -35,8 +36,6 @@ const MESSAGES: Message[] = [
     to: 'kaggle:lead',
     subject: '',
     reply_to: 'msg_1',
-    kind: 'text',
-    mime: null,
     size: 12,
     preview: 'Status, now?',
     state: 'queued',
@@ -51,9 +50,8 @@ const MESSAGES: Message[] = [
     to: 'owner',
     subject: 'Plan',
     reply_to: null,
-    kind: 'binary',
-    mime: 'image/png',
-    size: 20480,
+    size: 17,
+    preview: 'Here is the plan.',
     state: 'read',
     created_at: '2026-10-28T10:00:00.000Z',
     delivered_at: '2026-10-28T10:00:01.000Z',
@@ -61,12 +59,14 @@ const MESSAGES: Message[] = [
   },
 ];
 
-// A long text message: the list has its first 200 characters.
+// A long text message, of more than a thousand characters: the list has its
+// first 200.
 const LONG_TEXT =
   'Line one of a long report that goes on and on about the training run.\n' +
   'Line two: the loss went down, then up again, and the run stopped at ' +
   'epoch 12, after which the validation score fell by two points.\n' +
-  'Line three: I restarted it from the checkpoint of epoch 10.';
+  'Line three: I restarted it from the checkpoint of epoch 10.\n' +
+  `Line four: ${'what each epoch did, one by one. '.repeat(30).trim()}`;
 const LONG: Message = {
   ...MESSAGES[0]!,
   id: 'msg_3',
@@ -107,7 +107,7 @@ describe('MessagesPage', () => {
     return el(fixture);
   }
 
-  it('lists every message, newest first, with ID, time, from, to, subject, kind, size and state', async () => {
+  it('lists every message, newest first, with ID, time, from, to, subject, text, size and state; no kind, as every message is text', async () => {
     const page = await open();
     // When the list last loaded: in the footer, the page's last item.
     expect(page.querySelector('.toolbar app-updated')).toBeNull();
@@ -117,17 +117,7 @@ describe('MessagesPage', () => {
       [...page.querySelectorAll('table.messages thead th')].map((th) =>
         text(th),
       ),
-    ).toEqual([
-      'ID',
-      'Time',
-      'From',
-      'To',
-      'Subject',
-      'Text',
-      'Kind',
-      'Size',
-      'State',
-    ]);
+    ).toEqual(['ID', 'Time', 'From', 'To', 'Subject', 'Text', 'Size', 'State']);
     const rows = [...page.querySelectorAll('table.messages tr[data-message]')];
     expect(rows.map((r) => r.getAttribute('data-message'))).toEqual([
       'msg_2',
@@ -142,7 +132,6 @@ describe('MessagesPage', () => {
       'kaggle:lead',
       '',
       'Status, now?',
-      'text',
       '12',
       'queued',
     ]);
@@ -152,11 +141,11 @@ describe('MessagesPage', () => {
       'kaggle:lead',
       'owner',
       'Plan',
-      'image/png file',
-      'image/png',
-      '20,480',
+      'Here is the plan.',
+      '17',
       'read',
     ]);
+    expect(page.querySelector('table.messages td.kind')).toBeNull();
     // Agent IDs are data (code that wraps after ":") that links to the
     // agent's row on the Agents page; the owner is a word.
     expect(rows[0]!.querySelector('td.sender code')).toBeNull();
@@ -173,7 +162,7 @@ describe('MessagesPage', () => {
       expect(rows[0]!.querySelector(`td.${c}`)!.classList, c).toContain(
         'id-like',
       );
-    for (const c of ['time', 'subject', 'text', 'kind', 'state'])
+    for (const c of ['time', 'subject', 'text', 'state'])
       expect(rows[0]!.querySelector(`td.${c}`)!.classList, c).not.toContain(
         'id-like',
       );
@@ -255,14 +244,21 @@ describe('MessagesPage', () => {
     expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
   });
 
-  it('a short text shows whole and a file says what it is; neither opens, nor does the row', async () => {
+  it('a short text shows whole and does not open, nor does the row', async () => {
     const page = await open([LONG, ...MESSAGES]);
     expect(toggle(page, 'msg_2')).toBeNull();
     expect(text(cell(page, 'msg_2'))).toBe('Status, now?');
     expect(cell(page, 'msg_2').classList).not.toContain('folds');
     expect(toggle(page, 'msg_1')).toBeNull();
-    const file = cell(page, 'msg_1').querySelector('.muted');
-    expect(text(file)).toBe('image/png file');
+    expect(text(cell(page, 'msg_1'))).toBe('Here is the plan.');
+    expect(cell(page, 'msg_1').querySelector('.muted')).toBeNull();
+    // A long one's size, as people write it.
+    expect(
+      text(
+        page.querySelector('table.messages tr[data-message="msg_3"] td.size'),
+      ),
+    ).toBe(LONG_TEXT.length.toLocaleString('en-US'));
+    expect(LONG_TEXT.length).toBeGreaterThan(1000);
     // The row itself opens nothing: no detail row, no focus, no state.
     const row = page.querySelector(
       'table.messages tr[data-message="msg_2"]',
@@ -337,6 +333,8 @@ describe('MessagesPage', () => {
     title.click();
     await settle(fixture);
     expect(form.open).toBe(true);
+    // Text only: no file to attach.
+    expect(form.querySelector('input[type="file"]')).toBeNull();
     const send = () => button(form, 'Send')!;
     expect(send().disabled).toBe(true);
     type(page.querySelector('#send-to'), 'team:*');

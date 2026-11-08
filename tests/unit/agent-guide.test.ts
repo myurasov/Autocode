@@ -17,6 +17,7 @@ import {
   ME_TOOL,
   MESSAGE_TOOL,
   runMe,
+  runMessage,
   runWake,
   TOOLS,
   WAKE_TOOL,
@@ -56,7 +57,6 @@ const wake = (over: Record<string, unknown>) => ({
   text: "Go.",
   trigger: "every 30m",
   check: null,
-  end: null,
   next: null,
   due: null,
   set_by: "team:a",
@@ -82,10 +82,14 @@ function server(answers: Record<string, unknown>) {
 describe("the tools' descriptions", () => {
   test("say to use the tools, name every action, and every trigger", () => {
     expect(ME_TOOL.description).toContain("not the autocode CLI")
+    // as a word: "set" in "settings" or "run" in "running" is not it (the
+    // review of 0b2)
     for (const tool of TOOLS) {
       const actions = (tool.input.properties.action as any).enum as string[]
       for (const action of actions)
-        expect(tool.description, `${tool.name} ${action}`).toContain(action)
+        expect(tool.description, `${tool.name} ${action}`).toMatch(
+          new RegExp(`\\b${action}\\b`),
+        )
     }
     for (const trigger of [
       "every 30m",
@@ -113,8 +117,11 @@ describe("the tools' descriptions", () => {
           expect((prop as any).description, `${tool.name}.${name}`).toBeTruthy()
     const trigger = (WAKE_TOOL.input.properties as any).trigger.description
     expect(trigger).toContain("in 45m")
-    const end = (WAKE_TOOL.input.properties as any).end.description
-    expect(end).toContain("2026-11-30T17:00:00-08:00")
+    // the owner, 2026-11-07: no end date, no files
+    expect(WAKE_TOOL.input.properties).not.toHaveProperty("end")
+    expect(WAKE_TOOL.description).not.toContain("check, end")
+    expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("file")
+    expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("path")
   })
 })
 
@@ -275,7 +282,6 @@ describe("autocode_wake", () => {
           next: "2026-10-28T12:30:00.000Z",
           due: "2026-10-28T12:30:00.000Z",
           check: "./has-work.sh",
-          end: "2026-10-28T20:00:00.000Z",
         }),
       },
     })
@@ -287,16 +293,14 @@ describe("autocode_wake", () => {
           trigger: "every 30m",
           text: "Go.",
           check: "./has-work.sh",
-          end: "2026-10-28T20:00:00Z",
         },
         call,
       ),
     ).toBe(
       'Wake "tick" set: every 30m. Next run 2026-10-28 05:30 PDT (in 30m). ' +
         "Before each run its check runs in your folder: exit 0 wakes you " +
-        "with its output, exit 1 skips that run. It is removed at " +
-        "2026-10-28 13:00 PDT. Delivered only while your session is idle, " +
-        "at most once per 1m.",
+        "with its output, exit 1 skips that run. Delivered only while your " +
+        "session is idle, at most once per 1m.",
     )
   })
 
@@ -331,6 +335,9 @@ describe("autocode_wake", () => {
     expect(once).toContain(
       "It runs once, at 2026-10-28 05:45 PDT (in 45m), then it is removed.",
     )
+    // the review of 0b2: its trigger in the server's zone, not UTC
+    expect(once).toStartWith('Wake "w" set: at 2026-10-28 05:45 PDT.')
+    expect(once).not.toContain("T12:45:00.000Z")
     const fire = await runWake(
       { action: "set", name: "w", trigger: "fire-only", text: "x" },
       answers({ trigger: "fire-only" }).call,
@@ -399,7 +406,6 @@ describe("autocode_wake", () => {
         'Wake "tick", set by you at 2026-10-28 05:00 PDT.',
         "Trigger: every 30m; next 2026-10-28 05:30 PDT (in 30m).",
         "Check: none.",
-        "Ends: never.",
         "Last ran: never.",
         "Text:",
         "Line one.",
@@ -423,24 +429,31 @@ describe("the guide", () => {
     expect(guide).toContain("Never read the plugin's code")
   })
 
+  // In the guide's own words, outside its Tools list (which holds the
+  // descriptions word for word): each action as itself (`fire`, or
+  // action=fire), not inside another word.
   test("names every action of every tool", () => {
+    const own = flat(guideText(FACTS).replace(/## Tools\n[\s\S]*?\n## /, "## "))
     for (const tool of TOOLS)
       for (const action of (tool.input.properties.action as any).enum)
-        expect(guide, `${tool.name} ${action}`).toContain(action)
+        expect(own, `${tool.name} ${action}`).toMatch(
+          new RegExp(
+            `\`${action}\`|action=${action}\\b|${tool.name} ${action}\\b`,
+          ),
+        )
   })
 
-  // The questions the co-sa update-loop agent could not answer (2026-11-02).
-  test("answers how idle wakes count, repeat after a skip, merging, end, and a check's environment", () => {
+  // The questions an update-loop agent could not answer (2026-11-02).
+  test("answers how idle wakes count, repeat after a skip, merging, and a check's environment", () => {
     for (const answer of [
       // when an idle wake falls due, and what resets it
       "any turn: yours, the owner's or an injected one",
       "never from before the wake was set",
       // repeat, and a skipped check
       "also when its check skipped that run",
-      // merging
-      "Wakes with different names and different texts are never merged",
-      // end
-      "2026-11-30T17:00:00-08:00",
+      // merging, by name only (the owner, 2026-11-07)
+      "runs of the same wake are merged",
+      "Different wakes are never merged",
       // a check's environment
       "AUTOCODE_TOKEN",
       // a wake that falls due during a turn
@@ -458,9 +471,38 @@ describe("the guide", () => {
       // why a wake did not come: the error state too
       "you are in the error state (`autocode_me status`)",
       // a message read with the tool is not announced again (2026-11-05)
-      "one you already read with `read` is left out",
+      "one you already read with `read` meanwhile is left out",
     ])
       expect(guide).toContain(answer)
+    // the review of 0b2: only a read message is left out, not every one
+    // that waited
+    expect(guide).not.toContain("waits to be announced while a turn runs, and")
+  })
+
+  // The owner, 2026-11-07: no files, no end dates, no lock waits, and the
+  // shell's CLI is me, fire and send.
+  test("says nothing of what was taken out", () => {
+    for (const gone of [
+      "file from",
+      "base64",
+      "path=",
+      "--file",
+      "`end`",
+      "[--end",
+      "the same name or the same text",
+      "mode=wait",
+      "autocode wakes",
+      "autocode wake set",
+      "autocode messages",
+      "autocode locks",
+    ])
+      expect(guide, gone).not.toContain(gone)
+    for (const kept of [
+      "`autocode me`",
+      "`autocode fire me NAME [--text TEXT]`",
+      "`autocode send TO TEXT...`",
+    ])
+      expect(guide, kept).toContain(kept)
   })
 
   test("help topics are the guide's parts", () => {
@@ -482,4 +524,73 @@ test("the line for registered sessions points to the tools and the guide", () =>
       "action=help` or the `autocode` skill explains exactly how wakes " +
       "and messages work.",
   )
+})
+
+// The adversarial review of 0b2 (2026-11-08).
+describe("review of 0b2: the tools' texts", () => {
+  test("send names the recipients a list skipped", async () => {
+    const { call } = server({
+      "POST /v1/messages": {
+        recipients: ["team:b"],
+        skipped: ["team:typo"],
+        messages: [{ id: "m_1", to: "team:b" }],
+      },
+    })
+    const text = await runMessage(
+      { action: "send", to: "team:b,team:typo", text: "hi" },
+      call,
+    )
+    expect(text).toBe(
+      "Sent to team:b (m_1). Skipped (not registered): team:typo.",
+    )
+  })
+
+  // An agent waiting on an approval, or paused, in its own turn: the
+  // session is busy, so an idle wake has no due time yet and counts from the
+  // end of this turn.
+  test("list and set during a turn while waiting or paused: from the end of this turn", async () => {
+    for (const status of ["waiting", "paused"]) {
+      const me = { ...ME, agent: { ...ME.agent, status, busy: true } }
+      const idle = wake({ name: "nudge", trigger: "idle 30m", due: null })
+      const { call } = server({
+        "GET /v1/me": me,
+        "GET /v1/me/wakes": { wakes: [idle] },
+        "PUT /v1/me/wakes/nudge": { wake: idle },
+      })
+      expect(await runWake({ action: "list" }, call), status).toContain(
+        "due 30m after this turn ends",
+      )
+      expect(
+        await runWake(
+          { action: "set", name: "nudge", trigger: "idle 30m", text: "Go." },
+          call,
+        ),
+        status,
+      ).toContain("(counted from the end of this turn)")
+    }
+  })
+
+  test("set says the wake is set when the status call after it fails", async () => {
+    const answers: Record<string, unknown> = {
+      "PUT /v1/me/wakes/w": { wake: wake({ next: null }) },
+    }
+    const call = async (method: string, path: string) => {
+      const key = `${method} ${path.split("?")[0]}`
+      if (key === "GET /v1/me") throw new Error("server busy")
+      return answers[key]
+    }
+    expect(
+      await runWake(
+        { action: "set", name: "w", trigger: "every 30m", text: "Go." },
+        call,
+      ),
+    ).toStartWith('Wake "w" set: every 30m.')
+  })
+
+  test("the check's time limit is the owner's check_timeout, 60 s by default", () => {
+    const check = (WAKE_TOOL.input as any).properties.check
+      .description as string
+    expect(check).toContain("check_timeout, 60 s by default")
+    expect(check).not.toContain("; 60 s limit")
+  })
 })

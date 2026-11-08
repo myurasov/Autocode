@@ -47,6 +47,10 @@ function clock(text: string): { hour: number; minute: number } | undefined {
   return hour < 24 && minute < 60 ? { hour, minute } : undefined
 }
 
+// The longest duration a trigger takes: ten years (a longer one would put
+// its times past what a date holds).
+const MAX_DURATION = 520 * 7 * 86_400_000
+
 function duration(text: string | undefined, whole: string): number {
   if (!text) throw bad(whole)
   let ms: number
@@ -56,6 +60,8 @@ function duration(text: string | undefined, whole: string): number {
     throw bad(whole, `bad duration ${text}`)
   }
   if (ms < 1000) throw bad(whole, "the duration must be at least 1s")
+  if (ms > MAX_DURATION)
+    throw bad(whole, "the duration must be at most 520w (ten years)")
   return ms
 }
 

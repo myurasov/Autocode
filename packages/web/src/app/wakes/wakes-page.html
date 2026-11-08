@@ -66,30 +66,15 @@
       [value]="form.text()"
       (input)="form.text.set($any($event.target).value)"
     ></textarea>
-    <div class="add-row">
-      <div class="wide">
-        <label for="wake-check">Check</label>
-        <input
-          id="wake-check"
-          type="text"
-          spellcheck="false"
-          placeholder="optional: a command; exit 0 wakes, 1 skips"
-          [value]="form.check()"
-          (input)="form.check.set($any($event.target).value)"
-        />
-      </div>
-      <div>
-        <label for="wake-end">End</label>
-        <input
-          id="wake-end"
-          type="text"
-          spellcheck="false"
-          placeholder="optional: for example 2026-12-31 18:00"
-          [value]="form.end()"
-          (input)="form.end.set($any($event.target).value)"
-        />
-      </div>
-    </div>
+    <label for="wake-check">Check</label>
+    <input
+      id="wake-check"
+      type="text"
+      spellcheck="false"
+      placeholder="optional: a command; exit 0 wakes, 1 skips"
+      [value]="form.check()"
+      (input)="form.check.set($any($event.target).value)"
+    />
     <div class="buttons">
       <button type="button" [disabled]="!canSet()" (click)="setWake()">
         Set Wake
@@ -113,7 +98,6 @@
       <th>Next</th>
       <th>Text</th>
       <th>Check</th>
-      <th>End</th>
       <th>Set By</th>
       <th>Last Set</th>
       <th>Last Fired</th>
@@ -123,7 +107,7 @@
   @for (g of agents(); track g.agent) {
     <tbody [attr.data-agent]="g.agent">
       <tr class="group">
-        <th class="id-like" colspan="10" scope="rowgroup">
+        <th class="id-like" colspan="9" scope="rowgroup">
           <app-agent-link [id]="g.agent" [plain]="true" />
         </th>
       </tr>
@@ -133,6 +117,12 @@
           <td class="trigger">{{ triggerText(w.trigger) }}</td>
           @if (w.next) {
             <td class="time next" [title]="w.next" [appTime]="w.next"></td>
+          } @else if (w.due) {
+            <!-- An idle wake: when it falls due if the session stays idle. -->
+            <td class="time next" [title]="w.due + ', if the session stays idle'"
+              ><span [appTime]="w.due"></span
+              ><span class="muted">{{ ' if idle' }}</span></td
+            >
           } @else {
             <td class="time next muted">—</td>
           }
@@ -180,11 +170,6 @@
               <code class="whole" [appBreaks]="w.check"></code>
             }
           </td>
-          @if (w.end) {
-            <td class="time end" [title]="w.end" [appTime]="w.end"></td>
-          } @else {
-            <td class="time end muted">—</td>
-          }
           <td class="by id-like">
             @if (w.set_by === 'owner') {
               <span appId="owner"></span>
@@ -228,7 +213,7 @@
   } @empty {
     <tbody>
       <tr>
-        <td class="muted" colspan="10">
+        <td class="muted" colspan="9">
           {{ loaded() ? 'No wakes yet.' : 'Loading...' }}
         </td>
       </tr>

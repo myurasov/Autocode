@@ -1,6 +1,7 @@
 /*
  * Restarts: the server restarted on its persistent volume, and an OpenCode
- * machine restarted.
+ * machine restarted, also under a running turn, which is then resumed (tier
+ * 0e).
  */
 import { expect, test } from "bun:test"
 import {
@@ -157,3 +158,42 @@ test("an OpenCode restart keeps the same host and the agent's session", async ()
     await callTool(oc, agent.session, "autocode_me", { action: "status" }),
   ).toContain(`Registered as ${id}`)
 })
+
+// Tier 0e: a turn cut by OpenCode going away is resumed when it is back.
+test("a turn cut by an OpenCode restart is resumed with a resume prompt", async () => {
+  const agent = await agentStatus(id, "idle", 60_000)
+  const fake = new FakeModel(node)
+  // the turn hangs in the model; OpenCode is killed under it
+  await fake.script([{ session: agent.session, hang: true }], true)
+  const oc = new OpenCode(node)
+  await oc.prompt(agent.session, "a long turn")
+  await agentStatus(id, "working", 30_000)
+  expect(
+    (await docker(["restart", "--time=1", containerName(node)])).code,
+  ).toBe(0)
+  await until(() => new OpenCode(node).info().catch(() => undefined), {
+    timeoutMs: 60_000,
+    what: "OpenCode to answer",
+  })
+  await new OpenCode(node).loadLocation()
+  // OpenCode never resumes a cut turn; Autocode's prompt does
+  const resumed = await until(
+    async () =>
+      (await fake.requests()).find(
+        (r: any) =>
+          r.session === agent.session &&
+          JSON.stringify(r.messages).includes("[autocode] resume"),
+      ),
+    { timeoutMs: 120_000, intervalMs: 1000, what: "the resume prompt" },
+  )
+  expect(JSON.stringify(resumed.messages)).toContain(
+    "Your last turn was cut off",
+  )
+  const h = (
+    await admin(
+      "GET",
+      `/v1/history?kind=turn.cut&agent=${encodeURIComponent(id)}`,
+    )
+  ).history
+  expect(h.length).toBeGreaterThan(0)
+}, 300_000)

@@ -1,0 +1,397 @@
+<!--
+  The Jobs page: Refresh (an action's result beside it); the Set a Job form
+  (collapsed until its title is clicked, opened by Edit); the jobs (where they
+  run, model, trigger, next run, destination, last run; Run Now with its text,
+  Edit, Delete); the runs, newest first, of every job or the one chosen (who
+  started each, state, times, cost, result, reason; Delete Session for a
+  failed run's kept session); and when the lists last loaded.
+-->
+
+<div class="toolbar">
+  <button type="button" (click)="refresh()">Refresh</button>
+  <span class="result">
+    @if (failed()) {
+      <span class="errmsg" role="alert">{{ failed() }}</span>
+    } @else if (notice()) {
+      <span class="notice" role="status">{{ notice() }}</span>
+    }
+  </span>
+</div>
+
+@if (error()) {
+  <p class="errmsg" role="alert">{{ error() }}</p>
+}
+
+<details
+  class="panel"
+  [open]="form.open()"
+  (toggle)="form.open.set($any($event.target).open)"
+>
+  <summary><span>Set a Job</span></summary>
+  <div class="panel-body">
+    <div class="add-row">
+      <div>
+        <label for="job-name">Name</label>
+        <input
+          id="job-name"
+          type="text"
+          spellcheck="false"
+          placeholder="for example daily-report"
+          [value]="form.name()"
+          (input)="form.name.set($any($event.target).value)"
+        />
+      </div>
+      <div class="wide">
+        <label for="job-description">Description</label>
+        <input
+          id="job-description"
+          type="text"
+          placeholder="optional: what it does, for agents that look"
+          [value]="form.description()"
+          (input)="form.description.set($any($event.target).value)"
+        />
+      </div>
+    </div>
+    <div class="add-row">
+      <div class="wide">
+        <label for="job-host">Host</label>
+        <select
+          id="job-host"
+          (change)="form.host.set($any($event.target).value)"
+        >
+          <option value="" [selected]="!form.host()">Choose a host</option>
+          @for (h of hostOptions(); track h.id) {
+            <option [value]="h.id" [selected]="h.id === form.host()">
+              {{ h.label }}
+            </option>
+          }
+        </select>
+      </div>
+      <div>
+        <label for="job-model">Model</label>
+        <input
+          id="job-model"
+          type="text"
+          spellcheck="false"
+          placeholder="provider/model"
+          [value]="form.model()"
+          (input)="form.model.set($any($event.target).value)"
+        />
+      </div>
+      <div>
+        <label for="job-variant">Variant</label>
+        <input
+          id="job-variant"
+          type="text"
+          spellcheck="false"
+          placeholder="optional"
+          [value]="form.variant()"
+          (input)="form.variant.set($any($event.target).value)"
+        />
+      </div>
+      <div>
+        <label for="job-agent">Agent</label>
+        <input
+          id="job-agent"
+          type="text"
+          spellcheck="false"
+          placeholder="optional: an OpenCode agent"
+          [value]="form.agent()"
+          (input)="form.agent.set($any($event.target).value)"
+        />
+      </div>
+    </div>
+    <label for="job-prompt">Prompt</label>
+    <textarea
+      id="job-prompt"
+      rows="3"
+      placeholder="what the fresh agent is asked to do"
+      [value]="form.prompt()"
+      (input)="form.prompt.set($any($event.target).value)"
+    ></textarea>
+    <div class="add-row">
+      <div class="wide">
+        <label for="job-trigger">Trigger</label>
+        <input
+          id="job-trigger"
+          type="text"
+          spellcheck="false"
+          [placeholder]="triggerHint"
+          [value]="form.trigger()"
+          (input)="form.trigger.set($any($event.target).value)"
+        />
+      </div>
+      <div>
+        <label for="job-to">To</label>
+        <input
+          id="job-to"
+          type="text"
+          spellcheck="false"
+          placeholder="owner, an agent or a pattern"
+          [value]="form.to()"
+          (input)="form.to.set($any($event.target).value)"
+        />
+      </div>
+      <div>
+        <label for="job-timeout">Time Limit</label>
+        <input
+          id="job-timeout"
+          type="text"
+          spellcheck="false"
+          placeholder="like 1h"
+          [value]="form.timeout()"
+          (input)="form.timeout.set($any($event.target).value)"
+        />
+      </div>
+      <div>
+        <label for="job-run-usd">Run Cap</label>
+        <input
+          id="job-run-usd"
+          type="text"
+          spellcheck="false"
+          placeholder="$ or off"
+          [value]="form.runUsd()"
+          (input)="form.runUsd.set($any($event.target).value)"
+        />
+      </div>
+    </div>
+    <label class="check" for="job-delete">
+      <input
+        id="job-delete"
+        type="checkbox"
+        [checked]="form.deleteSession()"
+        (change)="form.deleteSession.set($any($event.target).checked)"
+      />
+      Delete Session
+    </label>
+    <div class="buttons">
+      <button type="button" [disabled]="!canSet()" (click)="setJob()">
+        Set Job
+      </button>
+      @if (set()) {
+        <span class="notice" role="status">{{ set() }}</span>
+      } @else {
+        <span class="muted"
+          >A job of the same name is replaced; a run's session is deleted
+          after it succeeds unless you untick Delete Session.</span
+        >
+      }
+    </div>
+    @if (setError()) {
+      <p class="errmsg" role="alert">{{ setError() }}</p>
+    }
+  </div>
+</details>
+
+<table class="jobs">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Where</th>
+      <th>Model</th>
+      <th>Trigger</th>
+      <th>Next</th>
+      <th>To</th>
+      <th>Last Run</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (j of jobs(); track j.name) {
+      <tr [attr.data-job]="j.name">
+        <td class="name id-like" [attr.title]="j.description || null">
+          <code [appId]="j.name"></code>
+        </td>
+        <!-- The machine and folder it runs in, and whether it is online. -->
+        <td class="where">
+          <div class="machine">{{ j.machine ?? j.host }}</div>
+          &ngsp;<code [appBreaks]="j.directory"></code>
+          @if (!j.online) {
+            &ngsp;<span class="offline"
+              ><span class="dot off"></span>offline</span
+            >
+          }
+        </td>
+        <td class="model">
+          <code>{{ j.model }}</code>
+          @if (j.variant) {
+            &ngsp;<div class="muted">variant {{ j.variant }}</div>
+          }
+          @if (j.agent) {
+            &ngsp;<div class="muted">agent {{ j.agent }}</div>
+          }
+        </td>
+        <td class="trigger">{{ j.trigger }}</td>
+        @if (j.next) {
+          <td class="next" [title]="j.next"
+            ><span class="when" [appTime]="j.next"></span> ({{
+              left(j.next)
+            }})</td
+          >
+        } @else {
+          <td class="next muted">—</td>
+        }
+        <td class="to id-like">
+          @if (isAgent(j.to)) {
+            <app-agent-link [id]="j.to" />
+          } @else {
+            <code [appId]="j.to"></code>
+          }
+        </td>
+        <!-- Its last run: its state and start, a link to its row below. -->
+        <td class="last">
+          @if (j.last_run; as last) {
+            <a
+              class="run-link"
+              [routerLink]="[]"
+              [queryParams]="{ run: last.id }"
+              (click)="showRun(j)"
+              >{{ stateText(last.state) }}</a
+            >&ngsp;<span class="time" [appTime]="last.started"></span>
+          } @else {
+            <span class="muted">—</span>
+          }
+        </td>
+        <td class="actions">
+          <div class="run-now">
+            <input
+              type="text"
+              aria-label="Text for the run"
+              placeholder="text (optional)"
+              [value]="runText(j)"
+              (input)="setRunText(j, $any($event.target).value)"
+              (keydown.enter)="runNow(j)"
+            />
+            <button type="button" [disabled]="busy()" (click)="runNow(j)">
+              Run Now
+            </button>
+          </div>
+          <div class="row-buttons">
+            <button type="button" [disabled]="busy()" (click)="edit(j)">
+              Edit
+            </button>
+            <button type="button" [disabled]="busy()" (click)="remove(j)">
+              Delete
+            </button>
+          </div>
+        </td>
+      </tr>
+    } @empty {
+      <tr>
+        <td class="muted" colspan="8">
+          @if (!loaded()) {
+            Loading...
+          } @else {
+            No jobs yet. Set a Job above, or use
+            <code>autocode job set</code>.
+          }
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<h2>Runs</h2>
+<div class="toolbar">
+  <label for="runs-job">Job</label>
+  <select id="runs-job" (change)="chooseJob($any($event.target).value)">
+    <option value="" [selected]="!filter()">All jobs</option>
+    @for (j of jobs(); track j.name) {
+      <option [value]="j.name" [selected]="j.name === filter()">
+        {{ j.name }}
+      </option>
+    }
+  </select>
+</div>
+
+<table class="runs">
+  <thead>
+    <tr>
+      <th>Run</th>
+      <th>Started By</th>
+      <th>State</th>
+      <th>Started</th>
+      <th>Ended</th>
+      <th>Cost</th>
+      <th>Result</th>
+      <th>Reason</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (r of runs(); track r.id) {
+      <tr
+        [attr.data-run]="r.id"
+        [class.highlight]="r.id === target()"
+        [attr.aria-current]="r.id === target() ? 'true' : null"
+      >
+        <td class="id id-like" [attr.title]="r.text || null">
+          <code [appId]="r.id"></code>
+        </td>
+        <td class="by id-like">
+          @if (isAgent(r.by)) {
+            <app-agent-link [id]="r.by" />
+          } @else {
+            <span [appId]="r.by"></span>
+          }
+        </td>
+        <td class="state">{{ stateText(r.state) }}</td>
+        <td class="time started" [title]="r.started" [appTime]="r.started"></td>
+        @if (r.ended) {
+          <td class="time ended" [title]="r.ended" [appTime]="r.ended"></td>
+        } @else {
+          <td class="time ended muted">—</td>
+        }
+        <td class="num cost">{{ costText(r.cost) }}</td>
+        <!--
+          A long result: a click anywhere in its cell (or Enter on it) shows
+          it whole, the next folds it.
+        -->
+        <td class="result" [class.folds]="isLong(r)" (click)="cellClick(r)">
+          @if (!r.result) {
+            <span class="muted">—</span>
+          } @else if (isLong(r)) {
+            <span
+              class="more"
+              role="button"
+              tabindex="0"
+              [attr.aria-expanded]="isOpen(r)"
+              (keydown.enter)="toggle(r)"
+              (keydown.space)="$event.preventDefault(); toggle(r)"
+              >{{ shown(r) }}</span
+            >
+          } @else {
+            <span class="whole">{{ r.result }}</span>
+          }
+        </td>
+        <td class="reason">
+          @if (r.reason) {
+            {{ r.reason }}
+          } @else {
+            <span class="muted">—</span>
+          }
+        </td>
+        <td class="actions">
+          @if (r.session_kept) {
+            <button
+              type="button"
+              [disabled]="busy()"
+              (click)="deleteSession(r)"
+              title="The failed run's session, kept for you to look at"
+            >
+              Delete Session
+            </button>
+          }
+        </td>
+      </tr>
+    } @empty {
+      <tr>
+        <td class="muted" colspan="9">
+          {{ loaded() ? 'No runs yet.' : 'Loading...' }}
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<footer class="muted"><app-updated [at]="updatedAt()" /></footer>

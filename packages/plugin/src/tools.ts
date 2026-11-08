@@ -1,8 +1,9 @@
 /*
  * The agent tools: autocode_me (register, unregister, status, discover,
- * help), autocode_wake (set, list, show, cancel, fire), autocode_message
- * (send, list, read, wait) and autocode_lock (acquire, renew, release, list:
- * tier 0c); later tiers add actions and tools. Their
+ * help; compact: tier 0e; jobs, run, finish: tier 0f), autocode_wake (set,
+ * list, show, cancel, fire), autocode_message (send, list, read, wait; text
+ * only; answer, escalate: tier 0d), autocode_lock (acquire, renew, release,
+ * list: tier 0c) and autocode_approval (ask, wait: tier 0d). Their
  * descriptions say enough to use them without the guide (OpenCode sends them
  * with every model call); their results say when things will happen, in the
  * server's zone and from now.
@@ -11,7 +12,19 @@
 import { localTime } from "@autocode/shared"
 
 export interface MeInput {
-  action: "register" | "unregister" | "status" | "discover" | "help"
+  action:
+    | "register"
+    | "unregister"
+    | "status"
+    | "discover"
+    | "help"
+    | "compact"
+    | "jobs"
+    | "run"
+    | "finish"
+  job?: string
+  text?: string
+  result?: string
   id?: string
   description?: string
   pattern?: string
@@ -25,15 +38,38 @@ export const ME_TOOL = {
     "message each other. Use the autocode_* tools, not the autocode CLI " +
     "(that is for scripts). Actions: register (id, description), " +
     "unregister, status (your registration, the server's time and zone, " +
-    "your wakes, unread messages and locks), discover (pattern), help " +
-    "(topic: the exact rules for wakes, checks, delivery, messages, " +
-    "locks, prompts, scripts).",
+    "your wakes, unread messages, locks and open asks), discover " +
+    "(pattern), help (topic: the exact rules for wakes, checks, delivery, " +
+    "messages, locks, asks, costs, jobs, prompts, scripts), compact " +
+    "(compact " +
+    "your session after this turn), jobs (the jobs you can run), run (job, " +
+    "text: start a run; its result comes to you), finish (result: a run of " +
+    "a job ends with it).",
   input: {
     type: "object",
     properties: {
       action: {
         type: "string",
-        enum: ["register", "unregister", "status", "discover", "help"],
+        enum: [
+          "register",
+          "unregister",
+          "status",
+          "discover",
+          "help",
+          "compact",
+          "jobs",
+          "run",
+          "finish",
+        ],
+      },
+      job: { type: "string", description: "run: the job's name" },
+      text: {
+        type: "string",
+        description: "run: added to the job's prompt, marked as yours",
+      },
+      result: {
+        type: "string",
+        description: "finish: your run's result, for whom it goes to",
       },
       id: {
         type: "string",
@@ -47,13 +83,14 @@ export const ME_TOOL = {
       },
       pattern: {
         type: "string",
-        description: "discover: which agents, like kaggle:* (default *)",
+        description: "discover: which agents, like team:* (default *)",
       },
       topic: {
         type: "string",
         description:
           "help: overview, delivery, wakes, checks, recipes, messages, " +
-          "locks, prompts, scripts, trouble, or all (the default)",
+          "locks, asks, costs, jobs, prompts, scripts, trouble, or all (the " +
+          "default)",
       },
     },
     required: ["action"],
@@ -142,6 +179,11 @@ function errorLine(a: any, me: any, c: Clock): string {
 
 function statusLine(a: any, me?: any, c?: Clock): string {
   if (a.status === "error" && a.error && c) return errorLine(a, me, c)
+  if (a.status === "paused" && a.paused === "cap")
+    return (
+      "Status paused by your daily cost cap: nothing is delivered until " +
+      "tomorrow (the server's zone) or until the owner raises the cap."
+    )
   if (a.status === "paused")
     return (
       `Status paused by ${a.paused === "stop-all" ? "Stop All" : "the owner"}` +
@@ -225,6 +267,31 @@ export async function runMe(
             ? `Unread messages: ${me.unread}. See autocode_message list.`
             : "Unread messages: none.",
         )
+      // spend today, the cap and the context (tier 0e)
+      if (me.cost) {
+        const k = me.cost
+        const cap =
+          k.daily_usd === "off"
+            ? "no daily cap"
+            : `your daily cap of $${Number(k.daily_usd).toFixed(2)}`
+        lines.push(
+          `Cost today: $${Number(k.today_usd).toFixed(2)} of ${cap}.` +
+            (k.context
+              ? ` Context: ${Number(k.context).toLocaleString("en-US")}` +
+                (k.context_limit
+                  ? ` of ${Number(k.context_limit).toLocaleString("en-US")}`
+                  : "") +
+                " tokens."
+              : ""),
+        )
+      }
+      // open questions, permissions and approvals (tier 0d)
+      if (me.asks?.length)
+        lines.push(
+          `Waiting on: ${me.asks
+            .map((a: any) => `${a.kind} ${a.id} (${a.title})`)
+            .join("; ")}. Your wakes and messages wait until they close.`,
+        )
       const l = me.locks
       if (l && (l.held.length || l.queued.length)) {
         const until = (iso: string) =>
@@ -253,14 +320,52 @@ export async function runMe(
       if (!res.agents.length) return `No agents match ${pattern}.`
       return res.agents.map(agentLine).join("\n")
     }
+    case "jobs": {
+      const res = await call("GET", "/v1/jobs")
+      if (!res.jobs.length) return "No jobs. The owner defines them."
+      return [
+        "Jobs you can run (autocode_me action=run job=NAME text=...):",
+        ...res.jobs.map(
+          (j: any) => `${j.name}${j.description ? `: ${j.description}` : ""}`,
+        ),
+      ].join("\n")
+    }
+    case "run": {
+      if (!input.job) return "error: run needs the job's name"
+      const res = await call(
+        "POST",
+        `/v1/jobs/${encodeURIComponent(input.job)}/run`,
+        input.text ? { text: input.text } : {},
+      )
+      return (
+        `Started run ${res.run.id}; its result comes to you as a message ` +
+        "from autocode (result of run ...)."
+      )
+    }
+    case "finish": {
+      if (!input.result) return "error: finish needs your result"
+      const res = await call("POST", "/v1/me/finish", {
+        result: input.result,
+      })
+      return (
+        `Finished run ${res.finished}; the result is on its way. Your ` +
+        "session ends now: stop here."
+      )
+    }
+    case "compact":
+      await call("POST", "/v1/me/compact")
+      return (
+        "Your session is compacted after this turn ends (a summary " +
+        "replaces the conversation; keep your state in files)."
+      )
     case "help":
       return deps.guide
         ? deps.guide(input.topic)
         : "error: the guide is not available here"
     default:
       return (
-        "error: action must be register, unregister, status, discover " +
-        "or help"
+        "error: action must be register, unregister, status, discover, " +
+        "help, compact, jobs, run or finish"
       )
   }
 }
@@ -271,7 +376,6 @@ export interface WakeInput {
   text?: string
   trigger?: string
   check?: string
-  end?: string
   agent?: string
 }
 
@@ -281,7 +385,7 @@ export const WAKE_TOOL = {
     "Autocode wakes: a prompt Autocode types into your session later (a " +
     "user message starting with [autocode]), only while the session is " +
     "idle (never into a running turn) and at most once per min_interval. " +
-    "Actions: set (name, trigger, text; optional check, end; the same name " +
+    "Actions: set (name, trigger, text; optional check; the same name " +
     "replaces the wake), list (when each falls due next), show (name), " +
     "cancel (name), fire (agent, name, text: deliver now, skipping the " +
     "check). Triggers: every 30m [from 09:00]; in 45m (once); at 09:00 or " +
@@ -321,14 +425,8 @@ export const WAKE_TOOL = {
         description:
           "set, optional: a shell command run in your folder when the wake " +
           "is due; exit 0 wakes you with its output, exit 1 skips the run " +
-          "(no model call), other exits fail; 60 s limit",
-      },
-      end: {
-        type: "string",
-        description:
-          "set, optional: when the wake is removed: " +
-          "2026-11-30T17:00:00-08:00, or 2026-11-30 17:00 in the server's " +
-          "zone",
+          "(no model call), other exits fail; time limit: the owner's " +
+          "check_timeout, 60 s by default",
       },
       agent: {
         type: "string",
@@ -341,14 +439,12 @@ export const WAKE_TOOL = {
 }
 
 export interface MessageInput {
-  action: "send" | "list" | "read" | "wait"
+  action: "send" | "list" | "read" | "wait" | "answer" | "escalate"
   to?: string
   subject?: string
   text?: string
-  file?: string
   reply_to?: string
   id?: string
-  path?: string
   seconds?: number
 }
 
@@ -357,14 +453,19 @@ export const MESSAGE_TOOL = {
   description:
     "Autocode messages between agents and the owner. New messages arrive " +
     "in an injected prompt (short ones whole). Actions: send (to: an agent " +
-    "ID, a pattern like team:*, a comma list, or owner; subject; text or " +
-    "file; reply_to), list (your unread messages), read (id; path to save " +
-    "a file), wait (seconds: holds this call until a message comes, up to " +
-    "max_tool_wait; costs no tokens).",
+    "ID, a pattern like team:*, a comma list, or owner; subject; text; " +
+    "reply_to), list (your unread messages), read (id), wait (seconds: " +
+    "holds this call until a message comes, up to max_tool_wait; costs no " +
+    "tokens), answer (id, text: answer a question, permission or approval " +
+    "another agent sent you), escalate (id, text: say why you cannot; the " +
+    "owner takes it).",
   input: {
     type: "object",
     properties: {
-      action: { type: "string", enum: ["send", "list", "read", "wait"] },
+      action: {
+        type: "string",
+        enum: ["send", "list", "read", "wait", "answer", "escalate"],
+      },
       to: {
         type: "string",
         description:
@@ -374,22 +475,17 @@ export const MESSAGE_TOOL = {
       subject: { type: "string", description: "send: a short subject" },
       text: {
         type: "string",
-        description: "send: the message (at most 32,000 characters)",
-      },
-      file: {
-        type: "string",
         description:
-          "send: a file in your folder to send instead of text (about " +
-          "24 KB at most for a binary file)",
+          "send: the message (at most 32,000 characters); answer: the " +
+          "answer; escalate: why you cannot answer",
       },
       reply_to: {
         type: "string",
         description: "send: the ID of the message this answers",
       },
-      id: { type: "string", description: "read: the message ID" },
-      path: {
+      id: {
         type: "string",
-        description: "read: where to save a file message, in your folder",
+        description: "read: the message ID; answer, escalate: the ask's ID",
       },
       seconds: {
         type: "number",
@@ -406,8 +502,7 @@ export interface LockInput {
   name?: string
   ttl?: string
   max?: number
-  mode?: "try" | "queue" | "wait"
-  seconds?: number
+  mode?: "try" | "queue"
   pattern?: string
 }
 
@@ -419,8 +514,7 @@ export const LOCK_TOOL = {
     "ttl: required, how long you hold it, like 10m or 6h; max: the " +
     "capacity, set by the acquire that creates it; mode: queue (default: " +
     'wait in the queue; a notice [autocode] lock "NAME" granted comes when ' +
-    "it is yours), try (now or refused), wait (seconds: hold this call " +
-    "up to max_tool_wait, then stay in the queue)), renew (name; ttl), " +
+    "it is yours), try (now or refused)), renew (name; ttl), " +
     "release (name: free it, or leave the queue), list (pattern). A hold " +
     "that runs past its ttl is freed, and a notice says so. Exact rules: " +
     "autocode_me action=help topic=locks.",
@@ -452,16 +546,10 @@ export const LOCK_TOOL = {
       },
       mode: {
         type: "string",
-        enum: ["queue", "try", "wait"],
+        enum: ["queue", "try"],
         description:
-          "acquire: queue (default; a notice when granted), try (now or " +
-          "refused), wait (wait in this call up to seconds)",
-      },
-      seconds: {
-        type: "number",
-        description:
-          "acquire with mode=wait: at most this long in the call (up to " +
-          "max_tool_wait); then you stay in the queue",
+          "acquire: queue (default; a notice when granted) or try (now or " +
+          "refused)",
       },
       pattern: {
         type: "string",
@@ -473,7 +561,61 @@ export const LOCK_TOOL = {
   },
 }
 
-export const TOOLS = [ME_TOOL, WAKE_TOOL, MESSAGE_TOOL, LOCK_TOOL]
+export interface ApprovalInput {
+  action: "ask" | "wait"
+  text?: string
+  options?: string
+  expires?: string
+  id?: string
+  seconds?: number
+}
+
+export const APPROVAL_TOOL = {
+  name: "autocode_approval",
+  description:
+    "Autocode approvals: ask the owner (or whom the owner chose) to approve " +
+    "something that must not be left to you: a payment, a trade, a " +
+    "deployment, deleting data. Actions: ask (text; options: a comma list; " +
+    "expires: like 1h, then it counts as rejected), wait (id; seconds: " +
+    "hold this call until it is answered, up to max_tool_wait). The answer " +
+    'also comes as a notice: [autocode] approval "..." approved or ' +
+    "rejected. Until then your wakes and messages wait.",
+  input: {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["ask", "wait"] },
+      text: {
+        type: "string",
+        description: "ask: what to approve, in a sentence or two",
+      },
+      options: {
+        type: "string",
+        description: "ask, optional: choices as a comma list (now, tonight)",
+      },
+      expires: {
+        type: "string",
+        description:
+          "ask, optional: how long it may wait, like 1h or 2d; then it is " +
+          "rejected",
+      },
+      id: { type: "string", description: "wait: the approval's ID" },
+      seconds: {
+        type: "number",
+        description: "wait: at most this long (default 300)",
+      },
+    },
+    required: ["action"],
+    additionalProperties: false,
+  },
+}
+
+export const TOOLS = [
+  ME_TOOL,
+  WAKE_TOOL,
+  MESSAGE_TOOL,
+  LOCK_TOOL,
+  APPROVAL_TOOL,
+]
 
 const enc = encodeURIComponent
 
@@ -486,6 +628,17 @@ function preview(text: string): string {
 }
 
 const idleOf = (trigger: string) => /^idle (\S+)( repeat)?$/.exec(trigger)
+
+// A trigger as an agent reads it: a one-time `at` in the server's zone (the
+// server stores it in UTC; `in 45m` becomes one).
+function shownTrigger(trigger: string, c: Clock): string {
+  const at = /^at (\d{4}-\d\d-\d\dT[\d:.]+Z)$/.exec(trigger)
+  return at ? `at ${localTime(Date.parse(at[1]!), c.tz)}` : trigger
+}
+
+// A turn of the agent's runs now (`busy`; a waiting or paused agent may be
+// in one too); older servers say only `working`.
+const inTurn = (me: any) => me?.agent?.busy ?? me?.agent?.status === "working"
 
 // When a wake falls due, for list and show.
 function timing(w: any, c: Clock, working: boolean): string {
@@ -509,12 +662,12 @@ function setBy(w: any, me: any): string {
   return w.set_by === "owner" ? "the owner" : `agent ${w.set_by}`
 }
 
-// What `set` tells: when the wake runs, its check and end, and delivery.
+// What `set` tells: when the wake runs, its check, and delivery.
 function setText(w: any, me: any): string {
   const c = clockOf(me)
   const trigger = String(w.trigger)
-  const working = me?.agent?.status === "working"
-  const parts = [`Wake "${w.name}" set: ${trigger}.`]
+  const working = inTurn(me)
+  const parts = [`Wake "${w.name}" set: ${shownTrigger(trigger, c)}.`]
   const idle = idleOf(trigger)
   if (trigger === "fire-only")
     parts.push(
@@ -544,8 +697,6 @@ function setText(w: any, me: any): string {
       "Before each run its check runs in your folder: exit 0 wakes you " +
         "with its output, exit 1 skips that run.",
     )
-  if (w.end)
-    parts.push(`It is removed at ${localTime(Date.parse(w.end), c.tz)}.`)
   const every = me?.settings?.min_interval
   parts.push(
     "Delivered only while your session is idle" +
@@ -563,9 +714,9 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
         text: input.text,
         trigger: input.trigger,
         ...(input.check ? { check: input.check } : {}),
-        ...(input.end ? { end: input.end } : {}),
       })
-      const me = await call("GET", "/v1/me")
+      // the wake is set: a failed status call only shortens the text
+      const me = await call("GET", "/v1/me").catch(() => undefined)
       return setText(res.wake, me)
     }
     case "list":
@@ -573,7 +724,7 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
       const me = await call("GET", "/v1/me")
       const res = await call("GET", "/v1/me/wakes")
       const c = clockOf(me)
-      const working = me?.agent?.status === "working"
+      const working = inTurn(me)
       if (input.action === "show") {
         if (!input.name) return "error: show needs the wake's name"
         const w = res.wakes.find((x: any) => x.name === input.name)
@@ -585,12 +736,11 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
         return [
           `Wake "${w.name}", set by ${setBy(w, me)} at ` +
             `${localTime(Date.parse(w.updated_at), c.tz)}.`,
-          `Trigger: ${w.trigger}; ${timing(w, c, working)}.`,
+          `Trigger: ${shownTrigger(w.trigger, c)}; ${timing(w, c, working)}.`,
           w.check
             ? `Check: ${w.check} (exit 0 wakes you with its output, exit 1 ` +
               "skips the run)."
             : "Check: none.",
-          `Ends: ${w.end ? localTime(Date.parse(w.end), c.tz) : "never"}.`,
           "Last ran: " +
             (w.last_fired_at
               ? localTime(Date.parse(w.last_fired_at), c.tz)
@@ -606,7 +756,6 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
       for (const w of res.wakes) {
         const parts = [timing(w, c, working)]
         if (w.check) parts.push(`check: ${w.check}`)
-        if (w.end) parts.push(`ends ${localTime(Date.parse(w.end), c.tz)}`)
         // when it was last set (its schedule counts from then), and by whom
         // when not by you
         const by = setBy(w, me)
@@ -616,7 +765,9 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
         )
         if (w.last_fired_at)
           parts.push(`last ran ${localTime(Date.parse(w.last_fired_at), c.tz)}`)
-        lines.push(`${w.name}: ${w.trigger}; ${parts.join("; ")}`)
+        lines.push(
+          `${w.name}: ${shownTrigger(w.trigger, c)}; ${parts.join("; ")}`,
+        )
         lines.push(`  ${preview(w.text)}`)
       }
       return lines.join("\n")
@@ -649,36 +800,21 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
   }
 }
 
-// Reading and writing files in the agent's folder (files.ts).
-export interface Files {
-  read(path: string): Promise<{ text: string } | { data: string; mime: string }>
-  write(path: string, base64: string): Promise<string>
-}
-
 function messageLine(m: any): string {
   const subject = m.subject ? ` "${m.subject}"` : ""
-  const what = m.kind === "binary" ? `${m.mime}, ` : ""
   const sender = m.from === "owner" ? "the owner" : m.from
-  return (
-    `${m.id}  from ${sender}${subject}  ` +
-    `${what}${m.size} characters  ${m.state}`
-  )
+  return `${m.id}  from ${sender}${subject}  ${m.size} characters  ${m.state}`
 }
 
 export async function runMessage(
   input: MessageInput,
   call: Call,
-  files: Files,
   wait?: (seconds: number) => Promise<any>,
 ): Promise<string> {
   switch (input?.action) {
     case "send": {
       if (!input.to) return "error: send needs to (an ID, a pattern or owner)"
-      if (!input.text === !input.file)
-        return "error: send needs either text or file"
-      const content = input.file
-        ? await files.read(input.file)
-        : { text: input.text }
+      if (!input.text) return "error: send needs text"
       const to = input.to.includes(",")
         ? input.to
             .split(",")
@@ -689,10 +825,16 @@ export async function runMessage(
         to,
         ...(input.subject ? { subject: input.subject } : {}),
         ...(input.reply_to ? { reply_to: input.reply_to } : {}),
-        ...content,
+        text: input.text,
       })
       const ids = res.messages.map((m: any) => m.id).join(", ")
-      return `Sent to ${res.recipients.join(", ")} (${ids}).`
+      const skipped: string[] = res.skipped ?? []
+      return (
+        `Sent to ${res.recipients.join(", ")} (${ids}).` +
+        (skipped.length
+          ? ` Skipped (not registered): ${skipped.join(", ")}.`
+          : "")
+      )
     }
     case "list": {
       const res = await call("GET", "/v1/me/messages")
@@ -708,14 +850,7 @@ export async function runMessage(
         `Message ${m.id} from ${sender}` +
         (m.subject ? `, subject "${m.subject}"` : "") +
         (m.reply_to ? `, in reply to ${m.reply_to}` : "")
-      if (m.kind !== "binary") return `${head}:\n${m.text}`
-      if (!input.path)
-        return (
-          `${head}: a file (${m.mime}, ${m.size} characters of base64). ` +
-          "Read it again with a path to save it."
-        )
-      const saved = await files.write(input.path, m.data)
-      return `${head}: saved ${m.mime} to ${saved}.`
+      return `${head}:\n${m.text}`
     }
     case "wait": {
       const seconds = Math.max(1, Math.min(Number(input.seconds) || 300, 3600))
@@ -726,8 +861,27 @@ export async function runMessage(
         return `No new messages within ${seconds} seconds.`
       return res.messages.map(messageLine).join("\n")
     }
+    case "answer": {
+      if (!input.id || !input.text)
+        return "error: answer needs the ask's id and your text"
+      const res = await call("POST", `/v1/asks/${enc(input.id)}/answer`, {
+        text: input.text,
+      })
+      const kind = String(res?.ask?.kind ?? "ask")
+      return kind === "approval"
+        ? `Answered ${input.id} (approval); the asking agent is told.`
+        : `Answered ${input.id} (${kind}); the asking agent's turn goes on ` +
+            "with it."
+    }
+    case "escalate": {
+      if (!input.id) return "error: escalate needs the ask's id"
+      await call("POST", `/v1/asks/${enc(input.id)}/escalate`, {
+        text: input.text ?? "",
+      })
+      return `Handed ${input.id} to the owner, with your reason.`
+    }
     default:
-      return "error: action must be send, list, read or wait"
+      return "error: action must be send, list, read, wait, answer or escalate"
   }
 }
 
@@ -755,35 +909,11 @@ export async function runLock(input: LockInput, call: Call): Promise<string> {
           "error: acquire needs a name and a ttl (how long you hold it, " +
           "like 10m or 6h)"
         )
-      const mode = input.mode ?? "queue"
-      if (mode === "wait" && !(Number(input.seconds) > 0))
-        return "error: mode=wait needs seconds (at most max_tool_wait)"
-      const body = {
+      const res = await call("POST", path("acquire"), {
         ttl: input.ttl,
-        mode,
+        mode: input.mode ?? "queue",
         ...(input.max === undefined ? {} : { max: input.max }),
-      }
-      let res: any
-      let waited = 0
-      if (mode !== "wait") res = await call("POST", path("acquire"), body)
-      else {
-        /*
-         * The server answers within 240 s, and says the most a wait may
-         * take in all (max_tool_wait): ask again for the rest, never past
-         * that.
-         */
-        let total = Math.round(Number(input.seconds))
-        for (;;) {
-          res = await call("POST", path("acquire"), {
-            ...body,
-            seconds: total - waited,
-          })
-          waited += Number(res.waited) || 0
-          if (res.max_wait) total = Math.min(total, Number(res.max_wait))
-          if (res.granted || !res.position || !res.waited) break
-          if (waited >= total) break
-        }
-      }
+      })
       // the server's clock and zone for the times; the local one without
       const me = await call("GET", "/v1/me").catch(() => undefined)
       const c = clockOf(me)
@@ -792,18 +922,7 @@ export async function runLock(input: LockInput, call: Call): Promise<string> {
           `You hold lock "${name}" until ${when(res.expires, c)}. Renew it ` +
           "before then (action=renew); release it when you are done."
         )
-      if (!res.position)
-        return (
-          `You are no longer in the queue of lock "${name}" (released, or ` +
-          "taken out by the owner). Acquire it again if you still need it."
-        )
       const tail = QUEUE_TAIL.replace("NAME", name)
-      if (mode === "wait")
-        return (
-          `Lock "${name}" was not free within ${waited} seconds; it is held ` +
-          `by ${heldBy(res.lock, me?.agent?.id)} and you are number ` +
-          `${res.position} in the queue.${tail}`
-        )
       return (
         `Lock "${name}"${places(res.lock.max)} is held by ` +
         `${heldBy(res.lock, me?.agent?.id)}; you are number ${res.position} ` +
@@ -864,5 +983,85 @@ export async function runLock(input: LockInput, call: Call): Promise<string> {
     }
     default:
       return "error: action must be acquire, renew, release or list"
+  }
+}
+
+// How an approval stands, in a line.
+function approvalLine(a: any): string {
+  const by =
+    a.by === "owner"
+      ? " by the owner"
+      : a.by === "auto"
+        ? " (by the setting approval_mode=approve)"
+        : a.by
+          ? ` by agent ${a.by}`
+          : ""
+  const state =
+    a.state === "expired"
+      ? "expired: it counts as rejected"
+      : a.state === "gone"
+        ? "closed"
+        : String(a.state)
+  const extra = [
+    a.option ? `Option: ${a.option}.` : "",
+    a.note ? `Note: ${a.note}` : "",
+  ].filter(Boolean)
+  return `${state}${by}.${extra.length ? ` ${extra.join(" ")}` : ""}`
+}
+
+export async function runApproval(
+  input: ApprovalInput,
+  call: Call,
+  wait?: (id: string, seconds: number) => Promise<any>,
+): Promise<string> {
+  switch (input?.action) {
+    case "ask": {
+      if (!input.text) return "error: ask needs the text to approve"
+      const options = input.options
+        ? input.options
+            .split(",")
+            .map((o) => o.trim())
+            .filter(Boolean)
+        : undefined
+      const res = await call("POST", "/v1/me/approvals", {
+        text: input.text,
+        ...(options?.length ? { options } : {}),
+        ...(input.expires ? { expires: input.expires } : {}),
+      })
+      const a = res.approval
+      if (a.state !== "open") return `Approval ${a.id} is ${approvalLine(a)}`
+      const who = String(a.routed).startsWith("agent:")
+        ? `agent ${String(a.routed).slice("agent:".length)} (the owner ` +
+          "sees it too)"
+        : "the owner"
+      const me = await call("GET", "/v1/me").catch(() => undefined)
+      const c = clockOf(me)
+      return (
+        `Approval ${a.id} is with ${who}. The answer comes as a notice ` +
+        '([autocode] approval "…" approved or rejected); until then your ' +
+        "wakes and messages wait." +
+        (a.expires
+          ? ` It expires at ${when(a.expires, c)}: then it counts as ` +
+            "rejected."
+          : "") +
+        ` To wait for it now: autocode_approval action=wait id=${a.id}.`
+      )
+    }
+    case "wait": {
+      if (!input.id) return "error: wait needs the approval's id"
+      const seconds = Math.max(1, Math.min(Number(input.seconds) || 300, 3600))
+      const res = wait
+        ? await wait(input.id, seconds)
+        : await call("GET", `/v1/me/approvals/${enc(input.id)}?wait=${seconds}`)
+      const a = res.approval
+      if (a.state === "open")
+        return (
+          `Approval ${a.id} is not answered yet (waited up to ${seconds} ` +
+          "seconds). The answer comes as a notice."
+        )
+      return `Approval ${a.id}: ${approvalLine(a)}`
+    }
+    default:
+      return "error: action must be ask or wait"
   }
 }

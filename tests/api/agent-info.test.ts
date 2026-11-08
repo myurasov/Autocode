@@ -160,7 +160,6 @@ describe("what an injected prompt says", () => {
     await as(a, "PUT", "/v1/me/wakes/tick", {
       text: "Tick.",
       trigger: "every 30m",
-      end: "2026-10-28T20:00:00Z",
     })
     t.clock.advance(30 * MIN)
     const [prompt] = await tick()
@@ -168,8 +167,7 @@ describe("what an injected prompt says", () => {
     expect(text).toStartWith('[autocode] wake "tick"\n')
     // 12:30 UTC is 05:30 PDT; the next run 13:00 UTC, 06:00 PDT
     expect(text).toContain(
-      'Wake "tick" (every 30m; next 2026-10-28 06:00 PDT; ' +
-        "ends 2026-10-28 13:00 PDT):\nTick.",
+      'Wake "tick" (every 30m; next 2026-10-28 06:00 PDT):\nTick.',
     )
     const lines = text.split("\n")
     expect(lines.at(-1)).toBe(

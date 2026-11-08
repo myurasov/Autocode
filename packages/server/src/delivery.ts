@@ -1,6 +1,6 @@
 /*
  * The injection queue and the scheduler (spec, Wakes: Delivery and Debounce;
- * Messages: Delivery): what waits for each agent, merged by wake name or text;
+ * Messages: Delivery): what waits for each agent, merged by wake name;
  * checks run by the plugin before a wake is injected; at most one injection
  * per min_interval, only while the session is idle, its host online and the
  * agent not paused; each injection one prompt with the [autocode] header, in
@@ -36,7 +36,7 @@ const DAY = 86_400_000
 
 // OpenCode's prompt IDs start with msg_; ours grow with time, and a repeat of
 // one is harmless.
-function promptId(now: number): string {
+export function promptId(now: number): string {
   const time = Math.max(0, Math.floor(now)).toString(16).padStart(12, "0")
   const random = crypto.randomUUID().replaceAll("-", "").slice(0, 12)
   return `msg_${time}${random}`
@@ -72,13 +72,25 @@ export class Delivery {
     private readonly loader?: Loader,
   ) {}
 
+  /*
+   * Tier 0e: compaction before an injection, and the resume prompt of a
+   * cut turn (set by the server once its Costs exist).
+   */
+  costs?: {
+    compactDue(agent: string): { context: number; limit: number } | null
+    compacted(agent: string, due: { context: number; limit: number }): void
+    injected(agent: string): void
+    resumeNote(agent: string): { header: string; text: string } | null
+    resumed(agent: string): void
+  }
+
   private values(agent: string) {
     return resolveSettings(this.settings.layers(), agent).values
   }
 
   /*
-   * Queues a wake for an agent. One that waits with the same name or the same
-   * text takes the new one's text and place in line; a fire's text and its
+   * Queues a wake for an agent. One that waits with the same name takes the
+   * new one's text and keeps its own place in line; a fire's text and its
    * skipped check stay. One whose check runs now keeps running: a fire turns
    * it into a fired item, anything else merges into it.
    */
@@ -86,10 +98,10 @@ export class Delivery {
     const same = this.db
       .query(
         `SELECT * FROM queue
-         WHERE agent_id = ? AND kind = 'wake' AND (wake = ? OR text = ?)
+         WHERE agent_id = ? AND kind = 'wake' AND wake = ?
          ORDER BY id`,
       )
-      .all(agent, item.wake, item.text) as any[]
+      .all(agent, item.wake) as any[]
     const [first, ...rest] = same
     if (!first) {
       this.db
@@ -165,6 +177,15 @@ export class Delivery {
             .all() as { agent_id: string }[]
         ).map((r) => r.agent_id),
         ...this.retries.due(),
+        // a cut turn to resume, a compaction asked for (tier 0e)
+        ...(
+          this.db
+            .query(
+              "SELECT id FROM agents WHERE cut_at IS NOT NULL " +
+                "OR compact_wanted = 1 ORDER BY id",
+            )
+            .all() as { id: string }[]
+        ).map((r) => r.id),
       ]),
     ].map((agent_id) => ({ agent_id }))
     for (const { agent_id } of agents)
@@ -335,7 +356,9 @@ export class Delivery {
         `SELECT a.id, a.paused, a.last_injection_at, a.session_id, a.error,
                 a.error_since, a.error_at, a.retries, a.retry_at,
                 s.busy, s.deleted_at, s.directory, s.host_id, h.online,
-                h.machine, h.directory AS host_directory, h.process_kind
+                h.machine, h.directory AS host_directory, h.process_kind,
+                EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
+                        AND k.state = 'open') AS asking
          FROM agents a JOIN sessions s ON s.id = a.session_id
          JOIN hosts h ON h.id = s.host_id WHERE a.id = ?`,
       )
@@ -348,9 +371,44 @@ export class Delivery {
         directory: row.host_directory,
         process_kind: row.process_kind,
       })
-    if (!row || row.paused || !row.online || row.deleted_at || row.busy) return
+    // an open question, permission or approval holds everything (tier 0d)
+    if (
+      !row ||
+      row.paused ||
+      !row.online ||
+      row.deleted_at ||
+      row.busy ||
+      row.asking
+    )
+      return
     const values = this.values(agent)
     const now = this.now()
+    // A context past compact_at (or a compaction asked for) is compacted
+    // first: a turn of its own; what waits goes after it (tier 0e).
+    const due = this.costs?.compactDue(agent)
+    if (due) {
+      this.hosts.enqueue(row.host_id, "compact", { session: row.session_id })
+      this.costs!.compacted(agent, due)
+      this.db
+        .query(
+          "UPDATE sessions SET busy = 1, inject_pending_at = ? WHERE id = ?",
+        )
+        .run(now, row.session_id)
+      return
+    }
+    // A turn cut by a lost OpenCode: a resume prompt, with what waits and is
+    // ready (min_interval does not apply), like a retry.
+    const resume = !row.error && this.costs?.resumeNote(agent)
+    if (resume) {
+      const ready = (
+        this.db
+          .query("SELECT * FROM queue WHERE agent_id = ? ORDER BY id")
+          .all(agent) as any[]
+      ).filter((i) => !i.check_cmd)
+      this.inject(row, ready, values, { n: 0, of: 0, ...resume })
+      this.costs!.resumed(agent)
+      return
+    }
     // In the error state only retries go, every retry_interval, with what
     // waits and is ready (wakes whose checks have not run wait until the
     // error clears); min_interval does not apply to them.
@@ -482,7 +540,7 @@ export class Delivery {
 
   /*
    * What a wake is, for its section of the prompt: its trigger, when it runs
-   * next and when it ends, in the server's zone; a one-time wake that ran
+   * next, in the server's zone; a one-time wake that ran
    * (and is gone) says so.
    */
   private about(agent: string, item: any, tz: string): string {
@@ -490,26 +548,25 @@ export class Delivery {
     const stored = live?.trigger ?? item.trigger
     if (!stored) return ""
     const t = JSON.parse(stored) as Trigger
-    const ends = live?.end_at ? `; ends ${localTime(live.end_at, tz)}` : ""
     switch (t.kind) {
       case "every":
       case "cron": {
         const next = live?.next_at
           ? `; next ${localTime(live.next_at, tz)}`
           : ""
-        return `(${formatTrigger(t)}${next}${ends})`
+        return `(${formatTrigger(t)}${next})`
       }
       case "at":
         return live?.next_at
-          ? `(once, at ${localTime(live.next_at, tz)}${ends})`
+          ? `(once, at ${localTime(live.next_at, tz)})`
           : "(once, this was its only run)"
       case "idle":
         return t.repeat
           ? `(${formatTrigger(t)}; again after ${formatDuration(t.idle_ms)} ` +
-              `more idle${ends})`
-          : `(${formatTrigger(t)}; once per idle stretch${ends})`
+              `more idle)`
+          : `(${formatTrigger(t)}; once per idle stretch)`
       case "fire-only":
-        return `(fire-only${ends})`
+        return `(fire-only)`
     }
   }
 
@@ -519,21 +576,20 @@ export class Delivery {
     values: Record<string, unknown>,
     retry?: RetryNote,
   ) {
-    // Wakes left with the same name or text: only the newest goes in.
+    // Runs of one wake left waiting: only the newest goes in.
     const seen = new Set<string>()
     const wakes = items
       .filter((i) => i.kind === "wake")
       .reverse()
       .filter((i) => {
-        const keys = [`n:${i.wake}`, `t:${i.text}`]
-        if (keys.some((k) => seen.has(k))) {
+        if (seen.has(i.wake)) {
           this.history.record("wake.merged", {
             agent: row.id,
             data: { name: i.wake },
           })
           return false
         }
-        for (const k of keys) seen.add(k)
+        seen.add(i.wake)
         return true
       })
       .reverse()
@@ -583,12 +639,12 @@ export class Delivery {
         `Message ${m.id} from ${who(m.from_id)}` +
         (m.subject ? `, subject "${m.subject}"` : "") +
         (m.reply_to ? `, in reply to ${m.reply_to}` : "")
-      if (!m.mime && m.size <= inline) {
+      if (m.size <= inline) {
         sections.push(`${head}:\n${quote(m.body)}`)
         shown.push(m.id)
       } else {
         sections.push(
-          `${head}: ${m.mime ? `${m.mime}, ` : ""}${m.size} characters; ` +
+          `${head}: ${m.size} characters; ` +
             `read it with autocode_message read ${m.id}.`,
         )
         listed.push(m.id)
@@ -604,6 +660,7 @@ export class Delivery {
       prompt_id: id,
       text,
     })
+    this.costs?.injected(row.id)
     const summary = {
       header: reasons,
       wakes: wakes.map((w) => w.wake),
@@ -662,7 +719,7 @@ export class Delivery {
       host: row.host_id,
       data: { id, ...summary },
     })
-    if (retry) this.retries.sent(row.id, retry)
+    if (retry?.n) this.retries.sent(row.id, retry)
   }
 
   // Settled injections (with the text they carried) go with the history.

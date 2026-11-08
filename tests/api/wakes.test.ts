@@ -73,7 +73,6 @@ describe("setting wakes", () => {
       text: "Check the queue.",
       trigger: "every 30m",
       check: null,
-      end: null,
       next: "2026-10-28T12:30:00.000Z",
       set_by: "team:a",
     })
@@ -91,12 +90,32 @@ describe("setting wakes", () => {
     expect((await as(a, "DELETE", "/v1/me/wakes/daily-check")).status).toBe(404)
   })
 
-  test("refuses a bad trigger, name, text or end, and says why", async () => {
+  // The review of 0b2: a refused trigger leaves nothing behind.
+  test("a trigger too long is refused and leaves no wake; list and /v1/me stay 200", async () => {
+    for (const trigger of [
+      "every 20000000w",
+      "in 20000000w",
+      "idle 20000000w",
+    ]) {
+      const res = await as(a, "PUT", "/v1/me/wakes/huge", {
+        text: "x",
+        trigger,
+      })
+      expect(res.status, trigger).toBe(400)
+      expect(res.body.error.code, trigger).toBe("bad_trigger")
+    }
+    const list = await as(a, "GET", "/v1/me/wakes")
+    expect(list.status).toBe(200)
+    expect(list.body.wakes).toEqual([])
+    expect((await as(a, "GET", "/v1/me")).status).toBe(200)
+    expect((await owner("GET", "/v1/wakes")).status).toBe(200)
+  })
+
+  test("refuses a bad trigger, name or text, and says why", async () => {
     const cases: [unknown, string][] = [
       [{ text: "x", trigger: "sometimes" }, "bad_trigger"],
       [{ text: "", trigger: "every 1m" }, "bad_request"],
       [{ text: "x".repeat(32_001), trigger: "every 1m" }, "bad_request"],
-      [{ text: "x", trigger: "every 1m", end: "someday" }, "bad_request"],
       [{ text: "x", trigger: "every 1m", check: 5 }, "bad_request"],
     ]
     for (const [body, code] of cases) {
@@ -217,7 +236,8 @@ describe("delivery", () => {
     expect(prompt.payload.text).toContain("Two.")
   })
 
-  test("waiting wakes with the same name or the same text merge into the newest", async () => {
+  // The owner, 2026-11-07: waiting wakes merge by name only.
+  test("waiting runs of one wake merge into the newest; wakes with the same text do not", async () => {
     await as(a, "PUT", "/v1/me/wakes/tick", {
       text: "Tick.",
       trigger: "every 1m",
@@ -227,11 +247,16 @@ describe("delivery", () => {
       trigger: "every 1m",
     })
     await owner("POST", "/v1/agents/team:a/pause")
-    t.clock.advance(3 * MIN)
-    for (let i = 0; i < 3; i++) t.server.tick()
+    for (let i = 0; i < 3; i++) {
+      t.clock.advance(MIN)
+      t.server.tick()
+    }
     await owner("POST", "/v1/agents/team:a/resume")
     const [prompt] = await tick()
-    expect(prompt.payload.text.match(/Tick\./g)?.length).toBe(1)
+    expect(prompt.payload.text).toStartWith(
+      '[autocode] wake "tick", wake "tock"',
+    )
+    expect(prompt.payload.text.match(/Tick\./g)?.length).toBe(2)
     const merged = await owner("GET", "/v1/history?kind=wake.merged")
     expect(merged.body.history.length).toBeGreaterThan(0)
   })
@@ -260,15 +285,15 @@ describe("delivery", () => {
     expect((await as(a, "GET", "/v1/me/wakes")).body.wakes).toEqual([])
   })
 
-  test("a wake past its end date is gone without running", async () => {
-    await as(a, "PUT", "/v1/me/wakes/w", {
+  // The owner, 2026-11-07: a wake has no end date; cancel it instead.
+  test("a wake takes no end date", async () => {
+    const res = await as(a, "PUT", "/v1/me/wakes/w", {
       text: "Go.",
       trigger: "every 10m",
       end: "2026-10-28T12:05:00Z",
     })
-    t.clock.advance(10 * MIN)
-    expect(await tick()).toEqual([])
-    expect((await as(a, "GET", "/v1/me/wakes")).body.wakes).toEqual([])
+    expect(res.status).toBe(400)
+    expect(res.body.error.message).toContain("unknown field end")
   })
 
   test("nothing goes to a host that is offline", async () => {

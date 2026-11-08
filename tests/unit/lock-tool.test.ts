@@ -1,9 +1,9 @@
 /*
  * What agents are told about locks (tier 0c): autocode_lock's description
  * says enough to use it first; acquire, renew, release and list say what
- * happened and when a hold ends, in the server's zone and from now; a wait
- * longer than one request asks again until it ends; status says what the
- * agent holds and where it waits; the guide's locks part explains them.
+ * happened and when a hold ends, in the server's zone and from now; status
+ * says what the agent holds and where it waits; the guide's locks part
+ * explains them. There is no mode=wait (the owner, 2026-11-07).
  */
 import { describe, expect, test } from "bun:test"
 import { guideText, helpText, TOPICS } from "../../packages/plugin/src/guide.ts"
@@ -84,13 +84,18 @@ describe("autocode_lock's description", () => {
       "list",
       "try",
       "queue",
-      "wait",
       "ttl",
       "max",
       "notice",
       "topic=locks",
     ])
       expect(d, word).toContain(word)
+    // the owner, 2026-11-07: no mode=wait (queue and its notice)
+    expect(LOCK_TOOL.input.properties).not.toHaveProperty("seconds")
+    expect((LOCK_TOOL.input.properties as any).mode.enum).toEqual([
+      "queue",
+      "try",
+    ])
     for (const [name, prop] of Object.entries(LOCK_TOOL.input.properties))
       if (name !== "action")
         expect((prop as any).description, name).toBeTruthy()
@@ -150,65 +155,6 @@ describe("autocode_lock", () => {
     expect(await runLock({ action: "renew" } as any, call)).toBe(
       "error: renew needs the lock's name",
     )
-  })
-
-  test("acquire wait: asks again until the seconds are up, then says it stays in the queue", async () => {
-    const waits: number[] = []
-    const { call } = server({
-      "GET /v1/me": ME,
-      "POST /v1/locks/gpu-0/acquire": (body: any) => {
-        // the server holds a request at most 240 s
-        waits.push(Math.min(body.seconds, 240))
-        return {
-          granted: false,
-          position: 1,
-          waited: Math.min(body.seconds, 240),
-          max_wait: 300,
-          lock: OTHERS({ queue: [{ agent: "team:a" }] }),
-        }
-      },
-    })
-    const text = await runLock(
-      {
-        action: "acquire",
-        name: "gpu-0",
-        ttl: "10m",
-        mode: "wait",
-        seconds: 300,
-      },
-      call,
-    )
-    expect(waits).toEqual([240, 60])
-    expect(text).toBe(
-      'Lock "gpu-0" was not free within 300 seconds; it is held by team:b ' +
-        "and you are number 1 in the queue. When it is yours, a notice " +
-        'comes: [autocode] lock "gpu-0" granted (your ttl counts from ' +
-        "then). Release it to leave the queue.",
-    )
-  })
-
-  test("acquire wait granted inside the call", async () => {
-    const { call } = server({
-      "GET /v1/me": ME,
-      "POST /v1/locks/gpu-0/acquire": {
-        granted: true,
-        expires: "2026-10-28T12:10:00.000Z",
-        waited: 30,
-        lock: LOCK,
-      },
-    })
-    expect(
-      await runLock(
-        {
-          action: "acquire",
-          name: "gpu-0",
-          ttl: "10m",
-          mode: "wait",
-          seconds: 30,
-        },
-        call,
-      ),
-    ).toStartWith('You hold lock "gpu-0" until 2026-10-28 05:10 PDT')
   })
 
   test("renew, release, and list", async () => {
@@ -286,8 +232,6 @@ describe("status and the guide", () => {
     for (const answer of [
       "mode=try",
       "mode=queue",
-      "mode=wait",
-      "`max_tool_wait`",
       "a `ttl` is required",
       "renew",
       '`[autocode] lock "gpu-0" granted`',
@@ -295,81 +239,15 @@ describe("status and the guide", () => {
       "arrival order",
       "another capacity is refused",
       "Unregistering releases",
-      "autocode locks",
     ])
       expect(part, answer).toContain(answer)
+    expect(part).not.toContain("mode=wait")
     expect(guideText(FACTS)).toContain("## Locks")
   })
 })
 
 // Found by the 0c review (2026-11-05).
 describe("review findings", () => {
-  test("a wait in all is at most max_tool_wait: no asking again past it", async () => {
-    const waits: number[] = []
-    const { call } = server({
-      "GET /v1/me": ME,
-      "POST /v1/locks/gpu-0/acquire": (body: any) => {
-        waits.push(body.seconds)
-        return {
-          granted: false,
-          position: 1,
-          waited: 1,
-          max_wait: 1,
-          lock: OTHERS({ queue: [{ agent: "team:a" }] }),
-        }
-      },
-    })
-    const text = await runLock(
-      {
-        action: "acquire",
-        name: "gpu-0",
-        ttl: "10m",
-        mode: "wait",
-        seconds: 86400,
-      },
-      call,
-    )
-    expect(waits).toEqual([86400])
-    expect(text).toContain("was not free within 1 seconds")
-  })
-
-  test("a wait needs seconds", async () => {
-    const { call } = server({})
-    expect(
-      await runLock(
-        { action: "acquire", name: "gpu-0", ttl: "10m", mode: "wait" },
-        call,
-      ),
-    ).toBe("error: mode=wait needs seconds (at most max_tool_wait)")
-  })
-
-  test("a wait that ends without a place: out of the queue", async () => {
-    const { call } = server({
-      "GET /v1/me": ME,
-      "POST /v1/locks/gpu-0/acquire": {
-        granted: false,
-        waited: 30,
-        max_wait: 300,
-        lock: OTHERS(),
-      },
-    })
-    expect(
-      await runLock(
-        {
-          action: "acquire",
-          name: "gpu-0",
-          ttl: "10m",
-          mode: "wait",
-          seconds: 30,
-        },
-        call,
-      ),
-    ).toBe(
-      'You are no longer in the queue of lock "gpu-0" (released, or taken ' +
-        "out by the owner). Acquire it again if you still need it.",
-    )
-  })
-
   test("the clock not answering does not turn a grant into an error", async () => {
     const { call } = server({
       "POST /v1/locks/gpu-0/acquire": {

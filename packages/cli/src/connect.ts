@@ -75,7 +75,7 @@ export interface Connection {
 
 // OpenCode names the session in its shells, and the plugin adds
 // AUTOCODE_SESSION: such a shell is an agent's.
-function inAgentShell(): boolean {
+export function inAgentShell(): boolean {
   return Boolean(
     process.env.OPENCODE_SESSION_ID || process.env.AUTOCODE_SESSION,
   )

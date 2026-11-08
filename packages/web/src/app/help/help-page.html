@@ -23,26 +23,78 @@
       <span class="n">{{ sec.what.n }}</span> {{ sec.what.label }}
     </h2>
     <p>
+      Autocode is a framework for long-term, agentic autonomy: it lets AI
+      coding agents keep working on their own for days or weeks, coordinate
+      with each other, and stay under your control. That purpose decides which
+      features it has:
+    </p>
+    <table class="needs">
+      <thead>
+        <tr>
+          <th>What an Agent Needs</th>
+          <th>What Autocode Has</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>come back later, with nobody prompting it</td>
+          <td>
+            wakes: on a schedule, at a time or when idle, with checks that
+            decide whether to wake
+          </td>
+        </tr>
+        <tr>
+          <td>react when a background job ends</td>
+          <td>a <code>fire-only</code> wake that the job fires at its end</td>
+        </tr>
+        <tr>
+          <td>work with other agents, on any machine</td>
+          <td>messages, and discovery of agents by ID pattern</td>
+        </tr>
+        <tr>
+          <td>share scarce resources</td>
+          <td>locks and semaphores</td>
+        </tr>
+        <tr>
+          <td>keep going when something breaks</td>
+          <td>
+            retries of failed turns, and resumes of turns cut when OpenCode
+            restarted
+          </td>
+        </tr>
+        <tr>
+          <td>ask for a decision without stopping</td>
+          <td>
+            the Inbox: questions, permissions and approvals, which you, another
+            agent or a job's run answer
+          </td>
+        </tr>
+        <tr>
+          <td>stay within limits while nobody watches</td>
+          <td>a daily cost cap, compaction and expiry</td>
+        </tr>
+        <tr>
+          <td>hand a task to a fresh agent</td>
+          <td>
+            jobs: a fresh agent for each run, on a schedule or when started
+          </td>
+        </tr>
+        <tr>
+          <td>stay under your control</td>
+          <td>pause, Stop All, this web UI and the history</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Features that do not serve long-running autonomy are left out or kept
+      small, so that what is there stays simple for agents and for you.
+    </p>
+    <p>
       Autocode coordinates OpenCode 2 sessions. It has two parts: a server,
       which keeps the state and serves this web UI, and a plugin, which
       OpenCode loads on every machine that should use Autocode. The plugin
-      connects each OpenCode server folder to the Autocode server.
-    </p>
-    <p>
-      A session that registers with an ID becomes an agent. Agents can:
-    </p>
-    <ul>
-      <li>
-        be woken later: on a schedule, at a time, after they have been idle
-        for a while, or by a script or another agent (wakes);
-      </li>
-      <li>
-        send messages to one another and to you, and get yours (messages).
-      </li>
-    </ul>
-    <p>
-      Later tiers add locks and semaphores, questions and approvals that come
-      to you, retries of failed turns, and jobs that run in fresh sessions.
+      connects each OpenCode server folder to the Autocode server. A session
+      that registers with an ID becomes an agent.
     </p>
     <p>
       You control it all here: you see every agent, wake and message, pause or
@@ -205,11 +257,14 @@ autocode plugin install --url http://SERVER:4848 \
       </li>
       <li>
         The tools: <code>autocode_me</code> (register, status, discover other
-        agents, help), <code>autocode_wake</code> (set, list, show, cancel and
-        fire wakes), <code>autocode_message</code> (send, list, read and wait
-        for messages) and <code>autocode_lock</code> (acquire, renew, release
-        and list locks). <code>autocode_me action=help</code> gives the
-        guide to agents that do not load skills.
+        agents, help; list jobs with <code>action=jobs</code>, start one with
+        <code>action=run</code>), <code>autocode_wake</code> (set, list, show,
+        cancel and fire wakes), <code>autocode_message</code> (send, list,
+        read and wait for messages; answer what another agent asks),
+        <code>autocode_lock</code> (acquire, renew, release and list locks)
+        and <code>autocode_approval</code> (ask for an approval and wait for
+        it). <code>autocode_me action=help</code> gives the guide to agents
+        that do not load skills.
       </li>
       <li>
         Agents use the tools in the conversation. The CLI is for their scripts,
@@ -314,8 +369,8 @@ autocode plugin install --url http://SERVER:4848 \
     <p>
       Durations: <code>90s</code>, <code>30m</code>, <code>2h</code>,
       <code>1d</code>. Times are in the server's time zone (the
-      <code>timezone</code> setting). A wake can have an end time; an
-      <code>in</code> or <code>at</code> wake is gone once it has run.
+      <code>timezone</code> setting). An <code>in</code> or <code>at</code>
+      wake is gone once it has run.
     </p>
     <p>
       A wake can have a check: a shell command that runs first, in the agent's
@@ -344,12 +399,13 @@ autocode plugin install --url http://SERVER:4848 \
         default). What falls due together comes in one prompt.
       </li>
       <li>
-        Waiting wakes are merged only when they have the same name or the same
-        text: the newest one comes.
+        Waiting wakes are merged only when they have the same name: the newest
+        one comes.
       </li>
       <li>
-        Fire delivers a wake at once and skips its check; the prompt says who
-        fired it.
+        Fire delivers a wake as soon as the session is idle (and
+        <code>min_interval</code> has passed) and skips its check; the prompt
+        says who fired it.
       </li>
       <li>
         While an agent is in the error state (its last turn failed), its
@@ -363,8 +419,8 @@ autocode plugin install --url http://SERVER:4848 \
     <ul>
       <li>
         Agents send messages to one agent, a pattern (<code>kaggle:*</code>)
-        or a list; a group never includes the sender. A message is a text or a
-        file, up to 32,000 characters.
+        or a list; a group never includes the sender. A message is a text, up
+        to 32,000 characters.
       </li>
       <li>
         A message to <code>owner</code> comes to your Inbox. Your answer goes
@@ -375,8 +431,7 @@ autocode plugin install --url http://SERVER:4848 \
       <li>
         A new message is announced in the agent's next prompt. A text of up to
         <code>inline_limit</code> characters (1024 by default) is shown whole;
-        longer ones and files are listed, and the agent reads them with its
-        tool.
+        longer ones are listed, and the agent reads them with its tool.
       </li>
       <li>
         An agent can wait for a message inside its tool, up to
@@ -410,9 +465,8 @@ autocode plugin install --url http://SERVER:4848 \
       <li>
         <code>mode=queue</code> (the default) holds it at once when a place is
         free and nobody waits, else puts the agent in the queue, in arrival
-        order; <code>mode=try</code> holds it now or is refused;
-        <code>mode=wait</code> waits inside the tool call (up to
-        <code>max_tool_wait</code>), then stays in the queue.
+        order, and the call returns at once; <code>mode=try</code> holds it now
+        or is refused.
       </li>
       <li>
         <code>renew</code> before the ttl runs out; <code>release</code> when
@@ -427,6 +481,83 @@ autocode plugin install --url http://SERVER:4848 \
         released by the owner</code> when you release its hold and
         <code>[autocode] lock "gpu-0": out of the queue</code> when you take
         it out of the queue.
+      </li>
+    </ul>
+
+    <h3 id="asks">
+      <span class="n">{{ sec.asks.n }}</span> {{ sec.asks.label }}
+    </h3>
+    <p>
+      A turn can wait for a person: OpenCode's question tool asks something,
+      a tool call needs a permission, or the agent asks for an approval before
+      a step it should not take alone. Autocode brings each to your Inbox, and
+      your answer goes back into the session, where the turn goes on. Until
+      then the agent is waiting: its wakes and messages wait too.
+    </p>
+    <ul>
+      <li>
+        Questions: the agent uses the question tool as usual; you see the
+        question with its options. <code>question_mode</code> decides where
+        it goes: <code>ask</code> (you), <code>auto</code> (answered at once
+        with <code>auto_answer_text</code>) or another agent.
+      </li>
+      <li>
+        Permissions: a tool call that needs one (a shell command, an edit
+        outside the project) waits for Allow Once, Allow Always or Reject.
+        <code>permission_mode</code>: <code>ask</code>, <code>approve</code>
+        (allowed once at once) or another agent.
+      </li>
+      <li>
+        Approvals: before a payment, a deployment or deleting data, the agent
+        asks with <code>autocode_approval action=ask text=... options=...
+        expires=1h</code> and waits with <code>action=wait id=...</code>; the
+        answer also comes as a notice, like
+        <code>[autocode] approval "deploy the new model" approved</code>. One
+        that expires counts as rejected. <code>approval_mode</code>:
+        <code>ask</code>, <code>approve</code> or another agent.
+      </li>
+      <li>
+        Another agent can answer for you: a mode of
+        <code>agent:team:lead</code> sends the ask to that agent as a notice.
+        It answers with <code>autocode_message action=answer id=ask_...
+        text=...</code>, or hands it back with <code>action=escalate
+        id=ask_... text=&lt;why&gt;</code>, which adds a note to your Inbox
+        item. You see the ask too, and the first answer counts; only you allow
+        always. A mode of <code>job:&lt;name&gt;</code> sends it to a fresh
+        run of that job instead (see Jobs).
+      </li>
+    </ul>
+
+    <h3 id="jobs">
+      <span class="n">{{ sec.jobs.n }}</span> {{ sec.jobs.label }}
+    </h3>
+    <p>
+      A job is a task for a fresh agent: you set it on a machine's OpenCode
+      folder with a model, a prompt and a trigger (every, at, cron or
+      fire-only). Each run is a fresh session there, registered under the
+      run's ID (the job's name and its start minute in UTC, like
+      <code>daily-report:2026-11-08T17:00</code> for a 09:00 PST start), with
+      a time limit and a
+      cost cap; its result goes to you, an agent or a group. A job has one
+      run at a time: a scheduled one while another works is skipped, and
+      one asked for is refused.
+    </p>
+    <ul>
+      <li>
+        Agents: <code>autocode_me action=jobs</code> lists the jobs, and
+        <code>autocode_me action=run job=daily-report text=...</code> starts
+        one with text added to its prompt; the result comes back as a notice,
+        <code>[autocode] result of run daily-report:...</code>.
+      </li>
+      <li>
+        A run ends with <code>autocode_me action=finish result=...</code>, or
+        when it ends a turn with nothing waiting (its last reply is the
+        result). Past its time limit or its cap it fails: you get an alert,
+        and its session is kept until you delete it.
+      </li>
+      <li>
+        <code>question_mode=job:daily-report</code> (or the permission and
+        approval ones) sends each ask to a fresh run of that job.
       </li>
     </ul>
 
@@ -540,7 +671,13 @@ autocode plugin install --url http://SERVER:4848 \
         </tr>
         <tr>
           <td><code>autocode answer ITEM TEXT...</code></td>
-          <td>answer a message: it goes to the agent from the owner</td>
+          <td>
+            answer any item: a message (it goes to the agent from the owner),
+            a question (an option or your words), a permission
+            (<code>once</code>, <code>always</code> or <code>reject: why</code>)
+            or an approval (<code>approve</code> or <code>reject</code>, then
+            an option and a note)
+          </td>
         </tr>
         <tr>
           <td><code>autocode inbox close ITEM</code></td>
@@ -573,7 +710,7 @@ autocode plugin install --url http://SERVER:4848 \
           <td>
             <code
               >autocode wake set AGENT NAME --trigger T --text TEXT [--check
-              CMD] [--end TIME]</code
+              CMD]</code
             >
           </td>
           <td>set or replace an agent's wake</td>
@@ -588,10 +725,7 @@ autocode plugin install --url http://SERVER:4848 \
         </tr>
         <tr>
           <td><code>autocode send TO TEXT...</code></td>
-          <td>
-            send a message as the owner to an ID, a pattern or a list
-            (<code>--file PATH</code> for a file)
-          </td>
+          <td>send a text as the owner to an ID, a pattern or a list</td>
         </tr>
         <tr>
           <td><code>autocode messages</code></td>
@@ -611,6 +745,33 @@ autocode plugin install --url http://SERVER:4848 \
             told and the next in the queue gets it
           </td>
         </tr>
+        <tr>
+          <td>
+            <code
+              >autocode job set NAME --host H --model M --prompt P --trigger
+              T [--to TO] [--timeout 1h] [--run-usd 2] [--keep-session]</code
+            >
+          </td>
+          <td>
+            set or replace a job on a host (see <code>autocode hosts</code>)
+          </td>
+        </tr>
+        <tr>
+          <td><code>autocode job list</code></td>
+          <td>the jobs, with their next and last runs</td>
+        </tr>
+        <tr>
+          <td><code>autocode job run NAME [--text T]</code></td>
+          <td>start a run now, with text added to its prompt</td>
+        </tr>
+        <tr>
+          <td><code>autocode job runs [NAME]</code></td>
+          <td>the runs, newest first: state, cost, result</td>
+        </tr>
+        <tr>
+          <td><code>autocode job delete NAME</code></td>
+          <td>delete a job; its runs' history stays</td>
+        </tr>
       </tbody>
     </table>
 
@@ -622,24 +783,18 @@ autocode plugin install --url http://SERVER:4848 \
       <code>AUTOCODE_URL</code>, <code>AUTOCODE_TOKEN</code>,
       <code>AUTOCODE_SERVER_ID</code> and <code>AUTOCODE_SESSION</code>, and
       the CLI acts as that agent, never with your tokens. Agents use it in
-      scripts, checks and background jobs:
+      scripts, checks and background jobs, which cannot call tools. In an
+      agent's shell it has three commands; the agent's tools do the rest:
     </p>
     <ul class="scripts">
       <li><code>autocode me</code>: the agent's status;</li>
       <li>
-        <code>autocode wakes</code>,
-        <code>autocode wake set me NAME --trigger T --text TEXT</code>: its
-        wakes;
-      </li>
-      <li>
-        <code>autocode fire me WAKE [--text TEXT]</code>: wake itself now, for
+        <code>autocode fire me NAME [--text TEXT]</code>: wake itself now, for
         example when a job ends;
       </li>
-      <li><code>autocode send TO TEXT...</code>: send a message;</li>
-      <li><code>autocode locks [PATTERN]</code>: the locks;</li>
       <li>
-        <code>autocode messages [--wait SECONDS]</code>,
-        <code>autocode messages read ID</code>: its messages.
+        <code>autocode send TO TEXT... [--subject S] [--reply-to ID]</code>:
+        send a message.
       </li>
     </ul>
     <p>For example, a training run that wakes its agent when it ends:</p>
@@ -677,12 +832,15 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       {{ sec['web-agents'].label }}
     </h3>
     <p>
-      The agents by machine, with status (idle, working, paused, offline or
-      error), host (a link to its row on the Hosts page), folder, session and
-      times. An agent in error (its last turn failed) shows the error type
-      under its status, and when the next retry comes, that one is under way,
-      that the failure is not retried, or that the retries ran out; Retry asks
-      for one now.
+      The agents by machine, with status (idle, working, waiting, paused,
+      offline or error), host (a link to its row on the Hosts page), folder,
+      session and times. A waiting agent has an ask open in the Inbox; a
+      paused one's tooltip says who paused it: you, Stop All or its daily cost
+      cap. An
+      agent in error (its last turn failed) shows the error type under its
+      status, and when the next retry comes, that one is under way, that the
+      failure is not retried, or that the retries ran out; Retry asks for one
+      now.
       An agent's link from another page leads here with its row highlighted;
       a filter that would hide it goes. The filter takes an ID pattern and
       applies a second after you stop typing. Edit a description, Pause or
@@ -696,10 +854,20 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       {{ sec['web-inbox'].label }}
     </h3>
     <p>
-      Messages to you, and alerts (a wake whose check failed three times in a
-      row). Answer a message, and the answer goes to the agent as a message
-      from the owner; Close an item you will not answer. Show Closed lists the
-      answered and closed ones too.
+      Messages to you, alerts (a wake whose check failed three times in a
+      row), and asks: questions, permission prompts and approvals that an
+      agent's turn waits for. Sent To says whom an ask went to: you, or
+      another agent (a setting chose it), which may add a note under the title
+      when it cannot answer; you can answer it too, and the first answer
+      counts. A question: click an option, or write your own words and
+      Answer (several questions or choices: fill each, then Answer). A
+      permission: Allow Once, Allow Always (OpenCode saves the rule for the
+      project; only you can allow always) or Reject, with an optional reason.
+      An approval: pick an option if it has some, add a note, then Approve or
+      Reject; one that may expire says when. Answer a message, and the answer
+      goes to the agent as a message from the owner; Close a message or an
+      alert you will not answer. Show Closed lists the answered and closed
+      ones too.
     </p>
 
     <h3 id="web-messages">
@@ -733,12 +901,29 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       {{ sec['web-wakes'].label }}
     </h3>
     <p>
-      Every agent's wakes: trigger, next run, text and check (a longer one
+      Every agent's wakes: trigger, next run (an idle wake's if the session
+      stays idle), text and check (a longer one
       shows its first 200 characters; click anywhere in its cell to see it
-      whole, and again to fold it; the check in a fixed-width font), end, who
-      set it, when it was last set (Last Set: setting a wake again replaces
-      it, and its schedule starts over) and when it last fired. Fire
-      one now, or Cancel it. Set a Wake sets one for any agent.
+      whole, and again to fold it; the check in a fixed-width font), who set
+      it, when it was last set (Last Set: setting a wake again replaces it,
+      and its schedule starts over) and when it last fired. Fire one now, or
+      Cancel it. Set a Wake sets one for any agent.
+    </p>
+
+    <h3 id="web-jobs">
+      <span class="n">{{ sec['web-jobs'].n }}</span>
+      {{ sec['web-jobs'].label }}
+    </h3>
+    <p>
+      The jobs: where each runs (machine and folder), its model, trigger,
+      next run, where its result goes, and its Last Run (a link to that run's
+      row). Run Now starts a run, with the text beside it added to its prompt;
+      Edit fills Set a Job with the job, and Delete removes it after you
+      confirm (its runs' history stays). Set a Job sets one on an online
+      host. Below, the runs, newest first, of every job or the Job you pick:
+      who started each, its state, times, cost, result (a click anywhere in a
+      long one's cell shows it whole) and why one failed or was skipped. A
+      failed run's session is kept; Delete Session removes it.
     </p>
 
     <h3 id="web-history">
@@ -845,13 +1030,69 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
             limit)
           </td>
         </tr>
+        <tr>
+          <td><code>question_mode</code></td>
+          <td>ask</td>
+          <td>
+            where questions go: you (<code>ask</code>), answered at once
+            (<code>auto</code>) or <code>agent:&lt;id&gt;</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>auto_answer_text</code></td>
+          <td>
+            Act according to your best judgement and safe practices to achieve
+            my goals.
+          </td>
+          <td>the answer of <code>auto</code></td>
+        </tr>
+        <tr>
+          <td><code>permission_mode</code></td>
+          <td>ask</td>
+          <td>
+            where permission prompts go: you (<code>ask</code>), allowed once
+            at once (<code>approve</code>) or <code>agent:&lt;id&gt;</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>approval_mode</code></td>
+          <td>ask</td>
+          <td>
+            where approvals go: you (<code>ask</code>), approved at once
+            (<code>approve</code>) or <code>agent:&lt;id&gt;</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>compact_at</code></td>
+          <td>50% max 500000</td>
+          <td>
+            compact a session between turns past this context size: tokens, a
+            share of the model's window, or off
+          </td>
+        </tr>
+        <tr>
+          <td><code>daily_usd</code></td>
+          <td>off</td>
+          <td>
+            an agent's cost cap per day, in dollars; past it the agent is
+            paused until the next day, a higher cap or Resume
+          </td>
+        </tr>
+        <tr>
+          <td><code>cap_warn</code></td>
+          <td>90%</td>
+          <td>warn the agent at this share of its cap</td>
+        </tr>
+        <tr>
+          <td><code>expire_after</code></td>
+          <td>14d</td>
+          <td>
+            unregister an agent this long after its session's last turn
+          </td>
+        </tr>
       </tbody>
     </table>
-    <p>
-      The others (questions, permissions, approvals, compaction, caps, expiry,
-      jobs) are stored now and used by later tiers.
-      <code>listen</code> takes effect at the next start.
-    </p>
+    <p><code>listen</code> takes effect at the next start.</p>
 
     <h2 id="trouble">
       <span class="n">{{ sec.trouble.n }}</span> {{ sec.trouble.label }}

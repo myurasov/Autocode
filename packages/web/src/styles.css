@@ -135,8 +135,12 @@ select {
   background-size: 10px 6px;
   padding-right: calc(9px + 10px + 0.5rem);
 }
-/* A checked checkbox is a neutral grey (the owner, 2026-11-02). */
-input[type="checkbox"] {
+/*
+ * A checked checkbox is a neutral grey (the owner, 2026-11-02), and a radio
+ * button (an ask's choice) too.
+ */
+input[type="checkbox"],
+input[type="radio"] {
   accent-color: var(--fg-dim);
   width: 1rem;
   height: 1rem;
@@ -291,11 +295,21 @@ td.help {
  * setting keys, rules' patterns, machine names; the cells marked .id-like)
  * wrap as normal text (the owner, 2026-11-03): at their separators, after a
  * ":" or "_" (between the parts appId marks) and where the browser breaks,
- * as after "-"; never inside a word. Folders wrap after "/" (the page marks
+ * as after "-"; never inside a word, except in the ID and session columns
+ * (below). Folders wrap after "/" (the page marks
  * those places), and a time between its date and clock.
  */
 .id-part {
   white-space: normal;
+}
+/*
+ * Message and session IDs (the ID columns, td.id, and the session columns)
+ * break anywhere (the owner, 2026-11-07): their random parts have no
+ * separator to break at.
+ */
+td.id.id-like,
+td.session.id-like {
+  line-break: anywhere;
 }
 td.time > span {
   white-space: nowrap;
@@ -309,10 +323,10 @@ td.from.set {
   color: var(--fg-strong);
   font-weight: var(--bold);
 }
-/* 1.5 times its earlier width (the owner's choice). */
+/* The owner's choice (2026-11-07; 28.5rem before). */
 table.settings td.value {
   box-sizing: border-box;
-  width: 28.5rem;
+  width: 25rem;
 }
 .dot {
   display: inline-block;
@@ -368,6 +382,59 @@ table.inbox tr.closed .title {
   font-weight: normal;
 }
 /*
+ * Inbox asks (tier 0d): what is asked keeps its lines; a question's options
+ * (one click answers) and choices, a field for its own words, and a row of
+ * buttons with a reason or a note beside them; notes and an expiry under
+ * the title.
+ */
+table.inbox .ask-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+table.inbox .note,
+table.inbox .expires,
+table.inbox .action,
+table.inbox .resources,
+table.inbox .question,
+table.inbox .ask-text {
+  margin-top: 0.35rem;
+}
+table.inbox .question .ask-text {
+  margin-top: 0;
+}
+/* A permission's resources (commands, paths): one a line, under the label. */
+table.inbox .resources code {
+  display: block;
+  overflow-wrap: anywhere;
+}
+table.inbox .options,
+table.inbox .choices,
+table.inbox .ask-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-top: 0.35rem;
+}
+table.inbox .choices {
+  gap: 0.35rem 1.2rem;
+}
+table.inbox .choices label.check {
+  margin: 0;
+}
+table.inbox .options button,
+table.inbox .ask-buttons button {
+  margin-right: 0;
+}
+table.inbox .question .free {
+  margin-top: 0.35rem;
+}
+table.inbox .ask-buttons input[type="text"] {
+  flex: 1;
+  width: auto;
+  min-width: 8rem;
+}
+/*
  * Locks: a lock's holders, and its queue, each a grid of one agent a row, the
  * columns lined up (the agent, until when, Release; the place, the agent,
  * since when, Remove); a time wraps only between its date and its clock, and
@@ -396,6 +463,38 @@ table.locks td.capacity,
 table.locks .when > span,
 table.locks .left {
   white-space: nowrap;
+}
+/*
+ * Jobs (tier 0f): Run Now with its text field beside it, Edit and Delete
+ * under them; where a job runs (machine, then its folder, and an offline
+ * mark); a last run's time on two lines at most; a run's result as wide as
+ * a message's text.
+ */
+table.jobs .run-now {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: calc(0.3rem - 1px);
+}
+table.jobs .run-now input[type="text"] {
+  width: 7rem;
+}
+table.jobs .run-now button {
+  margin-right: 0;
+}
+table.jobs .offline {
+  display: block;
+  color: var(--fg-dim);
+}
+table.jobs td.last .time {
+  display: block;
+}
+table.jobs td.last .time > span,
+table.jobs td.next .when > span {
+  white-space: nowrap;
+}
+table.runs td.result {
+  width: 30%;
 }
 /*
  * Wakes: a text or a check as long as a sentence wraps anywhere it must (a
@@ -567,9 +666,9 @@ details.panel {
   margin-top: 0.8rem;
 }
 details.panel > summary {
-  padding: 0.5rem;
+  padding: 6px;
   background: var(--soft);
-  color: var(--fg);
+  color: var(--fg-label);
   font-weight: var(--bold);
   cursor: pointer;
 }
@@ -652,6 +751,16 @@ label.check {
 }
 
 /* phones: wrap rows, shrink chrome */
+/*
+ * Under 900 px the tabs are narrower, so that all ten fit an 800 px window
+ * (the Jobs tab made ten, 2026-11-07).
+ */
+@media (max-width: 900px) {
+  nav a {
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+  }
+}
 @media (max-width: 700px) {
   body {
     margin: 0.6rem 0.7rem;

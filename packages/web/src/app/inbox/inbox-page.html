@@ -1,8 +1,12 @@
 <!--
   The Inbox page: Show Closed (an action's result before it), the items with
-  their kind, agent (a link to the Agents page), title and body (an open
-  message has a field for the answer and Answer, every open item Close, a
-  closed one shows the answer it got), and when the list last loaded.
+  their kind, agent (a link to the Agents page), who they were sent to, title
+  and body (an open message has a field for the answer and Answer, every open
+  message and alert Close, a closed one shows the answer it got); an ask
+  shows its notes and expiry, and what it asks with its answer's controls (a
+  question's options, a permission's Allow Once, Allow Always and Reject, an
+  approval's options, Approve and Reject; its text once, under a title that
+  names the agent); and when the list last loaded.
 -->
 
 <div class="toolbar">
@@ -35,6 +39,7 @@
       <th>Time</th>
       <th>Kind</th>
       <th>Agent</th>
+      <th>Sent To</th>
       <th>Item</th>
       <th></th>
     </tr>
@@ -47,38 +52,231 @@
           [title]="item.created_at"
           [appTime]="item.created_at"
         ></td>
-        <td class="kind">{{ item.kind }}</td>
+        <td class="kind">{{ kindText(item) }}</td>
         <td class="agent id-like">
           @if (item.agent) {
             <app-agent-link [id]="item.agent" />
           }
         </td>
-        <td class="item">
-          <div class="title">{{ item.title }}</div>
-          @if (item.body) {
-            <div class="body">{{ item.body }}</div>
+        <td
+          class="sent-to"
+          [class.id-like]="!!sentAgent(item) || sentOwner(item)"
+        >
+          @if (sentAgent(item); as to) {
+            <app-agent-link [id]="to" />
+          } @else if (sentOwner(item)) {
+            <span appId="owner"></span>
+          } @else {
+            <span class="muted">{{ sentText(item) }}</span>
           }
-          @if (item.answer !== null) {
-            <div class="answer">
-              <span class="muted">Answer: </span>
-              <span class="body">{{ item.answer }}</span>
+        </td>
+        <td class="item">
+          <div class="title">{{ titleText(item) }}</div>
+          <!-- An agent the ask was sent to could not answer it. -->
+          @for (note of item.notes ?? []; track $index) {
+            <div class="note"><span class="muted">Note: </span>{{ note }}</div>
+          }
+          @if (item.expires && !item.closed_at) {
+            <div class="expires muted" [title]="item.expires"
+              >expires <span [appTime]="item.expires"></span> ({{
+                left(item)
+              }})</div
+            >
+          }
+          @if (!isAsk(item)) {
+            @if (item.body) {
+              <div class="body">{{ item.body }}</div>
+            }
+            @if (messageAnswer(item); as answer) {
+              <div class="answer">
+                <span class="muted">Answer: </span>
+                <span class="body">{{ answer }}</span>
+              </div>
+            } @else if (!item.closed_at && item.kind === 'message') {
+              <textarea
+                rows="2"
+                aria-label="Answer"
+                placeholder="The answer goes back to the agent as a message"
+                [value]="draft(item)"
+                (input)="setDraft(item, $any($event.target).value)"
+              ></textarea>
+            }
+          } @else if (item.closed_at) {
+            <!-- A closed approval still says what it asked. -->
+            @if (item.kind === 'approval') {
+              <div class="ask-text">{{ item.text }}</div>
+            }
+            @if (askAnswerText(item); as answer) {
+              <div class="answer">
+                <span class="muted">Answer: </span>
+                <span class="body">{{ answer }}</span>
+              </div>
+            }
+          } @else if (item.kind === 'question') {
+            <!--
+              Each question: its options (one click answers a single choice),
+              or for several questions or choices a radio button or checkbox
+              each, and a field for its own words; then Answer.
+            -->
+            @for (q of item.questions ?? []; track $index; let qi = $index) {
+              <div class="question">
+                <div class="ask-text">{{
+                  q.question + (q.multiple ? ' (one or more)' : '')
+                }}</div>
+                @if (oneClick(item)) {
+                  <div class="options">
+                    @for (option of q.options; track option) {
+                      <button
+                        type="button"
+                        class="option"
+                        [disabled]="busy()"
+                        (click)="answerOption(item, option)"
+                      >
+                        <span class="data">{{ option }}</span>
+                      </button>
+                    }
+                  </div>
+                } @else if (q.options.length) {
+                  <div class="choices">
+                    @for (option of q.options; track option) {
+                      <label class="check">
+                        <input
+                          [type]="q.multiple ? 'checkbox' : 'radio'"
+                          [name]="item.id + '-q' + qi"
+                          [checked]="picked(item, qi, option)"
+                          (change)="
+                            pick(
+                              item,
+                              qi,
+                              option,
+                              $any($event.target).checked,
+                              q.multiple
+                            )
+                          "
+                        />
+                        {{ option }}
+                      </label>
+                    }
+                  </div>
+                }
+                <input
+                  type="text"
+                  class="free"
+                  [attr.aria-label]="freeLabel(item, qi)"
+                  placeholder="or in your own words"
+                  [value]="field(item, 'free' + qi)"
+                  (input)="
+                    setField(item, 'free' + qi, $any($event.target).value)
+                  "
+                  (keydown.enter)="answerQuestion(item)"
+                />
+              </div>
+            }
+            <div class="ask-buttons">
+              <button
+                type="button"
+                [disabled]="busy() || !canAnswer(item)"
+                (click)="answerQuestion(item)"
+              >
+                Answer
+              </button>
             </div>
-          } @else if (!item.closed_at && item.kind === 'message') {
-            <textarea
-              rows="2"
-              aria-label="Answer"
-              placeholder="The answer goes back to the agent as a message"
-              [value]="draft(item)"
-              (input)="setDraft(item, $any($event.target).value)"
-            ></textarea>
+          } @else if (item.kind === 'permission') {
+            <!-- What it wants to run, on what; once, always or not. -->
+            <div class="action">
+              <span class="muted">Action: </span>{{ item.action }}
+            </div>
+            @if (item.resources?.length) {
+              <div class="resources">
+                <span class="muted">Resources: </span>
+                @for (r of item.resources; track $index) {
+                  <code>{{ r }}</code>
+                }
+              </div>
+            }
+            @if (item.message) {
+              <div class="ask-text">{{ item.message }}</div>
+            }
+            <div class="ask-buttons">
+              <button
+                type="button"
+                [disabled]="busy()"
+                (click)="allow(item, 'once')"
+              >
+                Allow Once
+              </button>
+              <button
+                type="button"
+                [disabled]="busy()"
+                (click)="allow(item, 'always')"
+                title="OpenCode saves the rule for the project"
+              >
+                Allow Always
+              </button>
+              <input
+                type="text"
+                aria-label="Reason to reject"
+                placeholder="reason (optional)"
+                [value]="field(item, 'reason')"
+                (input)="setField(item, 'reason', $any($event.target).value)"
+              />
+              <button
+                type="button"
+                [disabled]="busy()"
+                (click)="rejectPermission(item)"
+              >
+                Reject
+              </button>
+            </div>
+          } @else {
+            <!-- An approval: its text, an option to pick, a note. -->
+            <div class="ask-text">{{ item.text }}</div>
+            @if (item.options?.length) {
+              <div class="choices">
+                @for (option of item.options; track option) {
+                  <label class="check">
+                    <input
+                      type="radio"
+                      [name]="item.id + '-option'"
+                      [checked]="field(item, 'option') === option"
+                      (change)="setField(item, 'option', option)"
+                    />
+                    {{ option }}
+                  </label>
+                }
+              </div>
+            }
+            <div class="ask-buttons">
+              <input
+                type="text"
+                aria-label="Note"
+                placeholder="note (optional)"
+                [value]="field(item, 'note')"
+                (input)="setField(item, 'note', $any($event.target).value)"
+              />
+              <button
+                type="button"
+                [disabled]="busy()"
+                (click)="decide(item, 'approve')"
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                [disabled]="busy()"
+                (click)="decide(item, 'reject')"
+              >
+                Reject
+              </button>
+            </div>
           }
         </td>
         <td class="actions">
           @if (item.closed_at) {
-            <span class="muted" [title]="localTime(item.closed_at)"
-              >closed</span
-            >
-          } @else {
+            <span class="muted" [title]="localTime(item.closed_at)">{{
+              isAsk(item) ? item.state : 'closed'
+            }}</span>
+          } @else if (!isAsk(item)) {
             <div class="row-buttons">
               @if (item.kind === 'message') {
                 <button
@@ -102,7 +300,7 @@
       </tr>
     } @empty {
       <tr>
-        <td class="muted" colspan="5">
+        <td class="muted" colspan="6">
           {{ loaded() ? 'Nothing in the inbox.' : 'Loading...' }}
         </td>
       </tr>

@@ -1,11 +1,11 @@
 /*
  * The CLI's tier 0b commands, run as a process against an in-process server:
- * the agent commands a script uses in an agent's shell (me, wakes, fire, send,
- * messages) and the owner's (inbox, answer, pause, resume, stop-all,
- * resume-all, any agent's wakes, every message).
+ * the agent commands a script uses in an agent's shell (me, fire, send: the
+ * owner, 2026-11-07) and the owner's (inbox, answer, pause, resume, stop-all,
+ * resume-all, any agent's wakes, every message, locks).
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { generate } from "../../packages/cli/build.ts"
@@ -85,29 +85,43 @@ describe("agent commands, from a script in an agent's shell", () => {
     })
   })
 
-  test("wakes: set, list and cancel its own (me)", async () => {
-    const set = await cli(
-      [
-        "wake",
-        "set",
-        "me",
-        "nightly",
-        "--trigger",
-        "every 1h",
-        "--text",
-        "Look.",
-      ],
-      asLead(),
-    )
-    expect(set.code).toBe(0)
-    expect(set.stdout).toContain(
-      "wake nightly of kaggle:lead set: every 1h; next",
-    )
-    const list = await cli(["wakes"], asLead())
-    expect(list.stdout).toMatch(/kaggle:lead\s+nightly\s+every 1h/)
-    const cancel = await cli(["wake", "cancel", "me", "nightly"], asLead())
-    expect(cancel.stdout).toContain("cancelled wake nightly of kaggle:lead")
-    expect((await cli(["wakes"], asLead())).stdout).toContain("no wakes")
+  // A check script reads its own agent's locks (2026-11-07: an update
+  // loop's check, whose `autocode locks` is refused in the shell).
+  test("me --json: the agent's own held locks", async () => {
+    await call(t.url, lead, "POST", "/v1/locks/cli-me-lock/acquire", {
+      ttl: "10m",
+    })
+    const me = async (env: Record<string, string>) =>
+      JSON.parse((await cli(["me", "--json"], env)).stdout).locks
+    expect((await me(asLead())).held.map((l: any) => l.name)).toEqual([
+      "cli-me-lock",
+    ])
+    // another agent's hold is not in its own view
+    expect(await me(asWorker())).toEqual({ held: [], queued: [] })
+    await call(t.url, lead, "POST", "/v1/locks/cli-me-lock/release")
+    expect((await me(asLead())).held).toEqual([])
+  })
+
+  // The owner, 2026-11-07: a script in an agent's shell has me, fire and
+  // send; the rest is the tools' (or the owner's).
+  test("in an agent's shell, only me, fire and send", async () => {
+    for (const args of [
+      ["wakes"],
+      ["wake", "set", "me", "x", "--trigger", "every 1h", "--text", "x"],
+      ["wake", "cancel", "me", "x"],
+      ["messages"],
+      ["messages", "read", "m_x"],
+      ["locks"],
+      ["inbox"],
+      ["job", "list"],
+    ]) {
+      const res = await cli(args, asLead())
+      expect(res.code, args.join(" ")).toBe(2)
+      expect(res.stderr, args.join(" ")).toContain(
+        "in an agent's shell the CLI has only me, fire and send (and the " +
+          "machine's own setup: info, serve, install, uninstall, plugin)",
+      )
+    }
   })
 
   test("fire: its own wake with extra text; the prompt names the agent", async () => {
@@ -115,14 +129,14 @@ describe("agent commands, from a script in an agent's shell", () => {
       [
         "wake",
         "set",
-        "me",
+        "kaggle:worker",
         "poll",
         "--trigger",
         "fire-only",
         "--text",
         "Poll.",
       ],
-      asWorker(),
+      asAdmin(),
     )
     const fired = await cli(
       ["fire", "me", "poll", "--text", "data ready"],
@@ -144,43 +158,33 @@ describe("agent commands, from a script in an agent's shell", () => {
     ])
   })
 
-  test("send and messages: text, a file, reading, and waiting", async () => {
+  test("send: text to an agent, with a subject; no files", async () => {
     const sent = await cli(
       ["send", "kaggle:worker", "hello", "there", "--subject", "hi"],
       asLead(),
     )
     expect(sent.code).toBe(0)
     expect(sent.stdout).toMatch(/^sent to kaggle:worker \(m_\w+\)$/m)
-    const list = await cli(["messages"], asWorker())
-    expect(list.stdout).toMatch(/m_\w+\s+kaggle:lead\s+hi\s+text\s+11\s+queued/)
-    const id = /(m_\w+)/.exec(list.stdout)![1]!
-    const read = await cli(["messages", "read", id], asWorker())
+    const id = /(m_\w+)/.exec(sent.stdout)![1]!
+    const read = await cli(["messages", "read", id], asAdmin())
     expect(read.stdout).toContain(
-      `message ${id} from kaggle:lead, subject "hi":`,
+      `message ${id} from kaggle:lead to kaggle:worker, subject "hi":`,
     )
     expect(read.stdout).toContain("hello there")
+    const file = await cli(["send", "kaggle:worker", "--file", "x"], asLead())
+    expect(file.code).toBe(2)
+  })
 
-    const file = join(home, "plot.png")
-    writeFileSync(file, Buffer.from([137, 80, 78, 71, 0, 9]))
-    const binary = await cli(
-      ["send", "kaggle:worker", "--file", file],
+  // The review of 0b2: a list's unknown names are named.
+  test("send to a list: the names skipped are named", async () => {
+    const sent = await cli(
+      ["send", "kaggle:worker,kaggle:typo", "hello"],
       asLead(),
     )
-    const fileId = /(m_\w+)/.exec(binary.stdout)![1]!
-    const unsaved = await cli(["messages", "read", fileId], asWorker())
-    expect(unsaved.stdout).toContain("is a file (image/png")
-    const out = join(home, "copy.png")
-    const saved = await cli(
-      ["messages", "read", fileId, "--out", out],
-      asWorker(),
+    expect(sent.code).toBe(0)
+    expect(sent.stdout).toMatch(
+      /^sent to kaggle:worker \(m_\w+\); skipped \(not registered\): kaggle:typo$/m,
     )
-    expect(saved.stdout).toContain(`saved image/png to ${out}`)
-    expect([...readFileSync(out)]).toEqual([137, 80, 78, 71, 0, 9])
-
-    const started = Date.now()
-    const waited = await cli(["messages", "--wait", "1"], asLead())
-    expect(waited.stdout).toContain("no unread messages")
-    expect(Date.now() - started).toBeGreaterThan(900)
   })
 
   test("an agent's shell without its token says to use the tools", async () => {
@@ -197,8 +201,14 @@ describe("agent commands, from a script in an agent's shell", () => {
 
   test("an agent's shell never acts as the owner", async () => {
     const res = await cli(["pause", "kaggle:worker"], asLead())
-    expect(res.code).toBe(1)
-    expect(res.stderr).toContain("refused")
+    expect(res.code).toBe(2)
+    expect(res.stderr).toContain("only me, fire and send")
+    // with the agent's token passed on, the server refuses it
+    const passed = await cli(["pause", "kaggle:worker", "--token", lead], {
+      AUTOCODE_URL: t.url,
+    })
+    expect(passed.code).toBe(1)
+    expect(passed.stderr).toContain("refused")
   })
 })
 
@@ -228,7 +238,7 @@ describe("owner commands", () => {
     )
     // when each was last set, in the machine's local time
     expect(all.stdout).toMatch(
-      /kaggle:lead\s+standup\s+.*\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\s+Standup\./,
+      /kaggle:lead\s+standup\s+.*\d{4}-\d\d-\d\d \d\d:\d\d [A-Z]{3,5}\s+Standup\./,
     )
     expect(all.stdout).toMatch(/kaggle:lead\s+standup\s+cron/)
     expect(all.stdout).toMatch(/kaggle:worker\s+poll\s+fire-only/)
@@ -245,7 +255,7 @@ describe("owner commands", () => {
     await cli(["send", "owner", "May", "I?", "--subject", "budget"], asLead())
     await cli(["send", "owner", "FYI"], asWorker())
     const inbox = await cli(["inbox"], asAdmin())
-    expect(inbox.stdout).toMatch(/ID\s+KIND\s+AGENT\s+TITLE\s+CREATED/)
+    expect(inbox.stdout).toMatch(/ID\s+KIND\s+AGENT\s+TO\s+TITLE\s+CREATED/)
     expect(inbox.stdout).toContain('Message from kaggle:lead: "budget"')
     const items = JSON.parse((await cli(["inbox", "--json"], asAdmin())).stdout)
     const [first, second] = items
@@ -257,14 +267,19 @@ describe("owner commands", () => {
     expect((await cli(["inbox"], asAdmin())).stdout).toContain(
       "the inbox is empty",
     )
-    const reply = (await cli(["messages", "--all", "--json"], asLead())).stdout
-    expect(JSON.parse(reply).some((m: any) => m.from === "owner")).toBe(true)
+    const reply = (await cli(["messages", "--json"], asAdmin())).stdout
+    expect(
+      JSON.parse(reply).some(
+        (m: any) => m.from === "owner" && m.to === "kaggle:lead",
+      ),
+    ).toBe(true)
   })
 
   test("every message, newest first", async () => {
     const all = await cli(["messages"], asAdmin())
-    expect(all.stdout).toMatch(/ID\s+FROM\s+TO\s+SUBJECT\s+KIND\s+SIZE\s+STATE/)
-    expect(all.stdout).toMatch(/owner\s+kaggle:lead/)
+    expect(all.stdout).toMatch(/ID\s+FROM\s+TO\s+SUBJECT\s+SIZE\s+STATE/)
+    // the owner's answer to kaggle:lead, earlier in this file
+    expect(all.stdout).toMatch(/\bowner\s+kaggle:lead\b/)
   })
 
   test("pause, resume, stop-all and resume-all", async () => {
@@ -309,8 +324,6 @@ describe("owner commands", () => {
     ])
   })
 
-  // Tier 0c: locks, listed by the owner and an agent's scripts; the owner
-  // releases a hold.
   // The owner, 2026-11-05: viewing or listing a message does not make it
   // read.
   test("messages and messages read by the owner leave a message unread", async () => {
@@ -324,16 +337,15 @@ describe("owner commands", () => {
       (await cli(["messages", "--json"], asAdmin())).stdout,
     )
     expect(json.find((m: any) => m.id === id)?.state).toBe("queued")
-    const mine = await cli(["messages"], asWorker())
-    expect(mine.stdout).toMatch(new RegExp(`${id}.*queued`))
     // the agent reads it; then it is read
-    await cli(["messages", "read", id], asWorker())
+    await call(t.url, worker, "GET", `/v1/me/messages/${id}`)
     const after = JSON.parse(
       (await cli(["messages", "--json"], asAdmin())).stdout,
     )
     expect(after.find((m: any) => m.id === id)?.state).toBe("read")
   })
 
+  // Tier 0c: every lock, by pattern; the owner releases a hold.
   test("locks: holders and queues, by pattern; the owner releases a hold", async () => {
     const acquire = (token: string, name: string, body: object) =>
       call(t.url, token, "POST", `/v1/locks/${name}/acquire`, body)
@@ -344,12 +356,12 @@ describe("owner commands", () => {
     expect(all.code).toBe(0)
     expect(all.stdout).toMatch(/LOCK\s+MAX\s+HOLDER\s+EXPIRES\s+QUEUE/)
     expect(all.stdout).toMatch(
-      /gpu:0\s+1\s+kaggle:lead\s+\S+ \S+\s+kaggle:worker/,
+      /gpu:0\s+1\s+kaggle:lead\s+\S+ \S+ [A-Z]{3,5}\s+kaggle:worker/,
     )
     expect(all.stdout).toMatch(/data:x\s+2\s+kaggle:worker/)
-    const mine = await cli(["locks", "gpu:*"], asLead())
-    expect(mine.stdout).toContain("gpu:0")
-    expect(mine.stdout).not.toContain("data:x")
+    const some = await cli(["locks", "gpu:*"], asAdmin())
+    expect(some.stdout).toContain("gpu:0")
+    expect(some.stdout).not.toContain("data:x")
     const json = JSON.parse((await cli(["locks", "--json"], asAdmin())).stdout)
     expect(json.map((l: any) => l.name)).toEqual(["data:x", "gpu:0"])
     const freed = await cli(
@@ -361,14 +373,146 @@ describe("owner commands", () => {
     expect((await cli(["locks", "gpu:0"], asAdmin())).stdout).toMatch(
       /gpu:0\s+1\s+kaggle:worker/,
     )
-    const shell = await cli(
-      ["locks", "release", "gpu:0", "kaggle:worker"],
-      asLead(),
-    )
-    expect(shell.code).toBe(2)
     for (const name of ["gpu:0", "data:x"])
       await call(t.url, worker, "POST", `/v1/locks/${name}/release`, {})
     expect((await cli(["locks"], asAdmin())).stdout.trim()).toBe("no locks")
+  })
+
+  // Tier 0d: questions, permissions and approvals in the inbox; answer
+  // takes any kind.
+  test("inbox lists asks with where they went; answer answers them", async () => {
+    await report(t, "m:1", [
+      {
+        type: "ask.opened",
+        kind: "question",
+        session: "ses_1",
+        ref: "frm_cli",
+        questions: [
+          {
+            header: "Fold",
+            question: "Which fold?",
+            options: [{ label: "v3" }, { label: "v2" }],
+          },
+        ],
+      },
+      {
+        type: "ask.opened",
+        kind: "permission",
+        session: "ses_2",
+        ref: "per_cli",
+        action: "shell",
+        resources: ["rm -rf build"],
+      },
+    ])
+    const list = await cli(["inbox"], asAdmin())
+    expect(list.stdout).toMatch(/ID\s+KIND\s+AGENT\s+TO\s+TITLE\s+CREATED/)
+    expect(list.stdout).toMatch(/ask_\w+\s+question\s+kaggle:lead\s+owner/)
+    expect(list.stdout).toMatch(/ask_\w+\s+permission\s+kaggle:worker\s+owner/)
+    const items = JSON.parse((await cli(["inbox", "--json"], asAdmin())).stdout)
+    const q = items.find((i: any) => i.kind === "question")
+    const perm = items.find((i: any) => i.kind === "permission")
+    const answered = await cli(["answer", q.id, "v3"], asAdmin())
+    expect(answered.code).toBe(0)
+    expect(answered.stdout).toContain(`answered ${q.id}`)
+    const once = await cli(["answer", perm.id, "once"], asAdmin())
+    expect(once.stdout).toContain(`answered ${perm.id}`)
+    const late = await cli(["answer", q.id, "v2"], asAdmin())
+    expect(late.code).toBe(1)
+    expect(late.stderr).toContain("already answered by the owner")
+    for (const i of await instructions(t, "m:1")) await ack(t, "m:1", i.id)
+  })
+
+  // Tier 0f: jobs from the CLI.
+  // The review of 0f: --keep-session is a switch (anywhere on the line);
+  // delete-session deletes a failed run's kept session.
+  // The review of 0b2: the CLI's times say their zone.
+  test("wakes: times in the server's zone, named", async () => {
+    await cli(
+      ["wake", "set", "kaggle:lead", "zoned", "--trigger", "every 1h"].concat([
+        "--text",
+        "x",
+      ]),
+      asAdmin(),
+    )
+    const res = await cli(["wakes", "kaggle:lead"], asAdmin())
+    expect(res.code, res.stderr).toBe(0)
+    expect(res.stdout).toMatch(
+      /\d{4}-\d\d-\d\d \d\d:\d\d (UTC|[A-Z]{3,5}|GMT[+-]\d+)/,
+    )
+    await cli(["wake", "cancel", "kaggle:lead", "zoned"], asAdmin())
+  })
+
+  test("job set --keep-session; job delete-session", async () => {
+    const set = await cli(
+      [
+        "job",
+        "set",
+        "keeper",
+        "--keep-session",
+        "--host",
+        "m:1",
+        "--model",
+        "fake/main",
+        "--prompt",
+        "Keep it.",
+        "--trigger",
+        "fire-only",
+      ],
+      asAdmin(),
+    )
+    expect(set.code, set.stderr).toBe(0)
+    const jobs = JSON.parse(
+      (await cli(["job", "list", "--json"], asAdmin())).stdout,
+    )
+    expect(jobs.find((j: any) => j.name === "keeper").delete_session).toBe(
+      false,
+    )
+    const none = await cli(["job", "delete-session", "keeper:x"], asAdmin())
+    expect(none.code).toBe(1)
+    expect(none.stderr).toContain("no run keeper:x")
+    expect((await cli(["job", "delete", "keeper"], asAdmin())).code).toBe(0)
+  })
+
+  test("job set, list, run, runs and delete", async () => {
+    const set = await cli(
+      [
+        "job",
+        "set",
+        "digest",
+        "--host",
+        "m:1",
+        "--model",
+        "fake/main",
+        "--prompt",
+        "Write the digest.",
+        "--trigger",
+        "fire-only",
+        "--run-usd",
+        "2",
+      ],
+      asAdmin(),
+    )
+    expect(set.code).toBe(0)
+    expect(set.stdout).toContain("job digest set: fire-only on m:1")
+    const list = await cli(["job", "list"], asAdmin())
+    expect(list.stdout).toMatch(
+      /NAME\s+WHERE\s+MODEL\s+TRIGGER\s+NEXT\s+LAST RUN/,
+    )
+    expect(list.stdout).toMatch(/digest\s+m:\/work\s+fake\/main\s+fire-only/)
+    const run = await cli(
+      ["job", "run", "digest", "--text", "short"],
+      asAdmin(),
+    )
+    expect(run.stdout).toMatch(/^started run digest:\S+$/m)
+    const twice = await cli(["job", "run", "digest"], asAdmin())
+    expect(twice.code).toBe(1)
+    expect(twice.stderr).toContain("job digest is running")
+    const runs = await cli(["job", "runs", "digest"], asAdmin())
+    expect(runs.stdout).toMatch(/RUN\s+BY\s+STATE\s+STARTED\s+COST\s+RESULT/)
+    expect(runs.stdout).toMatch(/digest:\S+\s+owner\s+starting/)
+    const del = await cli(["job", "delete", "digest"], asAdmin())
+    expect(del.stdout).toContain("deleted job digest")
+    for (const i of await instructions(t, "m:1")) await ack(t, "m:1", i.id)
   })
 
   test("usage errors exit 2", async () => {
@@ -381,6 +525,8 @@ describe("owner commands", () => {
       ["pause"],
       ["retry"],
       ["locks", "release"],
+      ["job", "set", "x"],
+      ["job", "run"],
       ["messages", "read"],
     ]) {
       const res = await cli(args, asAdmin())

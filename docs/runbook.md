@@ -117,24 +117,25 @@ ID before it sends a token. Every command takes `--json`.
 | `autocode token rotate AGENT` | replace an agent's session token |
 | `autocode settings ...` | see [Settings](#settings) |
 | `autocode history [--agent ID] [--kind KIND] [--since TIME] [--limit N]` | the history, newest first |
-| `autocode inbox [--all]` | the owner's inbox: messages to `owner` and alerts (three failed checks in a row; a failed turn not retried; retries run out) |
-| `autocode answer ITEM TEXT...` | answer a message in the inbox: the reply goes to the agent as a message from the owner |
+| `autocode inbox [--all]` | the owner's inbox: messages to `owner`, alerts (three failed checks in a row; a failed turn not retried; retries run out), and agents' questions, permission prompts and approvals (tier 0d; TO says whether one was also sent to an agent) |
+| `autocode answer ITEM TEXT...` | answer a message (the reply goes to the agent as a message from the owner), a question (an option or words; one line per question), a permission (`once`, `always`, or `reject: why`) or an approval (`approve` or `reject`, then an option and a note); the first answer counts |
 | `autocode inbox close ITEM` | close an inbox item (an alert, or a message you will not answer) |
 | `autocode pause AGENT` / `resume AGENT` | stop or restart an agent's injections (wakes and messages keep queuing) |
 | `autocode retry AGENT` | retry an agent in the error state now (also after an error that is not retried, or after the retries ran out) |
+| `autocode job set NAME --host H --model M --prompt P --trigger T` | define or replace a job (tier 0f): its host (`autocode hosts` lists them), the model, the prompt, `every`/`at`/`cron`/`fire-only`; `--to` (default owner), `--timeout` (1h), `--run-usd`, `--keep-session` |
+| `autocode job list` / `job run NAME [--text T]` / `job runs [NAME]` / `job delete NAME` | the jobs; start a run now (refused while one runs); the runs with state, cost and result; delete a job |
 | `autocode locks [PATTERN]` | every lock: capacity, holders with their expiry, the queue (tier 0c) |
 | `autocode locks release NAME AGENT` | free an agent's hold on a lock (or take it out of the queue); the agent gets a notice, the next in the queue the lock |
 | `autocode stop-all` / `resume-all` | pause every agent and interrupt every running turn; resume what stop-all paused (your own pauses stay) |
 | `autocode wakes [AGENT]` | every wake (agent, name, trigger, next run, check, text), or one agent's |
-| `autocode wake set AGENT NAME --trigger T --text TEXT [--check CMD] [--end TIME]` | set or replace an agent's wake |
+| `autocode wake set AGENT NAME --trigger T --text TEXT [--check CMD]` | set or replace an agent's wake |
 | `autocode wake cancel AGENT NAME` | cancel a wake |
 | `autocode fire AGENT WAKE [--text TEXT]` | deliver a wake now (it skips its check); the prompt says the owner fired it |
-| `autocode send TO TEXT...` (or `--file PATH`) | send a message as the owner to an ID, a pattern or a list |
+| `autocode send TO TEXT...` | send a text message as the owner to an ID, a pattern or a list |
 | `autocode messages` | every message, newest first, with its state (queued, delivered, read); your views (here, `messages read`, the web UI) never change a state, only the agent reading it does |
 
-In an agent's shell the same binary acts as that agent: `autocode me`, `autocode wakes`, `autocode wake set me ...`,
-`autocode fire me WAKE`, `autocode send`, `autocode messages [--wait SECONDS]` and `autocode messages read ID [--out
-FILE]` (see `howto.md`).
+In an agent's shell the same binary acts as that agent, with three commands only: `autocode me`, `autocode fire me
+WAKE [--text TEXT]` and `autocode send TO TEXT...` (see `howto.md`); the owner's commands are refused there.
 
 Exit codes: 0 done, 1 refused or failed, 2 wrong usage, 3 the server cannot be reached.
 
@@ -145,14 +146,17 @@ Exit codes: 0 done, 1 refused or failed, 2 wrong usage, 3 the server cannot be r
 - `autocode settings set KEY VALUE` sets a server-wide value; `--match PATTERN` sets it in the rule for that
   pattern (a new rule goes last; the first matching rule wins); `--agent ID` sets the agent's own value, which wins
   over everything. `autocode settings unset KEY [...]` clears it.
-- Server-wide only: `history_days`, `keep_failed`, `restart_opencode`, `timezone`, `listen` (`listen` takes effect
+- Server-wide only: `history_days`, `timezone`, `listen` (`listen` takes effect
   at the next start).
 - In use: `history_days` (history trimming, with message bodies, settled injections and closed inbox items),
   `min_interval`, `inline_limit`, `check_timeout`, `check_output`, `max_tool_wait` (a single wait is cut at 240 s
   and waited again), `timezone` (the default zone of `cron` and `at` wakes; a cron wake keeps the zone it was set
-  with), `retry_interval` (1m: the wait between a failed turn and its retry) and `retry_attempts` (0, no limit: the
-  most retries in a row before Autocode stops and tells you). The other settings are stored and resolved now and
-  used by the tiers that add their features.
+  with), `retry_interval` (1m: the wait between a failed turn and its retry), `retry_attempts` (0, no limit: the
+  most retries in a row before Autocode stops and tells you), and (tier 0d) `question_mode` (`ask`, `auto`,
+  `agent:<id>`), `auto_answer_text`, `permission_mode` and `approval_mode` (`ask`, `approve`, `agent:<id>`);
+  `job:<name>` is accepted and goes to you until jobs come (tier 0f); (tier 0e) `daily_usd` and `cap_warn`, `compact_at`, `expire_after`. For example, to send every question of
+  `team:worker-*` to `team:lead`: `autocode settings set question_mode agent:team:lead --match 'team:worker-*'`.
+  The other settings are stored and resolved now and used by the tiers that add their features.
 
 ## Web UI
 
@@ -227,6 +231,11 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
 | Plugin log: "superseded by a newer instance" | Two OpenCode processes use the same folder and data folder; the newest one holds the channel, the older one waits and takes over when the newer one is gone. Tools and shell variables keep working in both. |
 | An agent shows `offline` | Its host is offline (above), or its session was deleted (the ID can move to another session). |
 | A lock stays held | `autocode locks` shows the holder and when its hold runs out (its `ttl`); it is freed then, or at once with `autocode locks release NAME AGENT` (or Release on the Locks page). Unregistering an agent releases its locks. |
+| A run failed | Its alert says why (the time limit, `run_usd`, the session could not start); its session is kept: look at it in OpenCode, then delete it (Delete Session on the Jobs page, or `DELETE /v1/runs/{id}/session`). A scheduled run while one works is `skipped`. |
+| An agent is paused by `cap` | It passed its `daily_usd` today (the server's zone; an inbox alert says how much): it stays paused until the next day, or until you raise its cap (`autocode settings set daily_usd 20 --agent ID`) or resume it. `cap_warn` (90%) warned it before. |
+| A session's context grows without end | Autocode compacts it before the next prompt past `compact_at` (50% of the window, at most 500,000 tokens; `off` per agent). History shows `session.compacted`. |
+| OpenCode was restarted under a turn | The turn is cut (`turn.cut` in History) and resumed with an `[autocode] resume` prompt once its OpenCode is back. The machine's background service (`opencode serve --service`) is started again by Autocode when it is gone (`opencode.restarted`); any other OpenCode gets an inbox alert: start it yourself. |
+| An agent shows `waiting` | It has an open question, permission prompt or approval (tier 0d): `autocode inbox` shows it, with TO when it was sent to another agent. Its wakes and messages wait until it is answered (the first answer counts), it expires (approvals), or it is answered in the TUI. |
 | An agent shows `error` | Its last turn failed: the Agents page (or `autocode agents --json`) shows the error (like `provider.internal`: the model's provider failed), the retries sent and the next. Autocode retries every `retry_interval` with what waited, until a turn succeeds (or `retry_attempts` run out: an inbox alert). Errors that come back the same way (`provider.auth`, `provider.invalid-request`, `provider.content-filter`, `provider.unknown`, `provider.unsupported-operation`) are not retried: fix the cause (a key, the model's name), then **Retry** or `autocode retry AGENT`. |
 | Registering says `id_taken` | The ID belongs to another session that still exists; unregister there, delete that session, or force the move: `autocode agents register ID --session SESSION --force`. |
 | A tool says `session_gone` | The session was deleted in OpenCode; a deleted session never gets a token again. |

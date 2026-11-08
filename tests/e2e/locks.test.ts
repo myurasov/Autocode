@@ -3,8 +3,9 @@
  * machines when there are two) share a lock through autocode_lock in real
  * sessions. The first holds it; the second waits in the queue and gets the
  * grant as an injected notice when the first releases; a semaphore takes as
- * many as it has places; a hold that runs past its ttl is freed, its holder
- * told by a notice and the next in the queue granted.
+ * many as it has places, and the next by a notice; a hold that runs past its
+ * ttl is freed, its holder told by a notice and the next in the queue
+ * granted.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { admin, callTool, readySession } from "../helpers/autocode.ts"
@@ -99,28 +100,19 @@ describe("locks across machines", () => {
     expect(await state(name)).toBeUndefined()
   }, 180_000)
 
-  test("a semaphore of 2: two hold it, the third waits in the call and gets it there", async () => {
+  test("a semaphore of 2: two hold it, the third is granted by a notice when the owner releases one", async () => {
     const [first, second, third] = agents as [any, any, any]
     const name = `e2e:${run}:sem`
     await lock(first, { action: "acquire", name, ttl: "10m", max: 2 })
     await lock(second, { action: "acquire", name, ttl: "10m" })
     expect((await state(name)).holders.length).toBe(2)
-    // the third waits inside its tool call; the first releases meanwhile
-    const waiting = lock(third, {
-      action: "acquire",
-      name,
-      ttl: "10m",
-      mode: "wait",
-      seconds: 60,
-    })
-    await until(async () => (await state(name)).queue.length === 1, {
-      timeoutMs: 30_000,
-      what: "the third in the queue",
-    })
+    expect(
+      await lock(third, { action: "acquire", name, ttl: "10m" }),
+    ).toContain("you are number 1 in the queue")
     await admin("POST", `/v1/locks/${encodeURIComponent(name)}/release`, {
       agent: first.id,
     })
-    expect(await waiting).toContain(`You hold lock "${name}" until`)
+    await promptWith(third, `[autocode] lock "${name}" granted`)
     // the first is told the owner released it
     await promptWith(first, `[autocode] lock "${name}" released by the owner`)
     for (const a of [second, third]) await lock(a, { action: "release", name })

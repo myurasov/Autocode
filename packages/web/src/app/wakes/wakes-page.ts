@@ -69,7 +69,6 @@ export class WakesPage {
     trigger: signal(''),
     text: signal(''),
     check: signal(''),
-    end: signal(''),
   };
   protected readonly setting = signal(false);
   protected readonly set = signal('');
@@ -162,15 +161,13 @@ export class WakesPage {
     const name = f.name().trim();
     const wake: WakeInput = { text: f.text(), trigger: f.trigger().trim() };
     if (f.check().trim()) wake.check = f.check().trim();
-    if (f.end().trim()) wake.end = f.end().trim();
     this.setting.set(true);
     this.set.set('');
     this.setError.set('');
     try {
       await this.api.setWake(agent, name, wake);
       this.set.set(`Set ${agent}'s wake ${name}.`);
-      for (const field of [f.name, f.trigger, f.text, f.check, f.end])
-        field.set('');
+      for (const field of [f.name, f.trigger, f.text, f.check]) field.set('');
     } catch (err) {
       this.setError.set(errorText(err));
       return;

@@ -51,12 +51,78 @@ export interface Agent {
   machine?: string;
   directory?: string;
   registered_at?: string;
-  // Who paused its injections: '' (nobody), 'owner' or 'stop-all'.
+  // Who paused its injections: '' (nobody), 'owner', 'stop-all' or 'cap'.
   paused?: string;
   idle_since?: string | null;
   last_outcome?: string | null;
   // While its turns fail (also when paused or offline).
   error?: AgentError | null;
+}
+
+/*
+ * A job (tier 0f): a fresh agent run on a host (an OpenCode folder of a
+ * machine) with a model and a prompt, on a trigger or when asked; its result
+ * goes to `to` (owner, an agent or a pattern).
+ */
+export interface Job {
+  name: string;
+  description: string;
+  host: string;
+  machine: string | null;
+  directory: string | null;
+  online: boolean;
+  model: string;
+  variant?: string;
+  agent?: string;
+  prompt: string;
+  // every 30m, at <ISO>, cron "..." zone, fire-only
+  trigger: string;
+  next: string | null;
+  to: string;
+  // a run's time limit, like 1h
+  timeout: string;
+  // a run's cap in dollars, or off
+  run_usd: number | 'off';
+  delete_session: boolean;
+  last_run: { id: string; state: string; started: string } | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// A job as the owner sets it.
+export interface JobInput {
+  host: string;
+  model: string;
+  prompt: string;
+  trigger: string;
+  to?: string;
+  description?: string;
+  variant?: string;
+  agent?: string;
+  timeout?: string;
+  run_usd?: number | 'off';
+  delete_session?: boolean;
+}
+
+// A run of a job, newest first.
+export interface Run {
+  id: string;
+  job: string;
+  // owner, schedule, ask, or the agent that started it
+  by: string;
+  // the text the starter added to the prompt
+  text?: string;
+  session: string | null;
+  state: 'starting' | 'running' | 'succeeded' | 'failed' | 'skipped';
+  // why it failed or was skipped
+  reason: string | null;
+  result: string | null;
+  cost: number;
+  started: string;
+  ended: string | null;
+  // a failed run's session, kept until the owner deletes it
+  session_kept: boolean;
+  ask?: string;
 }
 
 // A lock or semaphore (tier 0c): its capacity (1: a mutex), the agents that
@@ -134,8 +200,10 @@ export interface Wake {
   text: string;
   trigger: string;
   check: string | null;
-  end: string | null;
   next: string | null;
+  // when it falls due: `next` for timed wakes, for an idle one when it does
+  // if the session stays idle (the review of 0b2)
+  due?: string | null;
   set_by: string;
   created_at: string;
   updated_at: string;
@@ -143,13 +211,14 @@ export interface Wake {
   check_failures: number;
 }
 
+// A wake as set: it has no end (the owner, 2026-11-07).
 export interface WakeInput {
   text: string;
   trigger: string;
   check?: string;
-  end?: string;
 }
 
+// A message: always text (the owner, 2026-11-07).
 export interface Message {
   id: string;
   send_id: string;
@@ -157,8 +226,6 @@ export interface Message {
   to: string;
   subject: string;
   reply_to: string | null;
-  kind: 'text' | 'binary';
-  mime: string | null;
   size: number;
   // A text message's first 100 characters (the owner's list only).
   preview?: string;
@@ -168,10 +235,9 @@ export interface Message {
   read_at: string | null;
 }
 
-// A message whole, as the owner reads it: its text, or a file's base64 data.
+// A message whole, as the owner reads it: its text.
 export interface FullMessage extends Message {
-  text?: string;
-  data?: string;
+  text: string;
 }
 
 export interface Outgoing {
@@ -186,17 +252,59 @@ export interface Sent {
   messages: { id: string; to: string }[];
 }
 
+// What an agent's turn waits for (tier 0d): an "ask".
+export type AskKind = 'question' | 'permission' | 'approval';
+
+export interface AskQuestion {
+  question: string;
+  options: string[];
+  // more than one option may be chosen
+  multiple: boolean;
+}
+
+/*
+ * An item of the owner's inbox: a message to the owner, an alert, or an ask
+ * (a question, a permission prompt or an approval), oldest first.
+ */
 export interface InboxItem {
   id: string;
-  kind: 'message' | 'alert';
+  kind: 'message' | 'alert' | AskKind;
   agent: string | null;
-  message_id: string | null;
+  message_id?: string | null;
   title: string;
-  body: string;
+  body?: string;
   created_at: string;
-  closed_at: string | null;
-  answer: string | null;
+  closed_at?: string | null;
+  // a message's answer (its text); an ask's (its decision, option, text...)
+  answer?: unknown;
+  // An ask's: who it went to (owner, agent:<id>; auto or approve when it was
+  // answered at once), notes (an agent could not answer), state, expiry.
+  routed?: string;
+  notes?: string[];
+  state?: string;
+  expires?: string | null;
+  // a question's questions
+  questions?: AskQuestion[];
+  // a permission's action, resources and message
+  action?: string;
+  resources?: string[];
+  message?: string | null;
+  decisions?: string[];
+  // an approval's text and options
+  text?: string;
+  options?: string[];
+  // who answered a closed ask
+  by?: string | null;
 }
+
+// An ask's answer: a question's text (one question) or answers (one per
+// question), a permission's decision (and a reason to reject), an approval's
+// decision (and an option, a note).
+export type AskAnswer =
+  | { text: string }
+  | { answers: string[] }
+  | { decision: 'once' | 'always' | 'reject'; text?: string }
+  | { decision: 'approve' | 'reject'; option?: string; text?: string };
 
 export interface SettingDef {
   kind: string;
@@ -354,6 +462,54 @@ export class Api {
         this.http.post<{ agent: Agent }>(`/v1/agents/${path(id)}/retry`, {}),
       )
     ).agent;
+  }
+
+  // The jobs (tier 0f), by name.
+  async jobs(): Promise<Job[]> {
+    return (await this.call(this.http.get<{ jobs: Job[] }>('/v1/jobs'))).jobs;
+  }
+
+  // Sets a job, or replaces the one of that name.
+  async setJob(name: string, job: JobInput): Promise<Job> {
+    return (
+      await this.call(
+        this.http.put<{ job: Job }>(`/v1/jobs/${path(name)}`, job),
+      )
+    ).job;
+  }
+
+  // Deletes a job; its runs' history stays.
+  deleteJob(name: string): Promise<{ deleted: string }> {
+    return this.call(
+      this.http.delete<{ deleted: string }>(`/v1/jobs/${path(name)}`),
+    );
+  }
+
+  // Starts a run now, with text added to its prompt; refused while one runs.
+  async runJob(name: string, text?: string): Promise<Run> {
+    return (
+      await this.call(
+        this.http.post<{ run: Run }>(
+          `/v1/jobs/${path(name)}/run`,
+          text ? { text } : {},
+        ),
+      )
+    ).run;
+  }
+
+  // The runs, newest first: every job's, or one job's.
+  async runs(job?: string): Promise<Run[]> {
+    const params = job ? new HttpParams().set('job', job) : undefined;
+    return (
+      await this.call(this.http.get<{ runs: Run[] }>('/v1/runs', { params }))
+    ).runs;
+  }
+
+  // Deletes a failed run's kept session.
+  deleteRunSession(id: string): Promise<{ deleted: string }> {
+    return this.call(
+      this.http.delete<{ deleted: string }>(`/v1/runs/${path(id)}/session`),
+    );
   }
 
   // Every lock, or those whose names match a pattern (gpu-*, a,b:*).
@@ -533,6 +689,19 @@ export class Api {
         }),
       )
     ).item;
+  }
+
+  // Answers an ask (a question, a permission or an approval); the first
+  // answer counts, a later one is refused (ask_closed).
+  async answerAsk(id: string, answer: AskAnswer): Promise<InboxItem> {
+    return (
+      await this.call(
+        this.http.post<{ ask: InboxItem }>(
+          `/v1/asks/${path(id)}/answer`,
+          answer,
+        ),
+      )
+    ).ask;
   }
 
   async closeItem(id: string): Promise<InboxItem> {

@@ -1,7 +1,11 @@
 /*
  * Unit tests of the Help page: its route and no calls to the server; the
  * numbered contents (sections, subsections indented), each entry a link to a
- * heading with the same number and title; the facts the owner looks up most
+ * heading with the same number and title; what Autocode is for (long-term,
+ * agentic autonomy) and which feature serves which need; asks (questions,
+ * permissions, approvals) for agents and in the Inbox; text-only messages,
+ * wakes without an end that merge by name, locks without a wait in the tool
+ * call; the facts the owner looks up most
  * (the wake triggers, the owner's commands, the settings in use with their
  * defaults, the troubleshooting rows for agents and wakes); locks, for agents
  * and on the Locks tab; the web UI's long texts and ID links; no hyphen where
@@ -28,7 +32,9 @@ const CONTENTS = [
   ['3.3', 'Wakes'],
   ['3.4', 'Messages'],
   ['3.5', 'Locks'],
-  ['3.6', 'What an Agent Sees'],
+  ['3.6', 'Questions, Permissions and Approvals'],
+  ['3.7', 'Jobs'],
+  ['3.8', 'What an Agent Sees'],
   ['4', 'The CLI'],
   ['4.1', 'Your Commands'],
   ['4.2', "In an Agent's Shell"],
@@ -39,9 +45,10 @@ const CONTENTS = [
   ['5.4', 'Messages'],
   ['5.5', 'Locks'],
   ['5.6', 'Wakes'],
-  ['5.7', 'History'],
-  ['5.8', 'Settings'],
-  ['5.9', 'Help'],
+  ['5.7', 'Jobs'],
+  ['5.8', 'History'],
+  ['5.9', 'Settings'],
+  ['5.10', 'Help'],
   ['6', 'Settings'],
   ['7', 'Troubleshooting'],
 ];
@@ -67,6 +74,17 @@ describe('HelpPage', () => {
     [...(table?.querySelectorAll('tbody tr') ?? [])].map((r) =>
       [...r.querySelectorAll('td')].map((td) => text(td)),
     );
+
+  // A section's text: what comes after its heading, up to the next one.
+  const section = (page: HTMLElement, id: string) => {
+    const out: string[] = [];
+    let node = page.querySelector(`#${id}`)!.nextElementSibling;
+    while (node && !/^H[23]$/.test(node.tagName)) {
+      out.push(text(node));
+      node = node.nextElementSibling;
+    }
+    return out.join(' ');
+  };
 
   it('is the /help route and asks the server for nothing', async () => {
     expect(routes.find((r) => r.path === 'help')?.component).toBe(HelpPage);
@@ -102,6 +120,68 @@ describe('HelpPage', () => {
     }
     expect(page.querySelectorAll('article h2, article h3').length).toBe(
       SECTIONS.length,
+    );
+  });
+
+  it('says what Autocode is for: long-term, agentic autonomy, which decides its features', async () => {
+    const page = await open();
+    const what = section(page, 'what');
+    for (const part of [
+      'a framework for long-term, agentic autonomy',
+      'days or weeks',
+      'coordinate with each other',
+      'under your control',
+      'decides which features it has',
+      'left out or kept small',
+      // The two parts, and the owner's control, as before.
+      'a server, which keeps the state and serves this web UI',
+      'a plugin',
+      'You control it all here',
+    ])
+      expect(what, part).toContain(part);
+    // Locks and retries are here now, not in a later tier.
+    expect(what).not.toContain('Later tiers add locks');
+    expect(what).not.toMatch(/kaggle|casmi/i);
+    // What an autonomous agent needs, and the feature that serves it.
+    const needs = page.querySelector('#what ~ table.needs')!;
+    expect(
+      [...needs.querySelectorAll('thead th')].map((th) => text(th)),
+    ).toEqual(['What an Agent Needs', 'What Autocode Has']);
+    const serves = (need: string) =>
+      rows(needs).find((r) => r[0]!.includes(need))?.[1] ?? '';
+    const map: [string, string[]][] = [
+      ['come back later', ['wakes', 'checks']],
+      ['background job ends', ['fire-only']],
+      ['other agents', ['messages', 'discovery']],
+      ['scarce resources', ['locks and semaphores']],
+      ['something breaks', ['retries', 'resumes']],
+      ['decision', ['Inbox', 'another agent']],
+      ['limits', ['daily cost cap', 'compaction', 'expiry']],
+      ['fresh agent', ['jobs']],
+      ['control', ['pause', 'Stop All', 'web UI', 'history']],
+    ];
+    expect(rows(needs).length).toBe(map.length);
+    for (const [need, features] of map)
+      for (const feature of features)
+        expect(serves(need), `${need}: ${feature}`).toContain(feature);
+    // Every row is built now (tiers 0d to 0f): none is marked for later.
+    expect(text(needs)).not.toContain('later tier');
+  });
+
+  it('keeps to what Autocode has: messages are text, a wake has no end and merges by name', async () => {
+    const page = await open();
+    const messages = section(page, 'messages');
+    expect(messages).toContain('A message is a text');
+    expect(messages).not.toMatch(/\bfiles?\b/);
+    const wakes = section(page, 'wakes');
+    expect(wakes).toContain('merged only when they have the same name');
+    expect(wakes).not.toContain('same text');
+    expect(wakes).not.toContain('end time');
+    expect(section(page, 'web-wakes')).not.toMatch(/\bend\b/);
+    // the review of 0b2: Fire waits for an idle session too
+    expect(wakes).not.toContain('Fire delivers a wake at once');
+    expect(wakes).toContain(
+      'Fire delivers a wake as soon as the session is idle',
     );
   });
 
@@ -150,14 +230,22 @@ describe('HelpPage', () => {
       'autocode locks release NAME AGENT',
     ])
       expect(commands, command).toContain(command);
-    const scripts = text(page.querySelector('ul.scripts'));
-    for (const command of [
+    // Gone (the owner, 2026-11-07): files, a wake's end, a read to a file.
+    for (const flag of ['--file', '--end', '--out'])
+      expect(commands.join(' '), flag).not.toContain(flag);
+    // In an agent's shell the CLI is me, fire and send only.
+    expect(
+      [...page.querySelectorAll('ul.scripts li > code:first-child')].map((c) =>
+        text(c),
+      ),
+    ).toEqual([
       'autocode me',
-      'autocode wake set me',
+      'autocode fire me NAME [--text TEXT]',
+      'autocode send TO TEXT... [--subject S] [--reply-to ID]',
+    ]);
+    expect(text(page.querySelector('#scripts ~ pre'))).toContain(
       'autocode fire me',
-      'autocode messages [--wait SECONDS]',
-    ])
-      expect(scripts, command).toContain(command);
+    );
   });
 
   it('gives the settings in use with their defaults', async () => {
@@ -173,28 +261,137 @@ describe('HelpPage', () => {
       ['history_days', '30'],
       ['retry_interval', '1m'],
       ['retry_attempts', '0'],
+      ['question_mode', 'ask'],
+      [
+        'auto_answer_text',
+        'Act according to your best judgement and safe practices to ' +
+          'achieve my goals.',
+      ],
+      ['permission_mode', 'ask'],
+      ['approval_mode', 'ask'],
+      ['compact_at', '50% max 500000'],
+      ['daily_usd', 'off'],
+      ['cap_warn', '90%'],
+      ['expire_after', '14d'],
     ]);
+    for (const mode of ['question_mode', 'permission_mode', 'approval_mode'])
+      expect(settings.find((r) => r[0] === mode)![2], mode).toContain(
+        'agent:<id>',
+      );
     const attempts = settings.find((r) => r[0] === 'retry_attempts')!;
     expect(attempts[2]).toContain('0: no limit');
-    // Retries are no longer among the settings kept for later tiers.
-    expect(text(page.querySelector('table.settings-help + p'))).not.toContain(
-      'retries',
+    // Every setting is used now: none is kept for a later tier.
+    const after = text(page.querySelector('table.settings-help + p'));
+    expect(after).not.toContain('later tier');
+    expect(after).toContain('listen');
+  });
+
+  it('explains jobs: for agents, on the Jobs tab and in the commands', async () => {
+    const page = await open();
+    const jobs = section(page, 'jobs');
+    // a run's ID is its start minute in UTC (the review of 0b2)
+    expect(jobs).toContain('its start minute in UTC');
+    expect(jobs).toContain('daily-report:2026-11-08T17:00');
+    expect(jobs).not.toContain('daily-report:2026-11-08T09:00');
+    for (const part of [
+      'fresh session',
+      'autocode_me action=jobs',
+      'autocode_me action=run job=',
+      'text=',
+      '[autocode] result of run',
+      'autocode_me action=finish result=',
+      'one run at a time',
+    ])
+      expect(jobs, part).toContain(part);
+    expect(jobs).not.toMatch(/kaggle|casmi/i);
+    const tab = section(page, 'web-jobs');
+    for (const part of [
+      'Run Now',
+      'Set a Job',
+      'Edit',
+      'Delete',
+      'runs',
+      'Delete Session',
+      'Job',
+      'Last Run',
+    ])
+      expect(tab, part).toContain(part);
+    const commands = rows(page.querySelector('table.commands')).map(
+      (r) => r[0],
     );
+    for (const command of [
+      'autocode job set NAME --host H --model M --prompt P --trigger T ' +
+        '[--to TO] [--timeout 1h] [--run-usd 2] [--keep-session]',
+      'autocode job list',
+      'autocode job run NAME [--text T]',
+      'autocode job runs [NAME]',
+      'autocode job delete NAME',
+    ])
+      expect(commands, command).toContain(command);
+    expect(text(page.querySelector('#learn + ul'))).toContain('action=jobs');
+  });
+
+  it('explains asks: questions, permissions and approvals, for agents and in the Inbox', async () => {
+    const page = await open();
+    const asks = section(page, 'asks');
+    for (const part of [
+      'question tool',
+      'question_mode',
+      'auto_answer_text',
+      'permission_mode',
+      'approval_mode',
+      'autocode_approval action=ask',
+      'action=wait',
+      '[autocode] approval "deploy the new model" approved',
+      'agent:team:lead',
+      'job:<name>',
+      'autocode_message action=answer',
+      'action=escalate',
+      'the first answer counts',
+      'only you allow always',
+      'waiting',
+    ])
+      expect(asks, part).toContain(part);
+    expect(asks).not.toMatch(/kaggle|casmi/i);
+    expect(text(page.querySelector('#learn + ul'))).toContain(
+      'autocode_approval',
+    );
+    const inbox = section(page, 'web-inbox');
+    for (const part of [
+      'questions',
+      'permission prompts',
+      'approvals',
+      'Sent To',
+      'note',
+      'the first answer counts',
+      'Allow Once',
+      'Allow Always',
+      'OpenCode saves the rule for the project',
+      'only you',
+      'Reject',
+      'Approve',
+      'expire',
+    ])
+      expect(inbox, part).toContain(part);
+    expect(section(page, 'web-agents')).toContain('waiting');
+    const commands = rows(page.querySelector('table.commands'));
+    const answer = commands.find(
+      (r) => r[0] === 'autocode answer ITEM TEXT...',
+    )?.[1];
+    for (const part of [
+      'question',
+      'once',
+      'always',
+      'reject: why',
+      'approve',
+      'an option and a note',
+    ])
+      expect(answer, part).toContain(part);
   });
 
   it('tells agents how to use locks, and the owner what the Locks tab shows', async () => {
     const page = await open();
-    // A section's text: what comes after its heading, up to the next one.
-    const section = (id: string) => {
-      const out: string[] = [];
-      let node = page.querySelector(`#${id}`)!.nextElementSibling;
-      while (node && !/^H[23]$/.test(node.tagName)) {
-        out.push(text(node));
-        node = node.nextElementSibling;
-      }
-      return out.join(' ');
-    };
-    const locks = section('locks');
+    const locks = section(page, 'locks');
     for (const part of [
       'autocode_lock',
       'action=acquire',
@@ -202,7 +399,6 @@ describe('HelpPage', () => {
       'max',
       'mode=queue',
       'mode=try',
-      'mode=wait',
       'renew',
       'release',
       'list',
@@ -210,17 +406,18 @@ describe('HelpPage', () => {
       '[autocode] lock "gpu-0" expired',
       '[autocode] lock "gpu-0": out of the queue',
       'puts the agent in the queue',
-      'stays in the queue',
       'leave the queue',
     ])
       expect(locks, part).toContain(part);
+    // No waiting for a lock inside the tool call (the owner, 2026-11-07).
+    expect(locks).not.toMatch(/mode=wait|seconds|max_tool_wait/);
     // Generic examples: no project's names.
     expect(locks).not.toMatch(/kaggle|casmi/i);
     expect(text(page.querySelector('#learn + ul'))).toContain('autocode_lock');
     expect(text(page.querySelector('#sees ~ pre'))).toContain(
       '[autocode] lock "gpu-0" granted',
     );
-    const tab = section('web-locks');
+    const tab = section(page, 'web-locks');
     for (const part of [
       'type',
       'holders',

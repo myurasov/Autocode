@@ -32,6 +32,14 @@ for s in "${suites[@]}"; do
       ;;
   esac
 done
+# a whole number from 1: 0 or words would make the wait loop below spin
+parallel="${CI_PARALLEL:-4}"
+case "$parallel" in
+  '' | *[!0-9]* | 0)
+    echo "CI_PARALLEL must be a positive whole number (got '$parallel')" >&2
+    exit 2
+    ;;
+esac
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
 out="$root/__out/ci/$run_id"
@@ -131,9 +139,17 @@ run_suite() {
   local suite="$1"
   if [ "$suite" = agents ]; then
     mkdir -p "$out/agents"
-    timeout "$(limit_for agents)" bun ci/agents/run.ts --out "$out/agents" \
-      >"$out/agents/test.log" 2>&1
-    return $?
+    local code=0 scratch="$out/agents/.scratch"
+    AGENTS_SCRATCH_NOTE="$scratch" timeout -k 30 "$(limit_for agents)" \
+      bun ci/agents/run.ts --out "$out/agents" \
+      >"$out/agents/test.log" 2>&1 || code=$?
+    # the run cleans up on SIGTERM; after a SIGKILL its scratch folder (the
+    # copy of the provider's key in it) goes here
+    if [ -s "$scratch" ]; then
+      rm -rf -- "$(cat "$scratch")"
+      rm -f -- "$scratch"
+    fi
+    return "$code"
   fi
   local project="autocode-ci-$suite"
   local file="ci/compose/$suite.yml"
@@ -180,7 +196,6 @@ run_one() {
   log "suite $suite: $(cat "$out/$suite/.status")"
 }
 
-parallel="${CI_PARALLEL:-4}"
 for suite in "${suites[@]}"; do
   while [ "$(jobs -rp | wc -l)" -ge "$parallel" ]; do wait -n; done
   log "suite $suite"

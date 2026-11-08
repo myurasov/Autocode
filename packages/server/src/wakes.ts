@@ -1,6 +1,7 @@
 /*
  * Wakes (spec, Wakes): each agent's named wakes with their trigger, text,
- * optional check and end date; setting, listing, cancelling and firing them;
+ * optional check (no end date: the owner, 2026-11-07); setting, listing,
+ * cancelling and firing them;
  * when each falls due next; and, on each scheduler tick, the wakes that fell
  * due (by time, or by idle time), handed to the injection queue.
  */
@@ -11,6 +12,7 @@ import {
   checkId,
   formatTrigger,
   nextRun,
+  onlyFields,
   parseTrigger,
   type Trigger,
 } from "@autocode/shared"
@@ -34,7 +36,6 @@ export interface WakeView {
   text: string
   trigger: string
   check: string | null
-  end: string | null
   next: string | null
   // when it falls due next: its next run, or for an idle wake the time it
   // will if the session stays idle (none while a turn runs)
@@ -108,7 +109,6 @@ export class Wakes {
       text: row.text,
       trigger: formatTrigger(trigger),
       check: row.check_cmd ?? null,
-      end: iso(row.end_at),
       next: iso(row.next_at),
       due: iso(due ?? null),
       set_by: row.set_by,
@@ -129,6 +129,7 @@ export class Wakes {
     const name = checkId(nameInput, "wake name")
     if (!body || typeof body !== "object")
       throw new AutocodeError("bad_request", "the body must be an object")
+    onlyFields(body, ["text", "trigger", "check"])
     const { text, check } = body
     if (typeof text !== "string" || !text.trim() || text.length > MAX_TEXT)
       throw new AutocodeError(
@@ -149,34 +150,21 @@ export class Wakes {
     if (typeof body.trigger !== "string")
       throw new AutocodeError("bad_trigger", "a wake needs a trigger")
     const trigger = parseTrigger(body.trigger, { tz, now })
-    let end: number | null = null
-    if (body.end !== undefined && body.end !== null) {
-      try {
-        const at = parseTrigger(`at ${String(body.end)}`, { tz, now })
-        end = Date.parse((at as { at: string }).at)
-      } catch {
-        throw new AutocodeError(
-          "bad_request",
-          "end must be a time, like 2026-11-30T18:00:00Z or 2026-11-30 18:00",
-        )
-      }
-      if (end <= now)
-        throw new AutocodeError("bad_request", "the end has passed already")
-    }
     const next = nextRun(trigger, now, { tz, anchor: now })
     if (trigger.kind === "at" && next === null)
       throw new AutocodeError("bad_trigger", "that time has passed already")
     const before = this.db
       .query("SELECT created_at FROM wakes WHERE agent_id = ? AND name = ?")
       .get(agent, name) as any
+    this.db.query("SAVEPOINT wake_set").run()
     this.db
       .query(
-        `INSERT INTO wakes (agent_id, name, text, trigger, check_cmd, end_at,
+        `INSERT INTO wakes (agent_id, name, text, trigger, check_cmd,
            anchor, next_at, set_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (agent_id, name) DO UPDATE SET
            text = excluded.text, trigger = excluded.trigger,
-           check_cmd = excluded.check_cmd, end_at = excluded.end_at,
+           check_cmd = excluded.check_cmd,
            anchor = excluded.anchor, next_at = excluded.next_at,
            set_by = excluded.set_by, updated_at = excluded.updated_at,
            idle_fired_for = NULL, idle_last_at = NULL, check_failures = 0`,
@@ -187,18 +175,29 @@ export class Wakes {
         text,
         JSON.stringify(trigger),
         check ?? null,
-        end,
         now,
         next,
         by,
         now,
         now,
       )
+    // the wake's view must hold (its times are dates); else nothing is set
+    let wake: WakeView
+    try {
+      wake = this.get(agent, name)
+    } catch (err) {
+      this.db.query("ROLLBACK TO wake_set").run()
+      this.db.query("RELEASE wake_set").run()
+      throw err instanceof AutocodeError
+        ? err
+        : new AutocodeError("bad_trigger", `bad trigger: ${body.trigger}`)
+    }
+    this.db.query("RELEASE wake_set").run()
     this.history.record("wake.set", {
       agent,
       data: { name, trigger: formatTrigger(trigger), by, replaced: !!before },
     })
-    return { status: before ? 200 : 201, wake: this.get(agent, name) }
+    return { status: before ? 200 : 201, wake }
   }
 
   get(agent: string, name: string): WakeView {
@@ -301,24 +300,10 @@ export class Wakes {
     return { fired: name, agent }
   }
 
-  // The scheduler's part: expired wakes go, due ones are queued.
+  // The scheduler's part: due wakes are queued (a one-time one then goes).
   tick(enqueue: Enqueue) {
     const now = this.now()
     const tz = this.timezone()
-    for (const row of this.db
-      .query(
-        "SELECT agent_id, name FROM wakes " +
-          "WHERE end_at IS NOT NULL AND end_at <= ?",
-      )
-      .all(now) as any[]) {
-      this.db
-        .query("DELETE FROM wakes WHERE agent_id = ? AND name = ?")
-        .run(row.agent_id, row.name)
-      this.history.record("wake.expired", {
-        agent: row.agent_id,
-        data: { name: row.name },
-      })
-    }
     // one bad wake never stops the others
     for (const row of this.db
       .query(

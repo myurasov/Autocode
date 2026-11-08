@@ -1,9 +1,11 @@
 /*
  * Messages and the owner's inbox (spec, Messages; Owner Controls): sending to
  * one agent, a pattern or a list (one copy each, never to the sender), to and
- * from the owner; each copy's state (queued, delivered, read); reading and
- * waiting; Autocode's own notices (locks: tier 0c); the inbox of messages to
- * the owner and alerts, answered or closed.
+ * from the owner, text only (the owner, 2026-11-07); each copy's state
+ * (queued, delivered, read); reading and waiting; Autocode's own notices
+ * (locks, asks sent to an agent, approvals' answers, cost warnings, runs'
+ * results); the inbox of messages to the owner and alerts, answered or
+ * closed.
  */
 
 import type { Database } from "bun:sqlite"
@@ -12,6 +14,7 @@ import {
   checkId,
   isReservedId,
   matchesPattern,
+  onlyFields,
   parsePattern,
 } from "@autocode/shared"
 import type { History } from "./history.ts"
@@ -23,10 +26,6 @@ export const MAX_WAIT_SECONDS = 240
 // 2026-11-03).
 export const PREVIEW = 200
 const MAX_SUBJECT = 500
-const MAX_MIME = 200
-const MIME = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/
-const BASE64 =
-  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
 
 const iso = (ms: number | null | undefined) =>
   ms === null || ms === undefined ? null : new Date(ms).toISOString()
@@ -42,15 +41,12 @@ export interface MessageView {
   to: string
   subject: string
   reply_to: string | null
-  kind: "text" | "binary"
-  mime: string | null
   size: number
   state: string
   created_at: string
   delivered_at: string | null
   read_at: string | null
   text?: string
-  data?: string
 }
 
 export function messageView(row: any, body = false): MessageView {
@@ -61,14 +57,12 @@ export function messageView(row: any, body = false): MessageView {
     to: row.to_id,
     subject: row.subject,
     reply_to: row.reply_to ?? null,
-    kind: row.mime ? "binary" : "text",
-    mime: row.mime ?? null,
     size: row.size,
     state: row.state,
     created_at: iso(row.created_at)!,
     delivered_at: iso(row.delivered_at),
     read_at: iso(row.read_at),
-    ...(body ? (row.mime ? { data: row.body } : { text: row.body }) : {}),
+    ...(body ? { text: row.body } : {}),
   }
 }
 
@@ -151,6 +145,7 @@ export class Messages {
   send(from: string, body: any) {
     if (!body || typeof body !== "object")
       throw new AutocodeError("bad_request", "the body must be an object")
+    onlyFields(body, ["to", "subject", "text", "reply_to"])
     const subject = body.subject ?? ""
     if (
       typeof subject !== "string" ||
@@ -161,43 +156,13 @@ export class Messages {
         "bad_request",
         `a subject is one line of at most ${MAX_SUBJECT} characters`,
       )
-    const hasText = body.text !== undefined && body.text !== null
-    const hasData = body.data !== undefined && body.data !== null
-    if (hasText === hasData)
-      throw new AutocodeError(
-        "bad_request",
-        "a message has either text or data (base64, with a mime type)",
-      )
-    let content: string
-    let mime: string | null = null
-    if (hasText) {
-      if (typeof body.text !== "string" || !body.text.length)
-        throw new AutocodeError("bad_request", "the text must not be empty")
-      content = body.text
-    } else {
-      if (
-        typeof body.data !== "string" ||
-        !body.data ||
-        !BASE64.test(body.data)
-      )
-        throw new AutocodeError("bad_request", "data must be base64")
-      if (
-        typeof body.mime !== "string" ||
-        body.mime.length > MAX_MIME ||
-        !MIME.test(body.mime)
-      )
-        throw new AutocodeError(
-          "bad_request",
-          "binary data needs a mime type, like image/png",
-        )
-      content = body.data
-      mime = body.mime
-    }
+    if (typeof body.text !== "string" || !body.text.length)
+      throw new AutocodeError("bad_request", "a message needs text")
+    const content: string = body.text
     if (content.length > MAX_MESSAGE)
       throw new AutocodeError(
         "too_large",
-        `a message is at most ${MAX_MESSAGE} characters ` +
-          `(base64 counts; about 24 KB for a binary); this one is ` +
+        `a message is at most ${MAX_MESSAGE} characters; this one is ` +
           `${content.length}`,
       )
     let replyTo: string | null = null
@@ -220,8 +185,8 @@ export class Messages {
     const now = this.now()
     const insert = this.db.prepare(
       `INSERT INTO messages (id, send_id, from_id, to_id, to_spec, subject,
-         reply_to, body, mime, size, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         reply_to, body, size, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     const messages: { id: string; to: string }[] = []
     this.db.transaction(() => {
@@ -236,7 +201,6 @@ export class Messages {
           subject,
           replyTo,
           content,
-          mime,
           content.length,
           now,
         )
@@ -249,7 +213,7 @@ export class Messages {
           agent: from,
           message: m.id,
           title: `Message from ${from}${subject ? `: "${subject}"` : ""}`,
-          body: mime ? `${mime}, ${content.length} characters` : content,
+          body: content,
         })
         this.markRead(m.id, "delivered")
       } else this.announce(m.to, m.id)
@@ -263,7 +227,6 @@ export class Messages {
         to: toSpec,
         recipients: to,
         size: content.length,
-        kind: mime ? "binary" : "text",
       },
     })
     return { send_id: sendId, recipients: to, skipped, messages }
@@ -442,7 +405,7 @@ export class Messages {
           .all(limit)
     return (rows as any[]).map((r) => ({
       ...messageView(r),
-      ...(r.mime ? {} : { preview: String(r.body).slice(0, PREVIEW) }),
+      preview: String(r.body).slice(0, PREVIEW),
     }))
   }
 
@@ -460,7 +423,7 @@ export class Messages {
 
 export interface InboxItem {
   id: string
-  kind: "message" | "alert"
+  kind: "message" | "alert" | "question" | "permission" | "approval"
   agent: string | null
   message_id: string | null
   title: string
@@ -518,6 +481,7 @@ export class Inbox {
     }
   }
 
+  // Messages and alerts; the server adds the asks (tier 0d).
   list(all = false): InboxItem[] {
     const rows = this.db
       .query(

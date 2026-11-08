@@ -46,7 +46,7 @@ export interface LockView {
 export interface AcquireOptions {
   ttl: string | number
   max?: number
-  mode?: "try" | "queue" | "wait"
+  mode?: "try" | "queue"
 }
 
 export interface AcquireResult {
@@ -72,10 +72,6 @@ export const formatTtl = (ms: number) => {
 }
 
 export class Locks {
-  // Calls waiting inside acquire (mode wait), by lock.
-  private readonly waiters = new Map<string, Set<() => void>>()
-  private closed = false
-
   constructor(
     private readonly db: Database,
     private readonly history: History,
@@ -236,25 +232,21 @@ export class Locks {
     return out
   }
 
-  // After a change: tell the agents (one that cannot be told does not stop
-  // the others), and wake the calls waiting on the lock.
-  private after(name: string, notices: LockNotice[]) {
-    try {
-      for (const n of notices)
-        try {
-          this.notify(n)
-        } catch {}
-    } finally {
-      for (const done of this.waiters.get(name) ?? []) done()
-    }
+  // After a change: tell the agents; one that cannot be told does not stop
+  // the others.
+  private after(_name: string, notices: LockNotice[]) {
+    for (const n of notices)
+      try {
+        this.notify(n)
+      } catch {}
   }
 
   acquire(agent: string, nameInput: string, opts: AcquireOptions) {
     const name = checkId(nameInput, "lock name")
     const ttl = this.ttlOf(opts?.ttl)
     const mode = opts.mode ?? "queue"
-    if (!["try", "queue", "wait"].includes(mode))
-      throw new AutocodeError("bad_request", "mode is try, queue or wait")
+    if (!["try", "queue"].includes(mode))
+      throw new AutocodeError("bad_request", "mode is try or queue")
     if (
       opts.max !== undefined &&
       (!Number.isInteger(opts.max) || opts.max < 1 || opts.max > MAX_CAPACITY)
@@ -355,41 +347,6 @@ export class Locks {
     })()
     this.after(name, notices)
     return result
-  }
-
-  /*
-   * Waits up to `ms` (real time) until the agent holds the lock or leaves its
-   * line; the state then.
-   */
-  async wait(
-    agent: string,
-    name: string,
-    ms: number,
-    signal?: AbortSignal,
-  ): Promise<{ held: boolean; position?: number; expires?: string }> {
-    const deadline = Date.now() + ms
-    for (;;) {
-      this.settle(name)
-      const e = this.entry(name, agent)
-      if (!e) return { held: false }
-      if (e.held) return { held: true, expires: iso(e.expires_at) }
-      if (this.closed || Date.now() >= deadline || signal?.aborted)
-        return { held: false, position: this.position(name, agent) }
-      await new Promise<void>((resolve) => {
-        const set = this.waiters.get(name) ?? new Set()
-        this.waiters.set(name, set)
-        const done = () => {
-          clearTimeout(timer)
-          set.delete(done)
-          if (!set.size) this.waiters.delete(name)
-          signal?.removeEventListener("abort", done)
-          resolve()
-        }
-        const timer = setTimeout(done, Math.max(0, deadline - Date.now()))
-        signal?.addEventListener("abort", done)
-        set.add(done)
-      })
-    }
   }
 
   renew(agent: string, nameInput: string, ttlInput?: string | number) {
@@ -497,12 +454,6 @@ export class Locks {
       })()
       this.after(name, notices)
     }
-  }
-
-  // The server stops: waits end.
-  close() {
-    this.closed = true
-    for (const set of this.waiters.values()) for (const done of set) done()
   }
 
   // An agent unregistered: its holds released, its queues left.

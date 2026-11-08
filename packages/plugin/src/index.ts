@@ -3,12 +3,14 @@
  * Autocode server. It stays out of the way when the machine has no client
  * config.
  */
+
+import { carryOut, formEvent, listOf, permissionEvent } from "./asks.ts"
 import { Channel, type Instruction } from "./channel.ts"
 import { runCheck } from "./checks.ts"
 import { request, ServerError } from "./client.ts"
 import { hostId, machineName, processOf, readClientConfig } from "./config.ts"
+import { costEvent, windowOf } from "./costs.ts"
 import { sessionIsGone } from "./errors.ts"
-import { folderFiles } from "./files.ts"
 import {
   agentLine,
   type GuideFacts,
@@ -17,15 +19,21 @@ import {
   SKILL_DESCRIPTION,
   SKILL_ID,
 } from "./guide.ts"
+import { lastReply, spawnInput } from "./jobs.ts"
 import {
   activeSessions,
+  cancelForm,
   findLocalApi,
+  listForms,
+  replyForm,
   setEnvironment,
   shellVariables,
 } from "./localapi.ts"
 import { log } from "./log.ts"
 import { SessionTokens } from "./sessions.ts"
 import {
+  APPROVAL_TOOL,
+  type ApprovalInput,
   type Call,
   LOCK_TOOL,
   type LockInput,
@@ -33,6 +41,7 @@ import {
   MESSAGE_TOOL,
   type MeInput,
   type MessageInput,
+  runApproval,
   runLock,
   runMe,
   runMessage,
@@ -43,6 +52,15 @@ import {
 } from "./tools.ts"
 
 type Ctx = any
+
+// OpenCode's events of forms (the question tool) and permission requests.
+const ASK_EVENTS = [
+  "form.created",
+  "form.replied",
+  "form.cancelled",
+  "permission.asked",
+  "permission.replied",
+] as const
 
 const TURN_EVENTS = {
   "session.execution.started": "started",
@@ -71,6 +89,8 @@ export default {
     // This folder's top-level sessions the plugin knows of, and the registered
     // ones with their agent IDs (the server tells it).
     const mine = new Set<string>()
+    // sessions spawned for runs of jobs (their turns report their reply)
+    const runs = new Set<string>()
     const registered = new Map<string, string>()
 
     const channel: Channel = new Channel({
@@ -121,6 +141,11 @@ export default {
             mine.add(session)
           }
         void ctx.skill?.reload?.().catch?.(() => {})
+        // the sessions that are runs of jobs (a restarted plugin forgot them)
+        for (const session of Array.isArray(reply?.runs) ? reply.runs : [])
+          if (typeof session === "string") runs.add(session)
+        // questions and permissions already pending (tier 0d)
+        void reportPending([...registered.keys()])
       },
     })
 
@@ -276,6 +301,43 @@ export default {
           })
           return { injected: true }
         }
+        case "answer":
+          // a question's or permission's answer (tier 0d)
+          log(`answer ${p.kind} ${p.ref} in ${session}`)
+          return await carryOut(p, {
+            formReply: (i) => {
+              if (!api) throw new Error("no local API for forms")
+              return replyForm(api, i)
+            },
+            formCancel: (i) => {
+              if (!api) throw new Error("no local API for forms")
+              return cancelForm(api, i)
+            },
+            permissionReply: (i) => ctx.permission.reply(i),
+          })
+        case "spawn": {
+          // a run of a job: a fresh session in this folder (tier 0f)
+          const created = await ctx.session.create(spawnInput(directory, p))
+          const id = String(created?.id ?? created?.data?.id ?? "")
+          if (!id) throw new Error("no session was created")
+          mine.add(id)
+          runs.add(id)
+          log(`spawned ${id} for ${p.run}`)
+          return { session: id }
+        }
+        case "remove":
+          // a finished run's session (delete_session), or a failed one the
+          // owner deleted
+          log(`remove ${session}`)
+          await ctx.session.remove({ sessionID: session })
+          return { removed: session }
+        case "compact":
+          // a context past compact_at, or asked for (tier 0e)
+          log(`compact ${session}`)
+          return await ctx.session.compact({
+            sessionID: session,
+            delivery: "queue",
+          })
         case "interrupt":
           return await ctx.session.interrupt({
             sessionID: session,
@@ -312,7 +374,6 @@ export default {
       }
     }
 
-    const files = folderFiles(() => directory)
     // What the guide says of this host (the server's ID once connected).
     const guideFacts = (): GuideFacts => ({
       serverId: channel.serverId,
@@ -359,7 +420,7 @@ export default {
       )
       tools.add(
         asTool(MESSAGE_TOOL, (input: MessageInput, call, sessionID) =>
-          runMessage(input, call, files, async (seconds) => {
+          runMessage(input, call, async (seconds) => {
             // the server answers within 240 s; wait again until the end
             const end = Date.now() + seconds * 1000
             for (;;) {
@@ -378,19 +439,37 @@ export default {
         ),
       )
       tools.add(
-        asTool(LOCK_TOOL, (input: LockInput, _call, sessionID, signal) =>
-          runLock(input, (method, path, body: any) =>
-            // a wait holds the request up to its seconds; a stopped call
-            // ends it, so the server tells a grant by a notice
-            callAs(
-              sessionID,
-              method,
-              path,
-              body,
-              (Math.min(Number(body?.seconds) || 0, 240) + 15) * 1000,
-              signal,
-            ),
-          ),
+        asTool(LOCK_TOOL, (input: LockInput, call) => runLock(input, call)),
+      )
+      tools.add(
+        asTool(APPROVAL_TOOL, (input: ApprovalInput, call, sessionID, signal) =>
+          runApproval(input, call, async (id, seconds) => {
+            /*
+             * The server answers within 240 s (or max_tool_wait); wait again
+             * until the end, but not when it answered early while still
+             * open: max_tool_wait cut the wait.
+             */
+            const end = Date.now() + seconds * 1000
+            for (;;) {
+              const left = Math.ceil((end - Date.now()) / 1000)
+              const chunk = Math.max(1, Math.min(left, 240))
+              const asked = Date.now()
+              const res = await callAs(
+                sessionID,
+                "GET",
+                `/v1/me/approvals/${encodeURIComponent(id)}?wait=${chunk}`,
+                undefined,
+                (chunk + 15) * 1000,
+                signal,
+              )
+              if (
+                res.approval?.state !== "open" ||
+                Date.now() >= end - 1000 ||
+                Date.now() - asked < (chunk - 2) * 1000
+              )
+                return res
+            }
+          }),
         ),
       )
     })
@@ -453,6 +532,57 @@ export default {
       const dir = event?.location?.directory
       return dir ? dir === directory : mine.has(session)
     }
+    /*
+     * The questions and permission prompts of registered sessions that are
+     * pending now (at each hello: none is missed across a reconnect); the
+     * server keeps one ask per form or request, and closes the ones OpenCode
+     * no longer has (asks.pending: the refs listed, and any reported while
+     * listing). A session whose list failed is left out.
+     */
+    let listing: Set<string> | undefined
+    const reportPending = async (sessions: string[]) => {
+      const seen = new Set<string>()
+      listing = seen
+      const pending: Record<string, string[]> = {}
+      for (const sessionID of sessions) {
+        const refs: string[] = []
+        let ok = true
+        try {
+          if (api)
+            for (const form of await listForms(api, sessionID)) {
+              const event = formEvent(sessionID, form)
+              if (event) {
+                channel.report(event)
+                refs.push(event.ref)
+              }
+            }
+          else ok = false
+        } catch {
+          ok = false
+        }
+        try {
+          for (const request of listOf(
+            await ctx.permission.list({ sessionID }),
+          )) {
+            const event = permissionEvent(sessionID, request)
+            if (event) {
+              channel.report(event)
+              refs.push(event.ref)
+            }
+          }
+        } catch {
+          ok = false
+        }
+        if (ok) pending[sessionID] = refs
+      }
+      if (listing === seen) listing = undefined
+      for (const session of Object.keys(pending))
+        pending[session]!.push(...seen)
+      channel.report({ type: "asks.pending", pending })
+    }
+    // A Subagent's ask is its top-level session's.
+    const askSession = async (session: string) =>
+      tokens.root(session).catch(() => session)
     // The sessions running a turn now, when the local API can tell: after a
     // gap in the event stream, and every minute, so no lost event leaves a
     // session busy (or idle) for long.
@@ -464,6 +594,93 @@ export default {
     const activeTimer = api
       ? setInterval(() => void reportActive(), 60_000)
       : undefined
+    /*
+     * A model step's cost and context (tier 0e): a Subagent's counts for its
+     * top-level session; the context is the top-level session's own.
+     */
+    const windows = new Map<string, number | undefined>()
+    const windowFor = async (ref: any) => {
+      const key = `${ref?.providerID}/${ref?.id}`
+      if (!windows.has(key)) {
+        const list = await ctx.model.list({}).catch(() => undefined)
+        const n = windowOf(listOf(list), ref)
+        // a failed list is asked again next time
+        if (n === undefined) return undefined
+        windows.set(key, n)
+      }
+      return windows.get(key)
+    }
+    const onStep = async (event: any) => {
+      const data = event?.data ?? {}
+      const raw = data.sessionID
+      if (typeof raw !== "string" || !ours(event, raw)) return
+      const session = await askSession(raw)
+      if (!registered.has(session)) return
+      const info = await ctx.session
+        .get({ sessionID: raw })
+        .catch(() => undefined)
+      // a session without a model of its own runs OpenCode's default one
+      let ref = info?.model
+      let limit = ref ? await windowFor(ref) : undefined
+      if (!ref) {
+        const def = await ctx.model.default({}).catch(() => undefined)
+        const m =
+          def && typeof def === "object" && "data" in def ? def.data : def
+        if (m?.id) {
+          ref = { providerID: m.providerID, id: m.id }
+          const n = Number(m.limit?.context)
+          limit = Number.isFinite(n) && n > 0 ? n : await windowFor(ref)
+        }
+      }
+      const report = costEvent(session, data, {
+        ...(ref?.id ? { model: `${ref.providerID}/${ref.id}` } : {}),
+        ...(limit ? { limit } : {}),
+      })
+      if (!report) return
+      // a Subagent's context is not its parent's
+      if (session !== raw) report.context = undefined as any
+      channel.report(report)
+    }
+    // OpenCode's form and permission events, as asks (tier 0d).
+    const onAskEvent = async (event: any) => {
+      const data = event?.data ?? {}
+      const raw =
+        event.type === "form.created" ? data.form?.sessionID : data.sessionID
+      if (typeof raw !== "string" || !ours(event, raw)) return
+      const session = await askSession(raw)
+      if (!registered.has(session)) return
+      log(`${event.type} in ${session}`)
+      if (event.type === "form.created") {
+        const ask = formEvent(session, data.form)
+        if (ask) {
+          listing?.add(ask.ref)
+          channel.report(ask)
+        }
+      } else if (event.type === "permission.asked") {
+        const ask = permissionEvent(session, data)
+        if (ask) {
+          listing?.add(ask.ref)
+          channel.report(ask)
+        }
+      } else {
+        const ref =
+          event.type === "permission.replied" ? data.requestID : data.id
+        if (typeof ref !== "string") return
+        channel.report({
+          type: "ask.settled",
+          session,
+          ref,
+          how:
+            event.type === "form.cancelled"
+              ? "cancelled"
+              : event.type === "permission.replied"
+                ? String(data.reply ?? "replied")
+                : "answered",
+        })
+      }
+    }
+    // the step reports of each session, chained in order
+    const steps = new Map<string, Promise<void>>()
     let subscribed = 0
     const watch = async () => {
       while (!events.signal.aborted) {
@@ -473,12 +690,29 @@ export default {
             "session.created",
             "session.deleted",
             ...Object.keys(TURN_EVENTS),
+            ...ASK_EVENTS,
+            "session.step.ended",
           ]
           for await (const event of ctx.event.subscribe({
             types,
             signal: events.signal,
           })) {
             const data = event?.data
+            if ((ASK_EVENTS as readonly string[]).includes(event.type)) {
+              void onAskEvent(event)
+              continue
+            }
+            if (event.type === "session.step.ended") {
+              // in order per session; a turn's end waits for its steps
+              const sid = String(data?.sessionID ?? "")
+              const prev = steps.get(sid) ?? Promise.resolve()
+              const next = prev.then(() => onStep(event)).catch(() => {})
+              steps.set(sid, next)
+              void next.finally(() => {
+                if (steps.get(sid) === next) steps.delete(sid)
+              })
+              continue
+            }
             if (typeof data?.sessionID !== "string") continue
             const session = data.sessionID as string
             if (event.type === "session.deleted") {
@@ -497,8 +731,19 @@ export default {
                 continue
               const outcome =
                 TURN_EVENTS[event.type as keyof typeof TURN_EVENTS]
+              // the turn's steps are reported first (their cost counts)
+              if (outcome !== "started") await steps.get(session)
               // OpenCode's own time of the event orders them at the server
               const at = Number(event.created) || Date.now()
+              // a run of a job ends with its last reply (tier 0f)
+              const reply =
+                outcome === "succeeded" && runs.has(session)
+                  ? lastReply(
+                      await ctx.session
+                        .context({ sessionID: session })
+                        .catch(() => []),
+                    )
+                  : null
               channel.report(
                 outcome === "started"
                   ? { type: "turn.started", session, at }
@@ -508,6 +753,7 @@ export default {
                       outcome,
                       at,
                       ...(data.error?.type ? { error: data.error.type } : {}),
+                      ...(reply ? { reply } : {}),
                     },
               )
             }

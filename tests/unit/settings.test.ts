@@ -30,9 +30,7 @@ describe("settings", () => {
     expect(d.check_timeout).toBe("60s")
     expect(d.check_output).toBe(2000)
     expect(d.max_tool_wait).toBe("5m")
-    expect(d.tools).toBe("all")
     expect(d.daily_usd).toBe("off")
-    expect(d.total_usd).toBe("off")
     expect(d.cap_warn).toBe("90%")
     // tier 0b3 (the owner, 2026-11-04): every minute, no limit
     expect(d.retry_interval).toBe("1m")
@@ -40,9 +38,16 @@ describe("settings", () => {
     expect("retry" in d).toBe(false)
     expect(d.expire_after).toBe("14d")
     expect(d.history_days).toBe(30)
-    expect(d.keep_failed).toBe("7d")
-    expect(d.restart_opencode).toBe(true)
     expect(typeof d.timezone).toBe("string")
+    // the owner, 2026-11-07: no tools setting, one cap (daily_usd), jobs
+    // without keep_failed, and no restart setting
+    for (const gone of [
+      "tools",
+      "total_usd",
+      "keep_failed",
+      "restart_opencode",
+    ])
+      expect(gone in d, gone).toBe(false)
     expect(d.listen).toBe("localhost,tailscale:4848")
   })
 
@@ -56,7 +61,6 @@ describe("settings", () => {
     expect(normalizeSetting("compact_at", "off")).toBe("off")
     expect(normalizeSetting("compact_at", "200000")).toBe(200000)
     expect(normalizeSetting("compact_at", "40%")).toBe("40%")
-    expect(normalizeSetting("restart_opencode", "false")).toBe(false)
     expect(normalizeSetting("timezone", "America/Los_Angeles")).toBe(
       "America/Los_Angeles",
     )
@@ -114,8 +118,8 @@ describe("settings", () => {
     expect(normalizeSetting("listen", "127.0.0.1:4848,100.64.0.1:4849")).toBe(
       "127.0.0.1:4848,100.64.0.1:4849",
     )
-    expect(normalizeSetting("listen", "myspark3.lan:4848")).toBe(
-      "myspark3.lan:4848",
+    expect(normalizeSetting("listen", "machine-a.lan:4848")).toBe(
+      "machine-a.lan:4848",
     )
     for (const bad of [
       "my host:4848",
@@ -162,13 +166,7 @@ describe("settings", () => {
   })
 
   test("server-wide keys cannot be set for a pattern or an agent", () => {
-    for (const key of [
-      "history_days",
-      "keep_failed",
-      "restart_opencode",
-      "timezone",
-      "listen",
-    ])
+    for (const key of ["history_days", "timezone", "listen"])
       expect(SETTINGS[key]?.scope).toBe("server")
     expect(SETTINGS.min_interval?.scope).toBe("agent")
   })

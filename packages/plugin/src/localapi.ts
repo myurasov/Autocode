@@ -4,9 +4,11 @@
  * @opencode/client's discover() (its registration file is the published
  * discovery contract), or `opencode serve` from its documented --port,
  * --hostname and password variables. Either is used only when its /api/info
- * names this process. The one call the plugin makes there sets a session's
- * shell environment (PUT /api/session/{id}/environment, which replaces the
- * environment that session's shells start with).
+ * names this process. The plugin calls it to set a session's shell
+ * environment (PUT /api/session/{id}/environment, which replaces the
+ * environment that session's shells start with), to see which sessions run
+ * a turn, and for the question tool's forms (tier 0d), which the plugin
+ * context does not offer.
  */
 import { discover } from "@opencode/client/service"
 
@@ -152,4 +154,75 @@ export async function activeSessions(
   if (Array.isArray(map))
     return map.filter((s): s is string => typeof s === "string")
   return map && typeof map === "object" ? Object.keys(map) : []
+}
+
+/*
+ * The forms of a session (tier 0d: the question tool), through the local
+ * API, since the plugin context has no forms: list (GET), reply (POST
+ * .../reply {answer}) and cancel (DELETE, ?message=), as @opencode/client
+ * 2.2.0 calls them.
+ */
+async function localCall(
+  api: LocalApi,
+  method: string,
+  path: string,
+  body?: unknown,
+  timeoutMs = 5000,
+): Promise<any> {
+  const res = await fetch(`${api.url}${path}`, {
+    method,
+    headers: {
+      ...(api.authorization ? { authorization: api.authorization } : {}),
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  if (!res.ok)
+    throw new Error(`OpenCode's local API answered ${res.status} to ${path}`)
+  if (res.status === 204) return undefined
+  const text = await res.text()
+  const parsed = text ? JSON.parse(text) : undefined
+  return parsed && typeof parsed === "object" && "data" in parsed
+    ? parsed.data
+    : parsed
+}
+
+const formPath = (session: string, form?: string) =>
+  `/api/session/${encodeURIComponent(session)}/form` +
+  (form ? `/${encodeURIComponent(form)}` : "")
+
+export async function listForms(api: LocalApi, session: string) {
+  const forms = await localCall(api, "GET", formPath(session))
+  return Array.isArray(forms) ? forms : []
+}
+
+export function replyForm(
+  api: LocalApi,
+  input: {
+    sessionID: string
+    formID: string
+    answer: Record<string, string | string[]>
+  },
+) {
+  return localCall(
+    api,
+    "POST",
+    `${formPath(input.sessionID, input.formID)}/reply`,
+    { answer: input.answer },
+  )
+}
+
+export function cancelForm(
+  api: LocalApi,
+  input: { sessionID: string; formID: string; message?: string },
+) {
+  const query = input.message
+    ? `?${new URLSearchParams({ message: input.message })}`
+    : ""
+  return localCall(
+    api,
+    "DELETE",
+    `${formPath(input.sessionID, input.formID)}${query}`,
+  )
 }

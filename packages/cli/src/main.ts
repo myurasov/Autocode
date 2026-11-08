@@ -16,7 +16,7 @@ import {
 } from "@autocode/shared"
 import { CliError, type Parsed, parseArgs } from "./args.ts"
 import { agents, history, hosts, info, settings, token } from "./commands.ts"
-import { autocodeHome } from "./connect.ts"
+import { autocodeHome, inAgentShell } from "./connect.ts"
 import webFiles from "./generated/web.ts"
 import { install, uninstall } from "./install.ts"
 import { pluginInstall, pluginUninstall } from "./plugin.ts"
@@ -24,6 +24,7 @@ import {
   answer,
   fire,
   inbox,
+  job,
   locks,
   me,
   messages,
@@ -59,29 +60,48 @@ owner:
       [--agent ID | --match PATTERN]
   history [--agent ID] [--kind KIND] [--since TIME] [--limit N]
   inbox [--all] | inbox close ID         the owner's inbox
-  answer ID TEXT...                      answer a message to the owner
+  answer ID TEXT...                      answer a message, question, permission
+                                         (once|always|reject) or approval
   pause AGENT | resume AGENT             pause or resume an agent's injections
   retry AGENT                            retry an agent in the error state now
   locks [PATTERN] | locks release NAME AGENT
                                          every lock (holders, queue); free one
+  job set NAME --host H --model M --prompt P --trigger T [--to TO]
+      [--timeout 1h] [--run-usd 2] [--keep-session]
+  job list | job run NAME [--text T] | job runs [NAME] | job delete NAME
+  job delete-session RUN                 jobs and their runs (spawned agents);
+                                         a failed run's kept session
   stop-all | resume-all                  pause every agent and interrupt every
                                          turn; resume what stop-all paused
   wakes [AGENT]                          every wake, or one agent's
-  messages [--all]                       every message (the owner's view)
+  wake set AGENT NAME --trigger T --text TEXT [--check CMD]
+  wake cancel AGENT NAME
+  messages | messages read ID            every message; one whole
+  fire AGENT WAKE [--text TEXT]          deliver a wake now
+  send TO TEXT... [--subject S] [--reply-to ID]
+                                         TO: an ID, a pattern, a list
 
-agents (scripts in an agent's shell; the owner names any AGENT):
+scripts in an agent's shell (only these and the setup commands above;
+the rest is the tools'):
   me                                     this agent's registration and status
-  wakes                                  this agent's wakes
-  wake set AGENT|me NAME --trigger T --text TEXT [--check CMD] [--end TIME]
-  wake cancel AGENT|me NAME
-  fire AGENT|me WAKE [--text TEXT]       deliver a wake now
-  send TO TEXT... | send TO --file PATH [--subject S] [--reply-to ID]
+  fire me WAKE [--text TEXT]             deliver one of its wakes now
+  send TO TEXT... [--subject S] [--reply-to ID]
                                          TO: an ID, a pattern, a list or owner
-  messages [--all] [--wait SECONDS]      this agent's unread messages
-  messages read ID [--out FILE]          read one (save a file with --out)
 
 flags everywhere: --json, --url URL, --token TOKEN,
                   --server-id ID (refuse a server with another ID)`
+
+// What a script in an agent's shell may run.
+const SHELL_COMMANDS = new Set([
+  "me",
+  "fire",
+  "send",
+  "info",
+  "serve",
+  "install",
+  "uninstall",
+  "plugin",
+])
 
 async function serve(args: Parsed): Promise<number> {
   const f = args.flags
@@ -154,6 +174,18 @@ async function main(argv: string[]): Promise<number> {
     return 0
   }
   const args = parseArgs(rest)
+  /*
+   * A script in an agent's shell acts as that agent with me, fire and send
+   * only (the owner, 2026-11-07); a token passed with --token decides for
+   * itself, and the machine's own setup commands stay.
+   */
+  if (inAgentShell() && !args.flags.token && !SHELL_COMMANDS.has(command))
+    throw new CliError(
+      "in an agent's shell the CLI has only me, fire and send (and the " +
+        "machine's own setup: info, serve, install, uninstall, plugin); in " +
+        "the conversation, use the autocode_* tools",
+      2,
+    )
   switch (command) {
     case "serve":
       return serve(args)
@@ -203,6 +235,8 @@ async function main(argv: string[]): Promise<number> {
       return retry(args)
     case "locks":
       return locks(args)
+    case "job":
+      return job(args)
     case "stop-all":
       return stopAll(args)
     case "resume-all":

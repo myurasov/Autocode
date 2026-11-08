@@ -31,7 +31,9 @@ const SELECT = `
   SELECT a.id, a.description, a.session_id, a.registered_at, a.last_active,
          a.paused, a.error, a.error_since, a.error_at, a.retries, a.retry_at,
          s.host_id, s.directory, s.deleted_at, s.busy,
-         s.idle_since, s.last_outcome, h.machine, h.online
+         s.idle_since, s.last_outcome, h.machine, h.online,
+         EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
+                 AND k.state = 'open') AS asking
   FROM agents a
   JOIN sessions s ON s.id = a.session_id
   JOIN hosts h ON h.id = s.host_id`
@@ -64,12 +66,17 @@ export class Agents {
     private readonly onPause: (agent: string) => void = () => {},
   ) {}
 
-  // offline (its host gone or its session deleted), paused, working (a turn
-  // runs), error (its last turn failed: tier 0b3), else idle. Tier 0d adds
-  // waiting.
+  // What an owner's view adds (tier 0e: the agent's cost).
+  extra: (agent: string) => Record<string, unknown> = () => ({})
+
+  // offline (its host gone or its session deleted), paused, waiting (an open
+  // ask: tier 0d), working (a turn runs), error (its last turn failed: tier
+  // 0b3), else idle.
   private status(row: any): string {
     if (!row.online || row.deleted_at) return "offline"
     if (row.paused) return "paused"
+    // an open question, permission or approval (tier 0d)
+    if (row.asking) return "waiting"
     if (row.busy) return "working"
     return row.error ? "error" : "idle"
   }
@@ -96,6 +103,7 @@ export class Agents {
         : null,
       last_outcome: row.last_outcome ?? null,
       ...(row.error ? { error: errorView(row) } : {}),
+      ...this.extra(row.id),
     }
   }
 
@@ -122,10 +130,16 @@ export class Agents {
       .run(this.now(), session)
   }
 
+  // The agent's own view adds `busy`: a turn runs now, whatever its status
+  // (waiting or paused say more), so its idle wakes count from its end.
   me(session: string) {
     const row = this.bySession(session)
     return row
-      ? { registered: true, session, agent: this.ownerView(row) }
+      ? {
+          registered: true,
+          session,
+          agent: { ...this.ownerView(row), busy: !!row.busy },
+        }
       : { registered: false, session }
   }
 
@@ -226,7 +240,7 @@ export class Agents {
     return { status: 201, agent: this.ownerView(this.byId(id)) }
   }
 
-  unregister(id: string, by: "self" | "owner") {
+  unregister(id: string, by: "self" | "owner" | "expired") {
     const row = this.byId(id)
     if (!row) throw new AutocodeError("not_registered", `no agent ${id}`, 404)
     this.db.query("DELETE FROM agents WHERE id = ?").run(id)
@@ -309,8 +323,13 @@ export class Agents {
     const id = checkId(idInput, "agent ID")
     const row = this.byId(id)
     if (!row) throw new AutocodeError("not_registered", `no agent ${id}`, 404)
-    // the owner's own pause outlasts stop-all's (resume-all leaves it)
-    if (!row.paused || (by === "owner" && row.paused === "stop-all")) {
+    // the owner's own pause outlasts stop-all's (resume-all leaves it); both
+    // replace a cap's (which a new day would lift)
+    if (
+      !row.paused ||
+      row.paused === "cap" ||
+      (by === "owner" && row.paused === "stop-all")
+    ) {
       this.db.query("UPDATE agents SET paused = ? WHERE id = ?").run(by, id)
       this.history.record("agent.paused", {
         agent: id,
@@ -327,7 +346,14 @@ export class Agents {
     const row = this.byId(id)
     if (!row) throw new AutocodeError("not_registered", `no agent ${id}`, 404)
     if (row.paused) {
-      this.db.query("UPDATE agents SET paused = '' WHERE id = ?").run(id)
+      // a cap's pause, resumed by the owner, holds off for the day
+      this.db
+        .query(
+          "UPDATE agents SET paused = '', cap_override = " +
+            "CASE WHEN paused = 'cap' THEN cap_day ELSE cap_override END " +
+            "WHERE id = ?",
+        )
+        .run(id)
       this.history.record("agent.resumed", {
         agent: id,
         session: row.session_id,
@@ -348,7 +374,7 @@ export class Agents {
     const paused: string[] = []
     const interrupted: string[] = []
     for (const r of rows) {
-      if (!r.paused) {
+      if (!r.paused || r.paused === "cap") {
         this.pause(r.id, "stop-all")
         paused.push(r.id)
       } else this.onPause(r.id)

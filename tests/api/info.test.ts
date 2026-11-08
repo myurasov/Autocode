@@ -73,7 +73,7 @@ describe("server ID and GET /v1/info", () => {
   })
 
   test("a host name becomes a valid ID: other characters turn into -, and an empty one falls back", () => {
-    expect(deriveServerId("myspark3")).toBe("myspark3")
+    expect(deriveServerId("machine-a")).toBe("machine-a")
     expect(deriveServerId("Misha's MacBook Pro.local")).toBe(
       "Misha-s-MacBook-Pro.local",
     )

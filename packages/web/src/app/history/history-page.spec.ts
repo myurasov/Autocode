@@ -36,7 +36,7 @@ function entry(id: number, change: Partial<HistoryEntry> = {}): HistoryEntry {
     at: new Date(Date.UTC(2026, 9, 28, 12) + id * 1000).toISOString(),
     kind: 'wake.fired',
     agent: 'kaggle:lead',
-    host: 'myspark3:1',
+    host: 'machine-a:1',
     session: 'ses_lead',
     data: { name: 'standup', by: 'owner' },
     ...change,
@@ -135,7 +135,7 @@ describe('HistoryPage', () => {
       fired.querySelector('td.agent a.id-link')!.getAttribute('href'),
     ).toBe('/agents?agent=kaggle:lead');
     expect(fired.querySelector('td.host a.id-link')!.getAttribute('href')).toBe(
-      '/hosts?host=myspark3:1',
+      '/hosts?host=machine-a:1',
     );
     expect(parts(fired.querySelector('td.session code'))).toEqual([
       'ses_',

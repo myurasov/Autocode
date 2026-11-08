@@ -236,6 +236,119 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE tokens ADD COLUMN used_at INTEGER;
   UPDATE tokens SET used_at = created_at WHERE kind = 'session';
   `,
+  /*
+   * 9 (tier 0d): questions, permission prompts and approvals ("asks"). `ref`
+   * is OpenCode's form or permission request ID (none for an approval);
+   * `body` the JSON of what is asked; `routed` where it went (owner, auto,
+   * approve, job:<name> until its run starts,
+   * agent:<id>); `notes` the escalations (JSON list).
+   */
+  `
+  CREATE TABLE asks (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('question', 'permission', 'approval')),
+    agent_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    host_id TEXT,
+    ref TEXT,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    routed TEXT NOT NULL DEFAULT 'owner',
+    notes TEXT NOT NULL DEFAULT '[]',
+    state TEXT NOT NULL DEFAULT 'open'
+      CHECK (state IN ('open', 'answered', 'rejected', 'expired', 'gone')),
+    answer TEXT,
+    answered_by TEXT,
+    expires_at INTEGER,
+    created_at INTEGER NOT NULL,
+    closed_at INTEGER,
+    UNIQUE (session_id, ref)
+  );
+  CREATE INDEX asks_open ON asks (state, created_at);
+  CREATE INDEX asks_agent ON asks (agent_id, state);
+  `,
+  /*
+   * 10 (tier 0e): each agent's spend per day (the server's zone), the last
+   * step's context and the model's window, a compaction asked for, a turn
+   * cut by a lost OpenCode, and the day a cap warning or pause was made.
+   */
+  `
+  CREATE TABLE costs (
+    agent_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    usd REAL NOT NULL DEFAULT 0,
+    steps INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (agent_id, day)
+  );
+  ALTER TABLE agents ADD COLUMN context_tokens INTEGER;
+  ALTER TABLE agents ADD COLUMN context_limit INTEGER;
+  ALTER TABLE agents ADD COLUMN compact_wanted INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE agents ADD COLUMN cut_at INTEGER;
+  ALTER TABLE agents ADD COLUMN cap_warned TEXT;
+  ALTER TABLE agents ADD COLUMN cap_day TEXT;
+  `,
+  /*
+   * 11 (tier 0f): jobs (the owner's: a host, a model, a prompt, a trigger,
+   * a destination, limits) and their runs (an ID <job>:<start to the minute>,
+   * who started it, its session, state, result and cost).
+   */
+  `
+  CREATE TABLE jobs (
+    name TEXT PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    host_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    variant TEXT,
+    agent TEXT,
+    prompt TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    next_at INTEGER,
+    dest TEXT NOT NULL DEFAULT 'owner',
+    timeout_ms INTEGER NOT NULL,
+    run_usd REAL,
+    delete_session INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE runs (
+    id TEXT PRIMARY KEY,
+    job TEXT NOT NULL,
+    started_by TEXT NOT NULL,
+    extra TEXT,
+    session_id TEXT,
+    state TEXT NOT NULL CHECK (state IN
+      ('starting', 'running', 'succeeded', 'failed', 'skipped')),
+    reason TEXT,
+    result TEXT,
+    cost REAL NOT NULL DEFAULT 0,
+    instruction_id TEXT,
+    ask_id TEXT,
+    removed INTEGER NOT NULL DEFAULT 0,
+    started_at INTEGER NOT NULL,
+    ended_at INTEGER
+  );
+  CREATE INDEX runs_job ON runs (job, started_at);
+  CREATE INDEX runs_state ON runs (state);
+  `,
+  /*
+   * 12 (the review of 0d to 0f): an ask's form may be a Subagent's (its own
+   * session), its answer's instruction is followed to its ack; a run keeps
+   * its start (how), its whole result, and a cost of all its days; a job its
+   * schedule's anchor; settings removed by the simplifications go.
+   */
+  `
+  ALTER TABLE asks ADD COLUMN form_session TEXT;
+  ALTER TABLE asks ADD COLUMN answer_instruction TEXT;
+  ALTER TABLE runs ADD COLUMN how TEXT;
+  ALTER TABLE runs ADD COLUMN spawn_host TEXT;
+  ALTER TABLE runs ADD COLUMN spawned_at INTEGER;
+  ALTER TABLE runs ADD COLUMN remove_pending INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE jobs ADD COLUMN anchor_at INTEGER;
+  ALTER TABLE agents ADD COLUMN cap_override TEXT;
+  ALTER TABLE agents ADD COLUMN compacting INTEGER NOT NULL DEFAULT 0;
+  DELETE FROM settings WHERE scope = 'server'
+    AND key IN ('tools', 'total_usd', 'keep_failed', 'restart_opencode');
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

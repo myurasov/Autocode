@@ -65,7 +65,6 @@ describe("sending", () => {
         from: "team:a",
         to: "team:b",
         subject: "results",
-        kind: "text",
         size: 23,
         state: "queued",
       }),
@@ -103,12 +102,6 @@ describe("sending", () => {
       [{ to: "team:a", text: "to myself" }, 404, "no_recipient"],
       [{ to: "team:b", text: "x".repeat(32_001) }, 400, "too_large"],
       [{ to: "team:b" }, 400, "bad_request"],
-      [{ to: "team:b", text: "x", data: "eA==" }, 400, "bad_request"],
-      [
-        { to: "team:b", data: "not base64!", mime: "image/png" },
-        400,
-        "bad_request",
-      ],
       [{ to: "team:b", text: "x", reply_to: "m_nope" }, 404, "no_message"],
     ]
     for (const [body, status, code] of cases) {
@@ -124,32 +117,27 @@ describe("sending", () => {
     ).toBe(403)
   })
 
-  test("a binary: base64 with a mime type, listed by ID and read whole", async () => {
-    const data = Buffer.from("PNG...bytes").toString("base64")
+  // The owner, 2026-11-07: messages are text only.
+  test("a message is text: data and mime are refused, and views carry no kind", async () => {
+    for (const body of [
+      { to: "team:b", data: "eA==", mime: "image/png" },
+      { to: "team:b", text: "x", data: "eA==" },
+      { to: "team:b", text: "x", mime: "text/plain" },
+    ]) {
+      const res = await as(a, "POST", "/v1/messages", body)
+      expect(res.status, JSON.stringify(body)).toBe(400)
+      expect(res.body.error.message).toContain("unknown field")
+    }
     const sent = await as(a, "POST", "/v1/messages", {
       to: "team:b",
-      subject: "plot",
-      data,
-      mime: "image/png",
+      text: "hi",
     })
     const id = sent.body.messages[0].id
-    const prompt = await promptFor("ses_b")
-    expect(prompt.payload.text).toContain(
-      `Message ${id} from agent team:a, subject "plot": image/png, ` +
-        `${data.length} characters; read it with autocode_message read ${id}.`,
-    )
-    expect(prompt.payload.text).not.toContain(data)
-    const listed = await as(b, "GET", "/v1/me/messages")
-    expect(listed.body.messages[0]).toMatchObject({
-      kind: "binary",
-      mime: "image/png",
-      state: "delivered",
-    })
-    const read = await as(b, "GET", `/v1/me/messages/${id}`)
-    expect(read.body.message).toMatchObject({ id, data, mime: "image/png" })
-    expect(
-      (await as(b, "GET", "/v1/me/messages?all=1")).body.messages[0].state,
-    ).toBe("read")
+    const read = (await as(b, "GET", `/v1/me/messages/${id}`)).body.message
+    expect(read.text).toBe("hi")
+    expect(read).not.toHaveProperty("kind")
+    expect(read).not.toHaveProperty("mime")
+    expect(read).not.toHaveProperty("data")
     // only the recipient reads it
     expect((await as(c, "GET", `/v1/me/messages/${id}`)).status).toBe(404)
   })
@@ -348,20 +336,13 @@ describe("the owner", () => {
 })
 
 describe("the owner's list", () => {
-  test("text messages carry a 200-character preview; files none", async () => {
+  test("messages carry a 200-character preview", async () => {
     const long = `${"x".repeat(199)}yz${"!".repeat(50)}`
     await as(a, "POST", "/v1/messages", { to: "team:b", text: long })
     await as(a, "POST", "/v1/messages", { to: "team:b", text: "short" })
-    await as(a, "POST", "/v1/messages", {
-      to: "team:b",
-      data: "iVBORw==",
-      mime: "image/png",
-    })
-    const [file, short, first] = (await owner("GET", "/v1/messages")).body
-      .messages
+    const [short, first] = (await owner("GET", "/v1/messages")).body.messages
     expect(first.preview).toBe(`${"x".repeat(199)}y`)
     expect(short.preview).toBe("short")
-    expect(file.preview).toBeUndefined()
     // an agent's own list carries none (it reads or is shown messages whole)
     const mine = (await as(b, "GET", "/v1/me/messages")).body.messages
     expect(mine.every((m: any) => m.preview === undefined)).toBe(true)

@@ -12,7 +12,7 @@ import { IdParts, idParts } from './breaks';
 @Component({
   imports: [IdParts],
   template: `
-    <code class="agent" appId="live:mymbp4:glm-5.3:20261028T1314"></code>
+    <code class="agent" appId="live:laptop:glm-5.3:20261028T1314"></code>
     <code class="session" appId="ses_e7d5a9981ffeMI0at2ZTpikxTp"></code>
     <code class="name" appId="layout-check-of-a-long-wake-name"></code>
     <code class="none" [appId]="null"></code>
@@ -23,9 +23,9 @@ class Ids {}
 describe('idParts', () => {
   it('splits right after each ":" and "_", never at "-" or "."', () => {
     expect(idParts('a:b_c-d.e')).toEqual(['a:', 'b_', 'c-d.e']);
-    expect(idParts('live:mymbp4:glm-5.3:20261028T1314')).toEqual([
+    expect(idParts('live:laptop:glm-5.3:20261028T1314')).toEqual([
       'live:',
-      'mymbp4:',
+      'laptop:',
       'glm-5.3:',
       '20261028T1314',
     ]);
@@ -59,14 +59,14 @@ describe('IdParts', () => {
     const agent = page.querySelector('code.agent')!;
     expect(parts(agent)).toEqual([
       'live:',
-      'mymbp4:',
+      'laptop:',
       'glm-5.3:',
       '20261028T1314',
     ]);
-    expect(agent.textContent).toBe('live:mymbp4:glm-5.3:20261028T1314');
+    expect(agent.textContent).toBe('live:laptop:glm-5.3:20261028T1314');
     expect(agent.innerHTML).toBe(
       '<span class="id-part">live:</span><wbr>' +
-        '<span class="id-part">mymbp4:</span><wbr>' +
+        '<span class="id-part">laptop:</span><wbr>' +
         '<span class="id-part">glm-5.3:</span><wbr>' +
         '<span class="id-part">20261028T1314</span>',
     );

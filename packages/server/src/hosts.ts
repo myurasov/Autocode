@@ -70,9 +70,28 @@ export class Hosts {
   // may fake).
   private readonly lastPoll = new Map<string, number>()
   private readonly waiters = new Map<string, Set<() => void>>()
+  // The last turn event applied to each session (kind and time).
+  private readonly lastEvent = new Map<string, string>()
   // Called when a registered agent's turn ends (the retries, tier 0b3).
-  onTurnEnded: (agent: string, outcome: string, error: string | null) => void =
-    () => {}
+  // `reply`: the turn's last text (tier 0f: a run's result)
+  onTurnEnded: (
+    agent: string,
+    outcome: string,
+    error: string | null,
+    reply: string | null,
+  ) => void = () => {}
+  // The host's sessions that are runs of jobs now (tier 0f).
+  runsOf: (host: string) => string[] = () => []
+  // A question or permission opened or settled in a session (tier 0d).
+  onAsk: (host: string, event: any) => void = () => {}
+  // A model step's cost (tier 0e), and a turn cut by a lost OpenCode.
+  onCost: (event: any) => void = () => {}
+  onCut: (session: string) => void = () => {}
+  // A host said hello (the loader alerts again after a new outage), with
+  // the plugin's body (its pending forms and requests, per session).
+  onHello: (host: string, body: any) => void = () => {}
+  // A session's turn ended (registered or not; its forms are gone).
+  onSessionTurnEnded: (session: string) => void = () => {}
 
   constructor(
     private readonly db: Database,
@@ -218,19 +237,24 @@ export class Hosts {
         now,
       )
     this.noteSessions(id, sessions)
-    if (Array.isArray(body.active)) this.noteActive(id, body.active)
+    if (Array.isArray(body.active)) this.noteActive(id, body.active, true)
     if (!before?.online)
       this.history.record("host.online", {
         host: id,
         data: { machine, directory, opencode, plugin },
       })
     if (before && before.instance !== instance) this.wake(id)
+    try {
+      this.onHello(id, body)
+    } catch {}
     return {
       server: { id: this.options.serverId, version: VERSION },
       host: id,
       poll: { wait: this.options.pollWait },
       sessions: this.sessionsOf(id),
       registered: this.registeredOf(id),
+      // sessions that are runs of jobs (their turns report their last reply)
+      runs: this.runsOf(id),
     }
   }
 
@@ -251,24 +275,32 @@ export class Hosts {
   /*
    * After a reconnect the plugin says which of its sessions run a turn now:
    * those are busy, the host's others idle (from now, when they were busy).
+   * One the server had busy that no longer is, at a hello (OpenCode came
+   * back), had its turn cut (tier 0e), unless its turn.ended follows.
    */
-  private noteActive(id: string, active: unknown[]) {
+  private noteActive(id: string, active: unknown[], atHello = false) {
     const busy = new Set(active.filter((s) => typeof s === "string"))
     const now = this.now()
     for (const r of this.db
       .query(
-        "SELECT id, busy FROM sessions " +
+        "SELECT id, busy, inject_pending_at FROM sessions " +
           "WHERE host_id = ? AND deleted_at IS NULL",
       )
       .all(id) as any[]) {
       if (busy.has(r.id) && !r.busy) this.turnStarted(r.id)
-      else if (!busy.has(r.id) && r.busy)
+      else if (!busy.has(r.id) && r.busy) {
         this.db
           .query(
             "UPDATE sessions SET busy = 0, idle_since = ?, " +
               "inject_pending_at = NULL WHERE id = ?",
           )
           .run(now, r.id)
+        // a prompt handed over that started no turn is not a cut turn
+        if (atHello && !r.inject_pending_at)
+          try {
+            this.onCut(r.id)
+          } catch {}
+      }
     }
   }
 
@@ -277,12 +309,19 @@ export class Hosts {
    * own clock, `at`) is out of order and changes nothing; one without a time
    * always applies.
    */
-  private fresh(session: string, at: unknown): boolean {
+  private fresh(session: string, at: unknown, kind = ""): boolean {
     if (typeof at !== "number" || !Number.isFinite(at)) return true
     const row = this.db
       .query("SELECT turn_event_at FROM sessions WHERE id = ?")
       .get(session) as any
     if (row?.turn_event_at && row.turn_event_at > at) return false
+    // the same event again (a batch sent again after a lost reply)
+    const key = `${kind}:${at}`
+    if (kind && this.lastEvent.get(session) === key) return false
+    if (kind) {
+      this.lastEvent.set(session, key)
+      if (this.lastEvent.size > 10_000) this.lastEvent.clear()
+    }
     this.db
       .query("UPDATE sessions SET turn_event_at = ? WHERE id = ?")
       .run(at, session)
@@ -290,7 +329,7 @@ export class Hosts {
   }
 
   private turnStarted(session: string, at?: unknown) {
-    if (!this.fresh(session, at)) return
+    if (!this.fresh(session, at, "started")) return
     this.db
       .query(
         "UPDATE sessions SET busy = 1, turn_started_at = ?, " +
@@ -304,8 +343,9 @@ export class Hosts {
     outcome: string,
     error: string | null,
     at?: unknown,
+    reply: string | null = null,
   ) {
-    if (!this.fresh(session, at)) return
+    if (!this.fresh(session, at, "ended")) return
     const res = this.db
       .query(
         `UPDATE sessions SET busy = 0, idle_since = ?, last_outcome = ?,
@@ -314,6 +354,9 @@ export class Hosts {
       )
       .run(this.now(), outcome, error, session)
     if (!res.changes) return
+    try {
+      this.onSessionTurnEnded(session)
+    } catch {}
     const agent = (
       this.db
         .query("SELECT id FROM agents WHERE session_id = ?")
@@ -325,7 +368,7 @@ export class Hosts {
         session,
         data: { outcome, ...(error ? { error } : {}) },
       })
-      this.onTurnEnded(agent, outcome, error)
+      this.onTurnEnded(agent, outcome, error, reply)
     }
   }
 
@@ -463,7 +506,21 @@ export class Hosts {
           typeof event.outcome === "string" ? event.outcome.slice(0, 40) : ""
         const error =
           typeof event.error === "string" ? event.error.slice(0, 500) : null
-        this.turnEnded(event.session, outcome, error, event.at)
+        const reply =
+          typeof event.reply === "string" ? event.reply.slice(0, 32_000) : null
+        this.turnEnded(event.session, outcome, error, event.at, reply)
+      } else if (event.type === "cost" && typeof event.session === "string") {
+        try {
+          this.onCost(event)
+        } catch {}
+      } else if (
+        ((event.type === "ask.opened" || event.type === "ask.settled") &&
+          typeof event.session === "string") ||
+        event.type === "asks.pending"
+      ) {
+        try {
+          this.onAsk(id, event)
+        } catch {}
       } else if (
         event.type === "turns.active" &&
         Array.isArray(event.sessions)

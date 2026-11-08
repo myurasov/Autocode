@@ -31,6 +31,7 @@ import { localTime } from '../format';
 import {
   AgentsPage,
   FILTER_DELAY_MS,
+  pausedText,
   REFRESH_MS,
   retryState,
 } from './agents-page';
@@ -41,9 +42,9 @@ const AGENTS: Agent[] = [
     description: 'leads the team',
     status: 'idle',
     session: 'ses_lead',
-    host: 'myspark3:1',
-    machine: 'myspark3',
-    directory: '/home/misha/kaggle',
+    host: 'machine-a:1',
+    machine: 'machine-a',
+    directory: '/home/someone/kaggle',
     registered_at: '2026-10-28T10:00:00.000Z',
     last_active: '2026-10-28T11:30:00.000Z',
   },
@@ -52,9 +53,9 @@ const AGENTS: Agent[] = [
     description: '',
     status: 'offline',
     session: 'ses_worker',
-    host: 'mymbp4:1',
-    machine: 'mymbp4',
-    directory: '/Users/misha/work',
+    host: 'laptop:1',
+    machine: 'laptop',
+    directory: '/Users/someone/work',
     registered_at: '2026-10-27T09:00:00.000Z',
     last_active: '2026-10-27T09:05:00.000Z',
   },
@@ -97,17 +98,17 @@ describe('AgentsPage', () => {
       ...page.querySelectorAll('table.agents tbody[data-machine]'),
     ];
     expect(machines.map((m) => m.getAttribute('data-machine'))).toEqual([
-      'mymbp4',
-      'myspark3',
+      'laptop',
+      'machine-a',
     ]);
-    expect(text(machines[0]!.querySelector('tr.group'))).toBe('mymbp4');
+    expect(text(machines[0]!.querySelector('tr.group'))).toBe('laptop');
     expect(machines[0]!.querySelectorAll('tr[data-agent]').length).toBe(1);
     const lead = machines[1]!.querySelector('tr[data-agent="kaggle:lead"]')!;
     expect(text(lead.querySelector('td.id'))).toBe('kaggle:lead');
     expect(text(lead.querySelector('td.desc'))).toBe('leads the team');
     expect(text(lead.querySelector('td.status'))).toBe('idle');
     expect(lead.querySelector('.dot')!.classList).toContain('ok');
-    expect(text(lead.querySelector('td.folder'))).toBe('/home/misha/kaggle');
+    expect(text(lead.querySelector('td.folder'))).toBe('/home/someone/kaggle');
     expect(text(lead.querySelector('td.session'))).toBe('ses_lead');
     const [registered, active] = [...lead.querySelectorAll('td.time')];
     expect(text(registered)).toBe(localTime('2026-10-28T10:00:00.000Z'));
@@ -139,8 +140,8 @@ describe('AgentsPage', () => {
     const lead = page.querySelector('tr[data-agent="kaggle:lead"]')!;
     expect(lead.querySelector('td.status + td.host')).not.toBeNull();
     const link = lead.querySelector('td.host a.id-link')!;
-    expect(link.getAttribute('href')).toBe('/hosts?host=myspark3:1');
-    expect(parts(link.querySelector('code'))).toEqual(['myspark3:', '1']);
+    expect(link.getAttribute('href')).toBe('/hosts?host=machine-a:1');
+    expect(parts(link.querySelector('code'))).toEqual(['machine-a:', '1']);
     // The agent's own ID is not a link here.
     expect(lead.querySelector('td.id a')).toBeNull();
     const worker = page.querySelector('tr[data-agent="kaggle:worker"]')!;
@@ -254,14 +255,16 @@ describe('AgentsPage', () => {
     expect(code('session').textContent).toBe('ses_lead');
     const machine = page.querySelector('table.agents tr.group th')!;
     expect(machine.classList).toContain('id-like');
-    expect(parts(machine)).toEqual(['mymbp4']);
+    expect(parts(machine)).toEqual(['laptop']);
     // Not IDs: they wrap as before.
     for (const cell of ['desc', 'status', 'folder', 'time'])
       expect(lead.querySelector(`td.${cell}`)!.classList, cell).not.toContain(
         'id-like',
       );
-    expect(code('folder').innerHTML).toBe('/<wbr>home/<wbr>misha/<wbr>kaggle');
-    expect(code('folder').textContent).toBe('/home/misha/kaggle');
+    expect(code('folder').innerHTML).toBe(
+      '/<wbr>home/<wbr>someone/<wbr>kaggle',
+    );
+    expect(code('folder').textContent).toBe('/home/someone/kaggle');
     // A time wraps only between its date and its clock, which keeps its zone.
     const time = lead.querySelector('td.time')!;
     const [date, clock, zone] = localTime('2026-10-28T10:00:00.000Z').split(
@@ -480,6 +483,14 @@ describe('AgentsPage', () => {
     expect(text(page.querySelector('.toolbar .notice'))).toBe(
       'Resumed kaggle:lead.',
     );
+  });
+
+  it('says who paused an agent: the owner, Stop All, or its daily cost cap', () => {
+    const paused = (by: string) => pausedText({ ...AGENTS[0]!, paused: by });
+    expect(paused('')).toBe('');
+    expect(paused('owner')).toBe('Paused by the owner');
+    expect(paused('stop-all')).toBe('Paused by Stop All');
+    expect(paused('cap')).toBe('Paused by its daily cost cap');
   });
 
   it('an offline agent that is paused offers Resume', async () => {

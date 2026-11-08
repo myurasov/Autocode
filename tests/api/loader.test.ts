@@ -135,3 +135,58 @@ test("a failing load backs off, and its failure is recorded once per streak", as
   )
   expect(failed.body.history.length).toBe(1)
 })
+
+/*
+ * Tier 0e (owner, 2026-11-07: only the background service): when this
+ * machine's background service is gone, the server starts it again
+ * (@opencode/client's ensure), then loads the folder; anything else is the
+ * owner's, with one inbox alert per host and outage.
+ */
+test("the background service gone: it is started again, then the folder loaded", async () => {
+  let up = false
+  const started: string[] = []
+  await t.stop()
+  t = await testServer({
+    machine: "m",
+    findService: async () =>
+      up
+        ? {
+            url: `http://127.0.0.1:${service.port}`,
+            authorization: "Basic b3BlbmNvZGU6cHc=",
+          }
+        : undefined,
+    ensureService: async () => {
+      started.push("ensure")
+      up = true
+    },
+  })
+  await waitingOn("m:5")
+  t.server.tick()
+  await Bun.sleep(300)
+  expect(started).toEqual(["ensure"])
+  expect(asked.map((a) => a.path)).toEqual(["/api/info", "/api/location"])
+  const h = await call(
+    t.url,
+    t.admin,
+    "GET",
+    "/v1/history?kind=opencode.restarted",
+  )
+  expect(h.body.history[0]).toMatchObject({ host: "m:5" })
+})
+
+test("an OpenCode that is not the background service, gone with agents waiting: one alert for the owner", async () => {
+  await waitingOn("m:6", "serve")
+  for (let i = 0; i < 3; i++) {
+    t.clock.advance(60_000)
+    t.server.tick()
+  }
+  const items = (await call(t.url, t.admin, "GET", "/v1/inbox")).body.items
+  const alerts = items.filter(
+    (i: any) => i.kind === "alert" && i.title.includes("m:6"),
+  )
+  expect(alerts.length).toBe(1)
+  expect(alerts[0].title).toBe(
+    "OpenCode of m:6 (/work) is gone; Autocode restarts only the background " +
+      "service: start it again",
+  )
+})

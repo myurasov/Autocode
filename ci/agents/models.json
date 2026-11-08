@@ -1,5 +1,5 @@
 {
-  "about": "The models the agents suite (ci/agents/run.ts) tests, each with the OpenCode model ID and variant. The owner changes this set (2026-11-02: Opus 5.5, Sol 6.1, Kimi K3, GLM 5.3, Haiku 5.5, Luna; the provider has gpt-6-luna, no 6.1 Luna). AGENT_MODELS (a comma list of names) runs a part.",
+  "about": "The models the agents suite (ci/agents/run.ts) tests, each with the OpenCode model ID and variant. The owner changes this set (2026-11-02: Opus 5.5, Sol 6.1, Kimi K3, GLM 5.3, Haiku 5.5, Luna; the provider has gpt-6-luna, no 6.1 Luna; 2026-11-07: Sonnet 5.5, on the provider only through Bedrock). AGENT_MODELS (a comma list of names) runs a part.",
   "models": [
     {
       "name": "opus-5.5",
@@ -9,6 +9,11 @@
     {
       "name": "sol-6.1",
       "model": "nvidia-ih/azure/openai/gpt-6.1-sol",
+      "variant": "high"
+    },
+    {
+      "name": "sonnet-5.5",
+      "model": "nvidia-ih/aws/anthropic/bedrock-claude-sonnet-5-5",
       "variant": "high"
     },
     {

@@ -6,6 +6,7 @@
 
 import { formatDuration, parseDuration } from "./durations.ts"
 import { AutocodeError } from "./errors.ts"
+import { isReservedId, isValidId } from "./ids.ts"
 import { matchesPattern, parsePattern } from "./patterns.ts"
 
 // Server-wide defaults, overridable by rules for ID patterns (first match wins)
@@ -13,6 +14,7 @@ import { matchesPattern, parsePattern } from "./patterns.ts"
 
 export type SettingValue = string | number | boolean
 type Kind =
+  | "mode"
   | "duration"
   | "int"
   | "enum"
@@ -47,12 +49,16 @@ export const SETTINGS: Record<string, SettingDef> = {
     min: 0,
     help: "messages up to this many characters go into the prompt whole",
   },
+  // Tier 0d: who handles an ask; also agent:<id> (another agent) and
+  // job:<name> (a run of a job, tier 0f).
   question_mode: {
-    kind: "enum",
+    kind: "mode",
     scope: "agent",
     default: "ask",
     values: ["ask", "auto"],
-    help: "questions go to the owner (ask) or are answered at once (auto)",
+    help:
+      "questions go to the owner (ask), are answered at once (auto), or go " +
+      "to agent:<id> or job:<name>",
   },
   auto_answer_text: {
     kind: "text",
@@ -63,20 +69,22 @@ export const SETTINGS: Record<string, SettingDef> = {
     help: "the answer given in auto question mode",
   },
   permission_mode: {
-    kind: "enum",
+    kind: "mode",
     scope: "agent",
     default: "ask",
     values: ["ask", "approve"],
     help:
-      "permission prompts go to the owner (ask) " +
-      "or are approved once (approve)",
+      "permission prompts go to the owner (ask), are approved once " +
+      "(approve), or go to agent:<id> or job:<name>",
   },
   approval_mode: {
-    kind: "enum",
+    kind: "mode",
     scope: "agent",
     default: "ask",
     values: ["ask", "approve"],
-    help: "approvals go to the owner (ask) or are approved at once (approve)",
+    help:
+      "approvals go to the owner (ask), are approved at once (approve), or " +
+      "go to agent:<id> or job:<name>",
   },
   compact_at: {
     kind: "compact",
@@ -105,24 +113,11 @@ export const SETTINGS: Record<string, SettingDef> = {
     default: "5m",
     help: "the longest a tool waits inside a turn",
   },
-  tools: {
-    kind: "enum",
-    scope: "agent",
-    default: "all",
-    values: ["all", "registered"],
-    help: "which tools unregistered sessions see",
-  },
   daily_usd: {
     kind: "usd",
     scope: "agent",
     default: "off",
     help: "the agent's cap per day, in dollars, or off",
-  },
-  total_usd: {
-    kind: "usd",
-    scope: "agent",
-    default: "off",
-    help: "the agent's total cap, in dollars, or off",
   },
   cap_warn: {
     kind: "percent",
@@ -157,18 +152,6 @@ export const SETTINGS: Record<string, SettingDef> = {
     default: 30,
     min: 1,
     help: "days of history kept",
-  },
-  keep_failed: {
-    kind: "duration",
-    scope: "server",
-    default: "7d",
-    help: "how long the sessions of failed runs are kept",
-  },
-  restart_opencode: {
-    kind: "bool",
-    scope: "server",
-    default: true,
-    help: "restart missing OpenCode servers on this machine",
   },
   timezone: {
     kind: "timezone",
@@ -295,6 +278,16 @@ export function normalizeSetting(key: string, value: unknown): SettingValue {
       if (!def.values?.includes(String(text)))
         fail(key, `expected one of ${def.values?.join(", ")}`)
       return String(text)
+    case "mode": {
+      const value = String(text)
+      if (def.values?.includes(value)) return value
+      const m = /^(agent|job):(.+)$/.exec(value)
+      if (m && isValidId(m[2]!) && !isReservedId(m[2]!)) return value
+      return fail(
+        key,
+        `expected ${def.values?.join(", ")}, agent:<id> or job:<name>`,
+      )
+    }
     case "text":
       if (typeof text !== "string" || !text || text.length > 2000)
         fail(key, "expected text of 1 to 2000 characters")
@@ -321,8 +314,9 @@ export function normalizeSetting(key: string, value: unknown): SettingValue {
       if (text === "off") return "off"
       if (typeof text === "number" || /^\d+$/.test(String(text))) {
         const n = Number(text)
-        if (!Number.isInteger(n) || n < 1000)
-          fail(key, "expected at least 1000 tokens")
+        // OpenCode's system prompt and tools alone are about 10k tokens
+        if (!Number.isInteger(n) || n < 10_000)
+          fail(key, "expected at least 10000 tokens")
         return n
       }
       const m = /^(\d{1,3}%)(?:\s+max\s+(\d+))?$/.exec(String(text))

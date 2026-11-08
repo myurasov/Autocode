@@ -30,12 +30,13 @@ export const REFRESH_MS = 10_000;
 // How long after the last key the typed filter applies.
 export const FILTER_DELAY_MS = 1000;
 
-// Who paused an agent, for its status's tooltip ('' when it is not paused).
+// Who paused an agent, for its status's tooltip ('' when it is not paused):
+// the owner, Stop All, or its daily cost cap (tier 0e).
 export function pausedText(agent: Agent): string {
   if (!agent.paused) return '';
-  return agent.paused === 'stop-all'
-    ? 'Paused by Stop All'
-    : 'Paused by the owner';
+  if (agent.paused === 'stop-all') return 'Paused by Stop All';
+  if (agent.paused === 'cap') return 'Paused by its daily cost cap';
+  return 'Paused by the owner';
 }
 
 // A wait as people say it: "40s", "2m 30s", "1h 5m" (rounded up to seconds).

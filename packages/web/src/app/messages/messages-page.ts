@@ -1,11 +1,11 @@
 /*
  * The Messages page: every message, newest first, with its ID, sender and
- * recipient (an agent's a link to the Agents page), subject, text, kind, size
- * and state, refreshed every 10 s (one refresh at a time); a long text shows
- * its first 200 characters until a click anywhere in its cell (or Enter) opens
- * it, read whole once, and the next folds it; and a form,
- * collapsed until opened, to send a message as the owner, to an agent ID, a
- * pattern or a list.
+ * recipient (an agent's a link to the Agents page), subject, text (every
+ * message is text), size and state, refreshed every 10 s (one refresh at a
+ * time); a long text shows its first 200 characters until a click anywhere in
+ * its cell (or Enter) opens it, read whole once, and the next folds it; and a
+ * form, collapsed until opened, to send a text as the owner, to an agent ID,
+ * a pattern or a list.
  */
 
 import { Component, DestroyRef, inject, signal } from '@angular/core';
@@ -89,9 +89,9 @@ export class MessagesPage {
     return this.bodies()[id];
   }
 
-  // A text message too long to show whole in the list.
+  // A message too long to show whole in the list.
   protected isLong(message: Message): boolean {
-    return message.kind === 'text' && message.size > FOLD_CHARS;
+    return message.size > FOLD_CHARS;
   }
 
   // A long text's cell: the whole text once opened and read, else the list's
@@ -127,11 +127,6 @@ export class MessagesPage {
     if (!this.isLong(message)) return;
     if (window.getSelection()?.toString()) return;
     void this.toggle(message);
-  }
-
-  // What the Kind column shows: text, or a file's mime type.
-  protected kindText(message: Message): string {
-    return message.kind === 'text' ? 'text' : (message.mime ?? 'binary');
   }
 
   protected sizeText(message: Message): string {
