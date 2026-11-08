@@ -15,6 +15,7 @@ built, not yet tagged. Questions and approvals, resumes, cost caps and spawned j
 - [Usage](#usage)
 - [Development](#development)
 - [Documents](#documents)
+- [License](#license)
 
 ## How It Works
 
@@ -181,3 +182,7 @@ AUTOCODE_TARGETS=all ci/dist.sh          # also linux-arm64, linux-x64, darwin-a
 
 The specification (the source of truth) and the plan (what is built, what is next) live beside this repository, in
 the project's `aipack/` folder (`spec.md`, `plan.md`).
+
+## License
+
+Autocode is licensed under the Apache License, Version 2.0: see [`LICENSE`](LICENSE).

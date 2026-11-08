@@ -1,6 +1,7 @@
 {
   "name": "@autocode/web",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "description": "Autocode's web UI: an Angular app built to static files that the server serves",
   "scripts": {
