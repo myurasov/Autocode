@@ -468,6 +468,12 @@ table.costs td.context {
 table.costs .share {
   color: var(--fg-dim);
 }
+/* Daily Cap: the cap at the left, its share at the right (the owner). */
+table.costs .cap-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
 table.costs .bar {
   display: block;
   height: 4px;

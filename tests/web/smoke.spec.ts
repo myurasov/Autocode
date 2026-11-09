@@ -1953,6 +1953,47 @@ test("Settings: a mode's Agent… lists the agents and saves agent:<id>", async 
   }
 })
 
+// The owner, 2026-11-09: in the Daily Cap cell the share sits at the right,
+// the cap at the left, the bar under both.
+test("layout: the Costs tab's Daily Cap has its share at the right", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const cap = (daily_usd: number | null) =>
+    api.patch("/v1/settings", {
+      headers: bearer(admin),
+      data: { agents: { "smoke:agent": { daily_usd } } },
+    })
+  try {
+    expect((await cap(100)).ok()).toBe(true)
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await signIn(page, admin)
+    await openTab(page, "Costs")
+    const cell = page.locator('table.costs tr[data-agent="smoke:agent"] td.cap')
+    await expect(cell.locator(".share")).toHaveText(/^\d+\.\d%$/)
+    const box = await cell.evaluate((td) => {
+      const r = td.getBoundingClientRect()
+      const css = getComputedStyle(td)
+      const right = r.right - parseFloat(css.paddingRight)
+      const left = r.left + parseFloat(css.paddingLeft)
+      const of = (sel: string) => td.querySelector(sel)!.getBoundingClientRect()
+      return {
+        share: right - of(".share").right,
+        amount: of(".amount").left - left,
+        bar: right - of(".bar").right,
+      }
+    })
+    expect(Math.abs(box.share), "the share at the right").toBeLessThanOrEqual(1)
+    expect(Math.abs(box.amount), "the cap at the left").toBeLessThanOrEqual(1)
+    expect(Math.abs(box.bar), "the bar to the right edge").toBeLessThanOrEqual(
+      1,
+    )
+  } finally {
+    await cap(null)
+    await api.dispose()
+  }
+})
+
 // Tier 0g (the owner, 2026-11-08): the Costs tab follows a model step live
 // (no reload); Days shows the spend per day; the Agents tab's column too.
 test("Costs: spend and context live, an agent's days, and the Agents column", async ({

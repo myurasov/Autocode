@@ -120,6 +120,13 @@ describe('CostsPage', () => {
     ]);
     expect(cell(page, 'kaggle:lead', 'today')).toBe('$1.50');
     expect(cell(page, 'kaggle:lead', 'cap')).toBe('$2.00 75.0%');
+    // the cap and its share on one line, the share at its right (the owner,
+    // 2026-11-09), the bar under both
+    const line = row(page, 'kaggle:lead').querySelector('td.cap .cap-line')!;
+    expect([...line.children].map((c) => [c.className, text(c)])).toEqual([
+      ['amount', '$2.00'],
+      ['share', '75.0%'],
+    ]);
     expect(cell(page, 'kaggle:lead', 'left')).toBe('$0.50');
     expect(cell(page, 'kaggle:lead', 'total')).toBe('$12.35');
     expect(row(page, 'kaggle:lead').querySelector('td.context')).toBeNull();

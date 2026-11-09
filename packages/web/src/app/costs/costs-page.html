@@ -99,14 +99,17 @@
           @if (a.daily_usd === 'off') {
             <span class="muted">off</span>
           } @else {
-            {{ costText(a.daily_usd) }}
+            <!-- the cap at the left, its share at the right (the owner,
+                 2026-11-09), the bar under both -->
+            <span class="cap-line"
+              ><span class="amount">{{ costText(a.daily_usd) }}</span
+              >&ngsp;<span class="share">{{ shareText(capShare(a) ?? 0) }}</span></span
+            >
             @if (capShare(a); as share) {
-              <span class="share"> {{ shareText(share) }}</span>
               <span class="bar" [class.near]="share >= 75" [class.over]="share >= 100"
                 ><span [style.width]="width(share)"></span
               ></span>
             } @else {
-              <span class="share"> {{ shareText(0) }}</span>
               <span class="bar"><span style="width: 0%"></span></span>
             }
           }
