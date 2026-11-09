@@ -206,15 +206,14 @@ was read are the server's). Pages:
   whole); an **Agent** filter (a pattern, like the Agents filter) and a **Kind** list (one kind with its count, or a
   group like `wake.*`), both kept in the address; **Older** loads the next 100. `autocode history` is the same in
   the CLI.
-- **Costs:** every agent's spend today and in total (also past `history_days`; agents that unregistered too,
-  dimmed), its daily cap with the share spent today and, after Total, **Last 7 Days**: a bar per day, today at the
-  right (up to 7, from its first day; its day and spend on hover; the totals row too), refreshed every 5 s (its
-  context is on **Agents**; a click on an agent's Spend there leads here with its row highlighted); **Days** shows
-  its spend per day (kept `history_days`, at least 31 days; days in the server's zone: right of **Refresh**, when
-  the data was read, in that zone); an **Agent** filter (a pattern, kept in the address), a **Days** field (Total
-  and the totals over the last X days; empty: all time; in the address), an **Unregistered** box (on by default; a
-  gone agent's ID leads to Agents with its box on) and a totals row. `autocode costs` is the same in the CLI
-  (`--days X`).
+- **Costs:** every agent's spend today and in total (also past `history_days`; agents that unregistered too, dimmed),
+  its daily cap with the share spent today and, right after it, **Last 7 Days**: a bar per day, today at the right (up
+  to 7, from its first day; hover over a day for its value and date; the totals row too), refreshed every 5 s (its
+  context is on **Agents**; a click on an agent's Spend there leads here with its row highlighted); **Days** shows its
+  spend per day (kept `history_days`, at least 31 days; days in the server's zone: right of **Refresh**, when the data
+  was read, in that zone); an **Agent** filter (a pattern, kept in the address), a **Days** field (Total and the
+  totals over the last X days; empty: all time; in the address), an **Unregistered** box (on by default; a gone
+  agent's ID leads to Agents with its box on) and a totals row. `autocode costs` is the same in the CLI (`--days X`).
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI, with a numbered table of contents.
 - **Settings:** the server-wide values (each shown in its edit box: change it and **Save**, or **Reset** to the
   built-in default), the pattern rules, the agents' own values, and **Resolved for an Agent** (an agent's values

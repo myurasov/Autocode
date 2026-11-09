@@ -2002,9 +2002,10 @@ test("layout: the Costs tab's Daily Cap has its share at the right, 150 px wide"
   }
 })
 
-// The owner, 2026-11-09: no Left Today; Last 7 Days after Total, a bar per
-// day (up to 7), today at the right, on one baseline; the totals row too.
-test("layout: the Costs tab's Last 7 Days is a bar per day after Total, no Left Today", async ({
+// The owner, 2026-11-09: no Left Today; Last 7 Days right after Daily Cap
+// (it was after Total), a bar per day (up to 7), today at the right, on one
+// baseline; the totals row too.
+test("layout: the Costs tab's Last 7 Days is a bar per day right after Daily Cap, no Left Today", async ({
   page,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -2029,42 +2030,93 @@ test("layout: the Costs tab's Last 7 Days is a bar per day after Total, no Left 
     "Status",
     "Today",
     "Daily Cap",
-    /^\s*(Total|Last \d+ Days?)\s*$/,
     "Last 7 Days",
+    /^\s*(Total|Last \d+ Days?)\s*$/,
     "",
   ])
   const row = page.locator('table.costs tr[data-agent="smoke:agent"]')
-  const bars = row.locator("td.week .graph > span")
-  const count = await bars.count()
+  const days = row.locator("td.week .graph > .col")
+  const count = await days.count()
   expect(count).toBeGreaterThan(0)
   expect(count).toBeLessThanOrEqual(7)
-  // the last bar is today, dated as every date in the web UI
-  await expect(bars.last()).toHaveAttribute(
-    "title",
-    /^\d\d-[A-Z][a-z]{2}-\d\d: \$\d+\.\d\d$/,
-  )
   const box = await row.locator("td.week").evaluate((td) => {
     const graph = td.querySelector(".graph")!.getBoundingClientRect()
-    const spans = [...td.querySelectorAll(".graph > span")].map((s) =>
+    const cols = [...td.querySelectorAll(".graph > .col")].map((c) =>
+      c.getBoundingClientRect(),
+    )
+    const fills = [...td.querySelectorAll(".graph > .col > .fill")].map((s) =>
       s.getBoundingClientRect(),
     )
     return {
-      graph: { left: graph.left, right: graph.right, height: graph.height },
-      bottoms: spans.map((s) => Math.round(s.bottom)),
-      tallest: Math.max(...spans.map((s) => s.height)),
-      left: Math.min(...spans.map((s) => s.left)),
-      right: Math.max(...spans.map((s) => s.right)),
+      graph: {
+        left: graph.left,
+        right: graph.right,
+        height: graph.height,
+        inner: td.querySelector(".graph")!.clientHeight,
+      },
+      bottoms: fills.map((s) => Math.round(s.bottom)),
+      tallest: Math.max(...fills.map((s) => s.height)),
+      cols: cols.map((c) => Math.round(c.height)),
+      left: Math.min(...fills.map((s) => s.left)),
+      right: Math.max(...fills.map((s) => s.right)),
       cell: td.getBoundingClientRect().width,
     }
   })
   expect(new Set(box.bottoms).size, "one baseline").toBe(1)
   expect(box.tallest).toBeGreaterThan(box.graph.height * 0.9)
+  // each day's hover area is its whole column (the graph inside its bottom
+  // line), however short its bar
+  for (const h of box.cols) expect(h).toBe(box.graph.inner)
   expect(box.left).toBeGreaterThanOrEqual(box.graph.left - 0.5)
   expect(box.right, "today at the right").toBeCloseTo(box.graph.right, 0)
   expect(box.cell).toBeLessThan(140)
-  await expect(
-    page.locator("table.costs tfoot tr.totals td.week .graph > span").last(),
-  ).toHaveAttribute("title", /^\d\d-[A-Z][a-z]{2}-\d\d: \$/)
+})
+
+// The owner, 2026-11-09: "on hover over the bar, its daily value sould be
+// shown": at once (not the browser's late title), above the bar, also over
+// the empty top of a short day's column.
+test("Costs: hovering a day of Last 7 Days shows its value at once", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, admin)
+  await openTab(page, "Costs")
+  const today = page
+    .locator('table.costs tr[data-agent="smoke:agent"] td.week .graph > .col')
+    .last()
+  const tip = today.locator(".tip")
+  await expect(tip).toBeHidden()
+  // the column's top-left corner: above a bar that may be short
+  await today.hover({ position: { x: 1, y: 1 } })
+  await expect(tip).toBeVisible({ timeout: 300 })
+  await expect(tip.locator(".usd")).toHaveText(/^\$\d+\.\d\d$/)
+  await expect(tip).toHaveText(/^\$\d+\.\d\d \d\d-[A-Z][a-z]{2}-\d\d$/)
+  const [col, shown] = [await today.boundingBox(), await tip.boundingBox()]
+  expect(shown!.y + shown!.height, "above the bar").toBeLessThanOrEqual(
+    col!.y + 0.5,
+  )
+  // whole and in the frame
+  const frame = await page.locator("#frame").boundingBox()
+  expect(shown!.x).toBeGreaterThanOrEqual(frame!.x)
+  expect(shown!.x + shown!.width).toBeLessThanOrEqual(frame!.x + frame!.width)
+  // nothing over it (the tip takes no pointer events: for this check only)
+  const clear = await tip.evaluate((el: HTMLElement) => {
+    el.style.pointerEvents = "auto"
+    const r = el.getBoundingClientRect()
+    const at = document.elementFromPoint(r.left + r.width / 2, r.top + 2)
+    el.style.pointerEvents = ""
+    return !!at && el.contains(at)
+  })
+  expect(clear, "the tip on top").toBe(true)
+  // the totals row's too, and away again
+  const sum = page
+    .locator("table.costs tfoot tr.totals td.week .graph > .col")
+    .last()
+  await sum.hover()
+  await expect(sum.locator(".tip")).toBeVisible({ timeout: 300 })
+  await expect(tip).toBeHidden()
+  await page.mouse.move(5, 5)
+  await expect(sum.locator(".tip")).toBeHidden()
 })
 
 // Tier 0g (the owner, 2026-11-08): the Costs tab follows a model step live

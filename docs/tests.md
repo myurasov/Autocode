@@ -1051,5 +1051,12 @@ in what it read.
   `weekTotals`), `help-page.spec.ts`, `smoke.spec.ts` layout (the headings; at most 7 bars on one baseline, today
   at the right, the totals row's too). web-unit 203, web 3 (`CI_GREP=Costs`); screenshots light at 1024 and dark at
   1280 (each agent's week filled in by the script) looked at.
+- **Last 7 Days: the value on hover, right after Daily Cap** (the owner, 2026-11-09: "on hover over the bar, its daily
+  value sould be shown"; then "move last 7 days col after today", then "actually, move it right afterdaily cap";
+  tests first, red, then green): `costs-page.spec.ts` (the headings in the new order, Total's own heading for
+  `?days=`; each day a focusable column with its value then date in a tip of the page's own, its `aria-label`, no
+  `title`, which the browser shows late), `help-page.spec.ts`, `smoke.spec.ts` (each day's hover area its whole
+  column; a hover at a short day's empty top shows the tip within 300 ms, above the bar, inside the frame, on top;
+  the totals row's too; it goes when the mouse leaves). Screenshots of a hover looked at.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

@@ -3,8 +3,8 @@
   zone; a failed load's message beside it); the Agent filter (a pattern, in the address); every
   agent's status (its dot, as on Agents; unregistered ones with spend too,
   marked), spend
-  today, its daily cap (a bar of the share spent), its
-  total, its last 7 days (a bar per day) and Days for its spend per day (the
+  today, its daily cap (a bar of the share spent), its last 7 days (a bar per
+  day, its value on hover), its total and Days for its spend per day (the
   agent a link led to, ?agent=, highlighted); a totals row; and when the list
   last loaded.
 -->
@@ -71,11 +71,11 @@
       <th>Status</th>
       <th class="num">Today</th>
       <th>Daily Cap</th>
-      <th class="num">
+      <!-- a bar per day, right after Daily Cap (the owner, 2026-11-09) -->
+      <th class="week">Last 7 Days</th>
+      <th class="num total">
         {{ periodTitle() }}
       </th>
-      <!-- a bar per day, after Total (the owner, 2026-11-09) -->
-      <th class="week">Last 7 Days</th>
       <th></th>
     </tr>
   </thead>
@@ -116,12 +116,12 @@
             }
           }
         </td>
-        <td class="num total">{{ costText(a.total_usd) }}</td>
         <td class="week">
           <ng-container
             *ngTemplateOutlet="graph; context: { $implicit: weekBars(a.week) }"
           />
         </td>
+        <td class="num total">{{ costText(a.total_usd) }}</td>
         <td class="actions">
           <button
             type="button"
@@ -192,12 +192,12 @@
         </td>
         <td class="num today">{{ costText(totals().today_usd) }}</td>
         <td></td>
-        <td class="num total">{{ costText(totals().total_usd) }}</td>
         <td class="week">
           <ng-container
             *ngTemplateOutlet="graph; context: { $implicit: totals().week }"
           />
         </td>
+        <td class="num total">{{ costText(totals().total_usd) }}</td>
         <td></td>
       </tr>
     </tfoot>
@@ -206,16 +206,26 @@
 
 <!--
   Last 7 Days: a bar per day, oldest first, today at the right, each its
-  share of the top day; its day and spend on hover.
+  share of the top day. A day's whole column is its hover area: its value
+  and date show at once above it (the owner, 2026-11-09; not a title,
+  which the browser shows late), also on focus.
 -->
 <ng-template #graph let-bars>
   <span class="graph">
     @for (b of bars; track b.day) {
       <span
+        class="col"
+        tabindex="0"
         [class.zero]="b.usd === 0"
-        [style.height]="b.height + '%'"
-        [title]="dayText(b.day) + ': ' + costText(b.usd)"
-      ></span>
+        [attr.aria-label]="dayText(b.day) + ': ' + costText(b.usd)"
+        ><span class="fill" [style.height]="b.height + '%'"></span
+        ><span class="tip" aria-hidden="true"
+          ><span class="usd">{{ costText(b.usd) }}</span>&ngsp;<span
+            class="day"
+            >{{ dayText(b.day) }}</span
+          ></span
+        ></span
+      >
     }
   </span>
 </ng-template>

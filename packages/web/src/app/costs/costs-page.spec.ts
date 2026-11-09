@@ -126,7 +126,7 @@ describe('CostsPage', () => {
   const cell = (page: HTMLElement, agent: string, name: string) =>
     text(row(page, agent).querySelector(`td.${name}`));
 
-  it('lists every agent: today, cap, total and the last 7 days (no Context, no Left Today: the owner)', async () => {
+  it('lists every agent: today, cap, the last 7 days and total (no Context, no Left Today: the owner)', async () => {
     const page = await open();
     expect(
       [...page.querySelectorAll('table.costs thead th')].map((th) => text(th)),
@@ -135,8 +135,8 @@ describe('CostsPage', () => {
       'Status',
       'Today',
       'Daily Cap',
-      'Total',
       'Last 7 Days',
+      'Total',
       '',
     ]);
     expect(cell(page, 'kaggle:lead', 'today')).toBe('$1.50');
@@ -303,11 +303,9 @@ describe('CostsPage', () => {
       load({ ...view(), days: 7 }, undefined, '7');
       await vi.advanceTimersByTimeAsync(0);
       fixture.detectChanges();
-      expect(
-        [...page.querySelectorAll('table.costs thead th')].map((th) =>
-          text(th),
-        ),
-      ).toContain('Last 7 Days');
+      expect(text(page.querySelector('table.costs thead th.total'))).toBe(
+        'Last 7 Days',
+      );
       expect(text(page.querySelector('tfoot tr.totals td.agent'))).toBe(
         'Total (3 agents, last 7 days)',
       );
@@ -318,11 +316,9 @@ describe('CostsPage', () => {
       load({ ...view(), days: 1 }, undefined, '1');
       await vi.advanceTimersByTimeAsync(0);
       fixture.detectChanges();
-      expect(
-        [...page.querySelectorAll('table.costs thead th')].map((th) =>
-          text(th),
-        ),
-      ).toContain('Last Day');
+      expect(text(page.querySelector('table.costs thead th.total'))).toBe(
+        'Last Day',
+      );
       expect(text(page.querySelector('tfoot tr.totals td.agent'))).toBe(
         'Total (3 agents, last day)',
       );
@@ -341,17 +337,23 @@ describe('CostsPage', () => {
   });
 
   // The owner, 2026-11-09: "a col with last 7 (up to) daily spend bar graph
-  // 'Last 7 Days' after the total".
-  it("Last 7 Days, after Total: a bar per day of the agent's spend, oldest first, scaled to its top day", async () => {
+  // 'Last 7 Days'"; "on hover over the bar, its daily value sould be shown";
+  // "move it right after daily cap".
+  it("Last 7 Days, right after Daily Cap: a bar per day of the agent's spend, oldest first, scaled to its top day", async () => {
     const page = await open();
-    const bars = (tr: Element) =>
-      [...tr.querySelectorAll('td.week .graph > span')] as HTMLElement[];
-    const lead = bars(row(page, 'kaggle:lead'));
+    const days = (tr: Element) =>
+      [...tr.querySelectorAll('td.week .graph > .col')] as HTMLElement[];
+    const heights = (tr: Element) =>
+      days(tr).map(
+        (d) => (d.querySelector('.fill') as HTMLElement).style.height,
+      );
+    const tips = (tr: Element) =>
+      days(tr).map((d) => text(d.querySelector('.tip')));
+    const lead = row(page, 'kaggle:lead');
     expect(
-      row(page, 'kaggle:lead').querySelector('td.total')!.nextElementSibling!
-        .className,
+      lead.querySelector('td.cap')!.nextElementSibling!.className,
     ).toContain('week');
-    expect(lead.map((b) => b.style.height)).toEqual([
+    expect(heights(lead)).toEqual([
       '12.5%',
       '0%',
       '50%',
@@ -360,17 +362,27 @@ describe('CostsPage', () => {
       '100%',
       '37.5%',
     ]);
-    // each bar says its day and spend; a day without spend is marked
-    expect(lead.map((b) => b.title)).toEqual([
-      '02-Nov-26: $0.50',
-      '03-Nov-26: $0.00',
-      '04-Nov-26: $2.00',
-      '05-Nov-26: $1.00',
-      '06-Nov-26: $0.25',
-      '07-Nov-26: $4.00',
-      '08-Nov-26: $1.50',
+    // each day's value and date in its tip, shown on hover; a day without
+    // spend is marked
+    expect(tips(lead)).toEqual([
+      '$0.50 02-Nov-26',
+      '$0.00 03-Nov-26',
+      '$2.00 04-Nov-26',
+      '$1.00 05-Nov-26',
+      '$0.25 06-Nov-26',
+      '$4.00 07-Nov-26',
+      '$1.50 08-Nov-26',
     ]);
-    expect(lead.map((b) => b.classList.contains('zero'))).toEqual([
+    expect(days(lead).map((d) => text(d.querySelector('.tip .usd')))).toEqual([
+      '$0.50',
+      '$0.00',
+      '$2.00',
+      '$1.00',
+      '$0.25',
+      '$4.00',
+      '$1.50',
+    ]);
+    expect(days(lead).map((d) => d.classList.contains('zero'))).toEqual([
       false,
       true,
       false,
@@ -379,27 +391,32 @@ describe('CostsPage', () => {
       false,
       false,
     ]);
+    // the same said to a screen reader and the keyboard; no browser title
+    // (it would show late, over the tip)
+    expect(days(lead)[6]!.getAttribute('aria-label')).toBe('08-Nov-26: $1.50');
+    expect(days(lead)[6]!.tabIndex).toBe(0);
+    expect(lead.querySelectorAll('td.week [title]').length).toBe(0);
     // up to 7: from its first day, today last; none without spend
-    expect(bars(row(page, 'kaggle:worker')).map((b) => b.title)).toEqual([
-      '07-Nov-26: $0.00',
-      '08-Nov-26: $0.04',
+    expect(tips(row(page, 'kaggle:worker'))).toEqual([
+      '$0.00 07-Nov-26',
+      '$0.04 08-Nov-26',
     ]);
-    expect(bars(row(page, 'old:one'))).toEqual([]);
+    expect(days(row(page, 'old:one'))).toEqual([]);
     // the totals row: the listed agents' spend per day
     const total = page.querySelector('table.costs tfoot tr.totals')!;
     expect(
-      total.querySelector('td.total')!.nextElementSibling!.className,
+      total.querySelector('td.total')!.previousElementSibling!.className,
     ).toContain('week');
-    expect(bars(total).map((b) => b.title)).toEqual([
-      '02-Nov-26: $0.50',
-      '03-Nov-26: $0.00',
-      '04-Nov-26: $2.00',
-      '05-Nov-26: $1.00',
-      '06-Nov-26: $0.25',
-      '07-Nov-26: $4.00',
-      '08-Nov-26: $1.54',
+    expect(tips(total)).toEqual([
+      '$0.50 02-Nov-26',
+      '$0.00 03-Nov-26',
+      '$2.00 04-Nov-26',
+      '$1.00 05-Nov-26',
+      '$0.25 06-Nov-26',
+      '$4.00 07-Nov-26',
+      '$1.54 08-Nov-26',
     ]);
-    expect(bars(total)[5]!.style.height).toBe('100%');
+    expect(heights(total)[5]).toBe('100%');
   });
 
   it('a share as a bar height: to a tenth of the top day, 0 when nothing was spent', () => {

@@ -505,9 +505,11 @@ table.costs tr.days > td {
   background: var(--softer);
 }
 /*
- * Last 7 Days (the owner, 2026-11-09): seven bars at most, oldest first, on
- * one baseline; a day without spend a thin line. Its own seven places, so
- * an agent with fewer days keeps today under the others' today.
+ * Last 7 Days (the owner, 2026-11-09): seven days at most, oldest first, on
+ * one baseline, today at the right; a day without spend a thin line. Each
+ * day's column is its hover area, however short its bar; its tip (value,
+ * then date) shows at once above it, over the rows above (the owner: "on
+ * hover over the bar, its daily value sould be shown").
  */
 table.costs td.week,
 table.costs th.week {
@@ -516,24 +518,63 @@ table.costs th.week {
 }
 table.costs .graph {
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   justify-content: flex-end;
   gap: 3px;
   height: 20px;
   width: 82px;
   border-bottom: 1px solid var(--border-soft);
 }
-table.costs .graph > span {
+table.costs .graph > .col {
+  position: relative;
   flex: 0 0 9px;
+  display: flex;
+  align-items: flex-end;
+  outline: none;
+}
+table.costs .graph .fill {
+  display: block;
+  width: 100%;
   min-height: 1px;
   background: var(--ok);
   border-radius: 1px 1px 0 0;
 }
-table.costs .graph > span.zero {
+table.costs .graph > .col.zero .fill {
   background: var(--fg-faint);
 }
-table.costs tr.gone .graph {
+table.costs tr.gone .graph .fill {
   opacity: 0.55;
+}
+table.costs .graph > .col:hover .fill,
+table.costs .graph > .col:focus-visible .fill {
+  filter: brightness(0.8);
+}
+table.costs .graph .tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 2px 6px;
+  white-space: nowrap;
+  font-weight: normal;
+  color: var(--fg-strong);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+table.costs .graph .tip .usd {
+  font-weight: var(--bold);
+}
+table.costs .graph .tip .day {
+  color: var(--fg-dim);
+}
+table.costs .graph > .col:hover .tip,
+table.costs .graph > .col:focus-visible .tip {
+  display: block;
 }
 /* When the data was read, right of Refresh: its digits keep their width. */
 .toolbar .clock {

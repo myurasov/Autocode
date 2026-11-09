@@ -1,8 +1,9 @@
 /*
  * The Costs page (tier 0g; the owner, 2026-11-08): every registered agent's
  * spend today and in total, its daily cap with the share used, and its last
- * 7 days as a bar per day (the owner, 2026-11-09, in place of Left Today;
- * its context is on the Agents tab), refreshed every 5 s (one
+ * 7 days as a bar per day right after it, each day's value on hover (the
+ * owner, 2026-11-09, in place of Left Today; its context is on the Agents
+ * tab), refreshed every 5 s (one
  * refresh at a time) so it follows each model step, with when the data was
  * read. Days shows an agent's spend per day, newest first; agent IDs link to
  * the Agents page. Unregistered agents with spend show too, marked; the Agent
