@@ -239,16 +239,19 @@ export default {
 
     /*
      * Shell values: each session's environment holds its top-level session's
-     * values on top of OpenCode's own environment, set before the session's
-     * first shell call and again after a rotation. `shellSet` is what each
-     * session's environment holds now.
+     * values on top of OpenCode's own environment, set before each of the
+     * session's shell calls (not only the first) and again after a rotation.
+     * An OpenCode client (the TUI, an editor's extension) sets a session's
+     * environment to its own when it opens the session, which drops the
+     * values, and nothing tells the plugin (the owner, 2026-11-08: shells
+     * without AUTOCODE_TOKEN). `shellSet` is the sessions the plugin set, for
+     * a rotation.
      */
     const shellSet = new Map<string, { root: string; token: string }>()
     const shellPending = new Map<string, Promise<void>>()
     const putShellValues = async (session: string, root: string) => {
       if (!api) return
       const values = await valuesFor(root)
-      if (shellSet.get(session)?.token === values.AUTOCODE_TOKEN) return
       await setEnvironment(api, session, shellVariables(process.env, values))
       shellSet.set(session, { root, token: values.AUTOCODE_TOKEN })
     }
@@ -475,7 +478,7 @@ export default {
     })
 
     // OpenCode awaits this before it builds the shell's environment, so the
-    // session's values are in place for its first shell.
+    // session's values are in place for each shell.
     await ctx.tool.hook("execute.before", async (event: any) => {
       if (!api || event.tool !== "shell" || typeof event.sessionID !== "string")
         return

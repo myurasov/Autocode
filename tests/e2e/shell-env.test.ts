@@ -5,7 +5,12 @@
  * that session; the owner's own ! commands in that session get them too.
  */
 import { expect, test } from "bun:test"
-import { admin, readySession } from "../helpers/autocode.ts"
+import {
+  admin,
+  hostSeenAfter,
+  readySession,
+  WORK,
+} from "../helpers/autocode.ts"
 import { dockerExec } from "../helpers/docker.ts"
 import { autocodeUrl, nodes } from "../helpers/env.ts"
 import { FakeModel, toolResults } from "../helpers/fake.ts"
@@ -227,4 +232,88 @@ test("a shell call that fails before its shell starts does not hand its token to
     toolResults(await fake.requests(), b.id).join(""),
   )?.[1]
   expect(await sessionOf(token)).toBe(b.id)
+})
+
+/*
+ * The owner, 2026-11-08 ("reproduce/fix"): a session's shell lost
+ * AUTOCODE_TOKEN after the folder's plugin reloaded (machine-b's update loop,
+ * and this repo's own sessions). The reloaded plugin starts with nothing in
+ * `shellSet`, so it sets the session's environment again at the next shell
+ * call; this checks that the next shell in the same session still acts as it.
+ */
+test("after the folder's plugin reloads, a session's next shell still has its values", async () => {
+  const node = nodes[0]!
+  const oc = new OpenCode(node)
+  const fake = new FakeModel(node)
+  const s = await readySession(oc)
+  const shell = async (label: string) => {
+    await fake.script(
+      [
+        {
+          session: s.id,
+          tool_calls: [{ name: "shell", arguments: { command: probe } }],
+        },
+        { session: s.id, reply: "done" },
+      ],
+      true,
+    )
+    await oc.run(s.id, label)
+    return toolResults(await fake.requests(), s.id).at(-1) ?? ""
+  }
+  expect(await shell("before the reload")).toContain(`"session":"${s.id}"`)
+  // the folder's instance (its plugins) reloads, as after a plugin update
+  const reloaded = Date.now()
+  const where = new URLSearchParams({ "location[directory]": WORK })
+  await oc.api("POST", `/api/location/reload?${where}`, {})
+  await hostSeenAfter(node, reloaded)
+  const after = await shell("after the reload")
+  expect(after).toContain(`session=${s.id}`)
+  expect(after).toContain(`"session":"${s.id}"`)
+})
+
+/*
+ * The cause (2026-11-08): an OpenCode client (the TUI, an editor) that
+ * attaches to a session sets the session's environment to its own
+ * (PUT /api/session/{id}/environment), which drops the AUTOCODE_* values the
+ * plugin set there; the plugin, which remembered them as set, did not set them
+ * again. The next shell must act as the session again. (The client's own
+ * variables do not survive: OpenCode lets nobody read a session's
+ * environment, so the plugin sets OpenCode's own plus its values, as at the
+ * first shell.)
+ */
+test("after a client replaces a session's environment, the next shell has its values again", async () => {
+  const node = nodes[0]!
+  const oc = new OpenCode(node)
+  const fake = new FakeModel(node)
+  const s = await readySession(oc)
+  const shell = async (command: string, label: string) => {
+    await fake.script(
+      [
+        {
+          session: s.id,
+          tool_calls: [{ name: "shell", arguments: { command } }],
+        },
+        { session: s.id, reply: "done" },
+      ],
+      true,
+    )
+    await oc.run(s.id, label)
+    return toolResults(await fake.requests(), s.id).at(-1) ?? ""
+  }
+  expect(await shell(probe, "before the client")).toContain(
+    `"session":"${s.id}"`,
+  )
+  // a client attaches: the session's shells get its environment
+  await oc.api("PUT", `/api/session/${s.id}/environment`, {
+    variables: {
+      PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      HOME: "/home/dev",
+      CLIENT_VAR: "from-the-client",
+    },
+  })
+  const after = await shell(probe, "after the client")
+  expect(after).toContain(`session=${s.id}`)
+  expect(after).toContain(`"session":"${s.id}"`)
+  // OpenCode's own environment again, as the plugin sets it
+  expect(after).toContain(`own=[http://fake-model:9000/${node}/v1]`)
 })

@@ -404,7 +404,7 @@ describe("the plugin in-process", () => {
     )
   })
 
-  test("a shell call first sets its session's environment: OpenCode's own environment plus the session's values", async () => {
+  test("each shell call sets its session's environment: OpenCode's own environment plus the session's values", async () => {
     const dir = join(root, "work-b")
     const fake = await connected(() =>
       startPlugin(dir, [
@@ -425,9 +425,14 @@ describe("the plugin in-process", () => {
     expect(env!.AUTOCODE_SERVER_ID).toBe(t.server.id)
     expect(env!.AUTOCODE_SESSION).toBe("ses_b")
     expect(await sessionOf(env!.AUTOCODE_TOKEN)).toBe("ses_b")
-    // set once per session; another session's shells are left alone
+    /*
+     * set again at the next shell call, with the same token (2026-11-08: an
+     * OpenCode client replaces a session's environment when it opens it);
+     * another session's shells are left alone
+     */
     await toolCall(fake, "shell", "ses_b", "call_b2")
-    expect(environments("ses_b").length).toBe(1)
+    expect(environments("ses_b").length).toBe(2)
+    expect(environments("ses_b")[1]!.AUTOCODE_TOKEN).toBe(env!.AUTOCODE_TOKEN)
     expect(environments("ses_a")).toEqual([])
   })
 

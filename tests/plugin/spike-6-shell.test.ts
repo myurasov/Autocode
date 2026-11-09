@@ -9,6 +9,7 @@
  * (tests/e2e/shell-env.test.ts covers that).
  */
 import { beforeAll, describe, expect, test } from "bun:test"
+import { dockerExec } from "../helpers/docker.ts"
 import { nodes } from "../helpers/env.ts"
 import { FakeModel, toolResults } from "../helpers/fake.ts"
 import { OpenCode } from "../helpers/opencode.ts"
@@ -133,23 +134,26 @@ describe("spike check 6: shell environment", () => {
     const s = await oc.createSession({})
     /*
      * The Autocode plugin, installed here too, sets the session's environment
-     * at its first shell call (and not again while its token stays the same):
-     * let it, then replace it.
+     * before each shell call (2026-11-08: a client replaces it), so a shell
+     * started without a tool call (the owner's ! command) shows what the
+     * local API set.
      */
-    await fake.script(shellCall(s.id, "true"), true)
-    await oc.run(s.id, "first shell")
     await oc.api("PUT", `/api/session/${s.id}/environment`, {
       variables: { FROM_LOCAL_API: "yes" },
     })
-    await fake.script(
-      shellCall(s.id, 'echo "local=$FROM_LOCAL_API own=[$FAKE_MODEL_URL]"'),
-      true,
+    const file = `/tmp/local-api-${crypto.randomUUID().slice(0, 8)}`
+    await oc.api("POST", `/api/session/${s.id}/shell`, {
+      command: `echo "local=$FROM_LOCAL_API own=[$FAKE_MODEL_URL]" > ${file}`,
+    })
+    const out = await until(
+      async () => {
+        const res = await dockerExec(nodes[0]!, ["cat", file])
+        return res.code === 0 && res.stdout ? res.stdout.trim() : undefined
+      },
+      { what: "the ! command's file" },
     )
-    await oc.run(s.id, "local api env")
     // the plugin (since spec draft 17) therefore sends OpenCode's own
     // environment along with its values
-    expect(toolResults(await fake.requests(), s.id).join("")).toContain(
-      "local=yes own=[]",
-    )
+    expect(out).toBe("local=yes own=[]")
   })
 })
