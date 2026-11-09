@@ -237,6 +237,13 @@ export class Costs {
           Number.isInteger(limit) && limit > 0 ? limit : null,
           agent,
         )
+    // the agent's model: its own session's last step (a Subagent's step,
+    // with no context of the agent's, may run another model)
+    const model = typeof event.model === "string" ? event.model.trim() : ""
+    if (model && model.length <= 200 && Number.isInteger(context))
+      this.db
+        .query("UPDATE agents SET model = ? WHERE id = ?")
+        .run(model, agent)
     this.warn(agent)
   }
 

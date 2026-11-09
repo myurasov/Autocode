@@ -21,7 +21,7 @@ import {
   errorText,
 } from '../api';
 import { IdParts } from '../breaks';
-import { dotClass } from '../format';
+import { contextText, contextTitle, dotClass } from '../format';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink } from '../links';
 import { Updated } from '../updated';
@@ -62,6 +62,8 @@ export class CostsPage {
   protected readonly daysError = signal('');
   protected readonly costText = costText;
   protected readonly dotClass = dotClass;
+  protected readonly contextText = contextText;
+  protected readonly contextTitle = contextTitle;
   protected readonly shareText = shareText;
   protected readonly tokensText = tokensText;
 
@@ -130,12 +132,6 @@ export class CostsPage {
   protected capShare(a: AgentCost): number | null {
     if (a.daily_usd === 'off' || a.daily_usd <= 0) return null;
     return Math.round((a.today_usd / a.daily_usd) * 1000) / 10;
-  }
-
-  // The context's share of the model's window (null without either).
-  protected windowShare(a: AgentCost): number | null {
-    if (a.context === null || !a.context_limit) return null;
-    return Math.round((a.context / a.context_limit) * 1000) / 10;
   }
 
   // A bar's width: the share, at most the whole bar.

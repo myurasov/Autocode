@@ -843,9 +843,9 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
     </h3>
     <p>
       The agents by machine, with status (idle, working, waiting, paused,
-      offline or error), Spend · Context (its spend today, of its daily cap,
-      and its context with the share of its compaction threshold; a link to
-      the Costs tab), host (a link to its row on the Hosts page), folder,
+      offline or error), its model (the one its last step ran), Spend (today
+      and in total) and Context (the share of its compaction threshold; both
+      link to the Costs tab), host (a link to its row on the Hosts page), folder,
       session and times. A waiting agent has an ask open in the Inbox; a
       paused one's tooltip says who paused it: you, Stop All or its daily cost
       cap. An
@@ -946,9 +946,10 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       Every agent's status (with its dot, as on Agents), spend today and in
       total (every day it ran, also past
       <code>history_days</code>), its daily cap with a bar of the share spent
-      and what is left today, its context (tokens, their share of the model's
-      window and a bar) and its compaction threshold (<code>compact_at</code>
-      for its model: tokens, the share of it used and a bar): amber from 75%,
+      and what is left today, and its Context: the share used of its
+      compaction threshold (<code>compact_at</code> for its model), the
+      threshold, the model's window as its most (like
+      <code>61.5% of 100,000 (max 200,000)</code>) and a bar: amber from 75%,
       red from 100%. Agents that unregistered show too, dimmed, with their
       spend; Agent filters by an ID pattern (a second after you stop typing;
       kept in the address), and the last row is the total of what is listed. The page follows each model step: it

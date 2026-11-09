@@ -30,7 +30,7 @@ import { type Caller, revokeSessionTokens } from "./tokens.ts"
 const SELECT = `
   SELECT a.id, a.description, a.session_id, a.registered_at, a.last_active,
          a.paused, a.error, a.error_since, a.error_at, a.retries, a.retry_at,
-         s.host_id, s.directory, s.deleted_at, s.busy,
+         a.model, s.host_id, s.directory, s.deleted_at, s.busy,
          s.idle_since, s.last_outcome, h.machine, h.online,
          EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
                  AND k.state = 'open') AS asking
@@ -51,6 +51,7 @@ export interface AgentView {
   paused?: string
   idle_since?: string | null
   last_outcome?: string | null
+  model?: string | null
   // its last turn failed (tier 0b3)
   error?: ErrorView
 }
@@ -102,6 +103,8 @@ export class Agents {
         ? new Date(row.idle_since).toISOString()
         : null,
       last_outcome: row.last_outcome ?? null,
+      // its last step's provider/model (the owner, 2026-11-08)
+      model: row.model ?? null,
       ...(row.error ? { error: errorView(row) } : {}),
       ...this.extra(row.id),
     }

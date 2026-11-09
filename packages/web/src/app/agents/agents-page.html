@@ -1,8 +1,8 @@
 <!--
   The Agents page: Stop All and Resume All (an action's result beside them), a
   filter by ID pattern, the agents by machine (their hosts link to the Hosts
-  page; spend today and the context's share of the compaction threshold,
-  linking to the Costs page; an agent in error shows its error type and
+  page; each one's model, spend today and in total, and its context's share of
+  the compaction threshold, linking to the Costs page; an agent in error shows its error type and
   retries; Retry, Edit, Pause
   or Resume, New Token, Unregister), the agent a link led to
   highlighted (or a line that says it is not there), and when the list last
@@ -62,7 +62,9 @@
       <th>ID</th>
       <th>Description</th>
       <th>Status</th>
-      <th>Spend · Context</th>
+      <th>Model</th>
+      <th>Spend</th>
+      <th>Context</th>
       <th>Host</th>
       <th>Folder</th>
       <th>Session</th>
@@ -76,7 +78,7 @@
       <tr class="group">
         <th
           class="id-like"
-          colspan="10"
+          colspan="12"
           scope="rowgroup"
           [appId]="m.machine || 'unknown machine'"
         ></th>
@@ -121,18 +123,45 @@
             @if (a.error; as e) {
               <!-- What is going on: the error type, and its retries. -->
               <span class="error-detail muted" [title]="errorTimes(e)">
-                <code class="error-type">{{ e.type }}</code>
+                <code
+                  class="error-type"
+                  [appBreaks]="e.type"
+                  breakAfter="."
+                ></code>
                 <span class="retry-state">{{ retryText(a) }}</span>
               </span>
             }
           </td>
+          <!-- Its model, spend and context (the owner, 2026-11-08). -->
+          <td class="model id-like" [attr.title]="a.model || null">
+            @if (a.model) {
+              <code
+                [appBreaks]="modelParts(a.model)[1]"
+                breakAfter="-"
+              ></code>
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
           <td class="spend">
             @if (a.cost; as k) {
-              <a routerLink="/costs" title="Spend and context on the Costs page"
-                ><span class="today">{{ spendText(k) }}</span
-                ><span class="context" [title]="contextTitle(k)">{{
-                  contextText(k)
-                }}</span></a
+              <!-- it breaks only after the slash: today, then the total -->
+              <a routerLink="/costs" title="Spend on the Costs page"
+                ><span class="part">{{ spendParts(k)[0] }}</span
+                >&ngsp;<span class="part">{{ spendParts(k)[1] }}</span></a
+              >
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
+          <td
+            class="context"
+            [attr.title]="a.cost ? contextTitle(a.cost) : null"
+          >
+            @if (a.cost && a.cost.context !== null) {
+              <a routerLink="/costs"
+                ><span class="part">{{ contextParts(a.cost)[0] }}</span
+                >&ngsp;<span class="part">{{ contextParts(a.cost)[1] }}</span></a
               >
             } @else {
               <span class="muted">—</span>
@@ -218,7 +247,7 @@
   } @empty {
     <tbody>
       <tr>
-        <td class="muted" colspan="10">
+        <td class="muted" colspan="12">
           @if (!loaded()) {
             Loading...
           } @else if (applied()) {

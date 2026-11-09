@@ -484,7 +484,10 @@ describe('HelpPage', () => {
       'the total of what is listed',
     ])
       expect(costs).toContain(part);
-    expect(section(page, 'web-agents')).toContain('Spend · Context');
+    const agents = section(page, 'web-agents');
+    for (const part of ['model', 'Spend', 'Context'])
+      expect(agents).toContain(part);
+    expect(costs).toContain('61.5% of 100,000 (max 200,000)');
     expect(section(page, 'commands')).toContain(
       'autocode costs [AGENT] [--match PATTERN]',
     );

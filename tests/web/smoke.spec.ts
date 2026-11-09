@@ -1985,11 +1985,12 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
       `$${(before + 0.25).toFixed(2)}`,
       { timeout: 8000 },
     )
-    await expect(row.locator("td.context")).toHaveText("60,000 (30.0%)")
-    await expect(row.locator("td.threshold")).toHaveText("100,000 (60.0%)")
+    await expect(row.locator("td.context")).toHaveText(
+      "60.0% of 100,000 (max 200,000)",
+    )
     await expect(row.locator("td.context .bar > span")).toHaveAttribute(
       "style",
-      /width: 30%/,
+      /width: 60%/,
     )
     // the totals row and the Agent filter (the owner, 2026-11-08)
     await expect(page.locator("table.costs tfoot tr.totals")).toContainText(
@@ -2006,8 +2007,14 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
       days.locator("table.cost-days tbody tr").first(),
     ).toContainText("$")
     await openTab(page, "Agents")
-    const spend = page.locator('tr[data-agent="smoke:agent"] td.spend')
-    await expect(spend.locator(".context")).toHaveText("60,000 · 60.0%")
+    const agent = page.locator('tr[data-agent="smoke:agent"]')
+    await expect(agent.locator("td.context")).toHaveText("60.0% of 100,000")
+    await expect(agent.locator("td.spend")).toContainText(" today / $")
+    await expect(agent.locator("td.model")).toHaveText("main")
+    await expect(agent.locator("td.model")).toHaveAttribute(
+      "title",
+      "fake/main",
+    )
     // the ID column keeps room for the ID's parts (not two letters a line)
     const id = await page
       .locator('tr[data-agent="smoke:agent"] td.id')

@@ -101,7 +101,7 @@ describe('CostsPage', () => {
   const cell = (page: HTMLElement, agent: string, name: string) =>
     text(row(page, agent).querySelector(`td.${name}`));
 
-  it('lists every agent: today, cap, left, total, context and threshold', async () => {
+  it('lists every agent: today, cap, left, total and context', async () => {
     const page = await open();
     expect(
       [...page.querySelectorAll('table.costs thead th')].map((th) => text(th)),
@@ -113,36 +113,36 @@ describe('CostsPage', () => {
       'Left Today',
       'Total',
       'Context',
-      'Compaction At',
       '',
     ]);
     expect(cell(page, 'kaggle:lead', 'today')).toBe('$1.50');
     expect(cell(page, 'kaggle:lead', 'cap')).toBe('$2.00 75.0%');
     expect(cell(page, 'kaggle:lead', 'left')).toBe('$0.50');
     expect(cell(page, 'kaggle:lead', 'total')).toBe('$12.35');
-    // the owner, 2026-11-08: tokens (share), a bar under each: the context's
-    // share of the model's window, and of the compaction threshold
-    expect(cell(page, 'kaggle:lead', 'context')).toBe('80,000 (40.0%)');
-    expect(cell(page, 'kaggle:lead', 'threshold')).toBe('100,000 (80.0%)');
+    // the owner, 2026-11-08: one Context column, "share of the threshold
+    // (max the model's window)" with a bar of that share
+    expect(cell(page, 'kaggle:lead', 'context')).toBe(
+      '80.0% of 100,000 (max 200,000)',
+    );
+    expect(
+      row(page, 'kaggle:lead')
+        .querySelector('td.context')!
+        .getAttribute('title'),
+    ).toBe('80,000 tokens; compacted past 100,000 (compact_at)');
     // the bars: the cap's share used, the threshold's share used
     const bar = (agent: string, name: string) =>
       row(page, agent).querySelector(`td.${name} .bar > span`) as HTMLElement;
     expect(bar('kaggle:lead', 'cap').style.width).toBe('75%');
-    expect(bar('kaggle:lead', 'context').style.width).toBe('40%');
-    expect(
-      bar('kaggle:lead', 'context').parentElement!.classList,
-    ).not.toContain('near');
-    expect(bar('kaggle:lead', 'threshold').style.width).toBe('80%');
-    expect(bar('kaggle:lead', 'threshold').parentElement!.classList).toContain(
+    expect(bar('kaggle:lead', 'context').style.width).toBe('80%');
+    expect(bar('kaggle:lead', 'context').parentElement!.classList).toContain(
       'near',
     );
     // no cap, no threshold yet
     expect(cell(page, 'kaggle:worker', 'cap')).toBe('off');
     expect(cell(page, 'kaggle:worker', 'left')).toBe('—');
-    // no window known: the tokens alone, no bar
-    expect(cell(page, 'kaggle:worker', 'context')).toBe('9,000');
+    // no threshold known: the tokens alone, no bar
+    expect(cell(page, 'kaggle:worker', 'context')).toBe('9,000 tokens');
     expect(bar('kaggle:worker', 'context')).toBeNull();
-    expect(cell(page, 'kaggle:worker', 'threshold')).toBe('—');
     expect(bar('kaggle:worker', 'cap')).toBeNull();
     // agent IDs link to the Agents page
     expect(

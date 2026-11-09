@@ -1,9 +1,70 @@
 /*
- * How the pages show times, setting values, versions, long texts and an
- * agent's status: times in the viewer's own time zone, in AISee's format with
- * the zone's short name; on/off for switches; versions with a v; a long text
- * folded to its first 200 characters; a status's dot.
+ * How the pages show times, setting values, versions, long texts, an agent's
+ * status, spend and context: times in the viewer's own time zone, in AISee's
+ * format with the zone's short name; on/off for switches; versions with a v;
+ * a long text folded to its first 200 characters; a status's dot; spend today
+ * and in total; the context's share of its compaction threshold.
  */
+
+import type { CostNumbers } from './api';
+
+const tokens = (n: number) => n.toLocaleString('en-US');
+
+// Spend today and in total (the owner, 2026-11-08): "$1.50 today / $12.35
+// total".
+export function spendText(k: CostNumbers): string {
+  return spendParts(k).join(' ');
+}
+
+// Its two halves, which a narrow cell keeps whole: "$1.50 today /", "$12.35
+// total".
+export function spendParts(k: CostNumbers): [string, string] {
+  return [
+    `$${k.today_usd.toFixed(2)} today /`,
+    `$${k.total_usd.toFixed(2)} total`,
+  ];
+}
+
+/*
+ * The context as its share of the compaction threshold (the owner,
+ * 2026-11-08): "80.0% of 100,000", with " (max 200,000)" for the model's
+ * window when asked; the tokens alone without a threshold; "—" before the
+ * first step.
+ */
+export function contextText(k: CostNumbers, withWindow = false): string {
+  if (k.context === null) return '—';
+  if (k.compact_at === null || k.context_share === null)
+    return `${tokens(k.context)} tokens`;
+  const max =
+    withWindow && k.context_limit ? ` (max ${tokens(k.context_limit)})` : '';
+  return `${k.context_share.toFixed(1)}% of ${tokens(k.compact_at)}${max}`;
+}
+
+// Its two halves, which a narrow cell keeps whole: "80.0% of", "100,000"
+// (one half alone when there is no threshold).
+export function contextParts(k: CostNumbers): [string, string] {
+  const all = contextText(k);
+  const at = all.indexOf(' of ');
+  return at < 0 ? [all, ''] : [all.slice(0, at + 3), all.slice(at + 4)];
+}
+
+/*
+ * A model ID as the provider's path and the model's name: "nvidia-ih/aws/
+ * anthropic/", "bedrock-claude-opus-5-5" (the name alone without a path).
+ */
+export function modelParts(model: string): [string, string] {
+  const at = model.lastIndexOf('/');
+  return at < 0 ? ['', model] : [model.slice(0, at + 1), model.slice(at + 1)];
+}
+
+// The context's tooltip: the tokens and the threshold.
+export function contextTitle(k: CostNumbers): string {
+  if (k.context === null) return 'No model step yet';
+  const used = `${tokens(k.context)} tokens`;
+  if (k.compact_at === null)
+    return `${used}; no compaction threshold (compact_at off)`;
+  return `${used}; compacted past ${tokens(k.compact_at)} (compact_at)`;
+}
 
 /*
  * The color of an agent's status dot, the same on every tab: idle and working

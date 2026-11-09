@@ -2,12 +2,13 @@
  * Unit tests of how an ID may break (the owner, 2026-11-03): only right after
  * a ":" or "_", never inside a part; its parts as shown, each kept whole, with
  * a break between them and nothing added to the text.
+ * Breaks (folders, model names, error types): only after its characters.
  */
 
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { el, parts, settle, setup } from '../testing/helpers';
-import { IdParts, idParts } from './breaks';
+import { Breaks, IdParts, idParts } from './breaks';
 
 @Component({
   imports: [IdParts],
@@ -78,5 +79,49 @@ describe('IdParts', () => {
     expect(parts(name)).toEqual(['layout-check-of-a-long-wake-name']);
     expect(name.querySelector('wbr')).toBeNull();
     expect(page.querySelector('code.none')!.innerHTML).toBe('');
+  });
+});
+
+// Tier 0g: a model's name breaks after "-", an error's type after "."; a
+// folder still after ":", "/" and "_".
+@Component({
+  imports: [Breaks],
+  template: `
+    <code
+      class="model"
+      appBreaks="bedrock-claude-opus-5-5"
+      breakAfter="-"
+    ></code>
+    <code class="error" appBreaks="provider.internal" breakAfter="."></code>
+    <code class="folder" appBreaks="/home/someone/my_work"></code>
+  `,
+})
+class Breaking {}
+
+describe('Breaks', () => {
+  it('breaks only after the characters it is given; a folder after ":", "/" and "_"', async () => {
+    const fixture = TestBed.createComponent(Breaking);
+    await settle(fixture);
+    const page = el(fixture);
+    const pieces = (selector: string) =>
+      page.querySelector(selector)!.innerHTML.split('<wbr>');
+    expect(pieces('code.model')).toEqual([
+      'bedrock-',
+      'claude-',
+      'opus-',
+      '5-',
+      '5',
+    ]);
+    expect(pieces('code.error')).toEqual(['provider.', 'internal']);
+    expect(pieces('code.folder')).toEqual([
+      '/',
+      'home/',
+      'someone/',
+      'my_',
+      'work',
+    ]);
+    expect(page.querySelector('code.model')!.textContent).toBe(
+      'bedrock-claude-opus-5-5',
+    );
   });
 });

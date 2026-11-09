@@ -130,6 +130,45 @@ describe("an agent's spend and context", () => {
   })
 })
 
+// The owner, 2026-11-08: each agent's model, from its last step.
+describe("an agent's model", () => {
+  test("the last step's model is the agent's, on its view, /v1/me and /v1/costs", async () => {
+    expect((await owner("GET", "/v1/agents/team:a")).body.agent.model).toBe(
+      null,
+    )
+    await report(t, HOST, [step(0.1)])
+    expect((await owner("GET", "/v1/agents/team:a")).body.agent.model).toBe(
+      "fake/main",
+    )
+    await report(t, HOST, [{ ...step(0.1), model: "prov/other-model" }])
+    expect((await owner("GET", "/v1/agents")).body.agents[0].model).toBe(
+      "prov/other-model",
+    )
+    expect((await as(a, "GET", "/v1/me")).body.agent.model).toBe(
+      "prov/other-model",
+    )
+    expect((await owner("GET", "/v1/costs")).body.agents[0].model).toBe(
+      "prov/other-model",
+    )
+  })
+
+  test("a step without a model, or a Subagent's, keeps the agent's model", async () => {
+    await report(t, HOST, [step(0.1)])
+    const { model: _, ...bare } = step(0.1)
+    await report(t, HOST, [bare])
+    expect((await owner("GET", "/v1/agents/team:a")).body.agent.model).toBe(
+      "fake/main",
+    )
+    // a Subagent's step carries no context: its model is not the agent's
+    await report(t, HOST, [
+      { ...step(0.1), context: undefined, model: "prov/sub" },
+    ])
+    expect((await owner("GET", "/v1/agents/team:a")).body.agent.model).toBe(
+      "fake/main",
+    )
+  })
+})
+
 describe("GET /v1/costs", () => {
   test("every agent's numbers, by ID; one agent's with its days, newest first", async () => {
     await registered(t, HOST, "ses_b", "team:b")

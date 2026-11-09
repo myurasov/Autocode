@@ -12,11 +12,17 @@ import { localTime } from './format';
 @Directive({ selector: '[appBreaks]' })
 export class Breaks {
   readonly appBreaks = input<string | null | undefined>('');
+  // The characters a break may follow: a folder's by default; a model's
+  // name breaks after "-", an error's type after "." (tier 0g).
+  readonly breakAfter = input(':/_');
 
   constructor() {
     const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
     effect(() => {
-      const parts = (this.appBreaks() ?? '').split(/(?<=[:/_])/);
+      const after = this.breakAfter().replace(/[\\\]^-]/g, '\\$&');
+      const parts = (this.appBreaks() ?? '').split(
+        new RegExp(`(?<=[${after}])`),
+      );
       host.replaceChildren();
       parts.forEach((part, i) => {
         if (i > 0) host.append(host.ownerDocument.createElement('wbr'));

@@ -57,8 +57,10 @@ export interface Agent {
   last_outcome?: string | null;
   // While its turns fail (also when paused or offline).
   error?: AgentError | null;
-  // Its spend and context (tier 0g; the owner's view only).
+  // Its spend and context (tier 0g; the owner's view only), and its last
+  // step's provider/model.
   cost?: CostNumbers;
+  model?: string | null;
 }
 
 /*
@@ -85,6 +87,7 @@ export interface AgentCost extends CostNumbers {
   // its status, or unregistered
   status: string;
   machine?: string;
+  model?: string | null;
 }
 
 // Every agent's spend, today's date, the zone days are counted in, and the

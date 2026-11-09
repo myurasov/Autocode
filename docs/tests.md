@@ -927,6 +927,14 @@ compaction, agent should be told that it is coming next". Each behavior got a te
   the totals; `cli-0b.test.ts`: a TOTAL row and `--match`; `costs-page.spec.ts` 4 new; `smoke.spec.ts`: the totals
   row and the filter in the address). Screenshots with an unregistered agent, light at 1024 and dark at 1280, looked
   at (a first pair came from the browser's cached app; taken again under new names).
+- The owner's round of 17:5x PT (tests first): each agent's model from its last step (migration 15; a Subagent's
+  step and a step without a model leave it; `costs-views.test.ts` 2 new); the Agents tab's Model (the name, breaking
+  only after "-"; the whole ID in the tooltip), Spend ("$1.50 today / $12.35 total", breaking only after "/") and
+  Context ("80.0% of 100,000") apart; the Costs tab's one Context column ("80.0% of 100,000 (max 200,000)", a bar of
+  the threshold's share); `appBreaks` takes the characters a break may follow (`breaks.spec.ts`), so an error's type
+  breaks after "." too. The smoke test "error state" caught the Agents tab 18 px too wide at 1280 with an agent in
+  error (the model's name broke anywhere): fixed. Screenshots looked at; at 1024 px Agents scrolls inside the frame,
+  as accepted (the owner, 2026-11-03).
 
 ## Phase 1: Messages Through Injections (2026-11-08)
 

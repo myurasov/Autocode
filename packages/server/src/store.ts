@@ -401,6 +401,10 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX messages_at ON messages (created_at);
   DELETE FROM settings WHERE key = 'inline_limit';
   `,
+  // 15 (the owner, 2026-11-08): an agent's model, from its last step.
+  `
+  ALTER TABLE agents ADD COLUMN model TEXT;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

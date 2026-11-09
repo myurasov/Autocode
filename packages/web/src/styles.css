@@ -451,8 +451,8 @@ table.inbox .ask-buttons input[type="text"] {
 /*
  * The Costs page (tier 0g): amounts lined up on the right; a share as a thin
  * bar under its number, amber from 75% and red from 100%; an agent's days in
- * a small table under its row. The Agents page's Spend · Context: two short
- * lines.
+ * a small table under its row. The Agents page's Spend and Context: links to
+ * the Costs page in the text's own color.
  */
 table.costs td.num,
 table.costs th.num,
@@ -461,7 +461,6 @@ table.cost-days th.num {
   text-align: right;
 }
 table.costs td.cap,
-table.costs td.threshold,
 table.costs td.context {
   white-space: nowrap;
 }
@@ -502,20 +501,33 @@ table.cost-days {
   width: auto;
   margin: 0.2rem 0;
 }
-td.spend a {
+table.agents td.spend a,
+table.agents td.context a {
   color: inherit;
   text-decoration: none;
 }
-td.spend a:hover {
+table.agents td.spend a:hover,
+table.agents td.context a:hover {
   text-decoration: underline;
 }
-td.spend .today,
-td.spend .context {
-  display: block;
+/*
+ * Each keeps to two lines in a narrow cell: Spend breaks only after its
+ * slash, Context only after its "of".
+ */
+table.agents td.spend .part,
+table.agents td.context .part {
   white-space: nowrap;
 }
-td.spend .context {
-  color: var(--fg-dim);
+/*
+ * A model: its name, which breaks only after its hyphens (never inside a
+ * word); the whole ID (with the provider's path) in the tooltip. An error's
+ * type breaks after its dots.
+ */
+table.agents td.model code,
+td.status .error-type {
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: normal;
 }
 table.locks .grid {
   display: grid;

@@ -822,6 +822,7 @@ export async function startServer(
             registered: !!x,
             status: x ? x.status : "unregistered",
             ...(x?.machine ? { machine: x.machine } : {}),
+            model: x?.model ?? null,
             ...costs.view(id),
           }
         })
