@@ -95,6 +95,17 @@ export class CostsPage {
   private typing?: ReturnType<typeof setTimeout>;
   private loaded = false;
 
+  // Total's title and the totals' note for a period: "Last 7 Days", "Last
+  // Day"; ", last 7 days", ", last day".
+  protected readonly periodTitle = computed(() => {
+    const n = this.view()?.days;
+    return !n ? 'Total' : n === 1 ? 'Last Day' : `Last ${n} Days`;
+  });
+  protected readonly periodNote = computed(() => {
+    const n = this.view()?.days;
+    return !n ? '' : n === 1 ? ', last day' : `, last ${n} days`;
+  });
+
   // When the data was read: the server's time then, in its zone.
   protected readonly clock = computed(() => {
     const v = this.view();

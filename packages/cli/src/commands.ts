@@ -300,6 +300,9 @@ export async function settings(args: Parsed): Promise<number> {
   return 0
 }
 
+// "7 DAYS", "1 DAY".
+const daysText = (n: number) => `${n} DAY${n === 1 ? "" : "S"}`
+
 // Tier 0g: money to the cent, tokens with separators, a share to a tenth.
 const dollars = (n: unknown) => `$${Number(n).toFixed(2)}`
 const tokens = (n: unknown) =>
@@ -378,7 +381,7 @@ export async function costs(args: Parsed): Promise<number> {
               ]),
               // the totals of what is listed
               [
-                res.days ? `TOTAL (${res.days} DAYS)` : "TOTAL",
+                res.days ? `TOTAL (${daysText(res.days)})` : "TOTAL",
                 `(${t.agents})`,
                 dollars(t.today_usd),
                 "",
@@ -395,7 +398,7 @@ export async function costs(args: Parsed): Promise<number> {
               "TODAY",
               "CAP",
               "LEFT",
-              res.days ? `${res.days} DAYS` : "TOTAL",
+              res.days ? daysText(res.days) : "TOTAL",
               "CONTEXT",
               "THRESHOLD",
               "SHARE",

@@ -70,7 +70,7 @@
       <th>Daily Cap</th>
       <th class="num">Left Today</th>
       <th class="num">
-        {{ view()?.days ? 'Last ' + view()?.days + ' Days' : 'Total' }}
+        {{ periodTitle() }}
       </th>
       <th></th>
     </tr>
@@ -183,7 +183,7 @@
         <td class="agent" colspan="2">
           Total ({{ totals().agents }}
           {{ totals().agents === 1 ? 'agent' : 'agents'
-          }}{{ view()?.days ? ', last ' + view()?.days + ' days' : '' }})
+          }}{{ periodNote() }})
         </td>
         <td class="num today">{{ costText(totals().today_usd) }}</td>
         <td colspan="2"></td>

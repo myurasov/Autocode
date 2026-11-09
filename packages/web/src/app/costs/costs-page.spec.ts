@@ -275,6 +275,21 @@ describe('CostsPage', () => {
       expect(text(page.querySelector('tfoot tr.totals td.agent'))).toBe(
         'Total (3 agents, last 7 days)',
       );
+      // one day: singular
+      type(field, '1');
+      await vi.advanceTimersByTimeAsync(FILTER_DELAY_MS);
+      await vi.advanceTimersByTimeAsync(0);
+      load({ ...view(), days: 1 }, undefined, '1');
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+      expect(
+        [...page.querySelectorAll('table.costs thead th')].map((th) =>
+          text(th),
+        ),
+      ).toContain('Last Day');
+      expect(text(page.querySelector('tfoot tr.totals td.agent'))).toBe(
+        'Total (3 agents, last day)',
+      );
     } finally {
       fixture.destroy();
       vi.useRealTimers();

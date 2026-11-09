@@ -593,6 +593,8 @@ describe("costs", () => {
     expect(week.code, week.stderr).toBe(0)
     expect(week.stdout).toMatch(/^TOTAL \(7 DAYS\)\s/m)
     expect((await cli(["costs", "--days", "0"], asAdmin())).code).toBe(1)
+    const day = await cli(["costs", "--days", "1"], asAdmin())
+    expect(day.stdout).toMatch(/^TOTAL \(1 DAY\)\s/m)
     const json = JSON.parse((await cli(["costs", "--json"], asAdmin())).stdout)
     expect(json.agents.map((a: any) => a.agent)).toContain("kaggle:lead")
   })
