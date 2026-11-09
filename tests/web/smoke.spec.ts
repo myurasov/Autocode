@@ -1954,8 +1954,9 @@ test("Settings: a mode's Agent… lists the agents and saves agent:<id>", async 
 })
 
 // The owner, 2026-11-09: in the Daily Cap cell the share sits at the right,
-// the cap at the left, the bar under both; the cell is 150 px wide.
-test("layout: the Costs tab's Daily Cap has its share at the right, 150 px wide", async ({
+// the cap at the left, the bar under both; the cell 100 px wide, at least
+// 100 and at most 150 ("width 100px, min width 100px, max width 150px").
+test("layout: the Costs tab's Daily Cap has its share at the right, 100 to 150 px wide", async ({
   page,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -1988,14 +1989,31 @@ test("layout: the Costs tab's Daily Cap has its share at the right, 150 px wide"
     expect(Math.abs(box.bar), "the bar to the right edge").toBeLessThanOrEqual(
       1,
     )
-    // 150 px wide (the owner, 2026-11-09)
-    const widths = await page
-      .locator("table.costs td.cap")
-      .evaluateAll((cells) =>
-        cells.map((c) => Math.round(c.getBoundingClientRect().width)),
-      )
-    expect(widths.length).toBeGreaterThan(0)
-    for (const w of widths) expect(w, "td.cap").toBe(150)
+    // 100 px wide, 100 to 150 px (the owner, 2026-11-09)
+    const widths = () =>
+      page
+        .locator("table.costs td.cap")
+        .evaluateAll((cells) =>
+          cells.map((c) => Math.round(c.getBoundingClientRect().width)),
+        )
+    const width = () =>
+      cell.evaluate((td) => Math.round(td.getBoundingClientRect().width))
+    expect((await widths()).length).toBeGreaterThan(0)
+    for (const w of await widths()) {
+      expect(w, "td.cap").toBeGreaterThanOrEqual(100)
+      expect(w, "td.cap").toBeLessThanOrEqual(150)
+    }
+    const refresh = page.locator(".toolbar button", { hasText: "Refresh" })
+    // a short cap: 100 px
+    expect((await cap(9)).ok()).toBe(true)
+    await refresh.click()
+    await expect(cell.locator(".amount")).toHaveText("$9.00")
+    expect(await width()).toBe(100)
+    // a long one: no wider than 150 px
+    expect((await cap(1_000_000)).ok()).toBe(true)
+    await refresh.click()
+    await expect(cell.locator(".amount")).toHaveText("$1000000.00")
+    expect(await width()).toBe(150)
   } finally {
     await cap(null)
     await api.dispose()

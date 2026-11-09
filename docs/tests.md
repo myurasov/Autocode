@@ -1036,7 +1036,10 @@ in what it read.
 - **The Daily Cap cell** (the owner, 2026-11-09: "align X% to the right"; tests first: `costs-page.spec.ts`, the cap
   and its share on one line in their own spans; `smoke.spec.ts` layout, the share at the cell's right edge, the cap
   at its left, the bar to the right edge, at 1280 px with a cap set for the check). Then 150 px wide (the owner:
-  "make td.cap width 150px"; the same smoke test, red at 189 px, then green; web 85); screenshots looked at.
+  "make td.cap width 150px"; the same smoke test, red at 189 px, then green; web 85); screenshots looked at. Then
+  100 px wide, at least 100 and at most 150 (the owner: "make on daily cap width 100px, min width 100px, max width
+  150px"; the same smoke test, red at 150 px with a $9.00 cap, then green: 100 px for $9.00, 150 px for $1000000.00,
+  every cell within 100 to 150).
 - **Every date as 05-Nov-26** (the owner, 2026-11-09: "wherever we have dates format it like 05-Nov-26 (on costs tab
   its different rn)"; tests first, red, then green: `format.spec.ts` `dayText`, `costs-page.spec.ts` (the read time
   `08-Nov-26 17:02:03 PT`, still the server's zone; the Days table `08-Nov-26`), `smoke.spec.ts` (both forms),
