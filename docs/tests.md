@@ -998,3 +998,5 @@ in what it read.
   never ended: the provider's stall, as before) and `glm-5.3` `owner` (its turn produced an empty reply and no tool
   call, no cost: the provider gave nothing) failed; both rerun alone passed (`kimi-k3` `register` $0.03, `glm-5.3`
   `owner` $0.01): every model passes all 9 scenarios on the final code.
+- **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
+  build 42): 9 passed, 0 failed.
