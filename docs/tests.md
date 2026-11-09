@@ -1022,5 +1022,9 @@ in what it read.
   History; the boxes' defaults; Agents' toolbar with Unregistered at the right; the fixture's hosts shown with the
   Offline box). The question asked: what the days field does (the owner: Total over the last X days). Screenshots
   looked at.
+- **Two renames** (the owner, 2026-11-09 01:1x PT; tests first, red, then green: `costs-page.spec.ts`,
+  `inbox-page.spec.ts`, `help-page.spec.ts` 2, `smoke.spec.ts`): the Costs tab's days field is now "Days" (a label
+  before the field) then the field, where it was the field then "days"; the Inbox's "Show Closed" box is "Closed".
+  Help, the runbook, README and the spec say so. web-unit 199, web 84; screenshots looked at.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

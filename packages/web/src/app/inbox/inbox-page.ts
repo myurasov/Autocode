@@ -1,7 +1,7 @@
 /*
  * The Inbox page: the owner's open items (messages to the owner, alerts and
  * asks: questions, permission prompts and approvals that an agent's turn
- * waits for), or with Show Closed every item, refreshed every 10 s (one
+ * waits for), or with the Closed box every item, refreshed every 10 s (one
  * refresh at a time); an item's agent, and the agent an ask was sent to, link
  * to the Agents page. The owner answers a message (the answer goes back to
  * its agent as a message) or closes an item, and answers an ask: a question by

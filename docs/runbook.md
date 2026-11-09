@@ -187,7 +187,7 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
 - **Links:** an agent's ID anywhere else (Inbox, Messages, Wakes, Settings) opens the Agents page with that agent's
   row highlighted; a host's ID (on Agents) opens the Hosts page with that host's row highlighted.
 - **Inbox:** messages to `owner` and alerts (a wake whose check failed three times in a row); **Answer** a message
-  (the reply goes to the agent as a message from the owner) or **Close** an item; **Show Closed** shows the answered
+  (the reply goes to the agent as a message from the owner) or **Close** an item; **Closed** shows the answered
   and closed ones.
 - **Messages:** every message, newest first, with its ID, the first 200 characters of its text (a click shows it
   whole, another folds it; your read leaves its state) and its state (queued, delivered or dropped); **Send a Message**
@@ -208,7 +208,7 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   dimmed), its daily cap with the share spent and what is left today, refreshed every 5 s (its context is on
   **Agents**; a click on an agent's Spend there leads here with its row highlighted); **Days** shows its spend per
   day (kept `history_days`, at least 31 days; days in the server's zone: right of **Refresh**, when the data was
-  read, in that zone); an **Agent** filter (a pattern, kept in the address), a **days** field (Total and the totals
+  read, in that zone); an **Agent** filter (a pattern, kept in the address), a **Days** field (Total and the totals
   over the last X days; empty: all time; in the address), an **Unregistered** box (on by default; a gone agent's ID
   leads to Agents with its box on) and a totals row. `autocode costs` is the same in the CLI (`--days X`).
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI, with a numbered table of contents.

@@ -174,7 +174,7 @@ Served by the server; sign in with the admin token. Light and dark.
 - **Locks:** every lock with its capacity, holders (until when; Release) and line.
 - **Jobs:** the jobs and their runs; Run Now, Edit, Delete, Set a Job.
 - **Costs:** every agent's spend today and in total (unregistered ones too), its daily cap and what is left, live;
-  its spend per day; an agent filter, a days field (the total over the last X days), an Unregistered box (on) and
+  its spend per day; an agent filter, a Days field (the total over the last X days), an Unregistered box (on) and
   the totals; a click on an agent's Spend on Agents leads to its row, a gone agent's ID to its row on Agents.
 - **History:** every event, newest first, filtered by agent pattern and kind, with Older for more.
 - **Settings:** server values, pattern rules, agents' own values, and what an agent resolves to.

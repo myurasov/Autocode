@@ -7,7 +7,7 @@
  * questions, a permission allowed once, always (after a confirmation) or
  * rejected with a reason, an approval approved or rejected with an option and
  * a note, their notes and expiry, the server's error when someone answered
- * first; Show Closed with the answers given; the empty inbox; a failed
+ * first; Closed with the answers given; the empty inbox; a failed
  * answer; "Updated" in the footer; and the 10 s refresh (one at a time).
  */
 
@@ -182,12 +182,11 @@ describe('InboxPage', () => {
     );
   });
 
-  it('Show Closed lists closed items too, with the answer given', async () => {
+  // The box is "Closed" (the owner, 2026-11-09).
+  it('Closed lists closed items too, with the answer given', async () => {
     const page = await open([ITEMS[1]!]);
     const toggle = page.querySelector('#show-closed') as HTMLInputElement;
-    expect(text(page.querySelector('label[for="show-closed"]'))).toBe(
-      'Show Closed',
-    );
+    expect(text(page.querySelector('label[for="show-closed"]'))).toBe('Closed');
     expect(toggle.checked).toBe(false);
     toggle.checked = true;
     toggle.dispatchEvent(new Event('change'));
@@ -602,7 +601,7 @@ describe('InboxPage', () => {
       expect(page.querySelector('tr[data-item="ask_q1"]')).toBeNull();
     });
 
-    it('Show Closed: a closed ask shows its answer, who gave it, and its state, without buttons', async () => {
+    it('Closed: a closed ask shows its answer, who gave it, and its state, without buttons', async () => {
       const closed = (item: InboxItem, change: Partial<InboxItem>) => ({
         ...item,
         state: 'answered',

@@ -256,9 +256,16 @@ describe('CostsPage', () => {
       await vi.advanceTimersByTimeAsync(0);
       load();
       const page = el(fixture);
+      // "Days", then the field (the owner, 2026-11-09: "Days X")
       const field = page.querySelector('#cost-days') as HTMLInputElement;
-      expect(field.previousElementSibling!.id).toBe('cost-match');
-      expect(text(field.nextElementSibling)).toBe('days');
+      const label = field.previousElementSibling!;
+      expect(label.tagName).toBe('LABEL');
+      expect(label.getAttribute('for')).toBe('cost-days');
+      expect(text(label)).toBe('Days');
+      expect(label.previousElementSibling!.id).toBe('cost-match');
+      expect(field.nextElementSibling!.getAttribute('for')).toBe(
+        'costs-unregistered',
+      );
       expect(field.value).toBe('');
       type(field, '7');
       await vi.advanceTimersByTimeAsync(FILTER_DELAY_MS);

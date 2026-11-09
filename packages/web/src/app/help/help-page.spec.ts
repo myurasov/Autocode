@@ -373,6 +373,9 @@ describe('HelpPage', () => {
       'autocode_approval',
     );
     const inbox = section(page, 'web-inbox');
+    // the box is "Closed" (the owner, 2026-11-09)
+    expect(inbox).toContain('The Closed box lists');
+    expect(inbox).not.toContain('Show Closed');
     for (const part of [
       'questions',
       'permission prompts',
@@ -481,7 +484,7 @@ describe('HelpPage', () => {
       'unregistered',
       'Agent filters by an ID pattern',
       'the total of what is listed',
-      'the days field makes Total and the totals the last so many days',
+      'Days makes Total and the totals the last so many days',
       'Unregistered box is on (it is by default)',
       "when the data was read (the server's time, in its zone) is right of " +
         'Refresh',

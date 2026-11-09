@@ -33,21 +33,23 @@
     (input)="typed($any($event.target).value)"
     (keydown.enter)="applyMatch()"
   />
-  <!-- Total over the last X days (empty: all time; the owner, 2026-11-08). -->
+  <!--
+    Days, then the field: Total over the last X days (empty: all time; the
+    owner, 2026-11-08, "Days X" 2026-11-09).
+  -->
+  <label for="cost-days">Days</label>
   <input
     id="cost-days"
     class="days-field"
     type="number"
     min="1"
     step="1"
-    aria-label="Days"
     placeholder="all"
     title="Total over the last so many days (empty: all time)"
     [value]="daysTyped()"
     (input)="typedDays($any($event.target).value)"
     (keydown.enter)="applyMatch()"
   />
-  <span class="days-label">days</span>
   <!-- The agents that unregistered too: on by default here. -->
   <label class="check" for="costs-unregistered">
     <input

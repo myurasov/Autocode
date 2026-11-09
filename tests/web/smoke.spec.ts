@@ -446,7 +446,7 @@ test("admin: Pause and Resume an agent, then Stop All and Resume All", async ({
   await expect(pause).toBeVisible()
 })
 
-test("admin: answering an inbox item closes it; Show Closed shows the answer", async ({
+test("admin: answering an inbox item closes it; Closed shows the answer", async ({
   page,
 }) => {
   const subject = `Question ${Date.now()}`
@@ -470,7 +470,7 @@ test("admin: answering an inbox item closes it; Show Closed shows the answer", a
     "Sent the answer to smoke:agent.",
   )
   await expect(item).toHaveCount(0)
-  await page.getByLabel("Show Closed").check()
+  await page.getByLabel("Closed", { exact: true }).check()
   await expect(item.locator(".answer")).toHaveText("Answer: Yes, go on.")
   await expect(item).toHaveClass(/\bclosed\b/)
   await expect(item.locator("button")).toHaveCount(0)
@@ -2150,7 +2150,7 @@ async function answerAsks(api: APIRequestContext) {
 /*
  * Asks (tier 0d): a question in the Inbox, with its kind, agent, Sent To and
  * options; a click on an option answers it at once, and it is gone, after a
- * reload too; Show Closed shows its answer.
+ * reload too; Closed shows its answer.
  */
 test("Inbox: a question answered by an option button", async ({ page }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -2178,7 +2178,7 @@ test("Inbox: a question answered by an option button", async ({ page }) => {
       page.locator("#frame table.inbox tr[data-item]").first(),
     ).toBeVisible()
     await expect(row).toHaveCount(0)
-    await page.getByLabel("Show Closed").check()
+    await page.getByLabel("Closed", { exact: true }).check()
     await expect(row.locator(".answer")).toHaveText("Answer: v3 (by the owner)")
     await expect(row.locator("td.actions")).toHaveText("answered")
     await expect(row.locator("button")).toHaveCount(0)
@@ -2210,7 +2210,7 @@ test("Inbox: a permission allowed once", async ({ page }) => {
       "Answered permission from smoke:agent.",
     )
     await expect(row).toHaveCount(0)
-    await page.getByLabel("Show Closed").check()
+    await page.getByLabel("Closed", { exact: true }).check()
     await expect(row.locator(".answer")).toHaveText(
       "Answer: once (by the owner)",
     )
@@ -3439,7 +3439,7 @@ test("checkboxes are a neutral grey", async ({ page }) => {
   await expect(stay).toHaveCSS("accent-color", dark)
   await signIn(page, admin)
   await page.getByRole("link", { name: "Inbox" }).click()
-  const closed = page.getByLabel("Show Closed")
+  const closed = page.getByLabel("Closed", { exact: true })
   await expect(closed).toHaveCSS("accent-color", dark)
   await page.getByRole("button", { name: "Light or dark" }).click()
   await expect(closed).toHaveCSS("accent-color", light)
