@@ -7,8 +7,9 @@
  * which what agents wrote is quoted, each wake says what kind it is and when
  * it runs next, and a footer says where the prompt comes from. Notices (lock
  * grants and expiries: messages from autocode) say what they are in the header
- * and are Autocode's own text, not quoted (tier 0c). A message the agent read
- * with the tool while it waited is not announced (the owner, 2026-11-05).
+ * and are Autocode's own text, not quoted (tier 0c). Messages come whole, in
+ * their order, up to 32,000 characters a prompt (Phase 1). Past compact_at an
+ * agent is told first, then compacted after that turn (tier 0g).
  */
 
 import type { Database } from "bun:sqlite"
@@ -220,12 +221,16 @@ export class Delivery {
   }
 
   // Whether an injection was a retry prompt.
-  private isRetry(inj: any): boolean {
+  private reasonsOf(inj: any): Record<string, unknown> {
     try {
-      return Boolean(JSON.parse(inj.reasons ?? "{}").retry)
+      return JSON.parse(inj.reasons ?? "{}") ?? {}
     } catch {
-      return false
+      return {}
     }
+  }
+
+  private isRetry(inj: any): boolean {
+    return Boolean(this.reasonsOf(inj).retry)
   }
 
   private close(inj: any, error: string | null) {
@@ -234,6 +239,11 @@ export class Delivery {
       .run(this.now(), error, inj.id)
     if (!error) return
     if (this.isRetry(inj)) this.retries.unsent(inj.agent_id, true)
+    // a compaction notice that did not arrive: told again, not compacted
+    if (this.reasonsOf(inj).compact_notice)
+      this.db
+        .query("UPDATE agents SET compact_notified = 0 WHERE id = ?")
+        .run(inj.agent_id)
     this.db
       .query(
         "UPDATE sessions SET busy = 0, inject_pending_at = NULL " +
@@ -371,7 +381,8 @@ export class Delivery {
     // first: a turn of its own; what waits goes after it (tier 0e). Past
     // compact_at the agent is told first, in a prompt of its own (tier 0g):
     // the compaction goes when that turn ends.
-    const due = this.costs?.compactDue(agent)
+    // not in the error state: there only retries go (the final review)
+    const due = row.error ? null : this.costs?.compactDue(agent)
     if (due && !due.notified) {
       this.inject(row, [], {
         n: 0,
@@ -589,6 +600,7 @@ export class Delivery {
      * fits); the rest stay queued for the next one.
      */
     let room = MESSAGES_PER_PROMPT
+    let full = false
     const later = new Set<number>()
     const all = items
       .filter((i) => i.kind === "message")
@@ -596,7 +608,9 @@ export class Delivery {
       .filter(({ item, m }) => {
         if (!m) return false
         const first = room === MESSAGES_PER_PROMPT
-        if (!first && m.size > room) {
+        // in their order: once one waits, so do the ones after it
+        if (full || (!first && m.size > room)) {
+          full = true
           later.add(item.id)
           return false
         }
@@ -662,6 +676,8 @@ export class Delivery {
       messages: messages.map((m) => m.id),
       ...(notices.length ? { notices: notices.map((m) => m.id) } : {}),
       ...(retry ? { retry: retry.n } : {}),
+      // the compaction notice (tier 0g): sent again if it does not arrive
+      ...(retry?.header === "compaction next" ? { compact_notice: true } : {}),
     }
     const kept = [
       ...wakes.map((w) => ({

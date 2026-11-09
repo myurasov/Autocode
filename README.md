@@ -52,11 +52,11 @@ talk to the same server.
   each OpenCode folder to the server over a long-polled channel: it reports turns, runs wakes' checks, types
   Autocode's prompts into idle sessions, and gives agents the tools and the guide.
 - **Agents** use five tools in the conversation: `autocode_me` (register, status, discover, help), `autocode_wake`
-  (set, list, show, cancel, fire), `autocode_message` (send, list, read, wait; answer and escalate another agent's
-  ask), `autocode_lock` (acquire, renew, release, list) and `autocode_approval` (ask, wait); OpenCode's own question
-  tool and permission prompts reach the owner (or another agent) through Autocode. The `autocode` skill, and
-  `autocode_me action=help`, is their exact reference. Scripts and background jobs in an agent's shell use the same
-  binary as a CLI (`autocode fire me job-done`).
+  (set, list, show, cancel, fire), `autocode_message` (send; answer and escalate another agent's ask; messages come
+  whole in the recipient's next prompt), `autocode_lock` (acquire, renew, release, list) and `autocode_approval`
+  (ask, wait); OpenCode's own question tool and permission prompts reach the owner (or another agent) through
+  Autocode. The `autocode` skill, and `autocode_me action=help`, is their exact reference. Scripts and background
+  jobs in an agent's shell use the same binary as a CLI (`autocode fire me job-done`).
 - Autocode only types into a session while it is **idle**, never into a running turn, and at most once per
   `min_interval` (1 minute by default). What comes meanwhile goes into one prompt, starting with `[autocode]`.
 
@@ -144,7 +144,8 @@ owner's commands; in an agent's shell it acts as that agent and never as the own
 
 | Command | Does |
 |---|---|
-| `autocode agents [PATTERN]` / `hosts` | agents with their status; the connected OpenCode folders |
+| `autocode agents [PATTERN]` / `hosts` | agents with their status, spend today and context; the connected OpenCode folders |
+| `autocode costs [AGENT] [--match PATTERN]` | every agent's spend (today, total; unregistered ones too, with the totals), daily cap and what is left, context and its compaction threshold; one agent's days |
 | `autocode wakes [AGENT]` / `wake set AGENT NAME --trigger T --text TEXT [--check CMD]` | list or set wakes |
 | `autocode fire AGENT WAKE [--text TEXT]` | deliver a wake now |
 | `autocode send TO TEXT...` / `messages` | send as the owner; every message |
@@ -163,12 +164,16 @@ owner's commands; in an agent's shell it acts as that agent and never as the own
 Served by the server; sign in with the admin token. Light and dark.
 
 - **Hosts:** every connected OpenCode folder, by machine, online or not.
-- **Agents:** status (`idle`, `working`, `error`, `paused`, `offline`), host, folder, session; edit, Pause,
-  Resume, Retry, New Token, Unregister; Stop All and Resume All; a pattern filter.
+- **Agents:** status (`idle`, `working`, `waiting`, `error`, `paused`, `offline`), model, spend (today / total),
+  context (its share of the compaction threshold), host, folder, session; edit, Pause, Resume, Retry, New Token,
+  Unregister; Stop All and Resume All; a pattern filter.
 - **Inbox:** messages to you and alerts; answer or close.
 - **Messages:** every message; send one as the owner.
 - **Wakes:** every agent's wakes, when each runs next and was last set; Fire, Cancel, Set a Wake.
 - **Locks:** every lock with its capacity, holders (until when; Release) and line.
+- **Jobs:** the jobs and their runs; Run Now, Edit, Delete, Set a Job.
+- **Costs:** every agent's spend today and in total (unregistered ones too), its daily cap and what is left, its
+  context against its compaction threshold, live; its spend per day; an agent filter and the totals.
 - **History:** every event, newest first, filtered by agent pattern and kind, with Older for more.
 - **Settings:** server values, pattern rules, agents' own values, and what an agent resolves to.
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI.

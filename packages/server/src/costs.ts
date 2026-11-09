@@ -162,8 +162,9 @@ export class Costs {
 
   /*
    * compact_at in tokens for an agent whose model has this window: a number,
-   * a share of the window (with its own cap or MAX_COMPACT), or null (off, or
-   * a share without a known window).
+   * a share of the window (with its own cap or MAX_COMPACT), or null (off).
+   * A share without a known window is its cap (the final review: a long
+   * session must not go without compaction because the window is unknown).
    */
   threshold(agent: string, window: number | null): number | null {
     const setting = this.values(agent).compact_at
@@ -171,15 +172,11 @@ export class Costs {
       return null
     if (typeof setting === "number") return setting
     const m = /^(\d+)%(?:\s+max\s+(\d+))?$/.exec(String(setting))
-    if (!m || !window) return null
-    return Math.min(
-      Math.floor((window * Number(m[1])) / 100),
-      m[2] ? Number(m[2]) : MAX_COMPACT,
-    )
+    if (!m) return null
+    const cap = m[2] ? Number(m[2]) : MAX_COMPACT
+    if (!window) return cap
+    return Math.min(Math.floor((window * Number(m[1])) / 100), cap)
   }
-
-  // Step IDs already counted (a batch sent again after a lost reply).
-  private readonly counted = new Map<string, number>()
 
   // A model step of an agent's session (the plugin's cost event).
   step(agent: string, event: any) {
@@ -191,12 +188,13 @@ export class Costs {
       amount > MAX_STEP_USD
     )
       return
+    // a step already counted (its batch sent again after a lost reply, or a
+    // restart) counts once; the IDs are kept with the history
     if (typeof event.step === "string" && event.step) {
-      if (this.counted.has(event.step)) return
-      this.counted.set(event.step, this.now())
-      if (this.counted.size > 5000)
-        for (const k of [...this.counted.keys()].slice(0, 1000))
-          this.counted.delete(k)
+      const fresh = this.db
+        .query("INSERT OR IGNORE INTO cost_steps (step, at) VALUES (?, ?)")
+        .run(event.step.slice(0, 200), this.now()).changes
+      if (!fresh) return
     }
     // a Subagent's step carries no context of the agent's own session
     const context =
@@ -226,11 +224,13 @@ export class Costs {
         .query("SELECT compacting FROM agents WHERE id = ?")
         .get(agent) as any
     )?.compacting
+    // a step without the model's window keeps the last known one (the final
+    // review: one such step had turned compaction off)
     if (Number.isInteger(context) && context >= 0 && !compacting)
       this.db
         .query(
-          "UPDATE agents SET context_tokens = ?, context_limit = ? " +
-            "WHERE id = ?",
+          "UPDATE agents SET context_tokens = ?, " +
+            "context_limit = COALESCE(?, context_limit) WHERE id = ?",
         )
         .run(
           context,
@@ -284,6 +284,8 @@ export class Costs {
    * resume holds for the rest of the day: cap_override).
    */
   turnEnded(agent: string) {
+    // the compaction's turn is over: steps count as the context again
+    this.injected(agent)
     const cap = this.cap(agent)
     if (cap === null) return
     const spent = this.today(agent)
@@ -419,7 +421,10 @@ export class Costs {
     this.history.record("session.compact.asked", { agent })
   }
 
-  // An injection went out: compactions may come again.
+  /*
+   * An injection went out, or a turn ended (the compaction's own, the first
+   * after it): the context counts again and compactions may come again.
+   */
   injected(agent: string) {
     this.db.query("UPDATE agents SET compacting = 0 WHERE id = ?").run(agent)
   }
@@ -488,5 +493,8 @@ export class Costs {
     this.db
       .query("DELETE FROM costs WHERE day < ?")
       .run(this.day(this.now() - Math.max(days, 31) * 86_400_000))
+    this.db
+      .query("DELETE FROM cost_steps WHERE at < ?")
+      .run(this.now() - Math.max(days, 31) * 86_400_000)
   }
 }

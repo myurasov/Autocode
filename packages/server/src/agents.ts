@@ -216,7 +216,9 @@ export class Agents {
         .query(
           "UPDATE agents SET session_id = ?, last_active = ?, error = NULL, " +
             "error_since = NULL, error_at = NULL, retries = 0, " +
-            "retry_at = NULL WHERE id = ?",
+            "retry_at = NULL, context_tokens = NULL, context_limit = NULL, " +
+            "compact_wanted = 0, compact_notified = 0, compacting = 0, " +
+            "cut_at = NULL WHERE id = ?",
         )
         .run(session, this.now(), id)
       this.history.record("agent.moved", {

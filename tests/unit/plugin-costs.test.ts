@@ -88,7 +88,7 @@ describe("autocode_me compact and status", () => {
       },
       settings: { min_interval: "1m" },
       wakes: { count: 0, next: null },
-      unread: 0,
+      waiting: 0,
       cost: {
         today_usd: 0.4567,
         total_usd: 12.3456,
@@ -120,7 +120,7 @@ describe("autocode_me compact and status", () => {
       },
       settings: { min_interval: "1m" },
       wakes: { count: 0, next: null },
-      unread: 0,
+      waiting: 0,
       cost: {
         today_usd: 0.1,
         total_usd: 0.1,
@@ -194,7 +194,7 @@ describe("review of 0e: status of a cap's pause", () => {
       },
       settings: { min_interval: "1m" },
       wakes: { count: 0, next: null },
-      unread: 0,
+      waiting: 0,
     })
     expect(await runMe({ action: "status" }, call as any)).toContain(
       "Status paused by your daily cost cap: nothing is delivered until " +

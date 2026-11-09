@@ -279,8 +279,9 @@ export interface Message {
   size: number;
   // A text message's first 100 characters (the owner's list only).
   preview?: string;
-  // queued, then delivered: in a prompt, whole, or in the owner's inbox
-  state: 'queued' | 'delivered';
+  // queued, then delivered: in a prompt, whole, or in the owner's inbox;
+  // dropped: its agent unregistered first
+  state: 'queued' | 'delivered' | 'dropped';
   created_at: string;
   delivered_at: string | null;
 }

@@ -1,9 +1,10 @@
 /*
  * The agent tools: autocode_me (register, unregister, status, discover,
  * help; compact: tier 0e; jobs, run, finish: tier 0f), autocode_wake (set,
- * list, show, cancel, fire), autocode_message (send, list, read, wait; text
- * only; answer, escalate: tier 0d), autocode_lock (acquire, renew, release,
- * list: tier 0c) and autocode_approval (ask, wait: tier 0d). Their
+ * list, show, cancel, fire), autocode_message (send, text only; answer,
+ * escalate: tier 0d; messages come whole in prompts: Phase 1),
+ * autocode_lock (acquire, renew, release, list: tier 0c) and
+ * autocode_approval (ask, wait: tier 0d). Their
  * descriptions say enough to use them without the guide (OpenCode sends them
  * with every model call); their results say when things will happen, in the
  * server's zone and from now.
@@ -653,9 +654,11 @@ function costLine(k: any): string {
   if (k.context) {
     line += ` Context: ${tokens(k.context)} tokens`
     if (k.context_limit) line += ` of the model's ${tokens(k.context_limit)}`
+    // without a known window a share of it is its cap (the final review)
+    const unknown = k.context_limit ? "" : "; the model's window is not known"
     if (k.compact_at)
       line +=
-        `; compacted past ${tokens(k.compact_at)} (compact_at)` +
+        `; compacted past ${tokens(k.compact_at)} (compact_at${unknown})` +
         (k.context_share !== null && k.context_share !== undefined
           ? `: ${k.context_share}% of that`
           : "")

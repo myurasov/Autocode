@@ -962,3 +962,33 @@ and autonomously". Tests first (red, then green).
   step: the owner's answer set `reply_to` on a message between two agents, which the server rightly refuses (a reply
   names a message its sender was part of). The answer now names the message in its text; `reply` alone then passed
   for all 7 ($0.27). The other 8 scenarios passed for all 7 models (kimi-k3 too, after its earlier provider stalls).
+
+## The Final Review of Phase 0 and Phase 1 (2026-11-08)
+
+**Why.** A read-only adversarial reviewer on a snapshot at `2ee2e61` (75 minutes; probes in its own scratch folder)
+found 9 points; each behavior fix got a test first (`review-final.test.ts`, 8, all red, then green; the dedupe test
+checked to fail with its fix taken out). What held: migrations 13 and 14 (a schema-12 database with costs, read,
+delivered and queued messages and `inline_limit` rows moved cleanly; integrity and foreign keys clean); the removed
+routes; `/v1/costs` access; the normal notice-then-compaction path; the CLI and web numbers; no token leak or hang
+in what it read.
+
+- **Order:** one prompt's messages stop at the first that does not fit; the later ones wait too (a 20k, 15k, 5k
+  case came as M1, then M2 and M3).
+- **An unregistered ID's waiting messages** are `dropped` (a state of their own, migration 15; `message.dropped` in
+  the history), not left `queued` with `waiting: 1` for ever.
+- **A moved ID** starts its new session fresh: no old context, window, cut, or compaction asked, noticed or running.
+- **A compaction notice that did not arrive** (failed or lost) is sent again; it no longer leads to a compaction
+  without a notice.
+- **An unknown window:** a step without one keeps the last known; a share of a window never known is its cap
+  (500,000 by default), so a long session is still compacted; status says "the model's window is not known", not
+  "off".
+- **After a compaction** the context counts again when its turn ends (the owner's own turns in the TUI included), not
+  only at the next injection.
+- **The error state:** neither the notice nor the compaction jumps ahead of the retries.
+- **A step sent again after a restart** counts once: the steps counted are kept in the database (`cost_steps`,
+  migration 15; trimmed with the costs).
+- **Text** (`docs.test.ts`, 2 new: README, runbook, howto and Help say nothing of `list, read`, `read and wait`,
+  `inline_limit`, `unread` or the `read` state, and README and runbook name the Costs tab and `autocode costs`):
+  README's tools and CLI table and web list (Costs and Jobs), the runbook's messages, agents, costs and web UI, the
+  Help tab's tools and messages, the spec's tools, delivery, routes and settings, code comments, a test fixture's
+  `unread`; spend per day kept `history_days`, at least 31 days.

@@ -401,9 +401,42 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX messages_at ON messages (created_at);
   DELETE FROM settings WHERE key = 'inline_limit';
   `,
-  // 15 (the owner, 2026-11-08): an agent's model, from its last step.
+  /*
+   * 15 (the owner, 2026-11-08): an agent's model, from its last step. A
+   * message may be dropped (its agent unregistered before a prompt carried
+   * it: the final review), so the state's CHECK widens. The steps already
+   * counted are kept (a batch sent again after a restart counts once).
+   */
   `
   ALTER TABLE agents ADD COLUMN model TEXT;
+  CREATE TABLE messages_new (
+    id TEXT PRIMARY KEY,
+    send_id TEXT NOT NULL,
+    from_id TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    to_spec TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    reply_to TEXT,
+    body TEXT NOT NULL,
+    mime TEXT,
+    size INTEGER NOT NULL,
+    state TEXT NOT NULL DEFAULT 'queued'
+      CHECK (state IN ('queued', 'delivered', 'dropped')),
+    created_at INTEGER NOT NULL,
+    delivered_at INTEGER
+  );
+  INSERT INTO messages_new SELECT * FROM messages;
+  DROP TABLE messages;
+  ALTER TABLE messages_new RENAME TO messages;
+  CREATE INDEX messages_to ON messages (to_id, state, created_at);
+  CREATE INDEX messages_at ON messages (created_at);
+  UPDATE messages SET state = 'dropped'
+    WHERE state = 'queued' AND to_id != 'owner'
+      AND to_id NOT IN (SELECT id FROM agents);
+  CREATE TABLE cost_steps (
+    step TEXT PRIMARY KEY,
+    at INTEGER NOT NULL
+  );
   `,
 ]
 

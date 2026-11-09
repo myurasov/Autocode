@@ -83,11 +83,12 @@ describe("an agent's spend and context", () => {
 
   test("no cap, compact_at off or a number of tokens, and no context yet", async () => {
     let cost = (await owner("GET", "/v1/agents/team:a")).body.agent.cost
+    // no window known yet: the default's cap (the final review)
     expect(cost).toMatchObject({
       daily_usd: "off",
       left_usd: null,
       context: null,
-      compact_at: null,
+      compact_at: 500_000,
       context_share: null,
     })
     await owner("PATCH", "/v1/settings", { server: { compact_at: 80_000 } })

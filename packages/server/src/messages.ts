@@ -3,7 +3,8 @@
  * one agent, a pattern or a list (one copy each, never to the sender), to and
  * from the owner, text only (the owner, 2026-11-07); each copy's state
  * (queued, then delivered: in a prompt, whole, or in the owner's inbox;
- * Phase 1, the owner 2026-11-08: no reading or waiting); Autocode's own notices
+ * dropped: its agent unregistered first; Phase 1, the owner 2026-11-08: no
+ * reading or waiting); Autocode's own notices
  * (locks, asks sent to an agent, approvals' answers, cost warnings, runs'
  * results); the inbox of messages to the owner and alerts, answered or
  * closed.
@@ -264,7 +265,11 @@ export class Messages {
     return id
   }
 
-  // An agent unregistered: Autocode's notices to it that wait are dropped.
+  /*
+   * An agent unregistered: Autocode's notices to it that wait go; the other
+   * messages that wait are dropped (the owner still sees them, and the
+   * history says so), for no prompt will carry them (the final review).
+   */
   dropNotices(agent: string) {
     this.db
       .query(
@@ -272,6 +277,22 @@ export class Messages {
           "AND state = 'queued'",
       )
       .run(agent)
+    const waiting = this.db
+      .query(
+        "SELECT id, from_id FROM messages WHERE to_id = ? AND state = 'queued'",
+      )
+      .all(agent) as { id: string; from_id: string }[]
+    this.db
+      .query(
+        "UPDATE messages SET state = 'dropped' WHERE to_id = ? " +
+          "AND state = 'queued'",
+      )
+      .run(agent)
+    for (const m of waiting)
+      this.history.record("message.dropped", {
+        agent,
+        data: { id: m.id, from: m.from_id, why: "unregistered" },
+      })
   }
 
   // In a prompt (or the owner's inbox): delivered.

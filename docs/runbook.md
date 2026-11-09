@@ -110,7 +110,8 @@ ID before it sends a token. Every command takes `--json`.
 | Command | Does |
 |---|---|
 | `autocode info` | the server's ID and version (`v0.1.0-build<n>`: the release and the build number) |
-| `autocode agents [PATTERN]` | agents with status, machine and last activity (`kaggle:*`, `a,b`) |
+| `autocode agents [PATTERN]` | agents with status, machine, spend today, context (the share of the compaction threshold) and last activity (`kaggle:*`, `a,b`) |
+| `autocode costs [AGENT] [--match PATTERN]` | every agent's spend today and in total (unregistered ones too, and the totals), daily cap and what is left, context and its compaction threshold; `AGENT`: its spend per day (kept `history_days`, at least 31 days) |
 | `autocode agents rm AGENT` | unregister an agent (its history stays) |
 | `autocode agents register AGENT --session SES [--force]` | bind an ID to a session; `--force` moves it away from a live session |
 | `autocode hosts` | plugin instances: machine, folder, online, OpenCode process, whether its shells get Autocode values |
@@ -132,7 +133,7 @@ ID before it sends a token. Every command takes `--json`.
 | `autocode wake cancel AGENT NAME` | cancel a wake |
 | `autocode fire AGENT WAKE [--text TEXT]` | deliver a wake now (it skips its check); the prompt says the owner fired it |
 | `autocode send TO TEXT...` | send a text message as the owner to an ID, a pattern or a list |
-| `autocode messages` | every message, newest first, with its state (queued, delivered, read); your views (here, `messages read`, the web UI) never change a state, only the agent reading it does |
+| `autocode messages` | every message, newest first, with its state (queued; delivered: in a prompt, whole, or in your inbox; dropped: its agent unregistered first); your views (here, `messages read`, the web UI) never change a state |
 
 In an agent's shell the same binary acts as that agent, with three commands only: `autocode me`, `autocode fire me
 WAKE [--text TEXT]` and `autocode send TO TEXT...` (see `howto.md`); the owner's commands are refused there.
@@ -172,7 +173,8 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   by default, so its folders stay online after the TUI exits, until OpenCode unloads a folder after an hour unused.
   **no shell values** under the process: that server's shells get no Autocode values, because the plugin cannot
   reach its local API (see Troubleshooting; `autocode hosts` shows a SHELL VALUES column).
-- **Agents:** the agents by machine (status: idle, working, error, paused or offline; host, folder, session, times),
+- **Agents:** the agents by machine (status: idle, working, waiting, error, paused or offline; model, spend today and
+  in total, context as the share of its compaction threshold (both link to Costs); host, folder, session, times),
   refreshed every 10 s, with a pattern filter that applies a second after the last key (Enter or **Refresh** at once;
   **Show All** clears it); edit a description, **Pause** or **Resume** an agent's injections, **New Token** (the same
   as `autocode token rotate`), **Unregister**; **Stop All** (pause every agent and interrupt its session, after you
@@ -185,7 +187,7 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   (the reply goes to the agent as a message from the owner) or **Close** an item; **Show Closed** shows the answered
   and closed ones.
 - **Messages:** every message, newest first, with its ID, the first 200 characters of its text (a click shows it
-  whole, another folds it; your read leaves its state) and its state (queued, delivered, read); **Send a Message**
+  whole, another folds it; your read leaves its state) and its state (queued, delivered or dropped); **Send a Message**
   (it opens from its title) as the owner, to an ID, a pattern or a list.
 - **Wakes:** every agent's wakes (trigger, next run, text and check (each the first 200 characters; a click
   anywhere in the cell shows it whole, another folds it; the check in a fixed-width font), end, who set it, when it
@@ -199,6 +201,11 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   whole); an **Agent** filter (a pattern, like the Agents filter) and a **Kind** list (one kind with its count, or a
   group like `wake.*`), both kept in the address; **Older** loads the next 100. `autocode history` is the same in
   the CLI.
+- **Costs:** every agent's spend today and in total (also past `history_days`; agents that unregistered too, dimmed),
+  its daily cap with the share spent and what is left today, and its Context (the share of its compaction threshold,
+  the threshold, the model's window as its most, and a bar), refreshed every 5 s; **Days** shows its spend per day
+  (kept `history_days`, at least 31 days); an **Agent** filter (a pattern, kept in the address) and a totals row.
+  `autocode costs` is the same in the CLI.
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI, with a numbered table of contents.
 - **Settings:** the server-wide values (each shown in its edit box: change it and **Save**, or **Reset** to the
   built-in default), the pattern rules, the agents' own values, and **Resolved for an Agent** (an agent's values
