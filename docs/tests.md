@@ -887,3 +887,35 @@ text with `textContent` only.
 - **The Mac check** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, build 39): 9 passed, 0
   failed: the darwin-arm64 binary, `serve` natively, the owner's tokens 0600, the built-in web UI, `plugin install`,
   OpenCode loading the plugin and its host online with this Mac's workspace folder and log.
+
+## Tier 0g: Spend and Context (2026-11-08)
+
+**Why.** The owner: "i want the ability to see agent's spendings in real time, daily, total, history and cost
+caps/lefts in web ui"; "each agent's context size and % of compaction threshold ... in web ui, api, cli"; "before
+compaction, agent should be told that it is coming next". Each behavior got a test first (red, then green).
+
+- **API** (`costs-views.test.ts`, 7): an agent's view (`/v1/agents/{id}`, `/v1/me`): today, the total, the cap and what
+  is left (never below 0), the context, the model's window, the threshold in tokens (`compact_at` resolved: a share
+  with its cap, tokens, off) and the share used; the total kept past `history_days` and an unregistering (migration
+  13, `cost_totals`, filled from the days kept); `GET /v1/costs` (every agent, by ID; the day and zone) and
+  `/v1/costs/{agent}` (its days newest first; an unregistered ID with spend; 404 for none), admin and consumer only.
+- **The compaction notice** (`reliability.test.ts`, 4 new or changed): past `compact_at` the agent first gets
+  `[autocode] compaction next` (a prompt of its own: the context, the threshold, "bring your work to a stable state",
+  "write down in files"; what waits does not come with it; `session.compact.noticed`); the compaction goes when that
+  turn ends; a notice no turn took still lets it go after the no-turn wait; a raised `compact_at` voids the notice; a
+  smaller context in the notice's turn (OpenCode compacted the session itself) means no second compaction; an
+  asked-for compaction gets no notice. Found by the e2e run first: its fake model gave the notice's turn a small
+  context, so the test now scripts the notice's step.
+- **Agent** (`plugin-costs.test.ts`): `autocode_me status` says the total, what is left and the share of the
+  threshold; the guide's Costs part and prompt list name the notice.
+- **CLI** (`cli-0b.test.ts`, 3): `autocode costs` (every agent's numbers), `autocode costs AGENT` (its days),
+  `autocode agents` with TODAY and CONTEXT.
+- **Web** (`costs-page.spec.ts`, 5; `agents-page.spec.ts`; `app.spec.ts`; `help-page.spec.ts`; `smoke.spec.ts` "Costs:
+  spend and context live, an agent's days, and the Agents column"): the Costs tab (Today, Daily Cap with a bar, Left
+  Today, Total, Context, Compaction At with a bar; amber from 75%, red from 100%; Days; a refresh every 5 s) follows a
+  cost event without a reload; the Agents tab's Spend · Context; the tabs fit 800 px (eleven now: narrower padding);
+  the ID column keeps 7rem (screenshots at 1024 px showed it squeezed to two letters a line). Screenshots, light at
+  1024 and dark at 1280, looked at.
+- **e2e** (`costs.test.ts`): with real OpenCode, the notice reaches the model in a turn of its own before the
+  compaction, then the wake; the owner's view says the threshold.
+- The owner's form titles (`details.panel > summary`) are padded 8 px (`smoke.spec.ts`).

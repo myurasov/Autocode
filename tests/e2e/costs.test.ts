@@ -2,7 +2,10 @@
  * Tier 0e end to end, with real OpenCode sessions and the fake model's
  * usage: each step's cost reaches the agent's day; a daily cap pauses the
  * agent after the turn that passed it; a session whose context passed
- * compact_at is compacted (OpenCode's own compaction) before the next wake.
+ * compact_at is told first (tier 0g: "[autocode] compaction next" reaches the
+ * model as a prompt of its own), then compacted (OpenCode's own compaction)
+ * when that turn ends, before the next wake; the owner's view of its spend
+ * and context (GET /v1/costs).
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import {
@@ -88,7 +91,7 @@ describe("costs and compaction", () => {
     await admin("POST", `/v1/inbox/${alert.id}/close`)
   }, 240_000)
 
-  test("past compact_at, the session is compacted before the next wake", async () => {
+  test("past compact_at, the session is told first, then compacted after that turn, before the next wake", async () => {
     await admin("PATCH", "/v1/settings", {
       agents: { [id]: { compact_at: "10%" } },
     })
@@ -99,6 +102,14 @@ describe("costs and compaction", () => {
           session,
           reply: "a long context",
           usage: { prompt_tokens: 50_000, completion_tokens: 100 },
+        },
+        // the notice's turn: the agent writes down its state; the context
+        // only grows (a smaller one would mean OpenCode compacted on its own)
+        {
+          session,
+          match: "[autocode] compaction next",
+          reply: "Notes written; ready for the compaction.",
+          usage: { prompt_tokens: 51_000, completion_tokens: 100 },
         },
       ],
       true,
@@ -120,6 +131,23 @@ describe("costs and compaction", () => {
       { timeoutMs: 60_000, what: "the compaction" },
     )
     expect(compacted.data.limit).toBe(20_000)
+    // the notice reached the model first, in a turn of its own
+    const asked = await fake.requests()
+    const notice = asked.findIndex(
+      (r: any) =>
+        r.session === session &&
+        r.kind === "primary" &&
+        JSON.stringify(r.messages).includes("[autocode] compaction next"),
+    )
+    expect(notice).toBeGreaterThanOrEqual(0)
+    expect(JSON.stringify(asked[notice]!.messages)).not.toContain(
+      "Tick after compaction.",
+    )
+    const kind = "session.compact.noticed"
+    const noticed = (
+      await admin("GET", `/v1/history?kind=${kind}&agent=${enc(id)}`)
+    ).history[0]
+    expect(Date.parse(noticed.at)).toBeLessThanOrEqual(Date.parse(compacted.at))
     // OpenCode's compaction request reached the model, then the wake did
     await until(
       async () =>
@@ -132,5 +160,9 @@ describe("costs and compaction", () => {
       { timeoutMs: 90_000, intervalMs: 1000, what: "the wake after it" },
     )
     await agentStatus(id, "idle", 60_000)
+    // the owner's view: its spend and context (tier 0g)
+    const view = (await admin("GET", `/v1/costs/${enc(id)}`)).cost
+    expect(view.total_usd).toBeGreaterThan(0)
+    expect(view.compact_at).toBe(20_000)
   }, 240_000)
 })

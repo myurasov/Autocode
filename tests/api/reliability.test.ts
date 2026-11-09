@@ -232,6 +232,22 @@ describe("compaction", () => {
     expect((await sent()).map((i) => i.type)).toEqual(["compact"])
   })
 
+  // A context only gets smaller when OpenCode compacted the session itself:
+  // then a second compaction would only cost (the e2e run, 2026-11-08).
+  test("a session that got smaller in the notice's turn (OpenCode compacted it) is not compacted again", async () => {
+    await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
+    await report(t, HOST, [step(0.01, 120_000)])
+    await turnEnds()
+    await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "every 1m" })
+    t.clock.advance(MIN)
+    expect((await prompts()).ses_a).toStartWith("[autocode] compaction next")
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await report(t, HOST, [step(0.01, 5000)])
+    await turnEnds()
+    t.clock.advance(2000)
+    expect((await prompts()).ses_a).toStartWith('[autocode] wake "w"')
+  })
+
   test("below the threshold again (a raised compact_at), the notice is forgotten; past it later, a new one comes", async () => {
     await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
     await report(t, HOST, [step(0.01, 120_000)])
