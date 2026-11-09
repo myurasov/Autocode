@@ -18,6 +18,7 @@ import {
   onlyFields,
   parseDuration,
   parseListen,
+  parsePattern,
   resolveSettings,
   VERSION,
 } from "@autocode/shared"
@@ -802,18 +803,41 @@ export async function startServer(
       path: "/v1/costs",
       access: ["admin", "consumer"],
       summary:
-        "every registered agent's spend (today, total), daily cap and what " +
-        "is left, context and its share of the compaction threshold (tier 0g)",
-      handler: () => ({
-        day: costs.day(),
-        timezone: tz(),
-        agents: agents.list(null, "owner").map((x) => ({
-          agent: x.id,
-          status: x.status,
-          machine: x.machine,
-          ...costs.view(x.id),
-        })),
-      }),
+        "every agent's spend (today, total), daily cap and what is left, " +
+        "context and its share of the compaction threshold, unregistered " +
+        "ones with spend too; ?match= an agent pattern; the totals (tier 0g)",
+      handler: ({ url }) => {
+        const match = url.searchParams.get("match")?.trim() || null
+        const pattern = match ? parsePattern(match) : null
+        const live = new Map(
+          agents.list(null, "owner").map((x) => [x.id, x] as const),
+        )
+        const ids = [...new Set([...live.keys(), ...costs.spenders()])]
+          .filter((id) => !pattern || matchesPattern(pattern, id))
+          .sort()
+        const rows = ids.map((id) => {
+          const x = live.get(id)
+          return {
+            agent: id,
+            registered: !!x,
+            status: x ? x.status : "unregistered",
+            ...(x?.machine ? { machine: x.machine } : {}),
+            ...costs.view(id),
+          }
+        })
+        const sum = (key: "today_usd" | "total_usd") =>
+          Math.round(rows.reduce((n, r) => n + r[key], 0) * 1e6) / 1e6
+        return {
+          day: costs.day(),
+          timezone: tz(),
+          agents: rows,
+          totals: {
+            agents: rows.length,
+            today_usd: sum("today_usd"),
+            total_usd: sum("total_usd"),
+          },
+        }
+      },
     },
     {
       method: "GET",

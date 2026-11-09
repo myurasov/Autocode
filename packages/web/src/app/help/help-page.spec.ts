@@ -479,10 +479,15 @@ describe('HelpPage', () => {
       'compaction threshold',
       'every 5 seconds',
       'Days',
+      'unregistered',
+      'Agent filters by an ID pattern',
+      'the total of what is listed',
     ])
       expect(costs).toContain(part);
     expect(section(page, 'web-agents')).toContain('Spend · Context');
-    expect(section(page, 'commands')).toContain('autocode costs [AGENT]');
+    expect(section(page, 'commands')).toContain(
+      'autocode costs [AGENT] [--match PATTERN]',
+    );
     const sees = section(page, 'sees');
     expect(sees).toContain('[autocode] compaction next');
     expect(sees).toContain('a stable state');

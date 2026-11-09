@@ -577,7 +577,17 @@ describe("costs", () => {
       "60.0%",
     ])
     expect(res.stdout).toMatch(/kaggle:worker\s+idle\s+\$0\.25\s+off\s+—/)
+    // the totals of what is listed (the owner, 2026-11-08)
+    expect(lines.at(-2)?.split(/\s+/).slice(0, 3)).toEqual([
+      "TOTAL",
+      "(2)",
+      "$0.75",
+    ])
     expect(lines.at(-1)).toMatch(/^days in \S+; today \d{4}-\d\d-\d\d$/)
+    // a pattern
+    const only = await cli(["costs", "--match", "kaggle:l*"], asAdmin())
+    expect(only.stdout).toContain("kaggle:lead")
+    expect(only.stdout).not.toContain("kaggle:worker")
     const json = JSON.parse((await cli(["costs", "--json"], asAdmin())).stdout)
     expect(json.agents.map((a: any) => a.agent)).toContain("kaggle:lead")
   })

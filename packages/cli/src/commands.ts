@@ -311,7 +311,8 @@ const left = (k: any) => (k.left_usd === null ? "—" : dollars(k.left_usd))
 
 /*
  * Every agent's spend today and in total, its daily cap and what is left of
- * it, its context and its compaction threshold with the share used (tier 0g);
+ * it, its context and its compaction threshold with the share used (tier 0g),
+ * unregistered ones with spend too, filtered by --match, with the totals;
  * `costs AGENT`: one agent's, with its spend per day.
  */
 export async function costs(args: Parsed): Promise<number> {
@@ -351,22 +352,41 @@ export async function costs(args: Parsed): Promise<number> {
     )
     return 0
   }
-  const res = await c.call("GET", "/v1/costs")
+  const match = args.flags.match as string | undefined
+  const res = await c.call(
+    "GET",
+    `/v1/costs${match ? `?match=${encodeURIComponent(match)}` : ""}`,
+  )
+  const t = res.totals
   print(args, res, () =>
     [
       res.agents.length
         ? table(
-            res.agents.map((a: any) => [
-              a.agent,
-              a.status,
-              dollars(a.today_usd),
-              cap(a),
-              left(a),
-              dollars(a.total_usd),
-              tokens(a.context),
-              tokens(a.compact_at),
-              share(a.context_share),
-            ]),
+            [
+              ...res.agents.map((a: any) => [
+                a.agent,
+                a.status,
+                dollars(a.today_usd),
+                cap(a),
+                left(a),
+                dollars(a.total_usd),
+                tokens(a.context),
+                tokens(a.compact_at),
+                share(a.context_share),
+              ]),
+              // the totals of what is listed
+              [
+                "TOTAL",
+                `(${t.agents})`,
+                dollars(t.today_usd),
+                "",
+                "",
+                dollars(t.total_usd),
+                "",
+                "",
+                "",
+              ],
+            ],
             [
               "AGENT",
               "STATUS",
@@ -379,7 +399,9 @@ export async function costs(args: Parsed): Promise<number> {
               "SHARE",
             ],
           )
-        : "no agents",
+        : match
+          ? `no agent matches ${match}`
+          : "no agents",
       `days in ${res.timezone}; today ${res.day}`,
     ].join("\n"),
   )

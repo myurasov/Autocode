@@ -490,6 +490,14 @@ table.costs .bar.over > span {
 table.costs tr.days > td {
   background: var(--softer);
 }
+/* An unregistered agent's row: its spend, dimmed; the totals row: bold. */
+table.costs tr.gone > td {
+  color: var(--fg-dim);
+}
+table.costs tfoot tr.totals > td {
+  font-weight: var(--bold);
+  background: var(--soft);
+}
 table.cost-days {
   width: auto;
   margin: 0.2rem 0;

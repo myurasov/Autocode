@@ -87,6 +87,15 @@ export class Costs {
     return round(usd)
   }
 
+  // Every ID that ever spent anything (some may be unregistered now).
+  spenders(): string[] {
+    return (
+      this.db
+        .query("SELECT agent_id FROM cost_totals ORDER BY agent_id")
+        .all() as any[]
+    ).map((r) => r.agent_id)
+  }
+
   // Whether an ID has ever spent anything (it may be unregistered now).
   known(agent: string): boolean {
     return !!this.db

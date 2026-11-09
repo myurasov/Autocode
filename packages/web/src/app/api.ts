@@ -78,18 +78,22 @@ export interface CostNumbers {
   context_share: number | null;
 }
 
-// One agent on the Costs page.
+// One agent on the Costs page: registered, or gone with its spend kept.
 export interface AgentCost extends CostNumbers {
   agent: string;
+  registered: boolean;
+  // its status, or unregistered
   status: string;
   machine?: string;
 }
 
-// Every agent's spend, today's date and the zone days are counted in.
+// Every agent's spend, today's date, the zone days are counted in, and the
+// totals of what is listed.
 export interface CostsView {
   day: string;
   timezone: string;
   agents: AgentCost[];
+  totals: { agents: number; today_usd: number; total_usd: number };
 }
 
 // One agent's spend per day, newest first.
@@ -556,9 +560,12 @@ export class Api {
   }
 
   // Every lock, or those whose names match a pattern (gpu-*, a,b:*).
-  // Every agent's spend and context (tier 0g).
-  costs(): Promise<CostsView> {
-    return this.call(this.http.get<CostsView>('/v1/costs'));
+  // Every agent's spend and context (tier 0g), filtered by an ID pattern.
+  costs(match?: string): Promise<CostsView> {
+    const params = match?.trim()
+      ? new HttpParams().set('match', match.trim())
+      : undefined;
+    return this.call(this.http.get<CostsView>('/v1/costs', { params }));
   }
 
   // One agent's spend per day (tier 0g).

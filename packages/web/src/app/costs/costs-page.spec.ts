@@ -3,18 +3,23 @@
  * mocked server: every agent's spend today and in total, its daily cap with
  * the share used and what is left, its context with the compaction threshold
  * and the share used; an agent's spend per day on a click; links to the
- * Agents page; the day and zone; the empty page; "Updated" in the footer; and
- * the live refresh (every 5 s, one at a time).
+ * Agents page; the day and zone; unregistered agents with spend (marked, no
+ * link); the Agent filter (a pattern, in the address); the totals row; the
+ * empty page; "Updated" in the footer; and the live refresh (every 5 s, one
+ * at a time).
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { el, settle, setup, signedIn, text } from '../../testing/helpers';
+import { Router } from '@angular/router';
+import { el, settle, setup, signedIn, text, type } from '../../testing/helpers';
+import { FILTER_DELAY_MS } from '../agents/agents-page';
 import type { AgentCost, CostsView } from '../api';
 import { COSTS_REFRESH_MS, CostsPage, shareText } from './costs-page';
 
 const BASE: AgentCost = {
   agent: '',
+  registered: true,
   status: 'idle',
   machine: 'machine-a',
   today_usd: 0,
@@ -52,7 +57,17 @@ function view(): CostsView {
         total_usd: 0.04,
         context: 9000,
       },
+      // gone, with its spend kept (the owner, 2026-11-08)
+      {
+        ...BASE,
+        agent: 'old:one',
+        registered: false,
+        status: 'unregistered',
+        today_usd: 0,
+        total_usd: 3.5,
+      },
     ],
+    totals: { agents: 3, today_usd: 1.54, total_usd: 15.8856 },
   };
 }
 
@@ -66,10 +81,17 @@ describe('CostsPage', () => {
 
   afterEach(() => http.verify());
 
+  function load(start = view(), match?: string): void {
+    const req = http.expectOne((r) => r.url === '/v1/costs');
+    expect(req.request.params.get('match')).toBe(match ?? null);
+    req.flush(start);
+  }
+
   async function open(start = view()): Promise<HTMLElement> {
     signedIn();
     fixture = TestBed.createComponent(CostsPage);
-    http.expectOne('/v1/costs').flush(start);
+    await settle(fixture);
+    load(start);
     await settle(fixture);
     return el(fixture);
   }
@@ -98,12 +120,18 @@ describe('CostsPage', () => {
     expect(cell(page, 'kaggle:lead', 'cap')).toBe('$2.00 75.0%');
     expect(cell(page, 'kaggle:lead', 'left')).toBe('$0.50');
     expect(cell(page, 'kaggle:lead', 'total')).toBe('$12.35');
-    expect(cell(page, 'kaggle:lead', 'context')).toBe('80,000 of 200,000');
-    expect(cell(page, 'kaggle:lead', 'threshold')).toBe('100,000 80.0%');
+    // the owner, 2026-11-08: tokens (share), a bar under each: the context's
+    // share of the model's window, and of the compaction threshold
+    expect(cell(page, 'kaggle:lead', 'context')).toBe('80,000 (40.0%)');
+    expect(cell(page, 'kaggle:lead', 'threshold')).toBe('100,000 (80.0%)');
     // the bars: the cap's share used, the threshold's share used
     const bar = (agent: string, name: string) =>
       row(page, agent).querySelector(`td.${name} .bar > span`) as HTMLElement;
     expect(bar('kaggle:lead', 'cap').style.width).toBe('75%');
+    expect(bar('kaggle:lead', 'context').style.width).toBe('40%');
+    expect(
+      bar('kaggle:lead', 'context').parentElement!.classList,
+    ).not.toContain('near');
     expect(bar('kaggle:lead', 'threshold').style.width).toBe('80%');
     expect(bar('kaggle:lead', 'threshold').parentElement!.classList).toContain(
       'near',
@@ -111,7 +139,9 @@ describe('CostsPage', () => {
     // no cap, no threshold yet
     expect(cell(page, 'kaggle:worker', 'cap')).toBe('off');
     expect(cell(page, 'kaggle:worker', 'left')).toBe('—');
+    // no window known: the tokens alone, no bar
     expect(cell(page, 'kaggle:worker', 'context')).toBe('9,000');
+    expect(bar('kaggle:worker', 'context')).toBeNull();
     expect(cell(page, 'kaggle:worker', 'threshold')).toBe('—');
     expect(bar('kaggle:worker', 'cap')).toBeNull();
     // agent IDs link to the Agents page
@@ -190,11 +220,59 @@ describe('CostsPage', () => {
     expect(cell(page, 's:working', 'status')).toBe('working');
   });
 
+  it('an unregistered agent with spend shows, marked, without a link to Agents', async () => {
+    const page = await open();
+    const gone = row(page, 'old:one');
+    expect(gone.classList).toContain('gone');
+    expect(text(gone.querySelector('td.agent'))).toBe('old:one');
+    expect(gone.querySelector('td.agent a')).toBeNull();
+    expect(text(gone.querySelector('td.status'))).toBe('unregistered');
+    expect(gone.querySelector('td.status .dot')).toBeNull();
+    expect(cell(page, 'old:one', 'total')).toBe('$3.50');
+  });
+
+  it('a totals row adds up what is listed', async () => {
+    const page = await open();
+    const total = page.querySelector('table.costs tfoot tr.totals')!;
+    expect(text(total.querySelector('td.agent'))).toBe('Total (3 agents)');
+    expect(text(total.querySelector('td.today'))).toBe('$1.54');
+    expect(text(total.querySelector('td.total'))).toBe('$15.89');
+  });
+
+  it('the Agent filter takes a pattern, a second after the last key, and keeps it in the address', async () => {
+    vi.useFakeTimers();
+    try {
+      signedIn();
+      fixture = TestBed.createComponent(CostsPage);
+      await vi.advanceTimersByTimeAsync(0);
+      load();
+      const field = el(fixture).querySelector('#cost-match')!;
+      type(field, 'kaggle:*');
+      await vi.advanceTimersByTimeAsync(FILTER_DELAY_MS - 1);
+      http.expectNone((r) => r.url === '/v1/costs');
+      await vi.advanceTimersByTimeAsync(1);
+      expect(TestBed.inject(Router).url).toBe('/?match=kaggle:*');
+      await vi.advanceTimersByTimeAsync(0);
+      load({ ...view(), agents: view().agents.slice(0, 2) }, 'kaggle:*');
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+      expect(
+        [
+          ...el(fixture).querySelectorAll('table.costs tbody tr[data-agent]'),
+        ].map((r) => r.getAttribute('data-agent')),
+      ).toEqual(['kaggle:lead', 'kaggle:worker']);
+    } finally {
+      fixture.destroy();
+      vi.useRealTimers();
+    }
+  });
+
   it('says when there are no agents', async () => {
     const page = await open({ ...view(), agents: [] });
     expect(text(page.querySelector('table.costs tbody'))).toBe(
-      'No agents are registered.',
+      'No agent has spent anything or is registered.',
     );
+    expect(page.querySelector('table.costs tfoot')).toBeNull();
   });
 
   it('a share as a percentage to a tenth', () => {
@@ -209,16 +287,16 @@ describe('CostsPage', () => {
       signedIn();
       fixture = TestBed.createComponent(CostsPage);
       await vi.advanceTimersByTimeAsync(0);
-      http.expectOne('/v1/costs').flush(view());
+      http.expectOne((r) => r.url === '/v1/costs').flush(view());
       await vi.advanceTimersByTimeAsync(COSTS_REFRESH_MS - 1);
-      http.expectNone('/v1/costs');
+      http.expectNone((r) => r.url === '/v1/costs');
       await vi.advanceTimersByTimeAsync(1);
-      const req = http.expectOne('/v1/costs');
+      const req = http.expectOne((r) => r.url === '/v1/costs');
       await vi.advanceTimersByTimeAsync(COSTS_REFRESH_MS);
-      http.expectNone('/v1/costs');
+      http.expectNone((r) => r.url === '/v1/costs');
       req.flush(view());
       await vi.advanceTimersByTimeAsync(COSTS_REFRESH_MS);
-      http.expectOne('/v1/costs').flush(view());
+      http.expectOne((r) => r.url === '/v1/costs').flush(view());
     } finally {
       fixture.destroy();
       vi.useRealTimers();

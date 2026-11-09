@@ -668,11 +668,11 @@ autocode plugin install --url http://SERVER:4848 \
           <td>the history, newest first</td>
         </tr>
         <tr>
-          <td><code>autocode costs [AGENT]</code></td>
+          <td><code>autocode costs [AGENT] [--match PATTERN]</code></td>
           <td>
-            every agent's spend today and in total, daily cap and what is
-            left, context and compaction threshold with the share used; one
-            agent's spend per day
+            every agent's spend today and in total (unregistered ones too, and
+            the totals), daily cap and what is left, context and compaction
+            threshold with the share used; one agent's spend per day
           </td>
         </tr>
         <tr>
@@ -946,9 +946,12 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       Every agent's status (with its dot, as on Agents), spend today and in
       total (every day it ran, also past
       <code>history_days</code>), its daily cap with a bar of the share spent
-      and what is left today, and its context with its compaction threshold
-      (<code>compact_at</code> for its model) and a bar of the share used:
-      amber from 75%, red from 100%. The page follows each model step: it
+      and what is left today, its context (tokens, their share of the model's
+      window and a bar) and its compaction threshold (<code>compact_at</code>
+      for its model: tokens, the share of it used and a bar): amber from 75%,
+      red from 100%. Agents that unregistered show too, dimmed, with their
+      spend; Agent filters by an ID pattern (a second after you stop typing;
+      kept in the address), and the last row is the total of what is listed. The page follows each model step: it
       refreshes every 5 seconds. Days shows an agent's spend per day, newest
       first; the day is the server's (its zone is above the table). An
       agent's ID leads to its row on the Agents tab.

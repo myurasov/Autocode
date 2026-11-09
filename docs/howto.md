@@ -326,7 +326,8 @@ _Tier 0e (now)._
 - Each model step of yours (your Subagents' too) counts toward your spend today, in the server's zone.
   `autocode_me action=status` shows it and your spend in total, your daily cap (`daily_usd`, if the owner set one)
   and what is left of it today, and your context with its compaction threshold and the share used. The owner sees
-  the same for every agent, live (tier 0g: the web UI's Costs tab, `autocode costs`).
+  the same for every agent, live, and for agents that unregistered (tier 0g: the web UI's Costs tab, `autocode
+  costs`).
 - At `cap_warn` of the cap (90% unless the owner set another) you get `[autocode] cost warning`, once a day: slow
   down, or finish and report.
 - Past the cap, your running turn is allowed to finish; then you are paused until the next day (the server's zone)

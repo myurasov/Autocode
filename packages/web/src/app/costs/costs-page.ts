@@ -4,10 +4,15 @@
  * left today, and its context with the compaction threshold and the share
  * used, refreshed every 5 s (one refresh at a time) so it follows each model
  * step. Days shows an agent's spend per day, newest first; agent IDs link to
- * the Agents page.
+ * the Agents page. Unregistered agents with spend show too, marked; the Agent
+ * filter (an ID pattern, kept in the address) applies a second after the last
+ * key; a totals row adds up what is listed (the owner, 2026-11-08).
  */
 
 import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
+import { FILTER_DELAY_MS } from '../agents/agents-page';
 import {
   type AgentCost,
   Api,
@@ -15,6 +20,7 @@ import {
   type CostsView,
   errorText,
 } from '../api';
+import { IdParts } from '../breaks';
 import { dotClass } from '../format';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink } from '../links';
@@ -35,11 +41,17 @@ export function tokensText(n: number): string {
 
 @Component({
   selector: 'app-costs-page',
-  imports: [AgentLink, Updated],
+  imports: [AgentLink, IdParts, Updated],
   templateUrl: './costs-page.html',
 })
 export class CostsPage {
   private readonly api = inject(Api);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+
+  // The filter in the address, and as typed.
+  protected readonly match = signal('');
+  protected readonly pattern = signal('');
 
   protected readonly view = signal<CostsView | null>(null);
   protected readonly error = signal('');
@@ -54,33 +66,76 @@ export class CostsPage {
   protected readonly tokensText = tokensText;
 
   private inFlight = 0;
+  private typing?: ReturnType<typeof setTimeout>;
+  private loaded = false;
 
   constructor() {
-    void this.refresh();
+    // The address sets the filter (a link, Back, or the toolbar's own).
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const match = params.get('match') ?? '';
+      this.pattern.set(match);
+      if (this.loaded && match === this.match()) return;
+      this.match.set(match);
+      void this.refresh();
+    });
     // A tick is skipped while the last refresh is still out.
     const timer = setInterval(() => {
       if (this.inFlight === 0) void this.refresh();
     }, COSTS_REFRESH_MS);
-    inject(DestroyRef).onDestroy(() => clearInterval(timer));
+    inject(DestroyRef).onDestroy(() => {
+      clearInterval(timer);
+      clearTimeout(this.typing);
+    });
   }
 
   protected async refresh(): Promise<void> {
+    const match = this.match();
     this.inFlight++;
     try {
-      this.view.set(await this.api.costs());
+      const view = await this.api.costs(match);
+      if (match !== this.match()) return;
+      this.view.set(view);
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {
-      this.error.set(errorText(err));
+      if (match === this.match()) this.error.set(errorText(err));
     } finally {
       this.inFlight--;
+      this.loaded = true;
     }
+  }
+
+  // The pattern as typed applies a second after the last key.
+  protected typed(value: string): void {
+    this.pattern.set(value);
+    clearTimeout(this.typing);
+    this.typing = setTimeout(() => this.applyMatch(), FILTER_DELAY_MS);
+  }
+
+  // The filter goes into the address, which sets it (and keeps it for Back).
+  protected applyMatch(): void {
+    clearTimeout(this.typing);
+    const match = this.pattern().trim();
+    if (match === this.match()) {
+      void this.refresh();
+      return;
+    }
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { match: match || null },
+    });
   }
 
   // The share of the daily cap spent today (null without a cap).
   protected capShare(a: AgentCost): number | null {
     if (a.daily_usd === 'off' || a.daily_usd <= 0) return null;
     return Math.round((a.today_usd / a.daily_usd) * 1000) / 10;
+  }
+
+  // The context's share of the model's window (null without either).
+  protected windowShare(a: AgentCost): number | null {
+    if (a.context === null || !a.context_limit) return null;
+    return Math.round((a.context / a.context_limit) * 1000) / 10;
   }
 
   // A bar's width: the share, at most the whole bar.

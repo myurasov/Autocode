@@ -921,6 +921,12 @@ compaction, agent should be told that it is coming next". Each behavior got a te
 - The owner's form titles (`details.panel > summary`) are padded 8 px (`smoke.spec.ts`).
 - The Costs tab's status has its dot, as on Agents (the owner, 2026-11-08; `costs-page.spec.ts` "shows each agent's
   status with its dot", red, then green): one `dotClass` (`format.ts`) for both pages; screenshots looked at.
+- The Costs tab, the owner's next round (17:4x PT; tests first): Context and Compaction At both "tokens (share)" with
+  a bar (the context's share of the model's window; of the threshold); unregistered agents with spend listed, dimmed,
+  no link or dot (`costs-views.test.ts` 3 new: listed and marked, registered ones without spend listed, `?match=` and
+  the totals; `cli-0b.test.ts`: a TOTAL row and `--match`; `costs-page.spec.ts` 4 new; `smoke.spec.ts`: the totals
+  row and the filter in the address). Screenshots with an unregistered agent, light at 1024 and dark at 1280, looked
+  at (a first pair came from the browser's cached app; taken again under new names).
 
 ## Phase 1: Messages Through Injections (2026-11-08)
 
@@ -939,6 +945,10 @@ and autonomously". Tests first (red, then green).
   goes. Tests that used the agent's message routes now read the owner's (`messages`, `locks`, `jobs`, `cli-0b`,
   `review-0b`, `agent-info`, `plugin-inprocess`, `plugin-asks`, `lock-tool`); the settings tests use `check_output`
   and `check_timeout` where they used `inline_limit`.
+- **Live checks on build 41** (`ci/live-check-0b.ts`, 17:39–17:43 PT; the server as the systemd service on
+  machine-a, schema 14; the sessions in machine-a's OpenCode service, each model in a scratch folder): `sonnet-5.5`
+  9 of 9 ($0.1219), `glm-5.3` 9 of 9 ($0.0369). Messages reached the other agent and the owner's answer reached B
+  only through prompts (Phase 1); the unloaded folder was loaded again for a fired wake.
 - The agents suite's new scenario `reply`: the agent asks another agent, ends its turn, and acts on the reply that
   comes in a prompt. Its first run (`20261109T013012Z`, 56 of 63, $2.43) failed for all 7 models at the harness's own
   step: the owner's answer set `reply_to` on a message between two agents, which the server rightly refuses (a reply

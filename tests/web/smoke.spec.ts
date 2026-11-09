@@ -1985,8 +1985,21 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
       `$${(before + 0.25).toFixed(2)}`,
       { timeout: 8000 },
     )
-    await expect(row.locator("td.context")).toHaveText("60,000 of 200,000")
-    await expect(row.locator("td.threshold")).toHaveText("100,000 60.0%")
+    await expect(row.locator("td.context")).toHaveText("60,000 (30.0%)")
+    await expect(row.locator("td.threshold")).toHaveText("100,000 (60.0%)")
+    await expect(row.locator("td.context .bar > span")).toHaveAttribute(
+      "style",
+      /width: 30%/,
+    )
+    // the totals row and the Agent filter (the owner, 2026-11-08)
+    await expect(page.locator("table.costs tfoot tr.totals")).toContainText(
+      "Total (",
+    )
+    await page.locator("#cost-match").fill("smoke:*")
+    await expect(page).toHaveURL(/\/costs\?match=smoke:\*$/)
+    await expect(
+      page.locator("table.costs tbody tr[data-agent]").first(),
+    ).toHaveAttribute("data-agent", /^smoke:/)
     await row.getByRole("button", { name: "Days", exact: true }).click()
     const days = page.locator('tr.days[data-agent="smoke:agent"]')
     await expect(

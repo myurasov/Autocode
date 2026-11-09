@@ -1,18 +1,31 @@
 <!--
   The Costs page: Refresh (a failed load's message beside it); what day it is
-  and in which zone; every agent's status (its dot, as on Agents), spend today, its daily cap (a bar of the
-  share spent), what is left today, its total, its context and the compaction
-  threshold (a bar of the share used), Days for its spend per day; and when
-  the list last loaded.
+  and in which zone; the Agent filter (a pattern, in the address); every
+  agent's status (its dot, as on Agents; unregistered ones with spend too,
+  marked), spend
+  today, its daily cap (a bar of the share spent), what is left today, its
+  total, its context (its share of the model's window, with a bar) and the
+  compaction threshold (the share of it used, with a bar), Days for its spend
+  per day; a totals row; and when the list last loaded.
 -->
 
 <div class="toolbar">
-  <button type="button" (click)="refresh()">Refresh</button>
+  <button type="button" (click)="applyMatch()">Refresh</button>
   <span class="result">
     @if (error()) {
       <span class="errmsg" role="alert">{{ error() }}</span>
     }
   </span>
+  <label for="cost-match">Agent</label>
+  <input
+    id="cost-match"
+    type="text"
+    spellcheck="false"
+    placeholder="for example kaggle:* or a,b:* (empty shows all)"
+    [value]="pattern()"
+    (input)="typed($any($event.target).value)"
+    (keydown.enter)="applyMatch()"
+  />
 </div>
 
 @if (view(); as v) {
@@ -37,10 +50,19 @@
   </thead>
   <tbody>
     @for (a of view()?.agents ?? []; track a.agent) {
-      <tr [attr.data-agent]="a.agent">
-        <td class="agent id-like"><app-agent-link [id]="a.agent" /></td>
+      <tr [attr.data-agent]="a.agent" [class.gone]="!a.registered">
+        <td class="agent id-like">
+          @if (a.registered) {
+            <app-agent-link [id]="a.agent" />
+          } @else {
+            <code [appId]="a.agent"></code>
+          }
+        </td>
         <td class="status">
-          <span [class]="'dot ' + dotClass(a.status)"></span>{{ a.status }}
+          @if (a.registered) {
+            <span [class]="'dot ' + dotClass(a.status)"></span>
+          }
+          {{ a.status }}
         </td>
         <td class="num today">{{ costText(a.today_usd) }}</td>
         <td class="cap">
@@ -67,13 +89,24 @@
           }
         </td>
         <td class="num total">{{ costText(a.total_usd) }}</td>
+        <!--
+          Tokens and their share in brackets, a bar under each (the owner,
+          2026-11-08): the context's share of the model's window, and of the
+          compaction threshold.
+        -->
         <td class="context">
           @if (a.context === null) {
             <span class="muted">—</span>
           } @else {
             {{ tokensText(a.context) }}
-            @if (a.context_limit) {
-              of {{ tokensText(a.context_limit) }}
+            @if (windowShare(a); as share) {
+              <span class="share"> ({{ shareText(share) }})</span>
+              <span
+                class="bar"
+                [class.near]="share >= 75"
+                [class.over]="share >= 100"
+                ><span [style.width]="width(share)"></span
+              ></span>
             }
           }
         </td>
@@ -83,7 +116,7 @@
           } @else {
             {{ tokensText(a.compact_at) }}
             @if (a.context_share !== null) {
-              <span class="share"> {{ shareText(a.context_share) }}</span>
+              <span class="share"> ({{ shareText(a.context_share) }})</span>
               <span
                 class="bar"
                 [class.near]="a.context_share >= 75"
@@ -143,13 +176,32 @@
         <td class="muted" colspan="9">
           @if (!view()) {
             Loading...
+          } @else if (match()) {
+            No agent matches {{ match() }}.
           } @else {
-            No agents are registered.
+            No agent has spent anything or is registered.
           }
         </td>
       </tr>
     }
   </tbody>
+  @if (view(); as v) {
+    @if (v.agents.length) {
+      <!-- The totals of what is listed. -->
+      <tfoot>
+        <tr class="totals">
+          <td class="agent" colspan="2">
+            Total ({{ v.totals.agents }}
+            {{ v.totals.agents === 1 ? 'agent' : 'agents' }})
+          </td>
+          <td class="num today">{{ costText(v.totals.today_usd) }}</td>
+          <td colspan="2"></td>
+          <td class="num total">{{ costText(v.totals.total_usd) }}</td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
+    }
+  }
 </table>
 
 <footer class="muted"><app-updated [at]="updatedAt()" /></footer>
