@@ -1,7 +1,9 @@
 <!--
   The Agents page: Stop All and Resume All (an action's result beside them), a
   filter by ID pattern, the agents by machine (their hosts link to the Hosts
-  page; an agent in error shows its error type and retries; Retry, Edit, Pause
+  page; spend today and the context's share of the compaction threshold,
+  linking to the Costs page; an agent in error shows its error type and
+  retries; Retry, Edit, Pause
   or Resume, New Token, Unregister), the agent a link led to
   highlighted (or a line that says it is not there), and when the list last
   loaded.
@@ -60,6 +62,7 @@
       <th>ID</th>
       <th>Description</th>
       <th>Status</th>
+      <th>Spend · Context</th>
       <th>Host</th>
       <th>Folder</th>
       <th>Session</th>
@@ -73,7 +76,7 @@
       <tr class="group">
         <th
           class="id-like"
-          colspan="9"
+          colspan="10"
           scope="rowgroup"
           [appId]="m.machine || 'unknown machine'"
         ></th>
@@ -126,6 +129,18 @@
                 <code class="error-type">{{ e.type }}</code>
                 <span class="retry-state">{{ retryText(a) }}</span>
               </span>
+            }
+          </td>
+          <td class="spend">
+            @if (a.cost; as k) {
+              <a routerLink="/costs" title="Spend and context on the Costs page"
+                ><span class="today">{{ spendText(k) }}</span
+                ><span class="context" [title]="contextTitle(k)">{{
+                  contextText(k)
+                }}</span></a
+              >
+            } @else {
+              <span class="muted">—</span>
             }
           </td>
           <td class="host id-like">
@@ -208,7 +223,7 @@
   } @empty {
     <tbody>
       <tr>
-        <td class="muted" colspan="9">
+        <td class="muted" colspan="10">
           @if (!loaded()) {
             Loading...
           } @else if (applied()) {

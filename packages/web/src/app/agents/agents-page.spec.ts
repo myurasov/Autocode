@@ -47,6 +47,16 @@ const AGENTS: Agent[] = [
     directory: '/home/someone/kaggle',
     registered_at: '2026-10-28T10:00:00.000Z',
     last_active: '2026-10-28T11:30:00.000Z',
+    cost: {
+      today_usd: 1.5,
+      total_usd: 12.3456,
+      daily_usd: 2,
+      left_usd: 0.5,
+      context: 80_000,
+      context_limit: 200_000,
+      compact_at: 100_000,
+      context_share: 80,
+    },
   },
   {
     id: 'kaggle:worker',
@@ -118,6 +128,24 @@ describe('AgentsPage', () => {
     expect(worker.querySelector('.dot')!.classList).toContain('off');
   });
 
+  // Tier 0g (the owner, 2026-11-08): spend today of the cap, and the context's
+  // share of the compaction threshold, linking to the Costs page.
+  it("shows each agent's spend today and its context's share of the threshold", async () => {
+    const page = await open();
+    const lead = page.querySelector('tr[data-agent="kaggle:lead"] td.spend')!;
+    expect(text(lead.querySelector('.today'))).toBe('$1.50 of $2.00');
+    expect(text(lead.querySelector('.context'))).toBe('80,000 · 80.0%');
+    expect(lead.querySelector('.context')!.getAttribute('title')).toBe(
+      '80,000 tokens; compacted past 100,000 (compact_at)',
+    );
+    expect(lead.querySelector('a')!.getAttribute('href')).toBe('/costs');
+    // an agent with no cost yet
+    const worker = page.querySelector(
+      'tr[data-agent="kaggle:worker"] td.spend',
+    )!;
+    expect(text(worker)).toBe('—');
+  });
+
   it("shows each agent's host after its status, a link to the Hosts page", async () => {
     signedIn();
     fixture = TestBed.createComponent(AgentsPage);
@@ -130,6 +158,7 @@ describe('AgentsPage', () => {
       'ID',
       'Description',
       'Status',
+      'Spend · Context',
       'Host',
       'Folder',
       'Session',
@@ -138,7 +167,7 @@ describe('AgentsPage', () => {
       '',
     ]);
     const lead = page.querySelector('tr[data-agent="kaggle:lead"]')!;
-    expect(lead.querySelector('td.status + td.host')).not.toBeNull();
+    expect(lead.querySelector('td.status + td.spend + td.host')).not.toBeNull();
     const link = lead.querySelector('td.host a.id-link')!;
     expect(link.getAttribute('href')).toBe('/hosts?host=machine-a:1');
     expect(parts(link.querySelector('code'))).toEqual(['machine-a:', '1']);
@@ -149,7 +178,7 @@ describe('AgentsPage', () => {
     expect(worker.querySelector('td.host a')).toBeNull();
     expect(
       page.querySelector('table.agents tr.group th')!.getAttribute('colspan'),
-    ).toBe('9');
+    ).toBe('10');
   });
 
   /*

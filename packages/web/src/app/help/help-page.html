@@ -573,13 +573,17 @@ autocode plugin install --url http://SERVER:4848 \
 [autocode] wake "training-done" fired by the owner
 [autocode] wake "standup", 2 messages
 [autocode] retry 3
-[autocode] lock "gpu-0" granted</pre
+[autocode] lock "gpu-0" granted
+[autocode] compaction next</pre
     >
     <p>
       Below it come the parts: each wake with its text, and each message with
       its sender and subject; a retry first says what failed and asks the
       agent to continue where it left off; a lock's notice says until when
-      the agent holds it. What others wrote, and a check's
+      the agent holds it; <code>[autocode] compaction next</code> says the
+      session is compacted when that turn ends (its context passed
+      <code>compact_at</code>), so the agent brings its work to a stable state
+      and writes down what it needs first. What others wrote, and a check's
       output, is quoted: each such line starts with <code>&gt; </code>, so it
       cannot pass for Autocode's own words. A last line says that the prompt
       comes from Autocode, not from you, and how the agent lists its wakes and
@@ -664,6 +668,14 @@ autocode plugin install --url http://SERVER:4848 \
             >
           </td>
           <td>the history, newest first</td>
+        </tr>
+        <tr>
+          <td><code>autocode costs [AGENT]</code></td>
+          <td>
+            every agent's spend today and in total, daily cap and what is
+            left, context and compaction threshold with the share used; one
+            agent's spend per day
+          </td>
         </tr>
         <tr>
           <td><code>autocode inbox [--all]</code></td>
@@ -833,7 +845,9 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
     </h3>
     <p>
       The agents by machine, with status (idle, working, waiting, paused,
-      offline or error), host (a link to its row on the Hosts page), folder,
+      offline or error), Spend · Context (its spend today, of its daily cap,
+      and its context with the share of its compaction threshold; a link to
+      the Costs tab), host (a link to its row on the Hosts page), folder,
       session and times. A waiting agent has an ask open in the Inbox; a
       paused one's tooltip says who paused it: you, Stop All or its daily cost
       cap. An
@@ -924,6 +938,21 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       who started each, its state, times, cost, result (a click anywhere in a
       long one's cell shows it whole) and why one failed or was skipped. A
       failed run's session is kept; Delete Session removes it.
+    </p>
+
+    <h3 id="web-costs">
+      <span class="n">{{ sec['web-costs'].n }}</span>
+      {{ sec['web-costs'].label }}
+    </h3>
+    <p>
+      Every agent's spend today and in total (every day it ran, also past
+      <code>history_days</code>), its daily cap with a bar of the share spent
+      and what is left today, and its context with its compaction threshold
+      (<code>compact_at</code> for its model) and a bar of the share used:
+      amber from 75%, red from 100%. The page follows each model step: it
+      refreshes every 5 seconds. Days shows an agent's spend per day, newest
+      first; the day is the server's (its zone is above the table). An
+      agent's ID leads to its row on the Agents tab.
     </p>
 
     <h3 id="web-history">
@@ -1070,7 +1099,8 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
           <td>50% max 500000</td>
           <td>
             compact a session between turns past this context size: tokens, a
-            share of the model's window, or off
+            share of the model's window, or off; the agent is told first, in a
+            prompt of its own
           </td>
         </tr>
         <tr>

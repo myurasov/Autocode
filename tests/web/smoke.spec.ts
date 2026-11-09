@@ -228,6 +228,7 @@ const LOADED: Record<string, string> = {
   Locks: "table.locks tr[data-lock]",
   Wakes: "table.wakes tr[data-wake]",
   Jobs: "table.jobs tr[data-job]",
+  Costs: "table.costs tr[data-agent]",
   History: "table.history tr[data-entry]",
   Settings: "table.settings tr[data-key]",
   Help: "article h2",
@@ -254,6 +255,7 @@ test("admin: Agents shows smoke:agent under machine smoke, Hosts its host", asyn
     "Locks",
     "Wakes",
     "Jobs",
+    "Costs",
     "History",
     "Settings",
     "Help",
@@ -1946,6 +1948,63 @@ test("Settings: a mode's Agent… lists the agents and saves agent:<id>", async 
   }
 })
 
+// Tier 0g (the owner, 2026-11-08): the Costs tab follows a model step live
+// (no reload); Days shows the spend per day; the Agents tab's column too.
+test("Costs: spend and context live, an agent's days, and the Agents column", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const step = (usd: number, context: number) =>
+    api.post("/v1/hosts/smoke:host:1/events", {
+      headers: bearer(consumer),
+      data: {
+        instance: "i1",
+        events: [
+          {
+            type: "cost",
+            session: "ses_smoke1",
+            usd,
+            context,
+            limit: 200_000,
+            model: "fake/main",
+          },
+        ],
+      },
+    })
+  try {
+    await signIn(page, admin)
+    await openTab(page, "Costs")
+    const row = page.locator('table.costs tr[data-agent="smoke:agent"]')
+    await expect(row.locator("td.agent")).toHaveText("smoke:agent")
+    const before = Number(
+      (await row.locator("td.total").innerText()).replace(/[$,]/g, ""),
+    )
+    expect((await step(0.25, 60_000)).ok()).toBe(true)
+    // within one refresh (5 s), without a reload
+    await expect(row.locator("td.total")).toHaveText(
+      `$${(before + 0.25).toFixed(2)}`,
+      { timeout: 8000 },
+    )
+    await expect(row.locator("td.context")).toHaveText("60,000 of 200,000")
+    await expect(row.locator("td.threshold")).toHaveText("100,000 60.0%")
+    await row.getByRole("button", { name: "Days", exact: true }).click()
+    const days = page.locator('tr.days[data-agent="smoke:agent"]')
+    await expect(
+      days.locator("table.cost-days tbody tr").first(),
+    ).toContainText("$")
+    await openTab(page, "Agents")
+    const spend = page.locator('tr[data-agent="smoke:agent"] td.spend')
+    await expect(spend.locator(".context")).toHaveText("60,000 · 60.0%")
+    // the ID column keeps room for the ID's parts (not two letters a line)
+    const id = await page
+      .locator('tr[data-agent="smoke:agent"] td.id')
+      .boundingBox()
+    expect(id!.width).toBeGreaterThanOrEqual(112)
+  } finally {
+    await api.dispose()
+  }
+})
+
 // What the plugin reports when smoke:agent's turn asks something (tier 0d):
 // the question tool's form, or a permission prompt.
 async function openAsk(api: APIRequestContext, event: Record<string, unknown>) {
@@ -2540,6 +2599,7 @@ for (const width of [1280]) {
       "Locks",
       "Wakes",
       "Jobs",
+      "Costs",
       "History",
       "Settings",
       "Help",
@@ -2567,6 +2627,7 @@ test("layout: at 1024 px a wide page scrolls inside the frame", async ({
     "Locks",
     "Wakes",
     "Jobs",
+    "Costs",
     "History",
     "Settings",
     "Help",

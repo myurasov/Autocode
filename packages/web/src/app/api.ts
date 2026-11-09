@@ -57,6 +57,49 @@ export interface Agent {
   last_outcome?: string | null;
   // While its turns fail (also when paused or offline).
   error?: AgentError | null;
+  // Its spend and context (tier 0g; the owner's view only).
+  cost?: CostNumbers;
+}
+
+/*
+ * An agent's spend and context (tier 0g): today and in total, the daily cap
+ * and what is left of it today, the last step's context, the model's window,
+ * the compaction threshold in tokens and the context's share of it (a
+ * percentage); null where there is none.
+ */
+export interface CostNumbers {
+  today_usd: number;
+  total_usd: number;
+  daily_usd: number | 'off';
+  left_usd: number | null;
+  context: number | null;
+  context_limit: number | null;
+  compact_at: number | null;
+  context_share: number | null;
+}
+
+// One agent on the Costs page.
+export interface AgentCost extends CostNumbers {
+  agent: string;
+  status: string;
+  machine?: string;
+}
+
+// Every agent's spend, today's date and the zone days are counted in.
+export interface CostsView {
+  day: string;
+  timezone: string;
+  agents: AgentCost[];
+}
+
+// One agent's spend per day, newest first.
+export interface CostDays {
+  agent: string;
+  registered: boolean;
+  day: string;
+  timezone: string;
+  cost: CostNumbers;
+  days: { day: string; usd: number; steps: number }[];
 }
 
 /*
@@ -513,6 +556,18 @@ export class Api {
   }
 
   // Every lock, or those whose names match a pattern (gpu-*, a,b:*).
+  // Every agent's spend and context (tier 0g).
+  costs(): Promise<CostsView> {
+    return this.call(this.http.get<CostsView>('/v1/costs'));
+  }
+
+  // One agent's spend per day (tier 0g).
+  costDays(agent: string): Promise<CostDays> {
+    return this.call(
+      this.http.get<CostDays>(`/v1/costs/${encodeURIComponent(agent)}`),
+    );
+  }
+
   async locks(match?: string): Promise<Lock[]> {
     const params = match?.trim()
       ? new HttpParams().set('match', match.trim())

@@ -46,9 +46,10 @@ const CONTENTS = [
   ['5.5', 'Locks'],
   ['5.6', 'Wakes'],
   ['5.7', 'Jobs'],
-  ['5.8', 'History'],
-  ['5.9', 'Settings'],
-  ['5.10', 'Help'],
+  ['5.8', 'Costs'],
+  ['5.9', 'History'],
+  ['5.10', 'Settings'],
+  ['5.11', 'Help'],
   ['6', 'Settings'],
   ['7', 'Troubleshooting'],
 ];
@@ -460,6 +461,27 @@ describe('HelpPage', () => {
       ['release', does('autocode locks release NAME AGENT')],
     ])
       expect(words, where).not.toMatch(/\bline\b/);
+  });
+
+  // Tier 0g (the owner, 2026-11-08).
+  it('explains spend and context: the Costs tab, the Agents column, the CLI and the notice before a compaction', async () => {
+    const page = await open();
+    const costs = section(page, 'web-costs');
+    for (const part of [
+      'spend today',
+      'in total',
+      'daily cap',
+      'left today',
+      'compaction threshold',
+      'every 5 seconds',
+      'Days',
+    ])
+      expect(costs).toContain(part);
+    expect(section(page, 'web-agents')).toContain('Spend · Context');
+    expect(section(page, 'commands')).toContain('autocode costs [AGENT]');
+    const sees = section(page, 'sees');
+    expect(sees).toContain('[autocode] compaction next');
+    expect(sees).toContain('a stable state');
   });
 
   it('tells what the History tab shows, its filters and Older', async () => {

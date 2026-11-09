@@ -49,9 +49,10 @@ const LIST = [
   { id: 'web-locks', n: '5.5', label: 'Locks', sub: true },
   { id: 'web-wakes', n: '5.6', label: 'Wakes', sub: true },
   { id: 'web-jobs', n: '5.7', label: 'Jobs', sub: true },
-  { id: 'web-history', n: '5.8', label: 'History', sub: true },
-  { id: 'web-settings', n: '5.9', label: 'Settings', sub: true },
-  { id: 'web-help', n: '5.10', label: 'Help', sub: true },
+  { id: 'web-costs', n: '5.8', label: 'Costs', sub: true },
+  { id: 'web-history', n: '5.9', label: 'History', sub: true },
+  { id: 'web-settings', n: '5.10', label: 'Settings', sub: true },
+  { id: 'web-help', n: '5.11', label: 'Help', sub: true },
   { id: 'settings', n: '6', label: 'Settings' },
   { id: 'trouble', n: '7', label: 'Troubleshooting' },
 ] as const;

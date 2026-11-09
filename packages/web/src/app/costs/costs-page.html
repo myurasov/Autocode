@@ -1,0 +1,153 @@
+<!--
+  The Costs page: Refresh (a failed load's message beside it); what day it is
+  and in which zone; every agent's spend today, its daily cap (a bar of the
+  share spent), what is left today, its total, its context and the compaction
+  threshold (a bar of the share used), Days for its spend per day; and when
+  the list last loaded.
+-->
+
+<div class="toolbar">
+  <button type="button" (click)="refresh()">Refresh</button>
+  <span class="result">
+    @if (error()) {
+      <span class="errmsg" role="alert">{{ error() }}</span>
+    }
+  </span>
+</div>
+
+@if (view(); as v) {
+  <p class="day muted">
+    Today is {{ v.day }} ({{ v.timezone }}); the totals count every day.
+  </p>
+}
+
+<table class="costs">
+  <thead>
+    <tr>
+      <th>Agent</th>
+      <th>Status</th>
+      <th class="num">Today</th>
+      <th>Daily Cap</th>
+      <th class="num">Left Today</th>
+      <th class="num">Total</th>
+      <th>Context</th>
+      <th>Compaction At</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (a of view()?.agents ?? []; track a.agent) {
+      <tr [attr.data-agent]="a.agent">
+        <td class="agent id-like"><app-agent-link [id]="a.agent" /></td>
+        <td class="status">{{ a.status }}</td>
+        <td class="num today">{{ costText(a.today_usd) }}</td>
+        <td class="cap">
+          @if (a.daily_usd === 'off') {
+            <span class="muted">off</span>
+          } @else {
+            {{ costText(a.daily_usd) }}
+            @if (capShare(a); as share) {
+              <span class="share"> {{ shareText(share) }}</span>
+              <span class="bar" [class.near]="share >= 75" [class.over]="share >= 100"
+                ><span [style.width]="width(share)"></span
+              ></span>
+            } @else {
+              <span class="share"> {{ shareText(0) }}</span>
+              <span class="bar"><span style="width: 0%"></span></span>
+            }
+          }
+        </td>
+        <td class="num left">
+          @if (a.left_usd === null) {
+            <span class="muted">—</span>
+          } @else {
+            {{ costText(a.left_usd) }}
+          }
+        </td>
+        <td class="num total">{{ costText(a.total_usd) }}</td>
+        <td class="context">
+          @if (a.context === null) {
+            <span class="muted">—</span>
+          } @else {
+            {{ tokensText(a.context) }}
+            @if (a.context_limit) {
+              of {{ tokensText(a.context_limit) }}
+            }
+          }
+        </td>
+        <td class="threshold">
+          @if (a.compact_at === null) {
+            <span class="muted">—</span>
+          } @else {
+            {{ tokensText(a.compact_at) }}
+            @if (a.context_share !== null) {
+              <span class="share"> {{ shareText(a.context_share) }}</span>
+              <span
+                class="bar"
+                [class.near]="a.context_share >= 75"
+                [class.over]="a.context_share >= 100"
+                ><span [style.width]="width(a.context_share)"></span
+              ></span>
+            }
+          }
+        </td>
+        <td class="actions">
+          <button
+            type="button"
+            class="days small"
+            [attr.aria-expanded]="open() === a.agent"
+            (click)="toggle(a.agent)"
+          >
+            Days
+          </button>
+        </td>
+      </tr>
+      @if (open() === a.agent) {
+        <tr class="days" [attr.data-agent]="a.agent">
+          <td colspan="9">
+            @if (daysError()) {
+              <span class="errmsg" role="alert">{{ daysError() }}</span>
+            } @else if (days(); as d) {
+              @if (d.days.length) {
+                <table class="cost-days">
+                  <thead>
+                    <tr>
+                      <th>Day</th>
+                      <th class="num">Spend</th>
+                      <th class="num">Steps</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (x of d.days; track x.day) {
+                      <tr>
+                        <td>{{ x.day }}</td>
+                        <td class="num">{{ costText(x.usd) }}</td>
+                        <td class="num">{{ x.steps }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              } @else {
+                <span class="muted">No spend kept for {{ a.agent }}.</span>
+              }
+            } @else {
+              <span class="muted">Loading...</span>
+            }
+          </td>
+        </tr>
+      }
+    } @empty {
+      <tr>
+        <td class="muted" colspan="9">
+          @if (!view()) {
+            Loading...
+          } @else {
+            No agents are registered.
+          }
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<footer class="muted"><app-updated [at]="updatedAt()" /></footer>

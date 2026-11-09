@@ -311,6 +311,14 @@ td.id.id-like,
 td.session.id-like {
   line-break: anywhere;
 }
+/*
+ * The Agents table's ID column keeps room for an ID's parts (tier 0g: with
+ * the Spend · Context column it was squeezed to two letters a line at
+ * 1024 px; there the page scrolls inside the frame instead).
+ */
+table.agents td.id {
+  min-width: 7rem;
+}
 td.time > span {
   white-space: nowrap;
 }
@@ -440,6 +448,67 @@ table.inbox .ask-buttons input[type="text"] {
  * since when, Remove); a time wraps only between its date and its clock, and
  * how long from now stays whole.
  */
+/*
+ * The Costs page (tier 0g): amounts lined up on the right; a share as a thin
+ * bar under its number, amber from 75% and red from 100%; an agent's days in
+ * a small table under its row. The Agents page's Spend · Context: two short
+ * lines.
+ */
+table.costs td.num,
+table.costs th.num,
+table.cost-days td.num,
+table.cost-days th.num {
+  text-align: right;
+}
+table.costs td.cap,
+table.costs td.threshold,
+table.costs td.context {
+  white-space: nowrap;
+}
+table.costs .share {
+  color: var(--fg-dim);
+}
+table.costs .bar {
+  display: block;
+  height: 4px;
+  margin-top: 3px;
+  background: var(--soft);
+  border-radius: 2px;
+  overflow: hidden;
+}
+table.costs .bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+table.costs .bar.near > span {
+  background: var(--warn);
+}
+table.costs .bar.over > span {
+  background: var(--err);
+}
+table.costs tr.days > td {
+  background: var(--softer);
+}
+table.cost-days {
+  width: auto;
+  margin: 0.2rem 0;
+}
+td.spend a {
+  color: inherit;
+  text-decoration: none;
+}
+td.spend a:hover {
+  text-decoration: underline;
+}
+td.spend .today,
+td.spend .context {
+  display: block;
+  white-space: nowrap;
+}
+td.spend .context {
+  color: var(--fg-dim);
+}
 table.locks .grid {
   display: grid;
   grid-template-columns: auto auto auto;
@@ -769,13 +838,13 @@ label.check {
 
 /* phones: wrap rows, shrink chrome */
 /*
- * Under 900 px the tabs are narrower, so that all ten fit an 800 px window
- * (the Jobs tab made ten, 2026-11-07).
+ * Under 900 px the tabs are narrower, so that all eleven fit an 800 px window
+ * (the Jobs tab made ten, 2026-11-07; Costs eleven, 2026-11-08).
  */
 @media (max-width: 900px) {
   nav a {
-    padding-left: 0.7rem;
-    padding-right: 0.7rem;
+    padding-left: 0.55rem;
+    padding-right: 0.55rem;
   }
 }
 @media (max-width: 700px) {

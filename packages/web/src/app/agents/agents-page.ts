@@ -1,6 +1,8 @@
 /*
  * The Agents page: the agents (optionally filtered by an ID pattern) by
- * machine, with their hosts (links to the Hosts page), refreshed every 10 s;
+ * machine, with their hosts (links to the Hosts page), their spend today and
+ * the context's share of the compaction threshold (tier 0g; a link to the
+ * Costs page), refreshed every 10 s;
  * the agent a link led to (?agent=) highlighted and scrolled into view, a
  * filter that would hide it cleared, or a line that says it is not there.
  * An agent in the error state (its turns fail) shows its error type and how
@@ -20,13 +22,48 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { type Agent, type AgentError, Api, errorText } from '../api';
+import { RouterLink } from '@angular/router';
+import {
+  type Agent,
+  type AgentError,
+  Api,
+  type CostNumbers,
+  errorText,
+} from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
 import { localTime } from '../format';
 import { HostLink, highlightParam, scrollToHighlight } from '../links';
 import { Updated } from '../updated';
 
 export const REFRESH_MS = 10_000;
+
+// Tier 0g: spend today, of the cap when there is one ("$1.50 of $2.00").
+export function spendText(k: CostNumbers): string {
+  const today = `$${k.today_usd.toFixed(2)}`;
+  return k.daily_usd === 'off'
+    ? today
+    : `${today} of $${k.daily_usd.toFixed(2)}`;
+}
+
+// The context, and its share of the compaction threshold ("80,000 · 80.0%").
+export function contextText(k: CostNumbers): string {
+  if (k.context === null) return '—';
+  const tokens = k.context.toLocaleString('en-US');
+  return k.context_share === null
+    ? tokens
+    : `${tokens} · ${k.context_share.toFixed(1)}%`;
+}
+
+// The context's tooltip: the tokens and the threshold.
+export function contextTitle(k: CostNumbers): string {
+  if (k.context === null) return 'No model step yet';
+  const tokens = `${k.context.toLocaleString('en-US')} tokens`;
+  if (k.compact_at === null)
+    return `${tokens}; no compaction threshold (compact_at off)`;
+  const at = k.compact_at.toLocaleString('en-US');
+  return `${tokens}; compacted past ${at} (compact_at)`;
+}
+
 // How long after the last key the typed filter applies.
 export const FILTER_DELAY_MS = 1000;
 
@@ -97,7 +134,7 @@ function count(n: number, thing: string): string {
 
 @Component({
   selector: 'app-agents-page',
-  imports: [Breaks, HostLink, IdParts, TimeText, Updated],
+  imports: [Breaks, HostLink, IdParts, RouterLink, TimeText, Updated],
   templateUrl: './agents-page.html',
 })
 export class AgentsPage {
@@ -133,6 +170,9 @@ export class AgentsPage {
   protected readonly editing = signal<string | null>(null);
   protected readonly draft = signal('');
   protected readonly pausedText = pausedText;
+  protected readonly spendText = spendText;
+  protected readonly contextText = contextText;
+  protected readonly contextTitle = contextTitle;
   protected readonly errorTimes = errorTimes;
 
   // The agent a link led to, and the filter the list on show was loaded with.
