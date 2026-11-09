@@ -162,9 +162,11 @@ export class Costs {
 
   /*
    * compact_at in tokens for an agent whose model has this window: a number,
-   * a share of the window (with its own cap or MAX_COMPACT), or null (off).
-   * A share without a known window is its cap (the final review: a long
-   * session must not go without compaction because the window is unknown).
+   * a share of the window (at most its "max N" when it has one: the default
+   * is "50% max 500000"), or null (off). A share alone is that share, not
+   * capped (the owner, 2026-11-08: "90%" of a 1,000,000 window is 900,000).
+   * Without a known window a share is its max, or MAX_COMPACT (the final
+   * review: a long session must not go without compaction for want of it).
    */
   threshold(agent: string, window: number | null): number | null {
     const setting = this.values(agent).compact_at
@@ -173,9 +175,10 @@ export class Costs {
     if (typeof setting === "number") return setting
     const m = /^(\d+)%(?:\s+max\s+(\d+))?$/.exec(String(setting))
     if (!m) return null
-    const cap = m[2] ? Number(m[2]) : MAX_COMPACT
-    if (!window) return cap
-    return Math.min(Math.floor((window * Number(m[1])) / 100), cap)
+    const cap = m[2] ? Number(m[2]) : null
+    if (!window) return cap ?? MAX_COMPACT
+    const share = Math.floor((window * Number(m[1])) / 100)
+    return cap === null ? share : Math.min(share, cap)
   }
 
   // A model step of an agent's session (the plugin's cost event).

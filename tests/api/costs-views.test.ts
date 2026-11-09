@@ -100,6 +100,29 @@ describe("an agent's spend and context", () => {
     expect(cost).toMatchObject({ compact_at: null, context_share: null })
   })
 
+  // The owner, 2026-11-08: "90%" of a 1,000,000 window showed as 500K. A
+  // share alone is that share of the window; only "max N" caps it.
+  test("a share alone is that share of the window, not capped; max N caps it", async () => {
+    const big = { ...step(0.01, 300_000), limit: 1_000_000 }
+    await report(t, HOST, [big])
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { compact_at: "90%" } },
+    })
+    let cost = (await owner("GET", "/v1/agents/team:a")).body.agent.cost
+    expect(cost).toMatchObject({ compact_at: 900_000, context_share: 33.3 })
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { compact_at: "90% max 600000" } },
+    })
+    cost = (await owner("GET", "/v1/agents/team:a")).body.agent.cost
+    expect(cost.compact_at).toBe(600_000)
+    // the default keeps its own cap: 50% of 1,000,000, at most 500,000
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { compact_at: null } },
+    })
+    cost = (await owner("GET", "/v1/agents/team:a")).body.agent.cost
+    expect(cost.compact_at).toBe(500_000)
+  })
+
   test("what is left is never below zero", async () => {
     await owner("PATCH", "/v1/settings", {
       agents: { "team:a": { daily_usd: 1 } },

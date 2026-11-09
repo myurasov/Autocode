@@ -84,8 +84,8 @@ export const SETTINGS: Record<string, SettingDef> = {
     scope: "agent",
     default: "50% max 500000",
     help:
-      "compact between turns past this context size: " +
-      "tokens, a percentage of the window, or off",
+      "compact between turns past this context size: tokens, a " +
+      "percentage of the window (with max N, at most N tokens), or off",
   },
   check_timeout: {
     kind: "duration",

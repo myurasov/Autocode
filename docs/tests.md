@@ -1008,5 +1008,8 @@ in what it read.
   agent's row highlighted and scrolled to (`/costs?agent=`); the Costs tab has no Context column; the Agents tab's
   Context is now / its compaction threshold / the model's window in K and M (`854K/777K/1M`; without a threshold
   or a known window, the two there are; the exact tokens in the tooltip). Screenshots looked at.
+- **A share of the window was capped at 500,000** (the owner: "90%" for the dev agent showed 500K on Agents;
+  `costs-views.test.ts`, red, then green): only the default (`50% max 500000`) or a `max N` caps a share; `90%` of a
+  1,000,000 window is 900,000. The setting's help and Help say so.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

@@ -1101,8 +1101,9 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
           <td>50% max 500000</td>
           <td>
             compact a session between turns past this context size: tokens, a
-            share of the model's window, or off; the agent is told first, in a
-            prompt of its own
+            share of the model's window (<code>90%</code>; with
+            <code>max N</code>, at most N tokens), or off; the agent is told
+            first, in a prompt of its own
           </td>
         </tr>
         <tr>
