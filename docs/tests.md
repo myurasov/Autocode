@@ -938,4 +938,7 @@ and autonomously". Tests first (red, then green).
   `review-0b`, `agent-info`, `plugin-inprocess`, `plugin-asks`, `lock-tool`); the settings tests use `check_output`
   and `check_timeout` where they used `inline_limit`.
 - The agents suite's new scenario `reply`: the agent asks another agent, ends its turn, and acts on the reply that
-  comes in a prompt.
+  comes in a prompt. Its first run (`20261109T013012Z`, 56 of 63, $2.43) failed for all 7 models at the harness's own
+  step: the owner's answer set `reply_to` on a message between two agents, which the server rightly refuses (a reply
+  names a message its sender was part of). The answer now names the message in its text; `reply` alone then passed
+  for all 7 ($0.27). The other 8 scenarios passed for all 7 models (kimi-k3 too, after its earlier provider stalls).

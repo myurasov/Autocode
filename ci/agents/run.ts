@@ -773,8 +773,8 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
    * Phase 1 (the owner, 2026-11-08): a message comes only in a prompt. The
    * agent asks another agent (a second session of the same model, which only
    * registers, then is paused) and must end its turn to get the reply; the
-   * owner answers for it, as a reply to that message, which comes in a prompt
-   * that wakes the agent, and it writes the answer down.
+   * owner answers for it (naming the message), which comes in a prompt that
+   * wakes the agent, and it writes the answer down.
    */
   async reply(ctx) {
     const peer: Ctx = { ...(await prepare(ctx.m, `${ctx.scenario}-peer`)) }
@@ -802,10 +802,10 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
     if (read(ctx, "rate.txt") !== null)
       return "wrote rate.txt before the answer came"
     const waited = await idleTime(ctx)
+    // the owner may only reply to a message of its own: no reply_to here
     await ac("POST", "/v1/messages", {
       to: ctx.id,
-      text: `Answering for ${peer.id}: use 0.003.`,
-      reply_to: asked.id,
+      text: `Answering ${asked.id} for ${peer.id}: use 0.003.`,
     })
     await idleAfter(ctx, waited, "the turn the reply started")
     await ac("DELETE", `/v1/agents/${encodeURIComponent(peer.id)}`).catch(
