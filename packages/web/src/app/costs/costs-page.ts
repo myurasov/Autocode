@@ -15,6 +15,7 @@ import {
   type CostsView,
   errorText,
 } from '../api';
+import { dotClass } from '../format';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink } from '../links';
 import { Updated } from '../updated';
@@ -48,6 +49,7 @@ export class CostsPage {
   protected readonly days = signal<CostDays | null>(null);
   protected readonly daysError = signal('');
   protected readonly costText = costText;
+  protected readonly dotClass = dotClass;
   protected readonly shareText = shareText;
   protected readonly tokensText = tokensText;
 

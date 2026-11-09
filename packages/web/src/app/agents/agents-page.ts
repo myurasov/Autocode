@@ -31,7 +31,7 @@ import {
   errorText,
 } from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
-import { localTime } from '../format';
+import { dotClass, localTime } from '../format';
 import { HostLink, highlightParam, scrollToHighlight } from '../links';
 import { Updated } from '../updated';
 
@@ -170,6 +170,7 @@ export class AgentsPage {
   protected readonly editing = signal<string | null>(null);
   protected readonly draft = signal('');
   protected readonly pausedText = pausedText;
+  protected readonly dotClass = dotClass;
   protected readonly spendText = spendText;
   protected readonly contextText = contextText;
   protected readonly contextTitle = contextTitle;

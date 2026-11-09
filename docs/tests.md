@@ -919,6 +919,8 @@ compaction, agent should be told that it is coming next". Each behavior got a te
 - **e2e** (`costs.test.ts`): with real OpenCode, the notice reaches the model in a turn of its own before the
   compaction, then the wake; the owner's view says the threshold.
 - The owner's form titles (`details.panel > summary`) are padded 8 px (`smoke.spec.ts`).
+- The Costs tab's status has its dot, as on Agents (the owner, 2026-11-08; `costs-page.spec.ts` "shows each agent's
+  status with its dot", red, then green): one `dotClass` (`format.ts`) for both pages; screenshots looked at.
 
 ## Phase 1: Messages Through Injections (2026-11-08)
 

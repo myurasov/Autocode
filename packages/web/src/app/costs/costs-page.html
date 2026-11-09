@@ -1,6 +1,6 @@
 <!--
   The Costs page: Refresh (a failed load's message beside it); what day it is
-  and in which zone; every agent's spend today, its daily cap (a bar of the
+  and in which zone; every agent's status (its dot, as on Agents), spend today, its daily cap (a bar of the
   share spent), what is left today, its total, its context and the compaction
   threshold (a bar of the share used), Days for its spend per day; and when
   the list last loaded.
@@ -39,7 +39,9 @@
     @for (a of view()?.agents ?? []; track a.agent) {
       <tr [attr.data-agent]="a.agent">
         <td class="agent id-like"><app-agent-link [id]="a.agent" /></td>
-        <td class="status">{{ a.status }}</td>
+        <td class="status">
+          <span [class]="'dot ' + dotClass(a.status)"></span>{{ a.status }}
+        </td>
         <td class="num today">{{ costText(a.today_usd) }}</td>
         <td class="cap">
           @if (a.daily_usd === 'off') {

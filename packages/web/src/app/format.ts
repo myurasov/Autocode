@@ -1,9 +1,22 @@
 /*
- * How the pages show times, setting values, versions and long texts: times in
- * the viewer's own time zone, in AISee's format with the zone's short name;
- * on/off for switches; versions with a v; a long text folded to its first 200
- * characters.
+ * How the pages show times, setting values, versions, long texts and an
+ * agent's status: times in the viewer's own time zone, in AISee's format with
+ * the zone's short name; on/off for switches; versions with a v; a long text
+ * folded to its first 200 characters; a status's dot.
  */
+
+/*
+ * The color of an agent's status dot, the same on every tab: idle and working
+ * green (ok), paused amber (warn), offline red (off), error pink-red (err);
+ * any other status (waiting) the plain dot's amber.
+ */
+export function dotClass(status: string): string {
+  if (status === 'idle' || status === 'working') return 'ok';
+  if (status === 'paused') return 'warn';
+  if (status === 'offline') return 'off';
+  if (status === 'error') return 'err';
+  return '';
+}
 
 // An ISO time in the viewer's time zone (or the one given), like AISee plus
 // the zone: 28-Oct-26 03:00:00 PT.

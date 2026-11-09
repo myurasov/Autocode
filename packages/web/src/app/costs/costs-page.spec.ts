@@ -158,6 +158,38 @@ describe('CostsPage', () => {
     expect(days()).toBeNull();
   });
 
+  // The owner, 2026-11-08: the status with its dot, as on the other tabs.
+  it("shows each agent's status with its dot, as the Agents tab does", async () => {
+    const statuses = [
+      'idle',
+      'working',
+      'paused',
+      'offline',
+      'error',
+      'waiting',
+    ];
+    const page = await open({
+      ...view(),
+      agents: statuses.map((status) => ({
+        ...BASE,
+        agent: `s:${status}`,
+        status,
+      })),
+    });
+    const dot = (status: string) => [
+      ...row(page, `s:${status}`).querySelector('td.status .dot')!.classList,
+    ];
+    expect(statuses.map(dot)).toEqual([
+      ['dot', 'ok'],
+      ['dot', 'ok'],
+      ['dot', 'warn'],
+      ['dot', 'off'],
+      ['dot', 'err'],
+      ['dot'],
+    ]);
+    expect(cell(page, 's:working', 'status')).toBe('working');
+  });
+
   it('says when there are no agents', async () => {
     const page = await open({ ...view(), agents: [] });
     expect(text(page.querySelector('table.costs tbody'))).toBe(

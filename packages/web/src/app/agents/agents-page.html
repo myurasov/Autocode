@@ -116,13 +116,8 @@
             }
           </td>
           <td class="status" [attr.title]="pausedText(a) || null">
-            <span
-              class="dot"
-              [class.ok]="a.status === 'idle' || a.status === 'working'"
-              [class.warn]="a.status === 'paused'"
-              [class.off]="a.status === 'offline'"
-              [class.err]="a.status === 'error'"
-            ></span>{{ a.status }}
+            <span [class]="'dot ' + dotClass(a.status)"></span
+            >{{ a.status }}
             @if (a.error; as e) {
               <!-- What is going on: the error type, and its retries. -->
               <span class="error-detail muted" [title]="errorTimes(e)">
