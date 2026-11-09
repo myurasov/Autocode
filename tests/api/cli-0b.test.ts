@@ -534,3 +534,81 @@ describe("owner commands", () => {
     }
   })
 })
+
+// Tier 0g (the owner, 2026-11-08): each agent's spend and context in the CLI.
+describe("costs", () => {
+  const step = (session: string, usd: number, context: number) => ({
+    type: "cost",
+    session,
+    usd,
+    context,
+    limit: 200_000,
+    model: "fake/main",
+  })
+
+  test("costs: every agent's spend today and in total, its cap and what is left, its context and threshold", async () => {
+    await call(t.url, t.admin, "PATCH", "/v1/settings", {
+      agents: {
+        "kaggle:lead": { daily_usd: 2, compact_at: "50% max 500000" },
+      },
+    })
+    await report(t, "m:1", [
+      step("ses_1", 0.5, 60_000),
+      step("ses_2", 0.25, 10_000),
+    ])
+    const res = await cli(["costs"], asAdmin())
+    expect(res.code, res.stderr).toBe(0)
+    const lines = res.stdout.trim().split("\n")
+    expect(lines[0]?.split(/\s+/)).toEqual([
+      "AGENT",
+      "STATUS",
+      "TODAY",
+      "CAP",
+      "LEFT",
+      "TOTAL",
+      "CONTEXT",
+      "THRESHOLD",
+      "SHARE",
+    ])
+    const lead = lines.find((l) => l.startsWith("kaggle:lead "))
+    expect(lead?.split(/\s+/)).toEqual([
+      "kaggle:lead",
+      "idle",
+      "$0.50",
+      "$2.00",
+      "$1.50",
+      "$0.50",
+      "60,000",
+      "100,000",
+      "60.0%",
+    ])
+    expect(res.stdout).toMatch(/kaggle:worker\s+idle\s+\$0\.25\s+off\s+—/)
+    expect(lines.at(-1)).toMatch(/^days in \S+; today \d{4}-\d\d-\d\d$/)
+    const json = JSON.parse((await cli(["costs", "--json"], asAdmin())).stdout)
+    expect(json.agents.map((a: any) => a.agent)).toContain("kaggle:lead")
+  })
+
+  test("costs AGENT: its numbers and its spend per day", async () => {
+    const res = await cli(["costs", "kaggle:lead"], asAdmin())
+    expect(res.code, res.stderr).toBe(0)
+    expect(res.stdout).toContain("kaggle:lead (registered)")
+    expect(res.stdout).toMatch(
+      /today \$\d+\.\d\d of \$2\.00 \(\$\d+\.\d\d left\); in total \$\d+\.\d\d/,
+    )
+    expect(res.stdout).toMatch(
+      /context 60,000 tokens of 200,000; threshold 100,000: 60\.0%/,
+    )
+    expect(res.stdout).toMatch(
+      /DAY\s+SPEND\s+STEPS\n\d{4}-\d\d-\d\d\s+\$0\.50\s+1/,
+    )
+    expect((await cli(["costs", "kaggle:none"], asAdmin())).code).toBe(1)
+  })
+
+  test("agents shows each agent's spend today and its context's share of the threshold", async () => {
+    const res = await cli(["agents"], asAdmin())
+    expect(res.stdout).toMatch(
+      /^ID\s+STATUS\s+MACHINE\s+TODAY\s+CONTEXT\s+LAST ACTIVE\s+DESCRIPTION$/m,
+    )
+    expect(res.stdout).toMatch(/kaggle:lead\s+idle\s+\S+\s+\$0\.50\s+60\.0%/)
+  })
+})

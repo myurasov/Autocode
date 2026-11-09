@@ -267,24 +267,9 @@ export async function runMe(
             ? `Unread messages: ${me.unread}. See autocode_message list.`
             : "Unread messages: none.",
         )
-      // spend today, the cap and the context (tier 0e)
-      if (me.cost) {
-        const k = me.cost
-        const cap =
-          k.daily_usd === "off"
-            ? "no daily cap"
-            : `your daily cap of $${Number(k.daily_usd).toFixed(2)}`
-        lines.push(
-          `Cost today: $${Number(k.today_usd).toFixed(2)} of ${cap}.` +
-            (k.context
-              ? ` Context: ${Number(k.context).toLocaleString("en-US")}` +
-                (k.context_limit
-                  ? ` of ${Number(k.context_limit).toLocaleString("en-US")}`
-                  : "") +
-                " tokens."
-              : ""),
-        )
-      }
+      // spend today and in total, the cap and what is left, the context and
+      // its share of the compaction threshold (tiers 0e, 0g)
+      if (me.cost) lines.push(costLine(me.cost))
       // open questions, permissions and approvals (tier 0d)
       if (me.asks?.length)
         lines.push(
@@ -655,6 +640,38 @@ function timing(w: any, c: Clock, working: boolean): string {
   }
   if (w.next) return `next ${when(w.next, c)}`
   return "no run ahead"
+}
+
+const dollars = (n: unknown) => `$${Number(n).toFixed(2)}`
+const tokens = (n: unknown) => Number(n).toLocaleString("en-US")
+
+// What status says of the agent's spend and context (tiers 0e, 0g).
+function costLine(k: any): string {
+  const capped = k.daily_usd !== "off" && k.daily_usd !== undefined
+  let line =
+    `Cost today: ${dollars(k.today_usd)}` +
+    (capped
+      ? ` of your daily cap of ${dollars(k.daily_usd)}` +
+        (k.left_usd !== undefined && k.left_usd !== null
+          ? ` (${dollars(k.left_usd)} left)`
+          : "")
+      : " (no daily cap)") +
+    (k.total_usd !== undefined ? `; in total ${dollars(k.total_usd)}` : "") +
+    "."
+  if (k.context) {
+    line += ` Context: ${tokens(k.context)} tokens`
+    if (k.context_limit) line += ` of the model's ${tokens(k.context_limit)}`
+    if (k.compact_at)
+      line +=
+        `; compacted past ${tokens(k.compact_at)} (compact_at)` +
+        (k.context_share !== null && k.context_share !== undefined
+          ? `: ${k.context_share}% of that`
+          : "")
+    else if (k.compact_at === null)
+      line += "; no compaction threshold (compact_at off)"
+    line += "."
+  }
+  return line
 }
 
 function setBy(w: any, me: any): string {

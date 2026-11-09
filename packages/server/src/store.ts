@@ -349,6 +349,23 @@ export const MIGRATIONS: string[] = [
   DELETE FROM settings WHERE scope = 'server'
     AND key IN ('tools', 'total_usd', 'keep_failed', 'restart_opencode');
   `,
+  /*
+   * 13 (tier 0g): each agent ID's spend in total, kept when its days are
+   * trimmed and when it unregisters; filled from the days kept so far. An
+   * agent told that a compaction comes next.
+   */
+  `
+  CREATE TABLE cost_totals (
+    agent_id TEXT PRIMARY KEY,
+    usd REAL NOT NULL DEFAULT 0,
+    steps INTEGER NOT NULL DEFAULT 0,
+    first_day TEXT NOT NULL
+  );
+  INSERT INTO cost_totals (agent_id, usd, steps, first_day)
+    SELECT agent_id, SUM(usd), SUM(steps), MIN(day) FROM costs
+    GROUP BY agent_id;
+  ALTER TABLE agents ADD COLUMN compact_notified INTEGER NOT NULL DEFAULT 0;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

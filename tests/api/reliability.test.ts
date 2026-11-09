@@ -3,9 +3,10 @@
  * step (cost events) add up per agent and day, in the server's zone;
  * daily_usd with a notice at cap_warn and a pause once the turn that passed
  * it ends (an inbox alert; the next day, a raised cap or a resume lifts it);
- * a session whose context passed compact_at is compacted before the next
- * injection, and autocode_me compact asks for one; a turn cut by a lost
- * OpenCode is resumed when the host is back; agents expire after
+ * a session whose context passed compact_at is told first (tier 0g: a
+ * "compaction next" prompt), then compacted when that turn ends, before the
+ * next injection; autocode_me compact asks for one (no notice); a turn cut
+ * by a lost OpenCode is resumed when the host is back; agents expire after
  * expire_after since their last turn; the background service is restarted
  * when its hosts stay offline.
  */
@@ -72,7 +73,7 @@ afterEach(() => t.stop())
 describe("costs", () => {
   test("steps add up per agent and day; /v1/me and the agent's view say them", async () => {
     await report(t, HOST, [step(0.25), step(0.5, 3000)])
-    expect((await agent()).cost).toEqual({
+    expect((await agent()).cost).toMatchObject({
       today_usd: 0.75,
       daily_usd: "off",
       context: 3000,
@@ -174,12 +175,37 @@ describe("the daily cap", () => {
 })
 
 describe("compaction", () => {
-  test("a session past compact_at is compacted before the next injection", async () => {
+  // Tier 0g (the owner, 2026-11-08): the agent is told first, so its work is
+  // in a stable state and nothing is lost; the compaction follows that turn.
+  test("a session past compact_at is told first, then compacted when that turn ends, before the next injection", async () => {
     await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
     await report(t, HOST, [step(0.01, 120_000)])
     await turnEnds()
     await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "every 1m" })
     t.clock.advance(MIN)
+    const notice = await sent()
+    expect(notice.map((i) => i.type)).toEqual(["inject"])
+    const text = notice[0].payload.text as string
+    expect(text).toStartWith("[autocode] compaction next\n\n")
+    expect(text).toContain("120,000 tokens")
+    expect(text).toContain("threshold of 100,000 (compact_at)")
+    expect(text).toContain(
+      "When this turn ends, Autocode compacts this session",
+    )
+    expect(text).toContain("stable state")
+    expect(text).toContain("write down in files")
+    // the wake waits for after the compaction
+    expect(text).not.toContain('wake "w"')
+    expect(
+      (await owner("GET", "/v1/history?kind=session.compact.noticed")).body
+        .history[0].data,
+    ).toMatchObject({ context: 120_000, limit: 100_000 })
+    // nothing more until that turn ends
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    t.clock.advance(MIN)
+    expect((await sent()).map((i) => i.type)).toEqual([])
+    await report(t, HOST, [step(0.01, 125_000)])
+    await turnEnds()
     const out = await sent()
     expect(out.map((i) => i.type)).toEqual(["compact"])
     expect(out[0].payload).toEqual({ session: "ses_a" })
@@ -191,7 +217,38 @@ describe("compaction", () => {
     expect((await prompts()).ses_a).toStartWith('[autocode] wake "w"')
     const h = (await owner("GET", "/v1/history?kind=session.compacted")).body
       .history
-    expect(h[0].data).toMatchObject({ context: 120_000, limit: 100_000 })
+    expect(h[0].data).toMatchObject({ context: 125_000, limit: 100_000 })
+  })
+
+  test("a notice no turn took (the session never started one) does not hold the compaction back", async () => {
+    await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
+    await report(t, HOST, [step(0.01, 120_000)])
+    await turnEnds()
+    await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "every 1m" })
+    t.clock.advance(MIN)
+    expect((await prompts()).ses_a).toStartWith("[autocode] compaction next")
+    // no turn.started: after the no-turn wait, the compaction goes
+    t.clock.advance(3 * MIN)
+    expect((await sent()).map((i) => i.type)).toEqual(["compact"])
+  })
+
+  test("below the threshold again (a raised compact_at), the notice is forgotten; past it later, a new one comes", async () => {
+    await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
+    await report(t, HOST, [step(0.01, 120_000)])
+    await turnEnds()
+    await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "every 1m" })
+    t.clock.advance(MIN)
+    expect((await prompts()).ses_a).toStartWith("[autocode] compaction next")
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await owner("PATCH", "/v1/settings", { server: { compact_at: "80%" } })
+    await turnEnds()
+    t.clock.advance(2000)
+    expect((await prompts()).ses_a).toStartWith('[autocode] wake "w"')
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await report(t, HOST, [step(0.01, 170_000)])
+    await turnEnds()
+    t.clock.advance(MIN)
+    expect((await prompts()).ses_a).toStartWith("[autocode] compaction next")
   })
 
   test("a number of tokens, off, and the cap of 500,000", async () => {
@@ -203,7 +260,7 @@ describe("compaction", () => {
     expect((await sent()).map((i) => i.type)).toEqual(["inject"])
   })
 
-  test("autocode_me compact: after the current turn", async () => {
+  test("autocode_me compact: after the current turn, with no notice", async () => {
     await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
     const res = await as(a, "POST", "/v1/me/compact")
     expect(res.status).toBe(200)
@@ -261,6 +318,10 @@ describe("review of 0e", () => {
     await turnEnds()
     await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "every 1m" })
     t.clock.advance(MIN)
+    // the notice's turn, then the compaction
+    expect((await prompts()).ses_a).toStartWith("[autocode] compaction next")
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await turnEnds()
     expect((await sent()).map((i) => i.type)).toEqual(["compact"])
     // the compaction's step reads the whole old conversation
     await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])

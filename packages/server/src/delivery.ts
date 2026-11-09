@@ -20,6 +20,7 @@ import {
   resolveSettings,
   type Trigger,
 } from "@autocode/shared"
+import type { CompactDue } from "./costs.ts"
 import type { History } from "./history.ts"
 import type { Hosts } from "./hosts.ts"
 import type { Loader } from "./loader.ts"
@@ -77,8 +78,10 @@ export class Delivery {
    * cut turn (set by the server once its Costs exist).
    */
   costs?: {
-    compactDue(agent: string): { context: number; limit: number } | null
-    compacted(agent: string, due: { context: number; limit: number }): void
+    compactDue(agent: string): CompactDue | null
+    compacted(agent: string, due: CompactDue): void
+    compactNotice(due: CompactDue): { header: string; text: string }
+    compactNoticed(agent: string, due: CompactDue): void
     injected(agent: string): void
     resumeNote(agent: string): { header: string; text: string } | null
     resumed(agent: string): void
@@ -177,12 +180,13 @@ export class Delivery {
             .all() as { agent_id: string }[]
         ).map((r) => r.agent_id),
         ...this.retries.due(),
-        // a cut turn to resume, a compaction asked for (tier 0e)
+        // a cut turn to resume, a compaction asked for (tier 0e) or told
+        // of (tier 0g)
         ...(
           this.db
             .query(
               "SELECT id FROM agents WHERE cut_at IS NOT NULL " +
-                "OR compact_wanted = 1 ORDER BY id",
+                "OR compact_wanted = 1 OR compact_notified = 1 ORDER BY id",
             )
             .all() as { id: string }[]
         ).map((r) => r.id),
@@ -384,8 +388,19 @@ export class Delivery {
     const values = this.values(agent)
     const now = this.now()
     // A context past compact_at (or a compaction asked for) is compacted
-    // first: a turn of its own; what waits goes after it (tier 0e).
+    // first: a turn of its own; what waits goes after it (tier 0e). Past
+    // compact_at the agent is told first, in a prompt of its own (tier 0g):
+    // the compaction goes when that turn ends.
     const due = this.costs?.compactDue(agent)
+    if (due && !due.notified) {
+      this.inject(row, [], values, {
+        n: 0,
+        of: 0,
+        ...this.costs!.compactNotice(due),
+      })
+      this.costs!.compactNoticed(agent, due)
+      return
+    }
     if (due) {
       this.hosts.enqueue(row.host_id, "compact", { session: row.session_id })
       this.costs!.compacted(agent, due)

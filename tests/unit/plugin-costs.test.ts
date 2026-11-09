@@ -91,14 +91,50 @@ describe("autocode_me compact and status", () => {
       unread: 0,
       cost: {
         today_usd: 0.4567,
+        total_usd: 12.3456,
         daily_usd: 2,
+        left_usd: 1.5433,
         context: 53_200,
         context_limit: 200_000,
+        compact_at: 100_000,
+        context_share: 53.2,
+      },
+    })
+    // tier 0g: the total, what is left, and the share of the threshold
+    expect(await runMe({ action: "status" }, call as any)).toContain(
+      "Cost today: $0.46 of your daily cap of $2.00 ($1.54 left); in total " +
+        "$12.35. Context: 53,200 tokens of the model's 200,000; compacted " +
+        "past 100,000 (compact_at): 53.2% of that.",
+    )
+  })
+
+  test("status without a cap, a known window or a threshold", async () => {
+    const call = async () => ({
+      registered: true,
+      session: "ses_a",
+      agent: { id: "team:a", status: "idle", machine: "m1" },
+      server: {
+        id: "s",
+        time: "2026-10-28T12:00:00.000Z",
+        timezone: "America/Los_Angeles",
+      },
+      settings: { min_interval: "1m" },
+      wakes: { count: 0, next: null },
+      unread: 0,
+      cost: {
+        today_usd: 0.1,
+        total_usd: 0.1,
+        daily_usd: "off",
+        left_usd: null,
+        context: 9000,
+        context_limit: null,
+        compact_at: null,
+        context_share: null,
       },
     })
     expect(await runMe({ action: "status" }, call as any)).toContain(
-      "Cost today: $0.46 of your daily cap of $2.00. Context: 53,200 of " +
-        "200,000 tokens.",
+      "Cost today: $0.10 (no daily cap); in total $0.10. Context: 9,000 " +
+        "tokens; no compaction threshold (compact_at off).",
     )
   })
 })
@@ -123,8 +159,18 @@ describe("the guide's costs part", () => {
       "autocode_me action=compact",
       "keep your working state in files",
       "`expire_after`",
+      // tier 0g: the notice before a compaction, and the numbers in status
+      "`[autocode] compaction next`",
+      "bring your work to a stable state",
+      "in total",
+      "what is left",
+      "its share",
     ])
       expect(part, answer).toContain(answer)
+    // the prompt list names the notice too
+    expect(guideText(facts).replace(/\s+/g, " ")).toContain(
+      "`[autocode] compaction next`: your session is compacted when this turn",
+    )
     expect(guideText(facts)).toContain("## Costs and Context")
     expect(guideText(facts).replace(/\s+/g, " ")).toContain(
       "`[autocode] resume`",

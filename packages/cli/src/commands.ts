@@ -116,10 +116,20 @@ export async function agents(args: Parsed): Promise<number> {
             a.id,
             a.status,
             a.machine,
+            a.cost ? dollars(a.cost.today_usd) : "",
+            a.cost ? share(a.cost.context_share) : "",
             local(a.last_active),
             a.description,
           ]),
-          ["ID", "STATUS", "MACHINE", "LAST ACTIVE", "DESCRIPTION"],
+          [
+            "ID",
+            "STATUS",
+            "MACHINE",
+            "TODAY",
+            "CONTEXT",
+            "LAST ACTIVE",
+            "DESCRIPTION",
+          ],
         )
       : table(
           res.agents.map((a: any) => [
@@ -287,6 +297,92 @@ export async function settings(args: Parsed): Promise<number> {
       )
     return lines.join("\n")
   })
+  return 0
+}
+
+// Tier 0g: money to the cent, tokens with separators, a share to a tenth.
+const dollars = (n: unknown) => `$${Number(n).toFixed(2)}`
+const tokens = (n: unknown) =>
+  n === null || n === undefined ? "—" : Number(n).toLocaleString("en-US")
+const share = (n: unknown) =>
+  n === null || n === undefined ? "—" : `${Number(n).toFixed(1)}%`
+const cap = (k: any) => (k.daily_usd === "off" ? "off" : dollars(k.daily_usd))
+const left = (k: any) => (k.left_usd === null ? "—" : dollars(k.left_usd))
+
+/*
+ * Every agent's spend today and in total, its daily cap and what is left of
+ * it, its context and its compaction threshold with the share used (tier 0g);
+ * `costs AGENT`: one agent's, with its spend per day.
+ */
+export async function costs(args: Parsed): Promise<number> {
+  const [agent] = args.words
+  const c = connect(args)
+  if (agent) {
+    const res = await c.call("GET", `/v1/costs/${encodeURIComponent(agent)}`)
+    const k = res.cost
+    print(args, res, () =>
+      [
+        `${res.agent} (${res.registered ? "registered" : "not registered"})`,
+        `today ${dollars(k.today_usd)}` +
+          (k.daily_usd === "off"
+            ? " (no daily cap)"
+            : ` of ${cap(k)} (${left(k)} left)`) +
+          `; in total ${dollars(k.total_usd)}`,
+        k.context === null
+          ? "context unknown yet"
+          : `context ${tokens(k.context)} tokens` +
+            (k.context_limit ? ` of ${tokens(k.context_limit)}` : "") +
+            (k.compact_at
+              ? `; threshold ${tokens(k.compact_at)}: ${share(k.context_share)}`
+              : "; no compaction threshold"),
+        "",
+        res.days.length
+          ? table(
+              res.days.map((d: any) => [
+                d.day,
+                dollars(d.usd),
+                String(d.steps),
+              ]),
+              ["DAY", "SPEND", "STEPS"],
+            )
+          : "no spend kept",
+        `days in ${res.timezone}`,
+      ].join("\n"),
+    )
+    return 0
+  }
+  const res = await c.call("GET", "/v1/costs")
+  print(args, res, () =>
+    [
+      res.agents.length
+        ? table(
+            res.agents.map((a: any) => [
+              a.agent,
+              a.status,
+              dollars(a.today_usd),
+              cap(a),
+              left(a),
+              dollars(a.total_usd),
+              tokens(a.context),
+              tokens(a.compact_at),
+              share(a.context_share),
+            ]),
+            [
+              "AGENT",
+              "STATUS",
+              "TODAY",
+              "CAP",
+              "LEFT",
+              "TOTAL",
+              "CONTEXT",
+              "THRESHOLD",
+              "SHARE",
+            ],
+          )
+        : "no agents",
+      `days in ${res.timezone}; today ${res.day}`,
+    ].join("\n"),
+  )
   return 0
 }
 

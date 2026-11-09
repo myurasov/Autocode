@@ -15,7 +15,15 @@ import {
   VERSION,
 } from "@autocode/shared"
 import { CliError, type Parsed, parseArgs } from "./args.ts"
-import { agents, history, hosts, info, settings, token } from "./commands.ts"
+import {
+  agents,
+  costs,
+  history,
+  hosts,
+  info,
+  settings,
+  token,
+} from "./commands.ts"
 import { autocodeHome, inAgentShell } from "./connect.ts"
 import webFiles from "./generated/web.ts"
 import { install, uninstall } from "./install.ts"
@@ -49,7 +57,8 @@ owner:
       [--admin-token T] [--opencode-config-dir DIR]
   plugin uninstall [--opencode-config-dir DIR]
   info                                   the server's ID and version
-  agents [PATTERN] | agents rm AGENT     list agents, or unregister one
+  agents [PATTERN] | agents rm AGENT     list agents (spend today, context
+                                         share), or unregister one
   agents register AGENT --session SES [--force]
                                          bind an ID to a session
                                          (--force moves it from a live one)
@@ -59,6 +68,9 @@ owner:
   settings [--agent ID] | settings set|unset KEY [VALUE]
       [--agent ID | --match PATTERN]
   history [--agent ID] [--kind KIND] [--since TIME] [--limit N]
+  costs [AGENT]                          every agent's spend (today, total),
+                                         cap, what is left, context and its
+                                         compaction threshold; one agent's days
   inbox [--all] | inbox close ID         the owner's inbox
   answer ID TEXT...                      answer a message, question, permission
                                          (once|always|reject) or approval
@@ -211,6 +223,8 @@ async function main(argv: string[]): Promise<number> {
       return settings(args)
     case "history":
       return history(args)
+    case "costs":
+      return costs(args)
     case "me":
       return me(args)
     case "wakes":

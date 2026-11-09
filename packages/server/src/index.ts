@@ -795,6 +795,47 @@ export async function startServer(
         }
       },
     },
+    // Tier 0g: every agent's spend and context, and one agent's days.
+    {
+      method: "GET",
+      path: "/v1/costs",
+      access: ["admin", "consumer"],
+      summary:
+        "every registered agent's spend (today, total), daily cap and what " +
+        "is left, context and its share of the compaction threshold (tier 0g)",
+      handler: () => ({
+        day: costs.day(),
+        timezone: tz(),
+        agents: agents.list(null, "owner").map((x) => ({
+          agent: x.id,
+          status: x.status,
+          machine: x.machine,
+          ...costs.view(x.id),
+        })),
+      }),
+    },
+    {
+      method: "GET",
+      path: "/v1/costs/:agent",
+      access: ["admin", "consumer"],
+      summary:
+        "one agent's spend and context, with its spend per day, newest first " +
+        "(also after it unregistered; tier 0g)",
+      handler: ({ params }) => {
+        const id = String(params.agent)
+        const registered = agents.list(null, "owner").some((x) => x.id === id)
+        if (!registered && !costs.known(id))
+          throw new AutocodeError("not_registered", `no agent ${id}`, 404)
+        return {
+          agent: id,
+          registered,
+          day: costs.day(),
+          timezone: tz(),
+          cost: costs.view(id),
+          days: costs.days(id),
+        }
+      },
+    },
     {
       method: "GET",
       path: "/v1/history/kinds",
