@@ -1,5 +1,5 @@
 <!--
-  The Costs page: the server's time in its zone (a clock), Refresh (a failed
+  The Costs page: Refresh, the server's time in its zone (a clock; a failed
   load's message beside it); the Agent filter (a pattern, in the address); every
   agent's status (its dot, as on Agents; unregistered ones with spend too,
   marked), spend
@@ -10,13 +10,13 @@
 -->
 
 <div class="toolbar">
+  <button type="button" (click)="applyMatch()">Refresh</button>
   <!-- The server's time in its zone, a second at a time (the owner). -->
   @if (clock(); as c) {
     <span class="clock" [title]="'The server\'s time (' + view()?.timezone + ')'"
       >{{ c }}</span
     >
   }
-  <button type="button" (click)="applyMatch()">Refresh</button>
   <span class="result">
     @if (error()) {
       <span class="errmsg" role="alert">{{ error() }}</span>

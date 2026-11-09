@@ -482,7 +482,7 @@ describe('HelpPage', () => {
       'unregistered',
       'Agent filters by an ID pattern',
       'the total of what is listed',
-      'its clock, in its zone, is left of Refresh',
+      'its clock, in its zone, is right of Refresh',
     ])
       expect(costs).toContain(part);
     const agents = section(page, 'web-agents');

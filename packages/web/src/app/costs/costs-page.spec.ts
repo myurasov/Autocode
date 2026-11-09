@@ -152,12 +152,12 @@ describe('CostsPage', () => {
         .querySelector('td.agent a')!
         .getAttribute('href'),
     ).toBe('/agents?agent=kaggle:lead');
-    // the server's time in its zone, left of Refresh (the owner, 2026-11-08)
+    // the server's time in its zone, right of Refresh (the owner, 2026-11-08)
     const toolbar = page.querySelector('.toolbar')!;
-    const clock = toolbar.firstElementChild!;
+    expect(text(toolbar.firstElementChild)).toBe('Refresh');
+    const clock = toolbar.firstElementChild!.nextElementSibling!;
     expect(clock.classList).toContain('clock');
     expect(text(clock)).toBe('17:02:03 Nov 8 2026 PST');
-    expect(text(clock.nextElementSibling)).toBe('Refresh');
     expect(page.querySelector('p.day')).toBeNull();
     expect(text(page.querySelector('footer'))).toBe('Updated 0s ago.');
   });

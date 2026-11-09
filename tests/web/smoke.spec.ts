@@ -1992,10 +1992,17 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
       "style",
       /width: 60%/,
     )
-    // the server's time, left of Refresh (the owner, 2026-11-08)
+    // the server's time, right of Refresh (the owner, 2026-11-08)
     await expect(page.locator(".toolbar .clock")).toHaveText(
       /^\d\d:\d\d:\d\d [A-Z][a-z]{2} \d{1,2} \d{4} [A-Z][A-Z0-9+-]{1,5}$/,
     )
+    const [refresh, clock] = [
+      await page
+        .locator(".toolbar button", { hasText: "Refresh" })
+        .boundingBox(),
+      await page.locator(".toolbar .clock").boundingBox(),
+    ]
+    expect(clock!.x).toBeGreaterThan(refresh!.x + refresh!.width)
     // the totals row and the Agent filter (the owner, 2026-11-08)
     await expect(page.locator("table.costs tfoot tr.totals")).toContainText(
       "Total (",
