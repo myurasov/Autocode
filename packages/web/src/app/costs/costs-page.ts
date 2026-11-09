@@ -24,7 +24,7 @@ import {
   type CostsView,
   errorText,
 } from '../api';
-import { clockText, dotClass } from '../format';
+import { clockText, dayText, dotClass } from '../format';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { Updated } from '../updated';
@@ -88,6 +88,7 @@ export class CostsPage {
   protected readonly daysError = signal('');
   protected readonly costText = costText;
   protected readonly dotClass = dotClass;
+  protected readonly dayText = dayText;
   protected readonly shareText = shareText;
   protected readonly tokensText = tokensText;
 

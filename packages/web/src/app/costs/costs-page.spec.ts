@@ -145,12 +145,12 @@ describe('CostsPage', () => {
         .getAttribute('href'),
     ).toBe('/agents?agent=kaggle:lead');
     // when the data was read: the server's time in its zone, right of
-    // Refresh (the owner, 2026-11-08)
+    // Refresh (the owner, 2026-11-08), dated as every page (2026-11-09)
     const toolbar = page.querySelector('.toolbar')!;
     expect(text(toolbar.firstElementChild)).toBe('Refresh');
     const clock = toolbar.firstElementChild!.nextElementSibling!;
     expect(clock.classList).toContain('clock');
-    expect(text(clock)).toBe('Nov 8, 2026 17:02:03 PT');
+    expect(text(clock)).toBe('08-Nov-26 17:02:03 PT');
     expect(page.querySelector('p.day')).toBeNull();
     expect(text(page.querySelector('footer'))).toBe('Updated 0s ago.');
   });
@@ -179,7 +179,8 @@ describe('CostsPage', () => {
       [...days().querySelectorAll('table.cost-days tbody tr')].map((tr) =>
         [...tr.querySelectorAll('td')].map((td) => text(td)).join(' '),
       ),
-    ).toEqual(['2026-11-08 $1.50 30', '2026-11-07 $10.85 210']);
+      // days as 05-Nov-26 (the owner, 2026-11-09)
+    ).toEqual(['08-Nov-26 $1.50 30', '07-Nov-26 $10.85 210']);
     (
       row(page, 'kaggle:lead').querySelector('button.days') as HTMLElement
     ).click();
@@ -364,15 +365,15 @@ describe('CostsPage', () => {
       await vi.advanceTimersByTimeAsync(0);
       fixture.detectChanges();
       const clock = () => text(el(fixture).querySelector('.toolbar .clock'));
-      expect(clock()).toBe('Nov 8, 2026 17:02:03 PT');
+      expect(clock()).toBe('08-Nov-26 17:02:03 PT');
       await vi.advanceTimersByTimeAsync(2000);
       fixture.detectChanges();
-      expect(clock()).toBe('Nov 8, 2026 17:02:03 PT');
+      expect(clock()).toBe('08-Nov-26 17:02:03 PT');
       await vi.advanceTimersByTimeAsync(COSTS_REFRESH_MS - 2000);
       load({ ...view(), time: '2026-11-09T01:02:08.000Z' });
       await vi.advanceTimersByTimeAsync(0);
       fixture.detectChanges();
-      expect(clock()).toBe('Nov 8, 2026 17:02:08 PT');
+      expect(clock()).toBe('08-Nov-26 17:02:08 PT');
     } finally {
       fixture.destroy();
       vi.useRealTimers();

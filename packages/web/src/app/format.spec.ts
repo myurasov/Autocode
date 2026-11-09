@@ -4,7 +4,7 @@
  * folded to their first 200 characters.
  */
 
-import { folded, localTime, versionText } from './format';
+import { dayText, folded, localTime, versionText } from './format';
 
 describe('localTime', () => {
   it("shows a time in the viewer's zone, with the zone's name", () => {
@@ -30,6 +30,20 @@ describe('localTime', () => {
     expect(localTime('')).toBe('');
     expect(localTime(undefined)).toBe('');
     expect(localTime('soon')).toBe('soon');
+  });
+});
+
+// The owner, 2026-11-09: every date in the web UI as 05-Nov-26.
+describe('dayText', () => {
+  it('shows a day (YYYY-MM-DD) as 05-Nov-26, whatever the zone', () => {
+    expect(dayText('2026-11-05')).toBe('05-Nov-26');
+    expect(dayText('2026-12-31')).toBe('31-Dec-26');
+    expect(dayText('2027-01-01')).toBe('01-Jan-27');
+  });
+
+  it('leaves nothing and a bad day as they are', () => {
+    expect(dayText('')).toBe('');
+    expect(dayText('soon')).toBe('soon');
   });
 });
 

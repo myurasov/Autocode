@@ -2044,7 +2044,7 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
     // when the data was read, the server's time, right of Refresh (the
     // owner, 2026-11-08)
     await expect(page.locator(".toolbar .clock")).toHaveText(
-      /^[A-Z][a-z]{2} \d{1,2}, \d{4} \d\d:\d\d:\d\d [A-Z][A-Z0-9+-]{1,5}$/,
+      /^\d\d-[A-Z][a-z]{2}-\d\d \d\d:\d\d:\d\d [A-Z][A-Z0-9+-]{1,5}$/,
     )
     const [refresh, clock] = [
       await page
@@ -2067,6 +2067,10 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
     await expect(
       days.locator("table.cost-days tbody tr").first(),
     ).toContainText("$")
+    // its day as every date in the web UI: 05-Nov-26 (the owner, 2026-11-09)
+    await expect(
+      days.locator("table.cost-days tbody tr td").first(),
+    ).toHaveText(/^\d\d-[A-Z][a-z]{2}-\d\d$/)
     await openTab(page, "Agents")
     const agent = page.locator('tr[data-agent="smoke:agent"]')
     await expect(agent.locator("td.context")).toHaveText("60K/100K/200K")

@@ -1037,5 +1037,10 @@ in what it read.
   and its share on one line in their own spans; `smoke.spec.ts` layout, the share at the cell's right edge, the cap
   at its left, the bar to the right edge, at 1280 px with a cap set for the check). Then 150 px wide (the owner:
   "make td.cap width 150px"; the same smoke test, red at 189 px, then green; web 85); screenshots looked at.
+- **Every date as 05-Nov-26** (the owner, 2026-11-09: "wherever we have dates format it like 05-Nov-26 (on costs tab
+  its different rn)"; tests first, red, then green: `format.spec.ts` `dayText`, `costs-page.spec.ts` (the read time
+  `08-Nov-26 17:02:03 PT`, still the server's zone; the Days table `08-Nov-26`), `smoke.spec.ts` (both forms),
+  `help-page.spec.ts`). The other tabs already used `localTime` (`28-Oct-26 03:00:00 PT`); the Costs tab's read time
+  (`Nov 8, 2026 ...`) and its Days table (`2026-11-08`) were the two that differed.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

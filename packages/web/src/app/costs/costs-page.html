@@ -151,7 +151,7 @@
                   <tbody>
                     @for (x of d.days; track x.day) {
                       <tr>
-                        <td>{{ x.day }}</td>
+                        <td>{{ dayText(x.day) }}</td>
                         <td class="num">{{ costText(x.usd) }}</td>
                         <td class="num">{{ x.steps }}</td>
                       </tr>

@@ -1,9 +1,11 @@
 /*
  * How the pages show times, setting values, versions, long texts, an agent's
  * status, spend and context: times in the viewer's own time zone, in AISee's
- * format with the zone's short name; on/off for switches; versions with a v;
- * a long text folded to its first 200 characters; a status's dot; spend today
- * and in total; the context's share of its compaction threshold.
+ * format with the zone's short name (05-Nov-26 14:22:03 PT), and days as
+ * 05-Nov-26 (the owner, 2026-11-09: every date so); on/off for switches;
+ * versions with a v; a long text folded to its first 200 characters; a
+ * status's dot; spend today and in total; the context's share of its
+ * compaction threshold.
  */
 
 import type { CostNumbers } from './api';
@@ -119,29 +121,25 @@ export function localTime(
 }
 
 /*
- * A time in a zone (the owner, 2026-11-08: when the Costs tab's data was
- * read): "Nov 8, 2026 17:02:03 PT", the zone's generic short name (PT, not
- * PST or PDT), as the other pages' times.
+ * When the Costs tab's data was read, in the server's zone (the owner,
+ * 2026-11-08), dated as every page (2026-11-09): "08-Nov-26 17:02:03 PT".
  */
 export function clockText(at: number, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-    timeZoneName: 'shortGeneric',
-  }).formatToParts(new Date(at));
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((p) => p.type === type)?.value ?? '';
-  return (
-    `${part('month')} ${part('day')}, ${part('year')} ` +
-    `${part('hour')}:${part('minute')}:${part('second')} ` +
-    part('timeZoneName')
-  );
+  return localTime(new Date(at).toISOString(), timeZone);
+}
+
+const MONTHS = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ');
+
+/*
+ * A day (YYYY-MM-DD, a day of the server's zone) as every date in the web UI
+ * (the owner, 2026-11-09): "05-Nov-26". It is a day, not a time, so no zone
+ * moves it.
+ */
+export function dayText(day: string): string {
+  const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(day);
+  const month = m ? MONTHS[Number(m[2]) - 1] : undefined;
+  if (!m || !month) return day;
+  return `${m[3]}-${month}-${m[1]!.slice(2)}`;
 }
 
 // A setting's value as text: on/off for switches.

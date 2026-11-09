@@ -566,6 +566,8 @@ describe('HelpPage', () => {
     expect(after('web')).toContain(
       'An agent or host ID links to its page, which highlights its row',
     );
+    // every date the same way (the owner, 2026-11-09)
+    expect(after('web')).toContain('Dates read like 05-Nov-26');
     expect(after('web-hosts')).toContain('highlighted');
     const agents = after('web-agents');
     expect(agents).toContain('host');

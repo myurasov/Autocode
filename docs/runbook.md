@@ -163,7 +163,9 @@ Exit codes: 0 done, 1 refused or failed, 2 wrong usage, 3 the server cannot be r
 
 Open `http://<server address>:4848/` and sign in with the admin token; the consumer token and an agent's session
 token are refused. The token is kept for that browser tab, or on that browser with **Stay signed in**, until **Sign
-Out**; a token the server stops accepting sends you back to sign-in. Other sites cannot frame the UI. Pages:
+Out**; a token the server stops accepting sends you back to sign-in. Other sites cannot frame the UI. Dates read like
+`05-Nov-26` and times like `05-Nov-26 14:22:03 PT`, in your browser's zone (the Costs tab's days and when its data
+was read are the server's). Pages:
 
 - **Hosts:** each OpenCode server folder the plugin connects from, by machine (folder, status, the OpenCode process
   it runs in, OpenCode and plugin versions, last seen), refreshed every 10 s; offline ones only with the **Offline**
