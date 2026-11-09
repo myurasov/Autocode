@@ -683,7 +683,7 @@ details.panel {
   margin-top: 0.8rem;
 }
 details.panel > summary {
-  padding: 6px;
+  padding: 8px;
   background: var(--soft);
   color: var(--fg-label);
   font-weight: var(--bold);

@@ -1176,7 +1176,7 @@ test("layout: the forms are full width and start collapsed", async ({
     // 2026-11-07), not the link color
     await expect(summary, tab).toHaveCSS("color", "rgb(174, 183, 192)")
     await expect(summary.locator("span"), tab).toHaveCSS("margin-left", "2px")
-    await expect(summary, tab).toHaveCSS("padding", "6px")
+    await expect(summary, tab).toHaveCSS("padding", "8px")
     const widths = await page.evaluate(() => {
       const width = (s: string) =>
         document.querySelector(s)!.getBoundingClientRect().width
