@@ -478,7 +478,7 @@ describe('HelpPage', () => {
       'spend today',
       'in total',
       'daily cap',
-      'left today',
+      'last 7 days, a bar per day',
       'every 5 seconds',
       'Days',
       'unregistered',

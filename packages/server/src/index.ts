@@ -824,9 +824,10 @@ export async function startServer(
       access: ["admin", "consumer"],
       summary:
         "every agent's spend (today, total), daily cap and what is left, " +
-        "context and its share of the compaction threshold, unregistered " +
-        "ones with spend too; ?match= an agent pattern; ?days= the total " +
-        "over the last days; the totals (tier 0g)",
+        "context and its share of the compaction threshold, its last 7 " +
+        "days (oldest first), unregistered ones with spend too; ?match= an " +
+        "agent pattern; ?days= the total over the last days; the totals " +
+        "(tier 0g)",
       handler: ({ url }) => {
         const match = url.searchParams.get("match")?.trim() || null
         const pattern = match ? parsePattern(match) : null
@@ -861,6 +862,8 @@ export async function startServer(
               ...(days === null
                 ? {}
                 : { total_usd: costs.totalOver(id, days) }),
+              // the Costs tab's Last 7 Days (the owner, 2026-11-09)
+              week: costs.week(id),
             }
           })
           // in a period, a gone agent that spent nothing in it drops out

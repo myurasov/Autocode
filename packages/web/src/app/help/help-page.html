@@ -958,7 +958,10 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       Every agent's status (with its dot, as on Agents), spend today and in
       total (every day it ran, also past
       <code>history_days</code>), its daily cap with a bar of the share spent
-      and what is left today, with a bar: amber from 75%, red from 100%. Its
+      today (amber from 75%, red from 100%), and after Total its last 7 days,
+      a bar per day: today at the right, each day's height its share of the
+      agent's top day, its day and spend on hover (up to 7: from its first
+      day; the totals row adds them up by day). Its
       context is on the Agents tab; a click on an agent's Spend there leads
       here with its row highlighted. Agents that unregistered show too,
       dimmed, with their spend, while the Unregistered box is on (it is by

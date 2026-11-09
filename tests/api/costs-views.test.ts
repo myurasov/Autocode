@@ -273,6 +273,62 @@ describe("GET /v1/costs", () => {
     expect(one.days[1].day < one.days[0].day).toBe(true)
   })
 
+  // The owner, 2026-11-09: the Costs tab's Last 7 Days, a bar per day.
+  test("each agent's last 7 days (up to: from its first day), oldest first, today last, days without spend 0", async () => {
+    await registered(t, HOST, "ses_b", "team:b")
+    await registered(t, HOST, "ses_c", "team:c")
+    // 2026-10-28 in the server's zone
+    await report(t, HOST, [step(1), step(0.5, 1000, "ses_b")])
+    await owner("DELETE", "/v1/agents/team:b")
+    t.clock.advance(2 * DAY)
+    await report(t, HOST, [step(0.25), step(0.125)])
+    const week = (id: string, body: any) =>
+      body.agents.find((x: any) => x.agent === id).week
+    let all = (await owner("GET", "/v1/costs")).body
+    expect(week("team:a", all)).toEqual([
+      { day: "2026-10-28", usd: 1 },
+      { day: "2026-10-29", usd: 0 },
+      { day: "2026-10-30", usd: 0.375 },
+    ])
+    // a gone agent's too; one that never spent has none
+    expect(week("team:b", all)).toEqual([
+      { day: "2026-10-28", usd: 0.5 },
+      { day: "2026-10-29", usd: 0 },
+      { day: "2026-10-30", usd: 0 },
+    ])
+    expect(week("team:c", all)).toEqual([])
+    // a week on, across the change from summer time: seven days, today last
+    t.clock.advance(7 * DAY)
+    all = (await owner("GET", "/v1/costs?days=2")).body
+    expect(week("team:a", all).map((d: any) => d.day)).toEqual([
+      "2026-10-31",
+      "2026-11-01",
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06",
+    ])
+    expect(week("team:a", all).every((d: any) => d.usd === 0)).toBe(true)
+    expect(all.day).toBe("2026-11-06")
+    // late on the day summer time ends (01-Nov, 25 hours): each day once
+    t.clock.t = Date.parse("2026-11-02T07:30:00Z")
+    all = (await owner("GET", "/v1/costs")).body
+    expect(all.day).toBe("2026-11-01")
+    expect(week("team:a", all).map((d: any) => d.day)).toEqual([
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+      "2026-10-31",
+      "2026-11-01",
+    ])
+    // ?days= counts calendar days too: 30-Oct to 01-Nov
+    all = (await owner("GET", "/v1/costs?days=3")).body
+    expect(all.agents.find((x: any) => x.agent === "team:a").total_usd).toBe(
+      0.375,
+    )
+  })
+
   test("an unknown agent is 404; agents themselves are refused; the consumer reads", async () => {
     expect((await owner("GET", "/v1/costs/team:none")).status).toBe(404)
     expect((await as(a, "GET", "/v1/costs")).status).toBe(403)

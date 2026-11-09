@@ -15,7 +15,13 @@ import { Router } from '@angular/router';
 import { el, settle, setup, signedIn, text, type } from '../../testing/helpers';
 import { FILTER_DELAY_MS } from '../agents/agents-page';
 import type { AgentCost, CostsView } from '../api';
-import { COSTS_REFRESH_MS, CostsPage, shareText } from './costs-page';
+import {
+  COSTS_REFRESH_MS,
+  CostsPage,
+  shareText,
+  weekBars,
+  weekTotals,
+} from './costs-page';
 
 const BASE: AgentCost = {
   agent: '',
@@ -30,6 +36,7 @@ const BASE: AgentCost = {
   context_limit: null,
   compact_at: null,
   context_share: null,
+  week: [],
 };
 
 function view(): CostsView {
@@ -52,6 +59,15 @@ function view(): CostsView {
         context_limit: 200_000,
         compact_at: 100_000,
         context_share: 80,
+        week: [
+          { day: '2026-11-02', usd: 0.5 },
+          { day: '2026-11-03', usd: 0 },
+          { day: '2026-11-04', usd: 2 },
+          { day: '2026-11-05', usd: 1 },
+          { day: '2026-11-06', usd: 0.25 },
+          { day: '2026-11-07', usd: 4 },
+          { day: '2026-11-08', usd: 1.5 },
+        ],
       },
       {
         ...BASE,
@@ -59,6 +75,11 @@ function view(): CostsView {
         today_usd: 0.04,
         total_usd: 0.04,
         context: 9000,
+        // up to 7: from its first day
+        week: [
+          { day: '2026-11-07', usd: 0 },
+          { day: '2026-11-08', usd: 0.04 },
+        ],
       },
       // gone, with its spend kept (the owner, 2026-11-08)
       {
@@ -105,7 +126,7 @@ describe('CostsPage', () => {
   const cell = (page: HTMLElement, agent: string, name: string) =>
     text(row(page, agent).querySelector(`td.${name}`));
 
-  it('lists every agent: today, cap, left and total (no Context: the owner, 2026-11-08)', async () => {
+  it('lists every agent: today, cap, total and the last 7 days (no Context, no Left Today: the owner)', async () => {
     const page = await open();
     expect(
       [...page.querySelectorAll('table.costs thead th')].map((th) => text(th)),
@@ -114,8 +135,8 @@ describe('CostsPage', () => {
       'Status',
       'Today',
       'Daily Cap',
-      'Left Today',
       'Total',
+      'Last 7 Days',
       '',
     ]);
     expect(cell(page, 'kaggle:lead', 'today')).toBe('$1.50');
@@ -127,7 +148,8 @@ describe('CostsPage', () => {
       ['amount', '$2.00'],
       ['share', '75.0%'],
     ]);
-    expect(cell(page, 'kaggle:lead', 'left')).toBe('$0.50');
+    // no Left Today (the owner, 2026-11-09)
+    expect(row(page, 'kaggle:lead').querySelector('td.left')).toBeNull();
     expect(cell(page, 'kaggle:lead', 'total')).toBe('$12.35');
     expect(row(page, 'kaggle:lead').querySelector('td.context')).toBeNull();
     // the bar: the cap's share used
@@ -136,7 +158,6 @@ describe('CostsPage', () => {
     expect(bar('kaggle:lead', 'cap').style.width).toBe('75%');
     // no cap
     expect(cell(page, 'kaggle:worker', 'cap')).toBe('off');
-    expect(cell(page, 'kaggle:worker', 'left')).toBe('—');
     expect(bar('kaggle:worker', 'cap')).toBeNull();
     // agent IDs link to the Agents page
     expect(
@@ -317,6 +338,98 @@ describe('CostsPage', () => {
     expect(text(total.querySelector('td.agent'))).toBe('Total (3 agents)');
     expect(text(total.querySelector('td.today'))).toBe('$1.54');
     expect(text(total.querySelector('td.total'))).toBe('$15.89');
+  });
+
+  // The owner, 2026-11-09: "a col with last 7 (up to) daily spend bar graph
+  // 'Last 7 Days' after the total".
+  it("Last 7 Days, after Total: a bar per day of the agent's spend, oldest first, scaled to its top day", async () => {
+    const page = await open();
+    const bars = (tr: Element) =>
+      [...tr.querySelectorAll('td.week .graph > span')] as HTMLElement[];
+    const lead = bars(row(page, 'kaggle:lead'));
+    expect(
+      row(page, 'kaggle:lead').querySelector('td.total')!.nextElementSibling!
+        .className,
+    ).toContain('week');
+    expect(lead.map((b) => b.style.height)).toEqual([
+      '12.5%',
+      '0%',
+      '50%',
+      '25%',
+      '6.3%',
+      '100%',
+      '37.5%',
+    ]);
+    // each bar says its day and spend; a day without spend is marked
+    expect(lead.map((b) => b.title)).toEqual([
+      '02-Nov-26: $0.50',
+      '03-Nov-26: $0.00',
+      '04-Nov-26: $2.00',
+      '05-Nov-26: $1.00',
+      '06-Nov-26: $0.25',
+      '07-Nov-26: $4.00',
+      '08-Nov-26: $1.50',
+    ]);
+    expect(lead.map((b) => b.classList.contains('zero'))).toEqual([
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    // up to 7: from its first day, today last; none without spend
+    expect(bars(row(page, 'kaggle:worker')).map((b) => b.title)).toEqual([
+      '07-Nov-26: $0.00',
+      '08-Nov-26: $0.04',
+    ]);
+    expect(bars(row(page, 'old:one'))).toEqual([]);
+    // the totals row: the listed agents' spend per day
+    const total = page.querySelector('table.costs tfoot tr.totals')!;
+    expect(
+      total.querySelector('td.total')!.nextElementSibling!.className,
+    ).toContain('week');
+    expect(bars(total).map((b) => b.title)).toEqual([
+      '02-Nov-26: $0.50',
+      '03-Nov-26: $0.00',
+      '04-Nov-26: $2.00',
+      '05-Nov-26: $1.00',
+      '06-Nov-26: $0.25',
+      '07-Nov-26: $4.00',
+      '08-Nov-26: $1.54',
+    ]);
+    expect(bars(total)[5]!.style.height).toBe('100%');
+  });
+
+  it('a share as a bar height: to a tenth of the top day, 0 when nothing was spent', () => {
+    expect(weekBars([])).toEqual([]);
+    expect(
+      weekBars([
+        { day: '2026-11-07', usd: 0 },
+        { day: '2026-11-08', usd: 0 },
+      ]).map((b) => b.height),
+    ).toEqual([0, 0]);
+    expect(
+      weekBars([
+        { day: '2026-11-07', usd: 1 },
+        { day: '2026-11-08', usd: 3 },
+      ]).map((b) => b.height),
+    ).toEqual([33.3, 100]);
+    // the days of several agents, added up by day
+    expect(
+      weekTotals([
+        [
+          { day: '2026-11-07', usd: 1 },
+          { day: '2026-11-08', usd: 0.1 },
+        ],
+        [{ day: '2026-11-08', usd: 0.2 }],
+        [],
+      ]),
+    ).toEqual([
+      { day: '2026-11-07', usd: 1 },
+      { day: '2026-11-08', usd: 0.3 },
+    ]);
   });
 
   it('the Agent filter takes a pattern, a second after the last key, and keeps it in the address', async () => {

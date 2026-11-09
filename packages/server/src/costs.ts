@@ -32,6 +32,12 @@ const usd = (n: number) => `$${n.toFixed(2)}`
 // to a millionth of a dollar
 const round = (n: number) => Math.round(n * 1e6) / 1e6
 
+// The calendar day n days before a day (YYYY-MM-DD), whatever its length.
+export function dayBefore(day: string, n: number): string {
+  const [y, m, d] = day.split("-").map(Number) as [number, number, number]
+  return new Date(Date.UTC(y, m - 1, d - n)).toISOString().slice(0, 10)
+}
+
 // A compaction due: the context, the threshold (0 when the agent asked) and
 // whether the agent was told (tier 0g).
 export interface CompactDue {
@@ -103,9 +109,10 @@ export class Costs {
       .get(agent)
   }
 
-  // An agent's spend over its last `days` days, today included.
+  // An agent's spend over its last `days` days, today included (calendar
+  // days: a 25-hour day counts once).
   totalOver(agent: string, days: number): number {
-    const from = this.day(this.now() - (days - 1) * 86_400_000)
+    const from = dayBefore(this.day(), days - 1)
     const usd =
       (
         this.db
@@ -115,6 +122,37 @@ export class Costs {
           .get(agent, from) as any
       )?.usd ?? 0
     return round(usd)
+  }
+
+  /*
+   * An agent's last 7 days (the owner, 2026-11-09: the Costs tab's Last 7
+   * Days), oldest first, today last, days without spend 0; up to 7: none
+   * before its first day, none at all if it never spent.
+   */
+  week(agent: string): { day: string; usd: number }[] {
+    const first = (
+      this.db
+        .query("SELECT first_day FROM cost_totals WHERE agent_id = ?")
+        .get(agent) as any
+    )?.first_day as string | undefined
+    if (!first) return []
+    const today = this.day()
+    const spent = new Map(
+      (
+        this.db
+          .query(
+            "SELECT day, usd FROM costs WHERE agent_id = ? AND day >= ? " +
+              "AND day <= ?",
+          )
+          .all(agent, dayBefore(today, 6), today) as any[]
+      ).map((r) => [r.day as string, round(r.usd)] as const),
+    )
+    const week: { day: string; usd: number }[] = []
+    for (let n = 6; n >= 0; n--) {
+      const day = dayBefore(today, n)
+      if (day >= first) week.push({ day, usd: spent.get(day) ?? 0 })
+    }
+    return week
   }
 
   // An agent's spend per day, newest first (the days history_days keeps).

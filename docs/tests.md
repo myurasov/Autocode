@@ -1042,5 +1042,14 @@ in what it read.
   `08-Nov-26 17:02:03 PT`, still the server's zone; the Days table `08-Nov-26`), `smoke.spec.ts` (both forms),
   `help-page.spec.ts`). The other tabs already used `localTime` (`28-Oct-26 03:00:00 PT`); the Costs tab's read time
   (`Nov 8, 2026 ...`) and its Days table (`2026-11-08`) were the two that differed.
+- **Last 7 Days in place of Left Today** (the owner, 2026-11-09: "rm Left Today col, but add a col with last 7 (up
+  to) daily spend bar graph 'Last 7 Days' after the total"; tests first, red, then green): `costs-views.test.ts`
+  (each `/v1/costs` row's `week`: up to 7 days from the agent's first, oldest first, today last, days without spend
+  0, a gone agent's too, none without spend; on the day summer time ends each day once; `?days=` counts calendar
+  days), `costs-page.spec.ts` 2 (no Left Today; Last 7 Days after Total, a bar per day, its height the share of the
+  top day, its day and spend in the title, a zero day marked; the totals row's days added up; `weekBars`,
+  `weekTotals`), `help-page.spec.ts`, `smoke.spec.ts` layout (the headings; at most 7 bars on one baseline, today
+  at the right, the totals row's too). web-unit 203, web 3 (`CI_GREP=Costs`); screenshots light at 1024 and dark at
+  1280 (each agent's week filled in by the script) looked at.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

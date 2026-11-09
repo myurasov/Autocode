@@ -504,6 +504,37 @@ table.costs .bar.over > span {
 table.costs tr.days > td {
   background: var(--softer);
 }
+/*
+ * Last 7 Days (the owner, 2026-11-09): seven bars at most, oldest first, on
+ * one baseline; a day without spend a thin line. Its own seven places, so
+ * an agent with fewer days keeps today under the others' today.
+ */
+table.costs td.week,
+table.costs th.week {
+  width: 82px;
+  min-width: 82px;
+}
+table.costs .graph {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 3px;
+  height: 20px;
+  width: 82px;
+  border-bottom: 1px solid var(--border-soft);
+}
+table.costs .graph > span {
+  flex: 0 0 9px;
+  min-height: 1px;
+  background: var(--ok);
+  border-radius: 1px 1px 0 0;
+}
+table.costs .graph > span.zero {
+  background: var(--fg-faint);
+}
+table.costs tr.gone .graph {
+  opacity: 0.55;
+}
 /* When the data was read, right of Refresh: its digits keep their width. */
 .toolbar .clock {
   font-variant-numeric: tabular-nums;

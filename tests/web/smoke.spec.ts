@@ -2002,6 +2002,71 @@ test("layout: the Costs tab's Daily Cap has its share at the right, 150 px wide"
   }
 })
 
+// The owner, 2026-11-09: no Left Today; Last 7 Days after Total, a bar per
+// day (up to 7), today at the right, on one baseline; the totals row too.
+test("layout: the Costs tab's Last 7 Days is a bar per day after Total, no Left Today", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  try {
+    const step = await api.post("/v1/hosts/smoke:host:1/events", {
+      headers: bearer(consumer),
+      data: {
+        instance: "i1",
+        events: [{ type: "cost", session: "ses_smoke1", usd: 0.01 }],
+      },
+    })
+    expect(step.ok(), await step.text()).toBe(true)
+  } finally {
+    await api.dispose()
+  }
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, admin)
+  await openTab(page, "Costs")
+  const heads = page.locator("table.costs thead th")
+  await expect(heads).toHaveText([
+    "Agent",
+    "Status",
+    "Today",
+    "Daily Cap",
+    /^\s*(Total|Last \d+ Days?)\s*$/,
+    "Last 7 Days",
+    "",
+  ])
+  const row = page.locator('table.costs tr[data-agent="smoke:agent"]')
+  const bars = row.locator("td.week .graph > span")
+  const count = await bars.count()
+  expect(count).toBeGreaterThan(0)
+  expect(count).toBeLessThanOrEqual(7)
+  // the last bar is today, dated as every date in the web UI
+  await expect(bars.last()).toHaveAttribute(
+    "title",
+    /^\d\d-[A-Z][a-z]{2}-\d\d: \$\d+\.\d\d$/,
+  )
+  const box = await row.locator("td.week").evaluate((td) => {
+    const graph = td.querySelector(".graph")!.getBoundingClientRect()
+    const spans = [...td.querySelectorAll(".graph > span")].map((s) =>
+      s.getBoundingClientRect(),
+    )
+    return {
+      graph: { left: graph.left, right: graph.right, height: graph.height },
+      bottoms: spans.map((s) => Math.round(s.bottom)),
+      tallest: Math.max(...spans.map((s) => s.height)),
+      left: Math.min(...spans.map((s) => s.left)),
+      right: Math.max(...spans.map((s) => s.right)),
+      cell: td.getBoundingClientRect().width,
+    }
+  })
+  expect(new Set(box.bottoms).size, "one baseline").toBe(1)
+  expect(box.tallest).toBeGreaterThan(box.graph.height * 0.9)
+  expect(box.left).toBeGreaterThanOrEqual(box.graph.left - 0.5)
+  expect(box.right, "today at the right").toBeCloseTo(box.graph.right, 0)
+  expect(box.cell).toBeLessThan(140)
+  await expect(
+    page.locator("table.costs tfoot tr.totals td.week .graph > span").last(),
+  ).toHaveAttribute("title", /^\d\d-[A-Z][a-z]{2}-\d\d: \$/)
+})
+
 // Tier 0g (the owner, 2026-11-08): the Costs tab follows a model step live
 // (no reload); Days shows the spend per day; the Agents tab's column too.
 test("Costs: spend and context live, an agent's days, and the Agents column", async ({

@@ -3,9 +3,10 @@
   zone; a failed load's message beside it); the Agent filter (a pattern, in the address); every
   agent's status (its dot, as on Agents; unregistered ones with spend too,
   marked), spend
-  today, its daily cap (a bar of the share spent), what is left today, its
-  total and Days for its spend per day (the agent a link led to, ?agent=,
-  highlighted); a totals row; and when the list last loaded.
+  today, its daily cap (a bar of the share spent), its
+  total, its last 7 days (a bar per day) and Days for its spend per day (the
+  agent a link led to, ?agent=, highlighted); a totals row; and when the list
+  last loaded.
 -->
 
 <div class="toolbar">
@@ -70,10 +71,11 @@
       <th>Status</th>
       <th class="num">Today</th>
       <th>Daily Cap</th>
-      <th class="num">Left Today</th>
       <th class="num">
         {{ periodTitle() }}
       </th>
+      <!-- a bar per day, after Total (the owner, 2026-11-09) -->
+      <th class="week">Last 7 Days</th>
       <th></th>
     </tr>
   </thead>
@@ -114,14 +116,12 @@
             }
           }
         </td>
-        <td class="num left">
-          @if (a.left_usd === null) {
-            <span class="muted">—</span>
-          } @else {
-            {{ costText(a.left_usd) }}
-          }
-        </td>
         <td class="num total">{{ costText(a.total_usd) }}</td>
+        <td class="week">
+          <ng-container
+            *ngTemplateOutlet="graph; context: { $implicit: weekBars(a.week) }"
+          />
+        </td>
         <td class="actions">
           <button
             type="button"
@@ -191,12 +191,33 @@
           }}{{ periodNote() }})
         </td>
         <td class="num today">{{ costText(totals().today_usd) }}</td>
-        <td colspan="2"></td>
+        <td></td>
         <td class="num total">{{ costText(totals().total_usd) }}</td>
+        <td class="week">
+          <ng-container
+            *ngTemplateOutlet="graph; context: { $implicit: totals().week }"
+          />
+        </td>
         <td></td>
       </tr>
     </tfoot>
   }
 </table>
+
+<!--
+  Last 7 Days: a bar per day, oldest first, today at the right, each its
+  share of the top day; its day and spend on hover.
+-->
+<ng-template #graph let-bars>
+  <span class="graph">
+    @for (b of bars; track b.day) {
+      <span
+        [class.zero]="b.usd === 0"
+        [style.height]="b.height + '%'"
+        [title]="dayText(b.day) + ': ' + costText(b.usd)"
+      ></span>
+    }
+  </span>
+</ng-template>
 
 <footer class="muted"><app-updated [at]="updatedAt()" /></footer>

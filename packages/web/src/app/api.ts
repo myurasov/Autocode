@@ -90,6 +90,15 @@ export interface AgentCost extends CostNumbers {
   status: string;
   machine?: string;
   model?: string | null;
+  // its last 7 days, oldest first, today last (up to 7: from its first day;
+  // none if it never spent)
+  week: CostDay[];
+}
+
+// One day's spend.
+export interface CostDay {
+  day: string;
+  usd: number;
 }
 
 // Every agent's spend, today's date, the zone days are counted in, and the

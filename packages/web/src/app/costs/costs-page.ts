@@ -1,7 +1,8 @@
 /*
  * The Costs page (tier 0g; the owner, 2026-11-08): every registered agent's
- * spend today and in total, and its daily cap with the share used and what
- * is left today (its context is on the Agents tab), refreshed every 5 s (one
+ * spend today and in total, its daily cap with the share used, and its last
+ * 7 days as a bar per day (the owner, 2026-11-09, in place of Left Today;
+ * its context is on the Agents tab), refreshed every 5 s (one
  * refresh at a time) so it follows each model step, with when the data was
  * read. Days shows an agent's spend per day, newest first; agent IDs link to
  * the Agents page. Unregistered agents with spend show too, marked; the Agent
@@ -13,6 +14,7 @@
  * the last X days (empty: all time).
  */
 
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -20,6 +22,7 @@ import { FILTER_DELAY_MS } from '../agents/agents-page';
 import {
   type AgentCost,
   Api,
+  type CostDay,
   type CostDays,
   type CostsView,
   errorText,
@@ -42,9 +45,32 @@ export function tokensText(n: number): string {
   return n.toLocaleString('en-US');
 }
 
+// A bar of Last 7 Days: its day, spend and height (a percentage of the top
+// day, to a tenth; 0 when nothing was spent).
+export interface WeekBar extends CostDay {
+  height: number;
+}
+
+export function weekBars(week: CostDay[]): WeekBar[] {
+  const top = Math.max(0, ...week.map((d) => d.usd));
+  return week.map((d) => ({
+    ...d,
+    height: top > 0 ? Math.round((d.usd / top) * 1000) / 10 : 0,
+  }));
+}
+
+// The days of several agents added up by day, oldest first.
+export function weekTotals(weeks: CostDay[][]): CostDay[] {
+  const sum = new Map<string, number>();
+  for (const d of weeks.flat()) sum.set(d.day, (sum.get(d.day) ?? 0) + d.usd);
+  return [...sum.keys()]
+    .sort()
+    .map((day) => ({ day, usd: Math.round(sum.get(day)! * 1e6) / 1e6 }));
+}
+
 @Component({
   selector: 'app-costs-page',
-  imports: [AgentLink, Updated],
+  imports: [AgentLink, NgTemplateOutlet, Updated],
   templateUrl: './costs-page.html',
 })
 export class CostsPage {
@@ -76,6 +102,7 @@ export class CostsPage {
       agents: rows.length,
       today_usd: sum('today_usd'),
       total_usd: sum('total_usd'),
+      week: weekBars(weekTotals(rows.map((a) => a.week))),
     };
   });
 
@@ -91,6 +118,7 @@ export class CostsPage {
   protected readonly dayText = dayText;
   protected readonly shareText = shareText;
   protected readonly tokensText = tokensText;
+  protected readonly weekBars = weekBars;
 
   private inFlight = 0;
   private typing?: ReturnType<typeof setTimeout>;
