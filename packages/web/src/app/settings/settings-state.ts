@@ -1,7 +1,9 @@
 /*
  * The Settings page's shared state: the server's view of the settings, sending
- * a change and keeping its outcome for the section that made it, and draftOf,
- * which turns a value into what an input holds.
+ * a change and keeping its outcome for the section that made it, the
+ * registered agents and the jobs (the agents' values offer the IDs; a mode
+ * setting's Agent… and Job… list them), and draftOf, which turns a value into
+ * what an input holds.
  */
 
 import { Injectable, computed, inject, signal } from '@angular/core';
@@ -25,6 +27,11 @@ export function draftOf(value: SettingValue | undefined): Draft {
     : value === undefined
       ? ''
       : String(value);
+}
+
+// A mode's Agent… or Job… before one is picked: nothing to save yet.
+export function incomplete(value: Draft): boolean {
+  return value === 'agent:' || value === 'job:';
 }
 
 const TEXT: SettingDef = {
@@ -51,6 +58,10 @@ export class SettingsState {
   // The section whose change the error or notice is about.
   readonly where = signal<Section | null>(null);
   readonly busy = signal(false);
+  // The registered agents' IDs and the jobs' names (none when they cannot be
+  // had: a mode's own value still shows).
+  readonly agents = signal<string[]>([]);
+  readonly jobs = signal<string[]>([]);
 
   // Equal lists count as no change, so forms that depend on them keep what the
   // owner picked.
@@ -80,6 +91,16 @@ export class SettingsState {
     } catch (err) {
       this.loadError.set(errorText(err));
     }
+    await Promise.all([
+      this.api
+        .agents()
+        .then((list) => this.agents.set(list.map((a) => a.id)))
+        .catch(() => this.agents.set([])),
+      this.api
+        .jobs()
+        .then((list) => this.jobs.set(list.map((j) => j.name)))
+        .catch(() => this.jobs.set([])),
+    ]);
   }
 
   // A change that was not sent: says why in the section.

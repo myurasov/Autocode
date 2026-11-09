@@ -1903,6 +1903,49 @@ test("Settings: one row per setting the server has", async ({ page }) => {
   expect([...shown].sort()).toEqual(keys)
 })
 
+// A mode setting (the owner, 2026-11-08): Agent… shows a list of the
+// registered agents; the pick is saved as agent:<id>, then reset. Both lists
+// fit in the Value column at 1280 px.
+test("Settings: a mode's Agent… lists the agents and saves agent:<id>", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, admin)
+  await openTab(page, "Settings")
+  const row = page.locator('table.settings tr[data-key="approval_mode"]')
+  const kind = row.getByLabel("Value of approval_mode", { exact: true })
+  await expect(kind.locator("option")).toHaveText([
+    "ask",
+    "approve",
+    "Agent…",
+    "Job…",
+  ])
+  await kind.selectOption("agent:")
+  const agent = row.getByLabel("Agent for approval_mode", { exact: true })
+  await expect(agent.locator("option")).toContainText(["smoke:agent"])
+  await agent.selectOption("smoke:agent")
+  try {
+    await row.getByRole("button", { name: "Save", exact: true }).click()
+    await expect(page.getByRole("status").first()).toHaveText(
+      "Saved approval_mode.",
+    )
+    await expect(row.locator("td.from")).toHaveText("set server-wide")
+    const cell = await row.locator("td.value").boundingBox()
+    for (const list of [kind, agent]) {
+      const box = await list.boundingBox()
+      expect(box!.x + box!.width).toBeLessThanOrEqual(cell!.x + cell!.width)
+    }
+    // the agent's list shows the agent: wider than the first, which is as
+    // wide as its words
+    const [k, a] = [await kind.boundingBox(), await agent.boundingBox()]
+    expect(a!.width).toBeGreaterThan(k!.width)
+    expect(k!.width).toBeLessThan(140)
+  } finally {
+    await row.getByRole("button", { name: "Reset", exact: true }).click()
+    await expect(row.locator("td.from")).toHaveText("built-in default")
+  }
+})
+
 // What the plugin reports when smoke:agent's turn asks something (tier 0d):
 // the question tool's form, or a permission prompt.
 async function openAsk(api: APIRequestContext, event: Record<string, unknown>) {

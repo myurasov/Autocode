@@ -862,3 +862,28 @@ text with `textContent` only.
   `sonnet-5.5`, `glm-5.3`, `haiku-5.5` and `luna-6` 8 of 8; `kimi-k3` 6 of 8 (`job` and `loop` timed out waiting for
   a turn that never ended, after correct tool calls: the provider's stalls, as before). The asker's transcript is
   written now; no scratch folder was left.
+
+## The Owner's Round of 2026-11-08
+
+- **A mode setting's lists** (`settings-page.spec.ts`, 2: "a mode is its values, Agent… or Job…, with a list of
+  agents or jobs" and "a saved mode whose agent or job is gone still shows, marked"; `smoke.spec.ts` "Settings: a
+  mode's Agent… lists the agents and saves agent:<id>"; `help-page.spec.ts`; red, then green): `question_mode`,
+  `permission_mode` and `approval_mode` are a list of their own values plus Agent… and Job…; those add a list of the
+  registered agents or the jobs (the page loads both once, in `SettingsState`); Save waits for a pick; a saved agent
+  or job that is gone shows as "(not registered)" or "(not defined)". Both lists fit the Value column at 1280 px (the
+  first as wide as its words). Screenshots, light at 1024 and dark at 1280, looked at (the first round showed the
+  second list squeezed to its arrow: fixed).
+- **Shells that lost `AUTOCODE_TOKEN`** (`shell-env.test.ts` "after a client replaces a session's environment, the next
+  shell has its values again", red, then green; "after the folder's plugin reloads, a session's next shell still has
+  its values", green from the start): found live in this repo's own session (no `AUTOCODE_*` in its shells, its
+  environment never set since OpenCode's log began). OpenCode 2.2.0 keeps a session's environment in memory and its
+  TUI and editor client replace it with their own when they open the session; the plugin set it only before the
+  session's first shell call (and after a rotation), so a session opened in a client after that kept no values. The
+  plugin now sets it before each shell call. Spike 6's local-API check now uses a `!` command (no tool call, so the
+  plugin does not set it again).
+- Runs: `plugin` 29, `one` 36, `two` 42, `web` 82 (`web-unit` 179), unit and API 524 (`plugin-inprocess.test.ts` now
+  expects the environment set at each shell call, with the same token). Build 39 on both machines; after the deploy
+  this repo's own session's shells carry `AUTOCODE_TOKEN` again and act as its agent.
+- **The Mac check** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, build 39): 9 passed, 0
+  failed: the darwin-arm64 binary, `serve` natively, the owner's tokens 0600, the built-in web UI, `plugin install`,
+  OpenCode loading the plugin and its host online with this Mac's workspace folder and log.

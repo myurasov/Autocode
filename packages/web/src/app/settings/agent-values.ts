@@ -12,7 +12,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { Api, type SettingValue } from '../api';
+import type { SettingValue } from '../api';
 import { IdParts } from '../breaks';
 import { valueText } from '../format';
 import { AgentLink } from '../links';
@@ -34,7 +34,6 @@ interface Row {
 })
 export class AgentValues {
   protected readonly state = inject(SettingsState);
-  private readonly api = inject(Api);
   protected readonly valueText = valueText;
 
   protected readonly rows = computed<Row[]>(() => {
@@ -48,8 +47,8 @@ export class AgentValues {
       );
   });
 
-  // Known agent IDs, offered while typing one.
-  protected readonly known = signal<string[]>([]);
+  // Known agent IDs, offered while typing one (the page loads them).
+  protected readonly known = this.state.agents;
 
   protected readonly newAgent = signal('');
   protected readonly newKey = linkedSignal(
@@ -67,18 +66,6 @@ export class AgentValues {
     key: string;
     value: Draft;
   } | null>(null);
-
-  constructor() {
-    void this.loadKnown();
-  }
-
-  private async loadKnown(): Promise<void> {
-    try {
-      this.known.set((await this.api.agents()).map((a) => a.id));
-    } catch {
-      this.known.set([]);
-    }
-  }
 
   protected async add(): Promise<void> {
     const agent = this.newAgent().trim();

@@ -168,6 +168,17 @@ describe('HelpPage', () => {
     expect(text(needs)).not.toContain('later tier');
   });
 
+  // The owner, 2026-11-08: a mode setting's lists.
+  it('says how a mode setting picks an agent or a job on the Settings tab', async () => {
+    const page = await open();
+    expect(section(page, 'web-settings')).toContain(
+      'A mode setting (question_mode, permission_mode, approval_mode)',
+    );
+    expect(section(page, 'web-settings')).toContain(
+      'Agent… or Job… adds a list of the registered agents or the jobs',
+    );
+  });
+
   it('keeps to what Autocode has: messages are text, a wake has no end and merges by name', async () => {
     const page = await open();
     const messages = section(page, 'messages');

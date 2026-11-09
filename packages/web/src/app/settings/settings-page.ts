@@ -11,7 +11,12 @@ import { AgentValues } from './agent-values';
 import { ResolvedLookup } from './resolved';
 import { Rules } from './rules';
 import { SettingsMessage } from './settings-message';
-import { type Draft, draftOf, SettingsState } from './settings-state';
+import {
+  type Draft,
+  draftOf,
+  incomplete,
+  SettingsState,
+} from './settings-state';
 import { ValueInput } from './value-input';
 
 @Component({
@@ -64,7 +69,8 @@ export class SettingsPage {
   }
 
   protected changed(key: string): boolean {
-    return this.drafts()[key] !== draftOf(this.state.serverValue(key));
+    const draft = this.drafts()[key] ?? '';
+    return draft !== draftOf(this.state.serverValue(key)) && !incomplete(draft);
   }
 
   protected setDraft(key: string, value: Draft): void {

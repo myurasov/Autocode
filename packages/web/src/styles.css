@@ -617,6 +617,23 @@ app-value-input {
   flex: 1;
   min-width: 9rem;
 }
+/*
+ * A mode's two lists side by side: the first as wide as its words (Agent…),
+ * the agent or job list the rest of the field.
+ */
+app-value-input:has(> select.mode-target) {
+  display: flex;
+  gap: 0.25rem;
+}
+app-value-input:has(> select.mode-target) > select.mode-kind {
+  width: auto;
+  flex: none;
+}
+app-value-input > select.mode-target {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
 .editor {
   border: 1px solid var(--border-soft);
   background: var(--softer);

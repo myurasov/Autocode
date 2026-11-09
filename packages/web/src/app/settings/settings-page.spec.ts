@@ -30,6 +30,7 @@ function view(change: Partial<SettingsView> = {}): SettingsView {
     defaults: {
       min_interval: '1m',
       question_mode: 'ask',
+      approval_mode: 'ask',
       history_days: 30,
       sample_switch: true,
     },
@@ -58,6 +59,14 @@ function view(change: Partial<SettingsView> = {}): SettingsView {
         scope: 'server',
         default: 30,
         help: 'days of history kept',
+      },
+      // A mode: its own values, or agent:<id> or job:<name> (tier 0d).
+      approval_mode: {
+        kind: 'mode',
+        scope: 'agent',
+        default: 'ask',
+        values: ['ask', 'approve'],
+        help: 'approvals go to the owner, are approved, or go to an agent',
       },
       // No setting of the server is a switch now (the owner, 2026-11-07):
       // one made up here, for the checkbox.
@@ -95,6 +104,10 @@ describe('SettingsPage', () => {
     http
       .expectOne((r) => r.url === '/v1/agents')
       .flush({ agents: [{ id: 'kaggle:lead' }, { id: 'kaggle:worker' }] });
+    // the jobs, for a mode's Job… choice
+    http
+      .expectOne((r) => r.url === '/v1/jobs')
+      .flush({ jobs: [{ name: 'answerer' }, { name: 'nightly' }] });
     await settle(fixture);
     return el(fixture);
   }
@@ -124,7 +137,7 @@ describe('SettingsPage', () => {
         text(th),
       ),
     ).toEqual(['Setting', 'Value', 'From', 'Scope', 'Description']);
-    expect(page.querySelectorAll('table.settings tbody tr').length).toBe(4);
+    expect(page.querySelectorAll('table.settings tbody tr').length).toBe(5);
     const min = row(page, 'min_interval');
     expect(shown(page, 'min_interval')).toBe('1m');
     expect(button(min.querySelector('td.value')!, 'Save')).toBeTruthy();
@@ -202,13 +215,22 @@ describe('SettingsPage', () => {
       'select[aria-label="Setting 2"]',
     ) as HTMLSelectElement;
     expect([...second.options].map((o) => o.value)).not.toContain(first);
+    // the third: neither of the first two
+    button(editor, 'Add a Setting')!.click();
+    await settle(fixture);
+    const third = editor.querySelector(
+      'select[aria-label="Setting 3"]',
+    ) as HTMLSelectElement;
+    expect([...third.options].map((o) => o.value)).not.toContain(first);
+    expect([...third.options].map((o) => o.value)).not.toContain(second.value);
     // every agent setting is in the rule now: there is nothing left to add
     button(editor, 'Add a Setting')!.click();
     await settle(fixture);
-    expect(editor.querySelector('select[aria-label="Setting 3"]')).toBeNull();
+    expect(editor.querySelector('select[aria-label="Setting 4"]')).toBeNull();
     button(editor, 'Save Rule')!.click();
     const req = patch();
     expect(Object.keys(req.request.body.rules[0].settings).sort()).toEqual([
+      'approval_mode',
       'min_interval',
       'question_mode',
     ]);
@@ -255,6 +277,76 @@ describe('SettingsPage', () => {
     });
   });
 
+  // The owner, 2026-11-08: a mode is a list of its values, Agent… and Job…,
+  // each with a second list of the registered agents or the defined jobs.
+  it('a mode is its values, Agent… or Job…, with a list of agents or jobs', async () => {
+    const page = await open();
+    const cell = () => row(page, 'approval_mode').querySelector('td.value')!;
+    const kind = () =>
+      cell().querySelector(
+        'select[aria-label="Value of approval_mode"]',
+      ) as HTMLSelectElement;
+    const pick = () =>
+      cell().querySelector('select.mode-target') as HTMLSelectElement | null;
+    expect([...kind().options].map((o) => text(o))).toEqual([
+      'ask',
+      'approve',
+      'Agent…',
+      'Job…',
+    ]);
+    expect(kind().value).toBe('ask');
+    expect(pick()).toBeNull();
+
+    choose(kind(), 'agent:');
+    await settle(fixture);
+    expect(pick()!.getAttribute('aria-label')).toBe('Agent for approval_mode');
+    expect([...pick()!.options].map((o) => o.value)).toEqual([
+      '',
+      'kaggle:lead',
+      'kaggle:worker',
+    ]);
+    // no agent picked yet: nothing to save
+    expect(button(cell(), 'Save')!.disabled).toBe(true);
+    choose(pick(), 'kaggle:worker');
+    await settle(fixture);
+    button(cell(), 'Save')!.click();
+    const saved = patch();
+    expect(saved.request.body).toEqual({
+      server: { approval_mode: 'agent:kaggle:worker' },
+    });
+    saved.flush(withServer({ approval_mode: 'agent:kaggle:worker' }));
+    await settle(fixture);
+    expect(kind().value).toBe('agent:');
+    expect(pick()!.value).toBe('kaggle:worker');
+
+    choose(kind(), 'job:');
+    await settle(fixture);
+    expect(pick()!.getAttribute('aria-label')).toBe('Job for approval_mode');
+    expect([...pick()!.options].map((o) => o.value)).toEqual([
+      '',
+      'answerer',
+      'nightly',
+    ]);
+    choose(pick(), 'answerer');
+    await settle(fixture);
+    button(cell(), 'Save')!.click();
+    expect(patch().request.body).toEqual({
+      server: { approval_mode: 'job:answerer' },
+    });
+  });
+
+  it('a saved mode whose agent or job is gone still shows, marked', async () => {
+    const page = await open(withServer({ approval_mode: 'agent:team:gone' }));
+    const cell = row(page, 'approval_mode').querySelector('td.value')!;
+    const pick = cell.querySelector('select.mode-target') as HTMLSelectElement;
+    expect(pick.value).toBe('team:gone');
+    expect(
+      [...pick.options].map((o) => text(o)).filter((t) => t.includes('gone')),
+    ).toEqual(['team:gone (not registered)']);
+    // nothing changed: Save stays off
+    expect(button(cell, 'Save')!.disabled).toBe(true);
+  });
+
   it("shows the server's message, naming the key, when it refuses a change", async () => {
     const page = await open();
     const min = row(page, 'min_interval');
@@ -297,6 +389,7 @@ describe('SettingsPage', () => {
     expect([...key.options].map((o) => o.value)).toEqual([
       'min_interval',
       'question_mode',
+      'approval_mode',
     ]);
     type(editor.querySelector('input[aria-label="Value 1"]'), '3m');
     button(editor, 'Add a Setting')!.click();
