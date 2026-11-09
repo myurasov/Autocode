@@ -1035,6 +1035,7 @@ in what it read.
   not paused or in error, with no compaction running or told of, whose context is past their threshold.
 - **The Daily Cap cell** (the owner, 2026-11-09: "align X% to the right"; tests first: `costs-page.spec.ts`, the cap
   and its share on one line in their own spans; `smoke.spec.ts` layout, the share at the cell's right edge, the cap
-  at its left, the bar to the right edge, at 1280 px with a cap set for the check).
+  at its left, the bar to the right edge, at 1280 px with a cap set for the check). Then 150 px wide (the owner:
+  "make td.cap width 150px"; the same smoke test, red at 189 px, then green; web 85); screenshots looked at.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

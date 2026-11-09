@@ -468,7 +468,15 @@ table.costs td.context {
 table.costs .share {
   color: var(--fg-dim);
 }
-/* Daily Cap: the cap at the left, its share at the right (the owner). */
+/*
+ * Daily Cap: 150 px wide (the owner, 2026-11-09); the cap at the left, its
+ * share at the right (the owner).
+ */
+table.costs td.cap {
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+}
 table.costs .cap-line {
   display: flex;
   justify-content: space-between;

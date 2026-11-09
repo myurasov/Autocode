@@ -1954,8 +1954,8 @@ test("Settings: a mode's Agent… lists the agents and saves agent:<id>", async 
 })
 
 // The owner, 2026-11-09: in the Daily Cap cell the share sits at the right,
-// the cap at the left, the bar under both.
-test("layout: the Costs tab's Daily Cap has its share at the right", async ({
+// the cap at the left, the bar under both; the cell is 150 px wide.
+test("layout: the Costs tab's Daily Cap has its share at the right, 150 px wide", async ({
   page,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -1988,6 +1988,14 @@ test("layout: the Costs tab's Daily Cap has its share at the right", async ({
     expect(Math.abs(box.bar), "the bar to the right edge").toBeLessThanOrEqual(
       1,
     )
+    // 150 px wide (the owner, 2026-11-09)
+    const widths = await page
+      .locator("table.costs td.cap")
+      .evaluateAll((cells) =>
+        cells.map((c) => Math.round(c.getBoundingClientRect().width)),
+      )
+    expect(widths.length).toBeGreaterThan(0)
+    for (const w of widths) expect(w, "td.cap").toBe(150)
   } finally {
     await cap(null)
     await api.dispose()
