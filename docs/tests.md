@@ -992,3 +992,9 @@ in what it read.
   README's tools and CLI table and web list (Costs and Jobs), the runbook's messages, agents, costs and web UI, the
   Help tab's tools and messages, the spec's tools, delivery, routes and settings, code comments, a test fixture's
   `unread`; spend per day kept `history_days`, at least 31 days.
+- Docker suites on the fixes (`20261109T023446Z`): `unit` 194, `api` 358, `plugin` 29, `one` 36, `two` 42, `restart` 5,
+  `install` 3, `web` 83 (`web-unit` 191). The agents suite (`20261109T024135Z`, $2.30): 61 of 63; `opus-5.5`,
+  `sol-6.1`, `sonnet-5.5`, `haiku-5.5` and `luna-6` 9 of 9; `kimi-k3` `register` (it registered at once, then its turn
+  never ended: the provider's stall, as before) and `glm-5.3` `owner` (its turn produced an empty reply and no tool
+  call, no cost: the provider gave nothing) failed; both rerun alone passed (`kimi-k3` `register` $0.03, `glm-5.3`
+  `owner` $0.01): every model passes all 9 scenarios on the final code.
