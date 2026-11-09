@@ -998,9 +998,10 @@ in what it read.
   never ended: the provider's stall, as before) and `glm-5.3` `owner` (its turn produced an empty reply and no tool
   call, no cost: the provider gave nothing) failed; both rerun alone passed (`kimi-k3` `register` $0.03, `glm-5.3`
   `owner` $0.01): every model passes all 9 scenarios on the final code.
-- **The Costs tab's clock** (the owner, 22:1x PT; tests first): "Today is ... (zone)" gave way to the server's time
-  in its zone right of Refresh (the owner: "i meant to the right"), "17:02:03 Nov 8 2026 PST", a second at a time
-  (`/v1/costs` carries `time`; `costs-views.test.ts`, `costs-page.spec.ts` 2, `smoke.spec.ts`; web-unit 192, web
-  83); screenshots looked at.
+- **The Costs tab's time** (the owner, 22:1x–22:3x PT; tests first): "Today is ... (zone)" gave way to when the data
+  was read: the server's time of the last load in its zone, right of Refresh (the owner: "i meant to the right"; "the
+  time should show when the data was last read"), as "Nov 8, 2026 17:02:03 PT" (`/v1/costs` carries `time`;
+  `costs-views.test.ts`, `costs-page.spec.ts` 2: the format and position, the same time until the next load;
+  `smoke.spec.ts`); screenshots looked at.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

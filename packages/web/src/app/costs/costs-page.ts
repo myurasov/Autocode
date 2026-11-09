@@ -71,16 +71,10 @@ export class CostsPage {
   private typing?: ReturnType<typeof setTimeout>;
   private loaded = false;
 
-  /*
-   * The server's time in its zone, a second at a time: its time at the last
-   * load (against this browser's clock then), plus the time since.
-   */
-  private readonly tick = signal(Date.now());
-  private offset = 0;
+  // When the data was read: the server's time then, in its zone.
   protected readonly clock = computed(() => {
     const v = this.view();
-    if (!v?.time) return '';
-    return clockText(this.tick() + this.offset, v.timezone);
+    return v?.time ? clockText(Date.parse(v.time), v.timezone) : '';
   });
 
   constructor() {
@@ -96,10 +90,8 @@ export class CostsPage {
     const timer = setInterval(() => {
       if (this.inFlight === 0) void this.refresh();
     }, COSTS_REFRESH_MS);
-    const second = setInterval(() => this.tick.set(Date.now()), 1000);
     inject(DestroyRef).onDestroy(() => {
       clearInterval(timer);
-      clearInterval(second);
       clearTimeout(this.typing);
     });
   }
@@ -110,9 +102,6 @@ export class CostsPage {
     try {
       const view = await this.api.costs(match);
       if (match !== this.match()) return;
-      const now = Date.now();
-      this.offset = Date.parse(view.time) - now;
-      this.tick.set(now);
       this.view.set(view);
       this.error.set('');
       this.updatedAt.set(Date.now());

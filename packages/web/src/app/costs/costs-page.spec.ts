@@ -152,12 +152,13 @@ describe('CostsPage', () => {
         .querySelector('td.agent a')!
         .getAttribute('href'),
     ).toBe('/agents?agent=kaggle:lead');
-    // the server's time in its zone, right of Refresh (the owner, 2026-11-08)
+    // when the data was read: the server's time in its zone, right of
+    // Refresh (the owner, 2026-11-08)
     const toolbar = page.querySelector('.toolbar')!;
     expect(text(toolbar.firstElementChild)).toBe('Refresh');
     const clock = toolbar.firstElementChild!.nextElementSibling!;
     expect(clock.classList).toContain('clock');
-    expect(text(clock)).toBe('17:02:03 Nov 8 2026 PST');
+    expect(text(clock)).toBe('Nov 8, 2026 17:02:03 PT');
     expect(page.querySelector('p.day')).toBeNull();
     expect(text(page.querySelector('footer'))).toBe('Updated 0s ago.');
   });
@@ -281,7 +282,7 @@ describe('CostsPage', () => {
     expect(page.querySelector('table.costs tfoot')).toBeNull();
   });
 
-  it('the clock goes on between loads, a second at a time', async () => {
+  it('the time is when the data was read: the same until the next load', async () => {
     vi.useFakeTimers();
     try {
       signedIn();
@@ -291,10 +292,15 @@ describe('CostsPage', () => {
       await vi.advanceTimersByTimeAsync(0);
       fixture.detectChanges();
       const clock = () => text(el(fixture).querySelector('.toolbar .clock'));
-      expect(clock()).toBe('17:02:03 Nov 8 2026 PST');
+      expect(clock()).toBe('Nov 8, 2026 17:02:03 PT');
       await vi.advanceTimersByTimeAsync(2000);
       fixture.detectChanges();
-      expect(clock()).toBe('17:02:05 Nov 8 2026 PST');
+      expect(clock()).toBe('Nov 8, 2026 17:02:03 PT');
+      await vi.advanceTimersByTimeAsync(COSTS_REFRESH_MS - 2000);
+      load({ ...view(), time: '2026-11-09T01:02:08.000Z' });
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+      expect(clock()).toBe('Nov 8, 2026 17:02:08 PT');
     } finally {
       fixture.destroy();
       vi.useRealTimers();

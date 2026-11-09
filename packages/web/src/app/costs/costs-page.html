@@ -1,6 +1,6 @@
 <!--
-  The Costs page: Refresh, the server's time in its zone (a clock; a failed
-  load's message beside it); the Agent filter (a pattern, in the address); every
+  The Costs page: Refresh, when the data was read (the server's time in its
+  zone; a failed load's message beside it); the Agent filter (a pattern, in the address); every
   agent's status (its dot, as on Agents; unregistered ones with spend too,
   marked), spend
   today, its daily cap (a bar of the share spent), what is left today, its
@@ -11,9 +11,11 @@
 
 <div class="toolbar">
   <button type="button" (click)="applyMatch()">Refresh</button>
-  <!-- The server's time in its zone, a second at a time (the owner). -->
+  <!-- When the data was read: the server's time, in its zone (the owner). -->
   @if (clock(); as c) {
-    <span class="clock" [title]="'The server\'s time (' + view()?.timezone + ')'"
+    <span
+      class="clock"
+      [title]="'When the data was read (the server\'s time, ' + view()?.timezone + ')'"
       >{{ c }}</span
     >
   }

@@ -109,8 +109,9 @@ export function localTime(
 }
 
 /*
- * A clock in a zone (the owner, 2026-11-08: the Costs tab's): "17:02:03 Nov 8
- * 2026 PST", the zone's short name as the zone itself says it.
+ * A time in a zone (the owner, 2026-11-08: when the Costs tab's data was
+ * read): "Nov 8, 2026 17:02:03 PT", the zone's generic short name (PT, not
+ * PST or PDT), as the other pages' times.
  */
 export function clockText(at: number, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -122,13 +123,14 @@ export function clockText(at: number, timeZone: string): string {
     minute: '2-digit',
     second: '2-digit',
     hourCycle: 'h23',
-    timeZoneName: 'short',
+    timeZoneName: 'shortGeneric',
   }).formatToParts(new Date(at));
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((p) => p.type === type)?.value ?? '';
   return (
+    `${part('month')} ${part('day')}, ${part('year')} ` +
     `${part('hour')}:${part('minute')}:${part('second')} ` +
-    `${part('month')} ${part('day')} ${part('year')} ${part('timeZoneName')}`
+    part('timeZoneName')
   );
 }
 
