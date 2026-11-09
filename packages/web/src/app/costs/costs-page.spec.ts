@@ -1,12 +1,12 @@
 /*
  * Unit tests of the Costs page (tier 0g; the owner, 2026-11-08) against a
  * mocked server: every agent's spend today and in total, its daily cap with
- * the share used and what is left, its context with the compaction threshold
- * and the share used; an agent's spend per day on a click; links to the
- * Agents page; the day and zone; unregistered agents with spend (marked, no
- * link); the Agent filter (a pattern, in the address); the totals row; the
- * empty page; "Updated" in the footer; and the live refresh (every 5 s, one
- * at a time).
+ * the share used and what is left (no context: it is on Agents); an agent's
+ * spend per day on a click; links to the Agents page, and the row a link led
+ * to highlighted; when the data was read; unregistered agents with spend
+ * (marked, no link); the Agent filter (a pattern, in the address); the
+ * totals row; the empty page; "Updated" in the footer; and the live refresh
+ * (every 5 s, one at a time).
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -103,7 +103,7 @@ describe('CostsPage', () => {
   const cell = (page: HTMLElement, agent: string, name: string) =>
     text(row(page, agent).querySelector(`td.${name}`));
 
-  it('lists every agent: today, cap, left, total and context', async () => {
+  it('lists every agent: today, cap, left and total (no Context: the owner, 2026-11-08)', async () => {
     const page = await open();
     expect(
       [...page.querySelectorAll('table.costs thead th')].map((th) => text(th)),
@@ -114,37 +114,20 @@ describe('CostsPage', () => {
       'Daily Cap',
       'Left Today',
       'Total',
-      'Context',
       '',
     ]);
     expect(cell(page, 'kaggle:lead', 'today')).toBe('$1.50');
     expect(cell(page, 'kaggle:lead', 'cap')).toBe('$2.00 75.0%');
     expect(cell(page, 'kaggle:lead', 'left')).toBe('$0.50');
     expect(cell(page, 'kaggle:lead', 'total')).toBe('$12.35');
-    // the owner, 2026-11-08: one Context column, "share of the threshold
-    // (max the model's window)" with a bar of that share
-    expect(cell(page, 'kaggle:lead', 'context')).toBe(
-      '80.0% of 100,000 (max 200,000)',
-    );
-    expect(
-      row(page, 'kaggle:lead')
-        .querySelector('td.context')!
-        .getAttribute('title'),
-    ).toBe('80,000 tokens; compacted past 100,000 (compact_at)');
-    // the bars: the cap's share used, the threshold's share used
+    expect(row(page, 'kaggle:lead').querySelector('td.context')).toBeNull();
+    // the bar: the cap's share used
     const bar = (agent: string, name: string) =>
       row(page, agent).querySelector(`td.${name} .bar > span`) as HTMLElement;
     expect(bar('kaggle:lead', 'cap').style.width).toBe('75%');
-    expect(bar('kaggle:lead', 'context').style.width).toBe('80%');
-    expect(bar('kaggle:lead', 'context').parentElement!.classList).toContain(
-      'near',
-    );
-    // no cap, no threshold yet
+    // no cap
     expect(cell(page, 'kaggle:worker', 'cap')).toBe('off');
     expect(cell(page, 'kaggle:worker', 'left')).toBe('—');
-    // no threshold known: the tokens alone, no bar
-    expect(cell(page, 'kaggle:worker', 'context')).toBe('9,000 tokens');
-    expect(bar('kaggle:worker', 'context')).toBeNull();
     expect(bar('kaggle:worker', 'cap')).toBeNull();
     // agent IDs link to the Agents page
     expect(
@@ -305,6 +288,25 @@ describe('CostsPage', () => {
       fixture.destroy();
       vi.useRealTimers();
     }
+  });
+
+  // The owner, 2026-11-08: a click on an agent's Spend on Agents leads here
+  // with its row highlighted.
+  it('highlights the agent a link led to (?agent=), and scrolls it into view', async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    signedIn();
+    await TestBed.inject(Router).navigateByUrl('/?agent=kaggle:worker');
+    fixture = TestBed.createComponent(CostsPage);
+    await settle(fixture);
+    load();
+    await settle(fixture);
+    const page = el(fixture);
+    const worker = row(page, 'kaggle:worker');
+    expect(worker.classList).toContain('highlight');
+    expect(worker.getAttribute('aria-current')).toBe('true');
+    expect(page.querySelectorAll('tr.highlight').length).toBe(1);
+    expect(scroll).toHaveBeenCalledWith({ block: 'center' });
   });
 
   it('a share as a percentage to a tenth', () => {

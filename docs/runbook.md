@@ -174,7 +174,8 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   **no shell values** under the process: that server's shells get no Autocode values, because the plugin cannot
   reach its local API (see Troubleshooting; `autocode hosts` shows a SHELL VALUES column).
 - **Agents:** the agents by machine (status: idle, working, waiting, error, paused or offline; model, spend today and
-  in total, context as the share of its compaction threshold (both link to Costs); host, folder, session, times),
+  in total (a click shows its row on Costs), context as now/threshold/window in K and M (`854K/777K/1M`; the exact
+  tokens in its tooltip); host, folder, session, times),
   refreshed every 10 s, with a pattern filter that applies a second after the last key (Enter or **Refresh** at once;
   **Show All** clears it); edit a description, **Pause** or **Resume** an agent's injections, **New Token** (the same
   as `autocode token rotate`), **Unregister**; **Stop All** (pause every agent and interrupt its session, after you
@@ -202,11 +203,11 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   group like `wake.*`), both kept in the address; **Older** loads the next 100. `autocode history` is the same in
   the CLI.
 - **Costs:** every agent's spend today and in total (also past `history_days`; agents that unregistered too,
-  dimmed), its daily cap with the share spent and what is left today, and its Context (the share of its compaction
-  threshold, the threshold, the model's window as its most, and a bar), refreshed every 5 s; **Days** shows its
-  spend per day (kept `history_days`, at least 31 days; days in the server's zone: right of **Refresh**, when the
-  data was read, in that zone); an **Agent** filter (a pattern, kept in the address) and a totals row. `autocode
-  costs` is the same in the CLI.
+  dimmed), its daily cap with the share spent and what is left today, refreshed every 5 s (its context is on
+  **Agents**; a click on an agent's Spend there leads here with its row highlighted); **Days** shows its spend per
+  day (kept `history_days`, at least 31 days; days in the server's zone: right of **Refresh**, when the data was
+  read, in that zone); an **Agent** filter (a pattern, kept in the address) and a totals row. `autocode costs` is
+  the same in the CLI.
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI, with a numbered table of contents.
 - **Settings:** the server-wide values (each shown in its edit box: change it and **Save**, or **Reset** to the
   built-in default), the pattern rules, the agents' own values, and **Resolved for an Agent** (an agent's values

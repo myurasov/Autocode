@@ -476,19 +476,20 @@ describe('HelpPage', () => {
       'in total',
       'daily cap',
       'left today',
-      'compaction threshold',
       'every 5 seconds',
       'Days',
       'unregistered',
       'Agent filters by an ID pattern',
       'the total of what is listed',
-      "when the data was read (the server's time, in its zone) is right of Refresh",
+      "when the data was read (the server's time, in its zone) is right of " +
+        'Refresh',
     ])
       expect(costs).toContain(part);
     const agents = section(page, 'web-agents');
     for (const part of ['model', 'Spend', 'Context'])
       expect(agents).toContain(part);
-    expect(costs).toContain('61.5% of 100,000 (max 200,000)');
+    expect(costs).toContain("a click on an agent's Spend there leads here");
+    expect(agents).toContain('854K/777K/1M');
     expect(section(page, 'commands')).toContain(
       'autocode costs [AGENT] [--match PATTERN]',
     );

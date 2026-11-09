@@ -145,8 +145,12 @@
           </td>
           <td class="spend">
             @if (a.cost; as k) {
-              <!-- it breaks only after the slash: today, then the total -->
-              <a routerLink="/costs" title="Spend on the Costs page"
+              <!-- it breaks only after the slash: today, then the total; a
+                   click opens Costs with this agent's row highlighted -->
+              <a
+                routerLink="/costs"
+                [queryParams]="{ agent: a.id }"
+                title="This agent's row on the Costs tab"
                 ><span class="part">{{ spendParts(k)[0] }}</span
                 >&ngsp;<span class="part">{{ spendParts(k)[1] }}</span></a
               >
@@ -159,10 +163,7 @@
             [attr.title]="a.cost ? contextTitle(a.cost) : null"
           >
             @if (a.cost && a.cost.context !== null) {
-              <a routerLink="/costs"
-                ><span class="part">{{ contextParts(a.cost)[0] }}</span
-                >&ngsp;<span class="part">{{ contextParts(a.cost)[1] }}</span></a
-              >
+              {{ contextShort(a.cost) }}
             } @else {
               <span class="muted">—</span>
             }

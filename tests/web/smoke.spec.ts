@@ -1985,13 +1985,8 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
       `$${(before + 0.25).toFixed(2)}`,
       { timeout: 8000 },
     )
-    await expect(row.locator("td.context")).toHaveText(
-      "60.0% of 100,000 (max 200,000)",
-    )
-    await expect(row.locator("td.context .bar > span")).toHaveAttribute(
-      "style",
-      /width: 60%/,
-    )
+    // no Context column here (the owner, 2026-11-08): it is on Agents
+    await expect(row.locator("td.context")).toHaveCount(0)
     // when the data was read, the server's time, right of Refresh (the
     // owner, 2026-11-08)
     await expect(page.locator(".toolbar .clock")).toHaveText(
@@ -2020,8 +2015,15 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
     ).toContainText("$")
     await openTab(page, "Agents")
     const agent = page.locator('tr[data-agent="smoke:agent"]')
-    await expect(agent.locator("td.context")).toHaveText("60.0% of 100,000")
+    await expect(agent.locator("td.context")).toHaveText("60K/100K/200K")
     await expect(agent.locator("td.spend")).toContainText(" today / $")
+    // a click on Spend: the Costs tab with this agent's row highlighted
+    await agent.locator("td.spend a").click()
+    await expect(page).toHaveURL(/\/costs\?agent=smoke:agent$/)
+    await expect(
+      page.locator('table.costs tr[data-agent="smoke:agent"]'),
+    ).toHaveClass(/highlight/)
+    await openTab(page, "Agents")
     await expect(agent.locator("td.model")).toHaveText("main")
     await expect(agent.locator("td.model")).toHaveAttribute(
       "title",

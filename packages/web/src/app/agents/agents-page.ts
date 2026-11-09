@@ -26,7 +26,7 @@ import { RouterLink } from '@angular/router';
 import { type Agent, type AgentError, Api, errorText } from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
 import {
-  contextParts,
+  contextShort,
   contextTitle,
   dotClass,
   localTime,
@@ -147,7 +147,7 @@ export class AgentsPage {
   protected readonly dotClass = dotClass;
   protected readonly spendParts = spendParts;
   protected readonly modelParts = modelParts;
-  protected readonly contextParts = contextParts;
+  protected readonly contextShort = contextShort;
   protected readonly contextTitle = contextTitle;
   protected readonly errorTimes = errorTimes;
 

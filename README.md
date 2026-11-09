@@ -165,15 +165,15 @@ Served by the server; sign in with the admin token. Light and dark.
 
 - **Hosts:** every connected OpenCode folder, by machine, online or not.
 - **Agents:** status (`idle`, `working`, `waiting`, `error`, `paused`, `offline`), model, spend (today / total),
-  context (its share of the compaction threshold), host, folder, session; edit, Pause, Resume, Retry, New Token,
-  Unregister; Stop All and Resume All; a pattern filter.
+  context (now / its compaction threshold / the model's window, like `854K/777K/1M`), host, folder, session; edit,
+  Pause, Resume, Retry, New Token, Unregister; Stop All and Resume All; a pattern filter.
 - **Inbox:** messages to you and alerts; answer or close.
 - **Messages:** every message; send one as the owner.
 - **Wakes:** every agent's wakes, when each runs next and was last set; Fire, Cancel, Set a Wake.
 - **Locks:** every lock with its capacity, holders (until when; Release) and line.
 - **Jobs:** the jobs and their runs; Run Now, Edit, Delete, Set a Job.
-- **Costs:** every agent's spend today and in total (unregistered ones too), its daily cap and what is left, its
-  context against its compaction threshold, live; its spend per day; an agent filter and the totals.
+- **Costs:** every agent's spend today and in total (unregistered ones too), its daily cap and what is left, live;
+  its spend per day; an agent filter and the totals; a click on an agent's Spend on Agents leads to its row.
 - **History:** every event, newest first, filtered by agent pattern and kind, with Older for more.
 - **Settings:** server values, pattern rules, agents' own values, and what an agent resolves to.
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI.

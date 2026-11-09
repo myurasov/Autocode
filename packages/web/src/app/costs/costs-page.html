@@ -4,9 +4,8 @@
   agent's status (its dot, as on Agents; unregistered ones with spend too,
   marked), spend
   today, its daily cap (a bar of the share spent), what is left today, its
-  total, its context (the share of its compaction threshold, the model's
-  window as its most, a bar), Days for its spend per day; a totals row; and
-  when the list last loaded.
+  total and Days for its spend per day (the agent a link led to, ?agent=,
+  highlighted); a totals row; and when the list last loaded.
 -->
 
 <div class="toolbar">
@@ -46,13 +45,17 @@
       <th>Daily Cap</th>
       <th class="num">Left Today</th>
       <th class="num">Total</th>
-      <th>Context</th>
       <th></th>
     </tr>
   </thead>
   <tbody>
     @for (a of view()?.agents ?? []; track a.agent) {
-      <tr [attr.data-agent]="a.agent" [class.gone]="!a.registered">
+      <tr
+        [attr.data-agent]="a.agent"
+        [class.gone]="!a.registered"
+        [class.highlight]="a.agent === target()"
+        [attr.aria-current]="a.agent === target() ? 'true' : null"
+      >
         <td class="agent id-like">
           @if (a.registered) {
             <app-agent-link [id]="a.agent" />
@@ -91,29 +94,6 @@
           }
         </td>
         <td class="num total">{{ costText(a.total_usd) }}</td>
-        <!--
-          The context as its share of the compaction threshold, the model's
-          window as the most it can be, a bar of the share (the owner,
-          2026-11-08).
-        -->
-        <td
-          class="context"
-          [attr.title]="a.context === null ? null : contextTitle(a)"
-        >
-          @if (a.context === null) {
-            <span class="muted">—</span>
-          } @else {
-            {{ contextText(a, true) }}
-            @if (a.compact_at !== null && a.context_share !== null) {
-              <span
-                class="bar"
-                [class.near]="a.context_share >= 75"
-                [class.over]="a.context_share >= 100"
-                ><span [style.width]="width(a.context_share)"></span
-              ></span>
-            }
-          }
-        </td>
         <td class="actions">
           <button
             type="button"
@@ -127,7 +107,7 @@
       </tr>
       @if (open() === a.agent) {
         <tr class="days" [attr.data-agent]="a.agent">
-          <td colspan="8">
+          <td colspan="7">
             @if (daysError()) {
               <span class="errmsg" role="alert">{{ daysError() }}</span>
             } @else if (days(); as d) {
@@ -161,7 +141,7 @@
       }
     } @empty {
       <tr>
-        <td class="muted" colspan="8">
+        <td class="muted" colspan="7">
           @if (!view()) {
             Loading...
           } @else if (match()) {
@@ -185,7 +165,7 @@
           <td class="num today">{{ costText(v.totals.today_usd) }}</td>
           <td colspan="2"></td>
           <td class="num total">{{ costText(v.totals.total_usd) }}</td>
-          <td colspan="2"></td>
+          <td></td>
         </tr>
       </tfoot>
     }

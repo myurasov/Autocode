@@ -26,26 +26,31 @@ export function spendParts(k: CostNumbers): [string, string] {
 }
 
 /*
- * The context as its share of the compaction threshold (the owner,
- * 2026-11-08): "80.0% of 100,000", with " (max 200,000)" for the model's
- * window when asked; the tokens alone without a threshold; "—" before the
- * first step.
+ * Tokens short (the owner, 2026-11-08): under 1,000 as they are; thousands
+ * as K (853,916 is 854K); a million as 1M, more with one decimal (1,048,576
+ * is 1.0M; 2,500,000 is 2.5M).
  */
-export function contextText(k: CostNumbers, withWindow = false): string {
-  if (k.context === null) return '—';
-  if (k.compact_at === null || k.context_share === null)
-    return `${tokens(k.context)} tokens`;
-  const max =
-    withWindow && k.context_limit ? ` (max ${tokens(k.context_limit)})` : '';
-  return `${k.context_share.toFixed(1)}% of ${tokens(k.compact_at)}${max}`;
+export function tokensShort(n: number): string {
+  if (n < 1_000) return String(n);
+  const k = Math.round(n / 1_000);
+  if (k < 1_000) return `${k}K`;
+  // up to a million (999,500 rounds there): 1M; above it, one decimal
+  if (n <= 1_000_000) return '1M';
+  return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
-// Its two halves, which a narrow cell keeps whole: "80.0% of", "100,000"
-// (one half alone when there is no threshold).
-export function contextParts(k: CostNumbers): [string, string] {
-  const all = contextText(k);
-  const at = all.indexOf(' of ');
-  return at < 0 ? [all, ''] : [all.slice(0, at + 3), all.slice(at + 4)];
+/*
+ * The context on the Agents tab (the owner, 2026-11-08): now / compaction
+ * threshold / the model's window, short ("854K/777K/1M"); without a
+ * threshold now / window, without a known window now / threshold; "—"
+ * before the first step.
+ */
+export function contextShort(k: CostNumbers): string {
+  if (k.context === null) return '—';
+  return [k.context, k.compact_at, k.context_limit]
+    .filter((n): n is number => n !== null)
+    .map(tokensShort)
+    .join('/');
 }
 
 /*
@@ -57,13 +62,18 @@ export function modelParts(model: string): [string, string] {
   return at < 0 ? ['', model] : [model.slice(0, at + 1), model.slice(at + 1)];
 }
 
-// The context's tooltip: the tokens and the threshold.
+// The context's tooltip: the tokens now, the threshold and the window, whole.
 export function contextTitle(k: CostNumbers): string {
   if (k.context === null) return 'No model step yet';
-  const used = `${tokens(k.context)} tokens`;
-  if (k.compact_at === null)
-    return `${used}; no compaction threshold (compact_at off)`;
-  return `${used}; compacted past ${tokens(k.compact_at)} (compact_at)`;
+  const used = `${tokens(k.context)} tokens now`;
+  const at =
+    k.compact_at === null
+      ? 'no compaction threshold (compact_at off)'
+      : `compacted past ${tokens(k.compact_at)} (compact_at)`;
+  const window = k.context_limit
+    ? `the model's window ${tokens(k.context_limit)}`
+    : "the model's window is not known";
+  return `${used}; ${at}; ${window}`;
 }
 
 /*

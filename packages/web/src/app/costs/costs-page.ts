@@ -1,12 +1,13 @@
 /*
  * The Costs page (tier 0g; the owner, 2026-11-08): every registered agent's
- * spend today and in total, its daily cap with the share used and what is
- * left today, and its context with the compaction threshold and the share
- * used, refreshed every 5 s (one refresh at a time) so it follows each model
- * step. Days shows an agent's spend per day, newest first; agent IDs link to
+ * spend today and in total, and its daily cap with the share used and what
+ * is left today (its context is on the Agents tab), refreshed every 5 s (one
+ * refresh at a time) so it follows each model step, with when the data was
+ * read. Days shows an agent's spend per day, newest first; agent IDs link to
  * the Agents page. Unregistered agents with spend show too, marked; the Agent
  * filter (an ID pattern, kept in the address) applies a second after the last
- * key; a totals row adds up what is listed (the owner, 2026-11-08).
+ * key; a totals row adds up what is listed (the owner, 2026-11-08). The
+ * agent a link led to (?agent=, the Agents tab's Spend) is highlighted.
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
@@ -21,9 +22,9 @@ import {
   errorText,
 } from '../api';
 import { IdParts } from '../breaks';
-import { clockText, contextText, contextTitle, dotClass } from '../format';
+import { clockText, dotClass } from '../format';
 import { costText } from '../jobs/jobs-page';
-import { AgentLink } from '../links';
+import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { Updated } from '../updated';
 
 // The page follows each model step: a refresh every 5 s.
@@ -49,6 +50,9 @@ export class CostsPage {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
+  // The agent a link led to (the Agents tab's Spend), highlighted.
+  protected readonly target = highlightParam('agent');
+
   // The filter in the address, and as typed.
   protected readonly match = signal('');
   protected readonly pattern = signal('');
@@ -62,8 +66,6 @@ export class CostsPage {
   protected readonly daysError = signal('');
   protected readonly costText = costText;
   protected readonly dotClass = dotClass;
-  protected readonly contextText = contextText;
-  protected readonly contextTitle = contextTitle;
   protected readonly shareText = shareText;
   protected readonly tokensText = tokensText;
 
@@ -86,6 +88,11 @@ export class CostsPage {
       this.match.set(match);
       void this.refresh();
     });
+    scrollToHighlight(
+      this.target,
+      (id) => !!this.view()?.agents.some((a) => a.agent === id),
+      'data-agent',
+    );
     // A tick is skipped while the last refresh is still out.
     const timer = setInterval(() => {
       if (this.inFlight === 0) void this.refresh();

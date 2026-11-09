@@ -26,8 +26,8 @@ import {
   text,
   type,
 } from '../../testing/helpers';
-import type { Agent, AgentError } from '../api';
-import { localTime } from '../format';
+import type { Agent, AgentError, CostNumbers } from '../api';
+import { contextShort, localTime, tokensShort } from '../format';
 import {
   AgentsPage,
   FILTER_DELAY_MS,
@@ -139,19 +139,55 @@ describe('AgentsPage', () => {
     const model = row.querySelector('td.model')!;
     expect(text(model)).toBe('claude-opus-5-5');
     expect(model.getAttribute('title')).toBe('prov/claude-opus-5-5');
+    // a click on Spend opens the Costs tab with this agent's row highlighted
     const spend = row.querySelector('td.spend')!;
     expect(text(spend)).toBe('$1.50 today / $12.35 total');
-    expect(spend.querySelector('a')!.getAttribute('href')).toBe('/costs');
+    expect(spend.querySelector('a')!.getAttribute('href')).toBe(
+      '/costs?agent=kaggle:lead',
+    );
+    // the context, the threshold and the model's window, in K and M (the
+    // owner, 2026-11-08)
     const context = row.querySelector('td.context')!;
-    expect(text(context)).toBe('80.0% of 100,000');
+    expect(text(context)).toBe('80K/100K/200K');
     expect(context.getAttribute('title')).toBe(
-      '80,000 tokens; compacted past 100,000 (compact_at)',
+      '80,000 tokens now; compacted past 100,000 (compact_at); the ' +
+        "model's window 200,000",
     );
     // an agent with no cost or model yet
     const worker = page.querySelector('tr[data-agent="kaggle:worker"]')!;
     expect(text(worker.querySelector('td.spend'))).toBe('—');
     expect(text(worker.querySelector('td.context'))).toBe('—');
     expect(text(worker.querySelector('td.model'))).toBe('—');
+  });
+
+  it('tokens in K and M; the context without a threshold, or without a window', () => {
+    expect(tokensShort(853_916)).toBe('854K');
+    expect(tokensShort(999)).toBe('999');
+    expect(tokensShort(1_000)).toBe('1K');
+    expect(tokensShort(999_499)).toBe('999K');
+    expect(tokensShort(999_500)).toBe('1M');
+    expect(tokensShort(1_000_000)).toBe('1M');
+    expect(tokensShort(1_048_576)).toBe('1.0M');
+    expect(tokensShort(2_500_000)).toBe('2.5M');
+    const k = (over: Partial<CostNumbers>): CostNumbers => ({
+      today_usd: 0,
+      total_usd: 0,
+      daily_usd: 'off',
+      left_usd: null,
+      context: 853_916,
+      context_limit: 1_000_000,
+      compact_at: 777_000,
+      context_share: 109.9,
+      ...over,
+    });
+    expect(contextShort(k({}))).toBe('854K/777K/1M');
+    // no threshold (compact_at off): the context and the window
+    expect(contextShort(k({ compact_at: null, context_share: null }))).toBe(
+      '854K/1M',
+    );
+    // no window known: the context and the threshold
+    expect(contextShort(k({ context_limit: null }))).toBe('854K/777K');
+    expect(contextShort(k({ context: null }))).toBe('—');
   });
 
   it("shows each agent's host after its status, a link to the Hosts page", async () => {

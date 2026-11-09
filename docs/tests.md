@@ -1003,5 +1003,10 @@ in what it read.
   time should show when the data was last read"), as "Nov 8, 2026 17:02:03 PT" (`/v1/costs` carries `time`;
   `costs-views.test.ts`, `costs-page.spec.ts` 2: the format and position, the same time until the next load;
   `smoke.spec.ts`); screenshots looked at.
+- **Agents and Costs, the owner's 22:5x PT round** (tests first: `agents-page.spec.ts` 2, `costs-page.spec.ts` 2 new or
+  changed, `smoke.spec.ts`, Help; web-unit 194, web 83): a click on an agent's Spend on Agents opens Costs with that
+  agent's row highlighted and scrolled to (`/costs?agent=`); the Costs tab has no Context column; the Agents tab's
+  Context is now / its compaction threshold / the model's window in K and M (`854K/777K/1M`; without a threshold
+  or a known window, the two there are; the exact tokens in the tooltip). Screenshots looked at.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.
