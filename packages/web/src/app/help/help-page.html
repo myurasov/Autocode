@@ -581,8 +581,9 @@ autocode plugin install --url http://SERVER:4848 \
       agent to continue where it left off; a lock's notice says until when
       the agent holds it; <code>[autocode] compaction next</code> says the
       session is compacted when that turn ends (its context passed
-      <code>compact_at</code>), so the agent brings its work to a stable state
-      and writes down what it needs first. What others wrote, and a check's
+      <code>compact_at</code>; it comes also when nothing else waits for it,
+      say after your own turns in the TUI), so the agent brings its work to a
+      stable state and writes down what it needs first. What others wrote, and a check's
       output, is quoted: each such line starts with <code>&gt; </code>, so it
       cannot pass for Autocode's own words. A last line says that the prompt
       comes from Autocode, not from you, and how the agent lists its wakes and

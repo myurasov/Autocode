@@ -79,3 +79,13 @@ test("README and runbook name the Costs tab and autocode costs", () => {
     expect(text, path).toMatch(/\bCosts\b/)
   }
 })
+
+// The owner, 2026-11-09: an idle agent past compact_at is told and compacted
+// even with nothing waiting; howto, the runbook and the spec say so.
+test("howto and the runbook say a compaction comes even with nothing waiting", () => {
+  const flat = (path: string) => read(path).replace(/\s+/g, " ")
+  expect(flat("docs/howto.md")).toContain(
+    "even when nothing else waits for you",
+  )
+  expect(flat("docs/runbook.md")).toContain("even when nothing waits for it")
+})

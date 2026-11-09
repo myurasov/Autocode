@@ -1026,5 +1026,12 @@ in what it read.
   `inbox-page.spec.ts`, `help-page.spec.ts` 2, `smoke.spec.ts`): the Costs tab's days field is now "Days" (a label
   before the field) then the field, where it was the field then "days"; the Inbox's "Show Closed" box is "Closed".
   Help, the runbook, README and the spec say so. web-unit 199, web 84; screenshots looked at.
+- **The compaction notice with nothing waiting** (the owner, 2026-11-09: "yes" to a session driven only from the
+  TUI still compacting on time; tests first, red, then green: `reliability.test.ts` 4: an idle agent past
+  `compact_at` with nothing queued is told, compacted after that turn, then left alone, with no loop from the
+  compaction's own step; not while paused or with `compact_at` off, nothing below it; in error only retries; a notice
+  that did not arrive comes again after `min_interval`, not at once; `plugin-costs.test.ts` (the guide),
+  `help-page.spec.ts`, `docs.test.ts` (howto, runbook)). The scheduler now also visits idle, online agents that are
+  not paused or in error, with no compaction running or told of, whose context is past their threshold.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

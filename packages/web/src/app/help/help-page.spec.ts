@@ -502,6 +502,8 @@ describe('HelpPage', () => {
     const sees = section(page, 'sees');
     expect(sees).toContain('[autocode] compaction next');
     expect(sees).toContain('a stable state');
+    // the owner, 2026-11-09: also to an idle agent with nothing waiting
+    expect(sees).toContain('also when nothing else waits for it');
   });
 
   it('tells what the History tab shows, its filters and Older', async () => {

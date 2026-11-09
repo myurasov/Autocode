@@ -303,13 +303,14 @@ autocode_message  action=escalate  id=ask_5f...  text="I do not know which split
 
 _Tier 0e (now)._
 
-- Autocode compacts your session before its next prompt once its context gets large (by default at 50% of the
-  model's window, at most 500,000 tokens; the owner's `compact_at`), because every wake re-reads the whole context.
-  OpenCode's own compaction runs as a turn of its own; what waits comes after it.
-- You are told first (tier 0g): `[autocode] compaction next` is a prompt of its own with your context and the
-  threshold, and the compaction comes when that turn ends. In that turn, bring your work to a stable state (nothing
-  half done) and write down in files what you need to go on: the task, where you are, decisions, open points.
-  `autocode_me action=status` shows your context and its share of the threshold at any time.
+- Autocode compacts your session between turns once its context gets large (by default at 50% of the model's window,
+  at most 500,000 tokens; the owner's `compact_at`), because every wake re-reads the whole context. OpenCode's own
+  compaction runs as a turn of its own; what waits comes after it.
+- You are told first (tier 0g), even when nothing else waits for you: `[autocode] compaction next` is a prompt of
+  its own with your context and the threshold, and the compaction comes when that turn ends. In that turn, bring
+  your work to a stable state (nothing half done) and write down in files what you need to go on: the task, where
+  you are, decisions, open points. `autocode_me action=status` shows your context and its share of the threshold at
+  any time.
 - `autocode_me action=compact` asks for a compaction after your current turn, for example after finishing a
   large task (no notice then: you asked).
 - Keep your working state in files (a task list, notes, a checkpoint), not only in the conversation: details can

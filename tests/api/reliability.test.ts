@@ -5,7 +5,8 @@
  * it ends (an inbox alert; the next day, a raised cap or a resume lifts it);
  * a session whose context passed compact_at is told first (tier 0g: a
  * "compaction next" prompt), then compacted when that turn ends, before the
- * next injection; autocode_me compact asks for one (no notice); a turn cut
+ * next injection, or idle with nothing waiting (the owner, 2026-11-09);
+ * autocode_me compact asks for one (no notice); a turn cut
  * by a lost OpenCode is resumed when the host is back; agents expire after
  * expire_after since their last turn; the background service is restarted
  * when its hosts stay offline.
@@ -274,6 +275,102 @@ describe("compaction", () => {
     await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "every 1m" })
     t.clock.advance(MIN)
     expect((await sent()).map((i) => i.type)).toEqual(["inject"])
+  })
+
+  // The owner, 2026-11-09: a session driven only from the TUI (no wake or
+  // message for it) still compacts on time.
+  test("an idle agent past compact_at with nothing waiting is told, compacted after that turn, then left alone", async () => {
+    await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
+    // the owner's own turn in the TUI passes the threshold
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await report(t, HOST, [step(0.01, 120_000)])
+    await turnEnds()
+    t.clock.advance(2000)
+    const notice = await sent()
+    expect(notice.map((i) => i.type)).toEqual(["inject"])
+    expect(notice[0].payload.text).toStartWith("[autocode] compaction next\n\n")
+    expect(notice[0].payload.text).toContain("120,000 tokens")
+    // the notice's turn, then the compaction
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await turnEnds()
+    expect((await sent()).map((i) => i.type)).toEqual(["compact"])
+    // the compaction's turn (its step reads the old conversation)
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await report(t, HOST, [step(0.01, 150_000)])
+    await turnEnds()
+    // nothing more: no second notice, no loop
+    for (const wait of [2000, MIN, 10 * MIN]) {
+      t.clock.advance(wait)
+      expect((await sent()).map((i) => i.type)).toEqual([])
+    }
+    const count = async (kind: string) =>
+      (await owner("GET", `/v1/history?kind=${kind}`)).body.history.length
+    expect(await count("session.compact.noticed")).toBe(1)
+    expect(await count("session.compacted")).toBe(1)
+  })
+
+  test("an idle agent past compact_at: not while paused, in error or with compact_at off; below it, nothing", async () => {
+    await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
+    // below the threshold
+    await report(t, HOST, [step(0.01, 90_000)])
+    await turnEnds()
+    t.clock.advance(MIN)
+    expect((await sent()).map((i) => i.type)).toEqual([])
+    // paused: nothing until it is resumed
+    await owner("POST", "/v1/agents/team:a/pause")
+    await report(t, HOST, [step(0.01, 120_000)])
+    await turnEnds()
+    t.clock.advance(MIN)
+    expect((await sent()).map((i) => i.type)).toEqual([])
+    // compact_at off for it: nothing
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { compact_at: "off" } },
+    })
+    await owner("POST", "/v1/agents/team:a/resume")
+    t.clock.advance(MIN)
+    expect((await sent()).map((i) => i.type)).toEqual([])
+    // back on: the notice
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { compact_at: null } },
+    })
+    t.clock.advance(2000)
+    expect((await prompts()).ses_a).toStartWith("[autocode] compaction next")
+  })
+
+  test("an idle agent in error past compact_at gets only its retries", async () => {
+    await owner("PATCH", "/v1/settings", {
+      server: { compact_at: "50%", retry_interval: "10m" },
+    })
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await report(t, HOST, [step(0.01, 120_000)])
+    await report(t, HOST, [
+      {
+        type: "turn.ended",
+        session: "ses_a",
+        outcome: "failed",
+        error: "provider.internal",
+      },
+    ])
+    t.clock.advance(2000)
+    expect((await sent()).map((i) => i.type)).toEqual([])
+  })
+
+  test("an idle agent's notice that did not arrive is sent again after min_interval, not at once", async () => {
+    await owner("PATCH", "/v1/settings", {
+      server: { compact_at: "50%" },
+      agents: { "team:a": { min_interval: "1m" } },
+    })
+    await report(t, HOST, [step(0.01, 120_000)])
+    await turnEnds()
+    t.server.tick()
+    const out = await instructions(t, HOST)
+    expect(out.map((i) => i.type)).toEqual(["inject"])
+    // the plugin could not type it
+    for (const i of out) await ack(t, HOST, i.id, null, false)
+    t.clock.advance(2000)
+    expect((await sent()).map((i) => i.type)).toEqual([])
+    t.clock.advance(MIN)
+    expect((await prompts()).ses_a).toStartWith("[autocode] compaction next")
   })
 
   test("autocode_me compact: after the current turn, with no notice", async () => {

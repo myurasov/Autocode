@@ -9,7 +9,8 @@
  * grants and expiries: messages from autocode) say what they are in the header
  * and are Autocode's own text, not quoted (tier 0c). Messages come whole, in
  * their order, up to 32,000 characters a prompt (Phase 1). Past compact_at an
- * agent is told first, then compacted after that turn (tier 0g).
+ * agent is told first, then compacted after that turn (tier 0g), also when
+ * idle with nothing waiting (the owner, 2026-11-09).
  */
 
 import type { Database } from "bun:sqlite"
@@ -194,6 +195,7 @@ export class Delivery {
             )
             .all() as { id: string }[]
         ).map((r) => r.id),
+        ...this.idlePastCompactAt(),
       ]),
     ].map((agent_id) => ({ agent_id }))
     for (const { agent_id } of agents)
@@ -205,6 +207,31 @@ export class Delivery {
           data: { error: (err as Error).message },
         })
       }
+  }
+
+  /*
+   * Idle agents past compact_at with nothing waiting for them (the owner,
+   * 2026-11-09: a session driven only from the TUI still compacts on time):
+   * online, not paused or in error, no compaction running or told of.
+   */
+  private idlePastCompactAt(): string[] {
+    if (!this.costs) return []
+    const rows = this.db
+      .query(
+        `SELECT a.id FROM agents a JOIN sessions s ON s.id = a.session_id
+         JOIN hosts h ON h.id = s.host_id
+         WHERE a.context_tokens IS NOT NULL AND a.compacting = 0
+           AND a.compact_notified = 0 AND a.paused = '' AND a.error IS NULL
+           AND s.busy = 0 AND s.deleted_at IS NULL AND h.online = 1
+         ORDER BY a.id`,
+      )
+      .all() as { id: string }[]
+    return rows
+      .map((r) => r.id)
+      .filter((id) => {
+        const due = this.costs!.compactDue(id)
+        return !!due && !due.notified
+      })
   }
 
   // Puts an injection's wakes and messages back in line.
@@ -377,6 +404,7 @@ export class Delivery {
       return
     const values = this.values(agent)
     const now = this.now()
+    const minInterval = parseDuration(String(values.min_interval))
     // A context past compact_at (or a compaction asked for) is compacted
     // first: a turn of its own; what waits goes after it (tier 0e). Past
     // compact_at the agent is told first, in a prompt of its own (tier 0g):
@@ -384,6 +412,19 @@ export class Delivery {
     // not in the error state: there only retries go (the final review)
     const due = row.error ? null : this.costs?.compactDue(agent)
     if (due && !due.notified) {
+      // with nothing waiting (the owner's own turns passed it), the notice
+      // is like a wake: at most one per min_interval
+      const waits =
+        !!this.db.query("SELECT 1 FROM queue WHERE agent_id = ?").get(agent) ||
+        !!this.db
+          .query("SELECT 1 FROM agents WHERE id = ? AND cut_at IS NOT NULL")
+          .get(agent)
+      if (
+        !waits &&
+        row.last_injection_at &&
+        now < row.last_injection_at + minInterval
+      )
+        return
       this.inject(row, [], {
         n: 0,
         of: 0,
@@ -430,7 +471,6 @@ export class Delivery {
       this.inject(row, ready, note)
       return
     }
-    const minInterval = parseDuration(String(values.min_interval))
     if (row.last_injection_at && now < row.last_injection_at + minInterval)
       return
     const timeout = parseDuration(String(values.check_timeout))

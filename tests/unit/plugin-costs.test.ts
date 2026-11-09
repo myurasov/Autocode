@@ -162,6 +162,8 @@ describe("the guide's costs part", () => {
       // tier 0g: the notice before a compaction, and the numbers in status
       "`[autocode] compaction next`",
       "bring your work to a stable state",
+      // the owner, 2026-11-09: it comes even with nothing waiting for you
+      "even when nothing else waits for you",
       "in total",
       "what is left",
       "its share",
