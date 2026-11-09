@@ -145,7 +145,7 @@ describe("autocode CLI", () => {
     expect(
       (
         await cli(
-          ["settings", "set", "inline_limit", "99", "--agent", "kaggle:lead"],
+          ["settings", "set", "check_output", "99", "--agent", "kaggle:lead"],
           asAdmin(),
         )
       ).code,
@@ -160,7 +160,7 @@ describe("autocode CLI", () => {
     expect(resolved.stdout).toMatch(
       /question_mode\s+auto\s+rule 1 \(kaggle:\*\)/,
     )
-    expect(resolved.stdout).toMatch(/inline_limit\s+99\s+agent/)
+    expect(resolved.stdout).toMatch(/check_output\s+99\s+agent/)
     const bad = await cli(
       ["settings", "set", "min_interval", "soon"],
       asAdmin(),
@@ -181,7 +181,7 @@ describe("autocode CLI", () => {
     expect(
       (
         await cli(
-          ["settings", "unset", "inline_limit", "--agent", "kaggle:lead"],
+          ["settings", "unset", "check_output", "--agent", "kaggle:lead"],
           asAdmin(),
         )
       ).code,

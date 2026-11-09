@@ -4,8 +4,10 @@
  * reminder and act on it; poll in work hours with a check; have a background
  * job wake them; run a loop spaced from the end of each run; ask the owner and
  * follow the answer; answer another agent's question (tier 0d); ask for an
- * approval and follow it (tier 0d). With the tools, never the CLI (but in a
- * job's own command) or the API, and without reading the plugin's code.
+ * approval and follow it (tier 0d); ask another agent and act on the reply
+ * that comes in a prompt after its turn (Phase 1). With the tools, never the
+ * CLI (but in a job's own command) or the API, and without reading the
+ * plugin's code.
  *
  * Runs on the host, not in Docker: the provider's key is in the owner's
  * OpenCode config. An Autocode server from the source on a scratch data
@@ -764,6 +766,54 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
     if (ask.by !== ctx.id) return `answered by ${ask.by}, not the agent`
     const given = JSON.stringify(ask.answer ?? {})
     if (!/v3/.test(given)) return `answered ${given}, not v3 (see NOTES.md)`
+    return misuse(ctx)
+  },
+
+  /*
+   * Phase 1 (the owner, 2026-11-08): a message comes only in a prompt. The
+   * agent asks another agent (a second session of the same model, which only
+   * registers, then is paused) and must end its turn to get the reply; the
+   * owner answers for it, as a reply to that message, which comes in a prompt
+   * that wakes the agent, and it writes the answer down.
+   */
+  async reply(ctx) {
+    const peer: Ctx = { ...(await prepare(ctx.m, `${ctx.scenario}-peer`)) }
+    ctx.others = [...(ctx.others ?? []), peer]
+    await turn(peer, `${register(peer)} say ready; nothing else for now.`)
+    // the peer's own turns do nothing; its reply is the owner's
+    await ac("POST", `/v1/agents/${encodeURIComponent(peer.id)}/pause`)
+    const before = await idleTime(ctx)
+    await oc("POST", `/api/session/${ctx.session}/prompt`, {
+      text:
+        `${register(ctx)} ask the agent \`${peer.id}\`, with an Autocode ` +
+        "message, which learning rate to use. When its answer comes, " +
+        "write the rate alone into rate.txt in this folder.",
+    })
+    const asked = await until(
+      async () =>
+        (
+          await ac("GET", `/v1/messages?agent=${encodeURIComponent(peer.id)}`)
+        ).messages.find((m: any) => m.from === ctx.id),
+      turnMs,
+      "the message to the peer",
+    ).catch(() => undefined)
+    if (!asked) return `sent no message to ${peer.id}`
+    await idleAfter(ctx, before, "the asking turn").catch(() => {})
+    if (read(ctx, "rate.txt") !== null)
+      return "wrote rate.txt before the answer came"
+    const waited = await idleTime(ctx)
+    await ac("POST", "/v1/messages", {
+      to: ctx.id,
+      text: `Answering for ${peer.id}: use 0.003.`,
+      reply_to: asked.id,
+    })
+    await idleAfter(ctx, waited, "the turn the reply started")
+    await ac("DELETE", `/v1/agents/${encodeURIComponent(peer.id)}`).catch(
+      () => {},
+    )
+    const rate = (read(ctx, "rate.txt") ?? "").trim()
+    if (!/^0?\.003$/.test(rate))
+      return `rate.txt has ${JSON.stringify(rate)}, not 0.003`
     return misuse(ctx)
   },
 

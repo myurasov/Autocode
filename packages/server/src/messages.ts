@@ -2,7 +2,8 @@
  * Messages and the owner's inbox (spec, Messages; Owner Controls): sending to
  * one agent, a pattern or a list (one copy each, never to the sender), to and
  * from the owner, text only (the owner, 2026-11-07); each copy's state
- * (queued, delivered, read); reading and waiting; Autocode's own notices
+ * (queued, then delivered: in a prompt, whole, or in the owner's inbox;
+ * Phase 1, the owner 2026-11-08: no reading or waiting); Autocode's own notices
  * (locks, asks sent to an agent, approvals' answers, cost warnings, runs'
  * results); the inbox of messages to the owner and alerts, answered or
  * closed.
@@ -20,8 +21,6 @@ import {
 import type { History } from "./history.ts"
 
 export const MAX_MESSAGE = 32_000
-// A wait ends before the HTTP server's idle limit (255 s); callers wait again.
-export const MAX_WAIT_SECONDS = 240
 // How much of a text message the owner's list shows (200: the owner,
 // 2026-11-03).
 export const PREVIEW = 200
@@ -45,7 +44,6 @@ export interface MessageView {
   state: string
   created_at: string
   delivered_at: string | null
-  read_at: string | null
   text?: string
 }
 
@@ -61,14 +59,11 @@ export function messageView(row: any, body = false): MessageView {
     state: row.state,
     created_at: iso(row.created_at)!,
     delivered_at: iso(row.delivered_at),
-    read_at: iso(row.read_at),
     ...(body ? { text: row.body } : {}),
   }
 }
 
 export class Messages {
-  private readonly waiters = new Map<string, Set<() => void>>()
-
   constructor(
     private readonly db: Database,
     private readonly history: History,
@@ -215,9 +210,8 @@ export class Messages {
           title: `Message from ${from}${subject ? `: "${subject}"` : ""}`,
           body: content,
         })
-        this.markRead(m.id, "delivered")
+        this.delivered(m.id)
       } else this.announce(m.to, m.id)
-      this.wake(m.to)
     }
     this.history.record("message.sent", {
       agent: from === "owner" ? null : from,
@@ -256,7 +250,6 @@ export class Messages {
         this.now(),
       )
     this.announce(agent, id)
-    this.wake(agent)
     this.history.record("message.sent", {
       agent,
       data: {
@@ -281,29 +274,21 @@ export class Messages {
       .run(agent)
   }
 
-  markRead(id: string, state: "delivered" | "read") {
-    const now = this.now()
-    if (state === "read")
-      this.db
-        .query(
-          "UPDATE messages SET state = 'read', read_at = ?, " +
-            "delivered_at = COALESCE(delivered_at, ?) WHERE id = ?",
-        )
-        .run(now, now, id)
-    else
-      this.db
-        .query(
-          "UPDATE messages SET state = 'delivered', delivered_at = ? " +
-            "WHERE id = ? AND state = 'queued'",
-        )
-        .run(now, id)
+  // In a prompt (or the owner's inbox): delivered.
+  delivered(id: string) {
+    this.db
+      .query(
+        "UPDATE messages SET state = 'delivered', delivered_at = ? " +
+          "WHERE id = ? AND state = 'queued'",
+      )
+      .run(this.now(), id)
   }
 
   requeue(id: string) {
     this.db
       .query(
-        "UPDATE messages SET state = 'queued', delivered_at = NULL, " +
-          "read_at = NULL WHERE id = ?",
+        "UPDATE messages SET state = 'queued', delivered_at = NULL " +
+          "WHERE id = ?",
       )
       .run(id)
   }
@@ -312,71 +297,16 @@ export class Messages {
     return this.db.query("SELECT * FROM messages WHERE id = ?").get(id)
   }
 
-  list(agent: string, all = false): MessageView[] {
-    const rows = this.db
-      .query(
-        `SELECT * FROM messages WHERE to_id = ?
-         ${all ? "" : "AND state != 'read'"} ORDER BY created_at, rowid`,
-      )
-      .all(agent) as any[]
-    return rows.map((r) => messageView(r))
-  }
-
-  read(agent: string, id: string): MessageView {
-    const row = this.db
-      .query("SELECT * FROM messages WHERE id = ? AND to_id = ?")
-      .get(id, agent) as any
-    if (!row) throw new AutocodeError("no_message", `no message ${id}`, 404)
-    if (row.state !== "read") {
-      this.markRead(id, "read")
-      this.history.record("message.read", {
-        agent,
-        data: { id, from: row.from_id },
-      })
-    }
-    return messageView(this.row(id), true)
-  }
-
-  /*
-   * The unread messages once one is new (sent since the wait began, or not yet
-   * announced), or after `seconds` (at most MAX_WAIT_SECONDS).
-   */
-  async wait(
-    agent: string,
-    seconds: number,
-    signal?: AbortSignal,
-  ): Promise<MessageView[]> {
-    const wait = Math.min(Math.max(0, seconds), MAX_WAIT_SECONDS)
-    const deadline = Date.now() + wait * 1000
-    const last =
-      (this.db.query("SELECT MAX(rowid) AS n FROM messages").get() as any)?.n ??
-      0
-    const fresh = this.db.prepare(
-      `SELECT 1 FROM messages WHERE to_id = ? AND state != 'read'
-         AND (state = 'queued' OR rowid > ?) LIMIT 1`,
-    )
-    for (;;) {
-      const unread = this.list(agent)
-      if (fresh.get(agent, last) || Date.now() >= deadline || signal?.aborted)
-        return unread
-      await new Promise<void>((resolve) => {
-        const set = this.waiters.get(agent) ?? new Set()
-        this.waiters.set(agent, set)
-        const done = () => {
-          clearTimeout(timer)
-          set.delete(done)
-          signal?.removeEventListener("abort", done)
-          resolve()
-        }
-        const timer = setTimeout(done, Math.max(0, deadline - Date.now()))
-        signal?.addEventListener("abort", done)
-        set.add(done)
-      })
-    }
-  }
-
-  private wake(agent: string) {
-    for (const done of this.waiters.get(agent) ?? []) done()
+  // How many of an agent's messages wait for its next prompt (Phase 1).
+  waiting(agent: string): number {
+    return (
+      this.db
+        .query(
+          "SELECT COUNT(*) AS n FROM messages WHERE to_id = ? " +
+            "AND state = 'queued'",
+        )
+        .get(agent) as any
+    ).n
   }
 
   // The owner reads any message whole (its state stays).
@@ -414,10 +344,6 @@ export class Messages {
     this.db
       .query("DELETE FROM messages WHERE created_at < ?")
       .run(this.now() - days * 86_400_000)
-  }
-
-  close() {
-    for (const set of this.waiters.values()) for (const done of set) done()
   }
 }
 

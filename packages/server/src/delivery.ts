@@ -33,6 +33,9 @@ import type { WakeItem, Wakes } from "./wakes.ts"
 const CHECK_GRACE_MS = 120_000
 // How long an injected prompt may go without starting a turn.
 const NO_TURN_MS = 120_000
+// How much message text one prompt carries (Phase 1): one message's limit,
+// so a single message always fits.
+const MESSAGES_PER_PROMPT = 32_000
 const DAY = 86_400_000
 
 // OpenCode's prompt IDs start with msg_; ours grow with time, and a repeat of
@@ -331,30 +334,7 @@ export class Delivery {
           .run(q.id)
   }
 
-  /*
-   * Messages that wait to be announced but were read meanwhile (with the
-   * tool, during a turn) leave the queue: announcing them again repeats what
-   * the agent saw.
-   */
-  private dropRead(agent: string) {
-    const read = this.db
-      .query(
-        `SELECT q.id, q.message_id FROM queue q
-         JOIN messages m ON m.id = q.message_id
-         WHERE q.agent_id = ? AND q.kind = 'message' AND m.state = 'read'`,
-      )
-      .all(agent) as { id: number; message_id: string }[]
-    for (const r of read) {
-      this.db.query("DELETE FROM queue WHERE id = ?").run(r.id)
-      this.history.record("message.skipped", {
-        agent,
-        data: { id: r.message_id, why: "already read" },
-      })
-    }
-  }
-
   private deliver(agent: string) {
-    this.dropRead(agent)
     const row = this.db
       .query(
         `SELECT a.id, a.paused, a.last_injection_at, a.session_id, a.error,
@@ -393,7 +373,7 @@ export class Delivery {
     // the compaction goes when that turn ends.
     const due = this.costs?.compactDue(agent)
     if (due && !due.notified) {
-      this.inject(row, [], values, {
+      this.inject(row, [], {
         n: 0,
         of: 0,
         ...this.costs!.compactNotice(due),
@@ -420,7 +400,7 @@ export class Delivery {
           .query("SELECT * FROM queue WHERE agent_id = ? ORDER BY id")
           .all(agent) as any[]
       ).filter((i) => !i.check_cmd)
-      this.inject(row, ready, values, { n: 0, of: 0, ...resume })
+      this.inject(row, ready, { n: 0, of: 0, ...resume })
       this.costs!.resumed(agent)
       return
     }
@@ -436,7 +416,7 @@ export class Delivery {
           .query("SELECT * FROM queue WHERE agent_id = ? ORDER BY id")
           .all(agent) as any[]
       ).filter((i) => !i.check_cmd)
-      this.inject(row, ready, values, note)
+      this.inject(row, ready, note)
       return
     }
     const minInterval = parseDuration(String(values.min_interval))
@@ -448,7 +428,7 @@ export class Delivery {
       .query("SELECT * FROM queue WHERE agent_id = ? ORDER BY id")
       .all(agent) as any[]
     if (!running) {
-      if (items.length) this.inject(row, items, values)
+      if (items.length) this.inject(row, items)
       return
     }
     // checks still run: what does not wait for them goes once a message has
@@ -457,7 +437,7 @@ export class Delivery {
     if (
       ready.some((i) => i.kind === "message" && now - i.created_at >= timeout)
     )
-      this.inject(row, ready, values)
+      this.inject(row, ready)
   }
 
   /*
@@ -585,12 +565,7 @@ export class Delivery {
     }
   }
 
-  private inject(
-    row: any,
-    items: any[],
-    values: Record<string, unknown>,
-    retry?: RetryNote,
-  ) {
+  private inject(row: any, items: any[], retry?: RetryNote) {
     // Runs of one wake left waiting: only the newest goes in.
     const seen = new Set<string>()
     const wakes = items
@@ -608,10 +583,27 @@ export class Delivery {
         return true
       })
       .reverse()
+    /*
+     * Messages come whole (Phase 1): one prompt carries their text up to
+     * MESSAGES_PER_PROMPT characters together, oldest first (one always
+     * fits); the rest stay queued for the next one.
+     */
+    let room = MESSAGES_PER_PROMPT
+    const later = new Set<number>()
     const all = items
       .filter((i) => i.kind === "message")
-      .map((i) => this.messages().row(i.message_id))
-      .filter(Boolean)
+      .map((i) => ({ item: i, m: this.messages().row(i.message_id) }))
+      .filter(({ item, m }) => {
+        if (!m) return false
+        const first = room === MESSAGES_PER_PROMPT
+        if (!first && m.size > room) {
+          later.add(item.id)
+          return false
+        }
+        room -= m.size
+        return true
+      })
+      .map(({ m }) => m)
     // Autocode's own notices first, then what others sent
     const notices = all.filter((m) => m.from_id === "autocode")
     const messages = all.filter((m) => m.from_id !== "autocode")
@@ -630,13 +622,12 @@ export class Delivery {
         `${messages.length} message${messages.length > 1 ? "s" : ""}`,
       )
     if (retry) reasons.unshift(retry.header)
-    const used = items.map((i) => i.id)
+    const used = items.map((i) => i.id).filter((id) => !later.has(id))
     if (!reasons.length) {
       for (const id of used)
         this.db.query("DELETE FROM queue WHERE id = ?").run(id)
       return
     }
-    const inline = Number(values.inline_limit) || 0
     const sections: string[] = retry ? [retry.text] : []
     for (const m of notices) sections.push(String(m.body))
     const tz = String(this.settings.value("timezone")) || "UTC"
@@ -647,23 +638,12 @@ export class Delivery {
       if (w.check_output) lines.push("Its check said:", quote(w.check_output))
       sections.push(lines.join("\n"))
     }
-    const shown: string[] = []
-    const listed: string[] = []
     for (const m of messages) {
       const head =
         `Message ${m.id} from ${who(m.from_id)}` +
         (m.subject ? `, subject "${m.subject}"` : "") +
         (m.reply_to ? `, in reply to ${m.reply_to}` : "")
-      if (m.size <= inline) {
-        sections.push(`${head}:\n${quote(m.body)}`)
-        shown.push(m.id)
-      } else {
-        sections.push(
-          `${head}: ${m.size} characters; ` +
-            `read it with autocode_message read ${m.id}.`,
-        )
-        listed.push(m.id)
-      }
+      sections.push(`${head}:\n${quote(m.body)}`)
     }
     const text =
       `[autocode] ${reasons.join(", ")}\n\n${sections.join("\n\n")}` +
@@ -725,9 +705,7 @@ export class Delivery {
         )
         .run(now, row.session_id)
     })()
-    for (const m of notices) this.messages().markRead(m.id, "read")
-    for (const m of shown) this.messages().markRead(m, "read")
-    for (const m of listed) this.messages().markRead(m, "delivered")
+    for (const m of all) this.messages().delivered(m.id)
     this.history.record("injection.sent", {
       agent: row.id,
       session: row.session_id,

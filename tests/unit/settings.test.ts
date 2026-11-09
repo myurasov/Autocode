@@ -18,7 +18,8 @@ describe("settings", () => {
   test("the built-in defaults are the spec's", () => {
     const d = builtinDefaults()
     expect(d.min_interval).toBe("1m")
-    expect(d.inline_limit).toBe(1024)
+    // Phase 1: no inline_limit (messages come whole)
+    expect(d).not.toHaveProperty("inline_limit")
     expect(d.question_mode).toBe("ask")
     expect(d.auto_answer_text).toBe(
       "Act according to your best judgement " +
@@ -53,7 +54,7 @@ describe("settings", () => {
 
   test("values are checked and normalized per key", () => {
     expect(normalizeSetting("min_interval", "90s")).toBe("1m30s")
-    expect(normalizeSetting("inline_limit", "2048")).toBe(2048)
+    expect(normalizeSetting("check_output", "2048")).toBe(2048)
     expect(normalizeSetting("question_mode", "auto")).toBe("auto")
     expect(normalizeSetting("daily_usd", 12.5)).toBe(12.5)
     expect(normalizeSetting("daily_usd", "off")).toBe("off")
@@ -76,7 +77,7 @@ describe("settings", () => {
     expect(() => normalizeSetting("question_mode", "maybe")).toThrow(
       /question_mode/,
     )
-    expect(() => normalizeSetting("inline_limit", -1)).toThrow(/inline_limit/)
+    expect(() => normalizeSetting("check_output", -1)).toThrow(/check_output/)
     expect(() => normalizeSetting("retry_attempts", -1)).toThrow(
       /retry_attempts/,
     )
@@ -173,7 +174,7 @@ describe("settings", () => {
 
   test("an agent's value wins over the first matching rule, which wins over the server default", () => {
     const layers: SettingsLayers = {
-      server: { min_interval: "2m", inline_limit: 500 },
+      server: { min_interval: "2m", check_timeout: "30s" },
       rules: [
         {
           match: "kaggle:*",
@@ -183,7 +184,7 @@ describe("settings", () => {
           match: "kaggle:lead",
           settings: { min_interval: "10m", check_output: 10 },
         },
-        { match: "*:reviewer", settings: { inline_limit: 99 } },
+        { match: "*:reviewer", settings: { check_timeout: "99s" } },
       ],
       agents: { "kaggle:lead": { question_mode: "ask" } },
     }
@@ -193,13 +194,13 @@ describe("settings", () => {
     expect(lead.values.check_output).toBe(2000)
     expect(lead.values.question_mode).toBe("ask")
     expect(lead.sources.question_mode).toBe("agent")
-    expect(lead.values.inline_limit).toBe(500)
-    expect(lead.sources.inline_limit).toBe("server")
+    expect(lead.values.check_timeout).toBe("30s")
+    expect(lead.sources.check_timeout).toBe("server")
     expect(lead.values.approval_mode).toBe("ask")
     expect(lead.sources.approval_mode).toBe("default")
 
     const reviewer = resolveSettings(layers, "x:reviewer")
-    expect(reviewer.values.inline_limit).toBe(99)
+    expect(reviewer.values.check_timeout).toBe("99s")
     expect(reviewer.values.min_interval).toBe("2m")
   })
 

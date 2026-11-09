@@ -38,7 +38,8 @@ export const ME_TOOL = {
     "message each other. Use the autocode_* tools, not the autocode CLI " +
     "(that is for scripts). Actions: register (id, description), " +
     "unregister, status (your registration, the server's time and zone, " +
-    "your wakes, unread messages, locks and open asks), discover " +
+    "your wakes, messages waiting, locks, open asks, spend and context), " +
+    "discover " +
     "(pattern), help (topic: the exact rules for wakes, checks, delivery, " +
     "messages, locks, asks, costs, jobs, prompts, scripts), compact " +
     "(compact " +
@@ -247,8 +248,7 @@ export async function runMe(
       if (set)
         lines.push(
           "Delivery: only while this session is idle, at most once per " +
-            `${set.min_interval}; messages up to ${set.inline_limit} ` +
-            "characters come whole.",
+            `${set.min_interval}; messages come whole in the prompt.`,
         )
       const w = me.wakes
       if (w)
@@ -261,11 +261,10 @@ export async function runMe(
               : `Wakes: ${w.count}; none due at a known time. ` +
                 "See autocode_wake list.",
         )
-      if (me.unread !== undefined)
+      // Phase 1: messages come only in prompts; how many wait for the next
+      if (me.waiting !== undefined)
         lines.push(
-          me.unread
-            ? `Unread messages: ${me.unread}. See autocode_message list.`
-            : "Unread messages: none.",
+          `Messages waiting for your next prompt: ${me.waiting || "none"}.`,
         )
       // spend today and in total, the cap and what is left, the context and
       // its share of the compaction threshold (tiers 0e, 0g)
@@ -424,32 +423,29 @@ export const WAKE_TOOL = {
 }
 
 export interface MessageInput {
-  action: "send" | "list" | "read" | "wait" | "answer" | "escalate"
+  action: "send" | "answer" | "escalate"
   to?: string
   subject?: string
   text?: string
   reply_to?: string
   id?: string
-  seconds?: number
 }
 
 export const MESSAGE_TOOL = {
   name: "autocode_message",
   description:
-    "Autocode messages between agents and the owner. New messages arrive " +
-    "in an injected prompt (short ones whole). Actions: send (to: an agent " +
-    "ID, a pattern like team:*, a comma list, or owner; subject; text; " +
-    "reply_to), list (your unread messages), read (id), wait (seconds: " +
-    "holds this call until a message comes, up to max_tool_wait; costs no " +
-    "tokens), answer (id, text: answer a question, permission or approval " +
-    "another agent sent you), escalate (id, text: say why you cannot; the " +
-    "owner takes it).",
+    "Autocode messages between agents and the owner. Messages to you come " +
+    "whole in an injected prompt, once your session is idle: to wait for a " +
+    "reply, end your turn. Actions: send (to: an agent ID, a pattern like " +
+    "team:*, a comma list, or owner; subject; text; reply_to), answer (id, " +
+    "text: answer a question, permission or approval another agent sent " +
+    "you), escalate (id, text: say why you cannot; the owner takes it).",
   input: {
     type: "object",
     properties: {
       action: {
         type: "string",
-        enum: ["send", "list", "read", "wait", "answer", "escalate"],
+        enum: ["send", "answer", "escalate"],
       },
       to: {
         type: "string",
@@ -470,11 +466,7 @@ export const MESSAGE_TOOL = {
       },
       id: {
         type: "string",
-        description: "read: the message ID; answer, escalate: the ask's ID",
-      },
-      seconds: {
-        type: "number",
-        description: "wait: at most this long (default 300)",
+        description: "answer, escalate: the ask's ID",
       },
     },
     required: ["action"],
@@ -817,16 +809,9 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
   }
 }
 
-function messageLine(m: any): string {
-  const subject = m.subject ? ` "${m.subject}"` : ""
-  const sender = m.from === "owner" ? "the owner" : m.from
-  return `${m.id}  from ${sender}${subject}  ${m.size} characters  ${m.state}`
-}
-
 export async function runMessage(
   input: MessageInput,
   call: Call,
-  wait?: (seconds: number) => Promise<any>,
 ): Promise<string> {
   switch (input?.action) {
     case "send": {
@@ -853,31 +838,6 @@ export async function runMessage(
           : "")
       )
     }
-    case "list": {
-      const res = await call("GET", "/v1/me/messages")
-      if (!res.messages.length) return "No unread messages."
-      return res.messages.map(messageLine).join("\n")
-    }
-    case "read": {
-      if (!input.id) return "error: read needs the message's id"
-      const res = await call("GET", `/v1/me/messages/${enc(input.id)}`)
-      const m = res.message
-      const sender = m.from === "owner" ? "the owner" : `agent ${m.from}`
-      const head =
-        `Message ${m.id} from ${sender}` +
-        (m.subject ? `, subject "${m.subject}"` : "") +
-        (m.reply_to ? `, in reply to ${m.reply_to}` : "")
-      return `${head}:\n${m.text}`
-    }
-    case "wait": {
-      const seconds = Math.max(1, Math.min(Number(input.seconds) || 300, 3600))
-      const res = wait
-        ? await wait(seconds)
-        : await call("GET", `/v1/me/messages?wait=${seconds}`)
-      if (!res.messages.length)
-        return `No new messages within ${seconds} seconds.`
-      return res.messages.map(messageLine).join("\n")
-    }
     case "answer": {
       if (!input.id || !input.text)
         return "error: answer needs the ask's id and your text"
@@ -898,7 +858,7 @@ export async function runMessage(
       return `Handed ${input.id} to the owner, with your reason.`
     }
     default:
-      return "error: action must be send, list, read, wait, answer or escalate"
+      return "error: autocode_message has send, answer and escalate"
   }
 }
 

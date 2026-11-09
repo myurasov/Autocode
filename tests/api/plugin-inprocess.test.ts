@@ -897,10 +897,10 @@ describe("the plugin in-process, tier 0b", () => {
         "ses_tool_a",
       ),
     ).toMatch(/^Sent to tools:b \(m_\w+\)\.$/)
-    const list = await run("autocode_message", { action: "list" }, "ses_tool_b")
-    expect(list).toContain("from tools:a")
-    expect(list).toContain('"plot"')
-    expect(list).not.toContain("text/")
+    // Phase 1: no list or read; a message reaches an agent in its prompt
+    expect(
+      await run("autocode_message", { action: "list" }, "ses_tool_b"),
+    ).toBe("error: autocode_message has send, answer and escalate")
     expect(
       await run(
         "autocode_message",

@@ -31,9 +31,9 @@ const ME = {
     time: "2026-10-28T12:00:00.000Z",
     timezone: "America/Los_Angeles",
   },
-  settings: { min_interval: "1m", inline_limit: 1024, max_tool_wait: "5m" },
+  settings: { min_interval: "1m", max_tool_wait: "5m" },
   wakes: { count: 0, next: null },
-  unread: 0,
+  waiting: 0,
   locks: { held: [], queued: [] },
 }
 

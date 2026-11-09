@@ -266,21 +266,6 @@ describe("what goes into a prompt", () => {
 })
 
 describe("messages and the inbox", () => {
-  test("wait waits for a new message even while older ones are unread", async () => {
-    await owner("PATCH", "/v1/settings", { server: { inline_limit: 0 } })
-    await as(b, "POST", "/v1/messages", { to: "team:a", text: "old" })
-    await tickSent() // announced, not read
-    const started = Date.now()
-    const res = await as(a, "GET", "/v1/me/messages?wait=1")
-    expect(Date.now() - started).toBeGreaterThan(900)
-    expect(res.body.messages.length).toBe(1)
-  })
-
-  test("a wait is cut at 240 s, under the HTTP idle limit", async () => {
-    const { MAX_WAIT_SECONDS } = await import("@autocode/server/messages")
-    expect(MAX_WAIT_SECONDS).toBe(240)
-  })
-
   test("the owner reads any message whole", async () => {
     const sent = await as(a, "POST", "/v1/messages", {
       to: "owner",

@@ -149,7 +149,7 @@ Exit codes: 0 done, 1 refused or failed, 2 wrong usage, 3 the server cannot be r
 - Server-wide only: `history_days`, `timezone`, `listen` (`listen` takes effect
   at the next start).
 - In use: `history_days` (history trimming, with message bodies, settled injections and closed inbox items),
-  `min_interval`, `inline_limit`, `check_timeout`, `check_output`, `max_tool_wait` (a single wait is cut at 240 s
+  `min_interval`, `check_timeout`, `check_output`, `max_tool_wait` (an approval's wait; a single wait is cut at 240 s
   and waited again), `timezone` (the default zone of `cron` and `at` wakes; a cron wake keeps the zone it was set
   with), `retry_interval` (1m: the wait between a failed turn and its retry), `retry_attempts` (0, no limit: the
   most retries in a row before Autocode stops and tells you), and (tier 0d) `question_mode` (`ask`, `auto`,

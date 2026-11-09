@@ -429,13 +429,11 @@ autocode plugin install --url http://SERVER:4848 \
         <code>autocode send</code>.
       </li>
       <li>
-        A new message is announced in the agent's next prompt. A text of up to
-        <code>inline_limit</code> characters (1024 by default) is shown whole;
-        longer ones are listed, and the agent reads them with its tool.
-      </li>
-      <li>
-        An agent can wait for a message inside its tool, up to
-        <code>max_tool_wait</code> (5 minutes by default), at no cost.
+        A new message comes whole in the agent's next prompt, once its
+        session is idle; one prompt carries up to 32,000 characters of
+        messages, more come in the next. There is no reading or waiting inside
+        a turn: an agent that waits for a reply ends its turn, and the reply
+        wakes it.
       </li>
     </ul>
 
@@ -1012,11 +1010,6 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
           <td>at most one prompt per session this often</td>
         </tr>
         <tr>
-          <td><code>inline_limit</code></td>
-          <td>1024</td>
-          <td>messages up to this many characters go into the prompt whole</td>
-        </tr>
-        <tr>
           <td><code>check_timeout</code></td>
           <td>60s</td>
           <td>a wake's check is stopped after this long</td>
@@ -1029,7 +1022,7 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
         <tr>
           <td><code>max_tool_wait</code></td>
           <td>5m</td>
-          <td>the longest a tool waits inside a turn, for a message say</td>
+          <td>the longest a tool waits inside a turn, for an approval say</td>
         </tr>
         <tr>
           <td><code>timezone</code></td>

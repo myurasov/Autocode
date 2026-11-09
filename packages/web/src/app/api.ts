@@ -272,10 +272,10 @@ export interface Message {
   size: number;
   // A text message's first 100 characters (the owner's list only).
   preview?: string;
-  state: 'queued' | 'delivered' | 'read';
+  // queued, then delivered: in a prompt, whole, or in the owner's inbox
+  state: 'queued' | 'delivered';
   created_at: string;
   delivered_at: string | null;
-  read_at: string | null;
 }
 
 // A message whole, as the owner reads it: its text.

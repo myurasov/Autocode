@@ -44,14 +44,14 @@ describe("settings API", () => {
   test("PATCH sets server values, replaces the rules and sets or clears agents' values", async () => {
     const t = await start()
     const res = await call(t.url, t.admin, "PATCH", "/v1/settings", {
-      server: { min_interval: "90s", inline_limit: 2048 },
+      server: { min_interval: "90s", check_output: 2048 },
       rules: [{ match: "kaggle:*", settings: { question_mode: "auto" } }],
       agents: { "kaggle:lead": { min_interval: "5m" } },
     })
     expect(res.status).toBe(200)
     expect(res.body.server).toEqual({
       min_interval: "1m30s",
-      inline_limit: 2048,
+      check_output: 2048,
     })
     expect(res.body.defaults.min_interval).toBe("1m30s")
     expect(res.body.rules).toEqual([
@@ -62,7 +62,7 @@ describe("settings API", () => {
       server: { min_interval: null },
       agents: { "kaggle:lead": null },
     })
-    expect(cleared.body.server).toEqual({ inline_limit: 2048 })
+    expect(cleared.body.server).toEqual({ check_output: 2048 })
     expect(cleared.body.agents).toEqual({})
     expect(cleared.body.rules.length).toBe(1)
   })
@@ -130,7 +130,7 @@ describe("settings API", () => {
   test("an agent's resolved settings say where each value comes from", async () => {
     const t = await start()
     await call(t.url, t.admin, "PATCH", "/v1/settings", {
-      server: { inline_limit: 100 },
+      server: { check_output: 100 },
       rules: [{ match: "kaggle:*", settings: { min_interval: "5m" } }],
       agents: { "kaggle:lead": { question_mode: "auto" } },
     })
@@ -142,13 +142,13 @@ describe("settings API", () => {
     )
     expect(res.body.agent).toBe("kaggle:lead")
     expect(res.body.values).toMatchObject({
-      inline_limit: 100,
+      check_output: 100,
       min_interval: "5m",
       question_mode: "auto",
       approval_mode: "ask",
     })
     expect(res.body.sources).toMatchObject({
-      inline_limit: "server",
+      check_output: "server",
       min_interval: "rule 1 (kaggle:*)",
       question_mode: "agent",
       approval_mode: "default",

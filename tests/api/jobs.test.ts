@@ -253,7 +253,8 @@ describe("runs", () => {
     const { sessionToken } = await import("../helpers/server.ts")
     const token = await sessionToken(t, HOST, "ses_run1")
     await as(token, "POST", "/v1/me/finish", { result: "ok" })
-    const mine = (await as(lead, "GET", "/v1/me/messages")).body.messages
+    const mine = (await owner("GET", "/v1/messages?agent=team:lead")).body
+      .messages
     expect(mine).toMatchObject([
       {
         from: "autocode",
@@ -501,7 +502,8 @@ describe("review of 0f", () => {
     await as(token, "POST", "/v1/me/finish", { result: "done" })
     const item = (await owner("GET", "/v1/inbox")).body.items[0]
     expect(item.title).toBe("Result of run mail:2026-10-28T12:00")
-    const mine = (await as(lead, "GET", "/v1/me/messages")).body.messages
+    const mine = (await owner("GET", "/v1/messages?agent=team:lead")).body
+      .messages
     expect(mine[0].subject).toBe("result of run mail:2026-10-28T12:00")
   })
 
@@ -513,9 +515,10 @@ describe("review of 0f", () => {
     const long = "x".repeat(40_000)
     await as(token, "POST", "/v1/me/finish", { result: long })
     expect((await runs("mail"))[0].result.length).toBe(40_000)
-    const mine = (await as(lead, "GET", "/v1/me/messages")).body.messages
-    const text = (await as(lead, "GET", `/v1/me/messages/${mine[0].id}`)).body
-      .message.text
+    const mine = (await owner("GET", "/v1/messages?agent=team:lead")).body
+      .messages
+    const text = (await owner("GET", `/v1/messages/${mine[0].id}`)).body.message
+      .text
     expect(text.length).toBeLessThan(33_000)
     expect(text).toContain("(cut; the whole result is in the run: autocode")
   })

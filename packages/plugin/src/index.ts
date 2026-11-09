@@ -422,23 +422,8 @@ export default {
         asTool(WAKE_TOOL, (input: WakeInput, call) => runWake(input, call)),
       )
       tools.add(
-        asTool(MESSAGE_TOOL, (input: MessageInput, call, sessionID) =>
-          runMessage(input, call, async (seconds) => {
-            // the server answers within 240 s; wait again until the end
-            const end = Date.now() + seconds * 1000
-            for (;;) {
-              const left = Math.ceil((end - Date.now()) / 1000)
-              const chunk = Math.max(1, Math.min(left, 240))
-              const res = await callAs(
-                sessionID,
-                "GET",
-                `/v1/me/messages?wait=${chunk}`,
-                undefined,
-                (chunk + 15) * 1000,
-              )
-              if (res.messages?.length || Date.now() >= end - 1000) return res
-            }
-          }),
+        asTool(MESSAGE_TOOL, (input: MessageInput, call) =>
+          runMessage(input, call),
         ),
       )
       tools.add(

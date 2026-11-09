@@ -1,9 +1,9 @@
 /*
  * Messages (spec, Messages): direct and group sends, refusals, the size limit,
- * text and binaries, the states of each copy, the injection that announces
- * them (whole within inline_limit, else listed by ID), messages to and from
- * the owner through the inbox, and waiting for one inside a tool call; a
- * message the agent already read is not announced (the owner, 2026-11-05).
+ * text only, the states of each copy (queued, delivered), the injection that
+ * carries them whole (Phase 1: the only way they reach an agent; see also
+ * messages-injected.test.ts), and messages to and from the owner through the
+ * inbox.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import {
@@ -12,7 +12,6 @@ import {
   hello,
   instructions,
   registered,
-  report,
   type TestServer,
   testServer,
 } from "../helpers/server.ts"
@@ -48,7 +47,7 @@ beforeEach(async () => {
 afterEach(() => t.stop())
 
 describe("sending", () => {
-  test("a direct message: stored for the recipient, unread, and announced", async () => {
+  test("a direct message: stored for the recipient, queued, then delivered in a prompt", async () => {
     const sent = await as(a, "POST", "/v1/messages", {
       to: "team:b",
       subject: "results",
@@ -58,7 +57,7 @@ describe("sending", () => {
     expect(sent.body.recipients).toEqual(["team:b"])
     const id = sent.body.messages[0].id
     expect(id).toMatch(/^m_/)
-    const list = await as(b, "GET", "/v1/me/messages")
+    const list = await owner("GET", "/v1/messages?agent=team:b")
     expect(list.body.messages).toEqual([
       expect.objectContaining({
         id,
@@ -75,10 +74,9 @@ describe("sending", () => {
       `Message ${id} from agent team:a, subject "results":`,
     )
     expect(prompt.payload.text).toContain("The run finished: 0.91.")
-    // shown whole in the prompt: read
-    const after = await as(b, "GET", "/v1/me/messages?all=1")
-    expect(after.body.messages[0].state).toBe("read")
-    expect((await as(b, "GET", "/v1/me/messages")).body.messages).toEqual([])
+    // carried whole in the prompt: delivered
+    const after = await owner("GET", `/v1/messages/${id}`)
+    expect(after.body.message.state).toBe("delivered")
   })
 
   test("a group: one copy per matching agent, never the sender", async () => {
@@ -133,35 +131,15 @@ describe("sending", () => {
       text: "hi",
     })
     const id = sent.body.messages[0].id
-    const read = (await as(b, "GET", `/v1/me/messages/${id}`)).body.message
+    const read = (await owner("GET", `/v1/messages/${id}`)).body.message
     expect(read.text).toBe("hi")
     expect(read).not.toHaveProperty("kind")
     expect(read).not.toHaveProperty("mime")
     expect(read).not.toHaveProperty("data")
-    // only the recipient reads it
-    expect((await as(c, "GET", `/v1/me/messages/${id}`)).status).toBe(404)
   })
 })
 
 describe("announcing", () => {
-  test("text longer than inline_limit is listed, not shown", async () => {
-    await owner("PATCH", "/v1/settings", { server: { inline_limit: 10 } })
-    const sent = await as(a, "POST", "/v1/messages", {
-      to: "team:b",
-      text: "A longer report.",
-    })
-    const id = sent.body.messages[0].id
-    const prompt = await promptFor("ses_b")
-    expect(prompt.payload.text).toContain(
-      `Message ${id} from agent team:a: 16 characters; ` +
-        `read it with autocode_message read ${id}.`,
-    )
-    expect(prompt.payload.text).not.toContain("A longer report.")
-    expect((await as(b, "GET", "/v1/me/messages")).body.messages[0].state).toBe(
-      "delivered",
-    )
-  })
-
   test("messages are never merged: three in one prompt", async () => {
     await owner("POST", "/v1/agents/team:b/pause")
     for (const text of ["one", "two", "three"])
@@ -173,39 +151,8 @@ describe("announcing", () => {
       expect(prompt.payload.text).toContain(text)
   })
 
-  // The owner, 2026-11-05: an agent read a reply with the tool during a
-  // turn; when the owner interrupted the turn, the reply was injected anyway.
-  test("a message read during a turn is not announced when the turn ends", async () => {
-    await report(t, HOST, [{ type: "turn.started", session: "ses_b" }])
-    const sent = await as(a, "POST", "/v1/messages", {
-      to: "team:b",
-      text: "the reply",
-    })
-    const id = sent.body.messages[0].id
-    expect(await promptFor("ses_b")).toBeUndefined()
-    expect(
-      (await as(b, "GET", `/v1/me/messages/${id}`)).body.message.text,
-    ).toBe("the reply")
-    await report(t, HOST, [
-      { type: "turn.ended", session: "ses_b", outcome: "interrupted" },
-    ])
-    expect(await promptFor("ses_b")).toBeUndefined()
-    const skipped = (
-      await owner("GET", "/v1/history?kind=message.skipped&agent=team:b")
-    ).body.history
-    expect(skipped[0].data).toMatchObject({ id, why: "already read" })
-    // nothing waits any more
-    t.clock.advance(5 * 60_000)
-    expect(await promptFor("ses_b")).toBeUndefined()
-  })
-
-  test("with a wake, only the wake comes; an unread message still does", async () => {
+  test("with a wake, the wake and the waiting messages come together", async () => {
     await owner("POST", "/v1/agents/team:b/pause")
-    const read = await as(a, "POST", "/v1/messages", {
-      to: "team:b",
-      text: "already seen",
-    })
-    await as(b, "GET", `/v1/me/messages/${read.body.messages[0].id}`)
     await as(c, "POST", "/v1/messages", { to: "team:b", text: "new one" })
     await owner("PUT", "/v1/agents/team:b/wakes/look", {
       text: "Look.",
@@ -218,26 +165,11 @@ describe("announcing", () => {
       '[autocode] wake "look" fired by the owner, 1 message\n',
     )
     expect(text).toContain("> new one")
-    expect(text).not.toContain("already seen")
-  })
-
-  test("a notice read with the tool is not announced either", async () => {
-    await report(t, HOST, [{ type: "turn.started", session: "ses_b" }])
-    await as(a, "POST", "/v1/locks/gpu-0/acquire", { ttl: "10m" })
-    await as(b, "POST", "/v1/locks/gpu-0/acquire", { ttl: "10m" })
-    await as(a, "POST", "/v1/locks/gpu-0/release")
-    const [notice] = (await as(b, "GET", "/v1/me/messages")).body.messages
-    expect(notice.from).toBe("autocode")
-    await as(b, "GET", `/v1/me/messages/${notice.id}`)
-    await report(t, HOST, [
-      { type: "turn.ended", session: "ses_b", outcome: "succeeded" },
-    ])
-    expect(await promptFor("ses_b")).toBeUndefined()
   })
 
   // The owner, 2026-11-05: viewing or listing a message (web UI, CLI) does
-  // not make it read; only the agent's own read does.
-  test("the owner's list and read, and the agent's list, leave a message unread and announced", async () => {
+  // not change it; the prompt that carries it does.
+  test("the owner's list and read leave a message queued and announced", async () => {
     await owner("POST", "/v1/agents/team:b/pause")
     const sent = await as(a, "POST", "/v1/messages", {
       to: "team:b",
@@ -249,10 +181,6 @@ describe("announcing", () => {
     expect((await owner("GET", `/v1/messages/${id}`)).body.message.text).toBe(
       "look later",
     )
-    await as(b, "GET", "/v1/me/messages")
-    await as(b, "GET", "/v1/me/messages?all=1")
-    const mine = (await as(b, "GET", "/v1/me/messages")).body.messages
-    expect(mine).toMatchObject([{ id, state: "queued" }])
     expect((await owner("GET", "/v1/messages")).body.messages[0]).toMatchObject(
       { id, state: "queued" },
     )
@@ -321,7 +249,7 @@ describe("the owner", () => {
     const prompt = await promptFor("ses_a")
     expect(prompt.payload.text).toContain("from the owner")
     expect(
-      (await as(a, "GET", "/v1/me/messages?all=1")).body.messages[0].from,
+      (await owner("GET", "/v1/messages?agent=team:a")).body.messages[0].from,
     ).toBe("owner")
   })
 
@@ -343,22 +271,5 @@ describe("the owner's list", () => {
     const [short, first] = (await owner("GET", "/v1/messages")).body.messages
     expect(first.preview).toBe(`${"x".repeat(199)}y`)
     expect(short.preview).toBe("short")
-    // an agent's own list carries none (it reads or is shown messages whole)
-    const mine = (await as(b, "GET", "/v1/me/messages")).body.messages
-    expect(mine.every((m: any) => m.preview === undefined)).toBe(true)
-  })
-})
-
-describe("waiting", () => {
-  test("wait returns as soon as a message comes, or empty after the wait", async () => {
-    const started = Date.now()
-    const waiting = as(b, "GET", "/v1/me/messages?wait=5")
-    await Bun.sleep(300)
-    await as(a, "POST", "/v1/messages", { to: "team:b", text: "here" })
-    const res = await waiting
-    expect(res.body.messages.map((m: any) => m.from)).toEqual(["team:a"])
-    expect(Date.now() - started).toBeLessThan(4000)
-    const empty = await as(c, "GET", "/v1/me/messages?wait=1")
-    expect(empty.body.messages).toEqual([])
   })
 })

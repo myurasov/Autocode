@@ -70,8 +70,9 @@ function overview(f: GuideFacts): string[] {
     "  session; `unregister` frees it and removes your wakes. Subagents act",
     "  for their top-level session.",
     "- `status` shows your registration, the server's time and zone, how",
-    "  Autocode delivers to you, your wakes and unread messages; `discover`",
-    "  finds agents by pattern (`team:*`, or a list `a:b,c:*`).",
+    "  Autocode delivers to you, your wakes, the messages waiting for your",
+    "  next prompt, and your spend and context; `discover` finds agents by",
+    "  pattern (`team:*`, or a list `a:b,c:*`).",
   ]
 }
 
@@ -238,14 +239,12 @@ function messages(): string[] {
     "  message ID). A group never includes you; an unknown ID alone is",
     "  refused, and in a list unknown names are skipped (the reply says",
     "  which).",
-    "- New messages come in an injected prompt, delivered like wakes: text",
-    "  up to 1024 characters (`inline_limit`) whole (it then counts as",
-    "  read); longer ones by ID: `read` them. A message waits while a turn",
-    "  runs; one you already read with `read` meanwhile is left out of the",
-    "  prompt. `list` does not mark them read.",
-    "- `list` shows your unread messages; `wait` holds the tool call until a",
-    "  message comes (at most `max_tool_wait`, 5 minutes unless the owner",
-    "  set another) and costs no tokens.",
+    "- New messages come whole in an injected prompt, delivered like wakes:",
+    "  only while your session is idle, so a message sent during your turn",
+    "  comes after it ends. One prompt carries up to 32,000 characters of",
+    "  messages; more come in the next one. There is no reading or waiting",
+    "  in a turn: to wait for a reply, end your turn: the reply wakes you.",
+    "  `autocode_me status` says how many wait for your next prompt.",
     "- A message to `owner` lands in the owner's inbox; the answer comes",
     "  back to you as a message from the owner.",
   ]

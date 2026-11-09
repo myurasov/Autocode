@@ -42,13 +42,6 @@ export const SETTINGS: Record<string, SettingDef> = {
     default: "1m",
     help: "at most one injection per session this often",
   },
-  inline_limit: {
-    kind: "int",
-    scope: "agent",
-    default: 1024,
-    min: 0,
-    help: "messages up to this many characters go into the prompt whole",
-  },
   // Tier 0d: who handles an ask; also agent:<id> (another agent) and
   // job:<name> (a run of a job, tier 0f).
   question_mode: {

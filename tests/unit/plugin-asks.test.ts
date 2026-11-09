@@ -199,14 +199,7 @@ function fake(answers: Record<string, unknown>) {
 describe("autocode_message answer and escalate", () => {
   test("the description names them; answer sends the text; escalate the reason", async () => {
     const actions = (MESSAGE_TOOL.input.properties.action as any).enum
-    expect(actions).toEqual([
-      "send",
-      "list",
-      "read",
-      "wait",
-      "answer",
-      "escalate",
-    ])
+    expect(actions).toEqual(["send", "answer", "escalate"])
     expect(MESSAGE_TOOL.description).toContain("answer (id, text")
     expect(MESSAGE_TOOL.description).toContain("escalate (id, text")
     const { call, calls } = fake({

@@ -919,3 +919,23 @@ compaction, agent should be told that it is coming next". Each behavior got a te
 - **e2e** (`costs.test.ts`): with real OpenCode, the notice reaches the model in a turn of its own before the
   compaction, then the wake; the owner's view says the threshold.
 - The owner's form titles (`details.panel > summary`) are padded 8 px (`smoke.spec.ts`).
+
+## Phase 1: Messages Through Injections (2026-11-08)
+
+**Why.** The owner chose option C of simplifying injections and messages, then "implement phase 0 and 1 completely
+and autonomously". Tests first (red, then green).
+
+- `messages-injected.test.ts` (6): a 5,000-character message arrives whole and is then `delivered` (no `read_at`);
+  one prompt carries up to 32,000 characters of messages, the rest in the next; `inline_limit` is refused as a
+  setting and gone from the schema and `/v1/me`; `GET /v1/me/messages[/{id}]` are 404; `/v1/me` says `waiting`; a
+  message sent during a turn comes after it, and a reply wakes the agent that ended its turn; the owner sees every
+  message, queued or delivered.
+- `agent-guide.test.ts`: `autocode_message` has `send`, `answer`, `escalate`; its description says messages come whole
+  in a prompt and to end the turn to wait; the guide says so and names none of `inline_limit`, `read`, `list`,
+  `wait`; status says how many wait.
+- Migration 14: messages' state is `queued` or `delivered` (read copies become delivered); a stored `inline_limit`
+  goes. Tests that used the agent's message routes now read the owner's (`messages`, `locks`, `jobs`, `cli-0b`,
+  `review-0b`, `agent-info`, `plugin-inprocess`, `plugin-asks`, `lock-tool`); the settings tests use `check_output`
+  and `check_timeout` where they used `inline_limit`.
+- The agents suite's new scenario `reply`: the agent asks another agent, ends its turn, and acts on the reply that
+  comes in a prompt.

@@ -262,10 +262,14 @@ describe('HelpPage', () => {
 
   it('gives the settings in use with their defaults', async () => {
     const page = await open();
+    // Phase 1: messages come whole, in prompts only
+    const messages = section(page, 'messages');
+    expect(messages).toContain('whole');
+    expect(messages).not.toContain('inline_limit');
+    expect(messages).not.toContain('action=read');
     const settings = rows(page.querySelector('table.settings-help'));
     expect(settings.map((r) => r.slice(0, 2))).toEqual([
       ['min_interval', '1m'],
-      ['inline_limit', '1024'],
       ['check_timeout', '60s'],
       ['check_output', '2000'],
       ['max_tool_wait', '5m'],

@@ -366,6 +366,41 @@ export const MIGRATIONS: string[] = [
     GROUP BY agent_id;
   ALTER TABLE agents ADD COLUMN compact_notified INTEGER NOT NULL DEFAULT 0;
   `,
+  /*
+   * 14 (Phase 1, the owner 2026-11-08): messages reach an agent only in a
+   * prompt, whole: a copy is queued, then delivered; no read state, so read
+   * copies are delivered ones (their read_at goes). inline_limit is no
+   * setting any more.
+   */
+  `
+  CREATE TABLE messages_new (
+    id TEXT PRIMARY KEY,
+    send_id TEXT NOT NULL,
+    from_id TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    to_spec TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    reply_to TEXT,
+    body TEXT NOT NULL,
+    mime TEXT,
+    size INTEGER NOT NULL,
+    state TEXT NOT NULL DEFAULT 'queued'
+      CHECK (state IN ('queued', 'delivered')),
+    created_at INTEGER NOT NULL,
+    delivered_at INTEGER
+  );
+  INSERT INTO messages_new (id, send_id, from_id, to_id, to_spec, subject,
+      reply_to, body, mime, size, state, created_at, delivered_at)
+    SELECT id, send_id, from_id, to_id, to_spec, subject, reply_to, body, mime,
+      size, CASE state WHEN 'read' THEN 'delivered' ELSE state END,
+      created_at, COALESCE(delivered_at, read_at)
+    FROM messages;
+  DROP TABLE messages;
+  ALTER TABLE messages_new RENAME TO messages;
+  CREATE INDEX messages_to ON messages (to_id, state, created_at);
+  CREATE INDEX messages_at ON messages (created_at);
+  DELETE FROM settings WHERE key = 'inline_limit';
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

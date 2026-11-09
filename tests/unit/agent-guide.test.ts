@@ -46,9 +46,9 @@ const ME = {
     time: "2026-10-28T12:00:00.000Z",
     timezone: "America/Los_Angeles",
   },
-  settings: { min_interval: "1m", inline_limit: 1024, max_tool_wait: "5m" },
+  settings: { min_interval: "1m", max_tool_wait: "5m" },
   wakes: { count: 0, next: null },
-  unread: 0,
+  waiting: 0,
 }
 
 const wake = (over: Record<string, unknown>) => ({
@@ -123,10 +123,25 @@ describe("the tools' descriptions", () => {
     expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("file")
     expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("path")
   })
+
+  // Phase 1 (the owner, 2026-11-08): messages come only in prompts, whole.
+  test("autocode_message: send, answer and escalate only; messages come in prompts", () => {
+    expect((MESSAGE_TOOL.input.properties.action as any).enum).toEqual([
+      "send",
+      "answer",
+      "escalate",
+    ])
+    expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("seconds")
+    expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("id_to_read")
+    expect(MESSAGE_TOOL.description).toContain(
+      "Messages to you come whole in an injected prompt",
+    )
+    expect(MESSAGE_TOOL.description).not.toMatch(/\blist \(|\bread \(|wait \(/)
+  })
 })
 
 describe("autocode_me", () => {
-  test("status: registration, server time and zone, delivery, wakes, unread", async () => {
+  test("status: registration, server time and zone, delivery, wakes, messages waiting", async () => {
     const { call } = server({
       "GET /v1/me": {
         ...ME,
@@ -134,7 +149,7 @@ describe("autocode_me", () => {
           count: 2,
           next: { name: "sooner", due: "2026-10-28T12:30:00.000Z" },
         },
-        unread: 1,
+        waiting: 1,
       },
     })
     expect(await runMe({ action: "status" }, call)).toBe(
@@ -143,10 +158,10 @@ describe("autocode_me", () => {
         "Status idle on machine m1.",
         "Server api-test; its time 2026-10-28 05:00 PDT (America/Los_Angeles).",
         "Delivery: only while this session is idle, at most once per 1m; " +
-          "messages up to 1024 characters come whole.",
+          "messages come whole in the prompt.",
         'Wakes: 2; next "sooner" at 2026-10-28 05:30 PDT (in 30m). ' +
           "See autocode_wake list.",
-        "Unread messages: 1. See autocode_message list.",
+        "Messages waiting for your next prompt: 1.",
         "How Autocode works: autocode_me action=help.",
       ].join("\n"),
     )
@@ -165,7 +180,7 @@ describe("autocode_me", () => {
         "resumes you.",
     )
     expect(text).toContain("Wakes: none.")
-    expect(text).toContain("Unread messages: none.")
+    expect(text).toContain("Messages waiting for your next prompt: none.")
     const loose = server({
       "GET /v1/me": {
         registered: false,
@@ -470,13 +485,18 @@ describe("the guide", () => {
       "Continue where you left off",
       // why a wake did not come: the error state too
       "you are in the error state (`autocode_me status`)",
-      // a message read with the tool is not announced again (2026-11-05)
-      "one you already read with `read` meanwhile is left out",
+      // Phase 1 (the owner, 2026-11-08): only in prompts, whole
+      "New messages come whole in an injected prompt",
+      "end your turn: the reply wakes you",
     ])
       expect(guide).toContain(answer)
-    // the review of 0b2: only a read message is left out, not every one
-    // that waited
-    expect(guide).not.toContain("waits to be announced while a turn runs, and")
+    for (const gone of [
+      "`inline_limit`",
+      "autocode_message read",
+      "`list` shows your unread messages",
+      "`wait` holds the tool call until a message comes",
+    ])
+      expect(guide, gone).not.toContain(gone)
   })
 
   // The owner, 2026-11-07: no files, no end dates, no lock waits, and the

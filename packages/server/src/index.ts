@@ -622,7 +622,8 @@ export async function startServer(
       access: ["session"],
       summary:
         "the calling session's registration and status, the server's time " +
-        "and zone, the delivery settings, its wakes and unread messages",
+        "and zone, the delivery settings, its wakes, the messages waiting " +
+        "for its next prompt, its spend and context",
       handler: ({ caller }) => {
         const res: any = agents.me(caller!.session!)
         const agent: string | undefined = res.registered
@@ -642,7 +643,6 @@ export async function startServer(
           },
           settings: {
             min_interval: value("min_interval"),
-            inline_limit: value("inline_limit"),
             max_tool_wait: value("max_tool_wait"),
             retry_interval: value("retry_interval"),
             retry_attempts: value("retry_attempts"),
@@ -650,7 +650,8 @@ export async function startServer(
           ...(agent
             ? {
                 wakes: wakes.summary(agent),
-                unread: messages.list(agent).length,
+                // Phase 1: the messages waiting for the next prompt
+                waiting: messages.waiting(agent),
                 locks: locks.of(agent),
                 asks: asks.of(agent),
                 cost: costs.view(agent),
@@ -934,41 +935,6 @@ export async function startServer(
       summary: "send a message to an agent, a pattern, a list or the owner",
       handler: async ({ caller, body }) =>
         json(messages.send(actor(caller), await body()), 201),
-    },
-    {
-      method: "GET",
-      path: "/v1/me/messages",
-      access: ["session"],
-      summary:
-        "the calling agent's unread messages (?all=1 for every one; " +
-        "?wait=seconds waits for one, up to max_tool_wait)",
-      handler: async ({ caller, url, req }) => {
-        const agent = me(caller)
-        const q = url.searchParams
-        const all = q.get("all") === "1" || q.get("all") === "true"
-        const wait = Number(q.get("wait") ?? 0)
-        if (!Number.isFinite(wait) || wait < 0)
-          throw new AutocodeError("bad_request", "wait must be seconds")
-        if (!wait || all) return { messages: messages.list(agent, all) }
-        const values = resolveSettings(settings.layers(), agent).values
-        const most = parseDuration(String(values.max_tool_wait)) / 1000
-        return {
-          messages: await messages.wait(
-            agent,
-            Math.min(wait, most),
-            req.signal,
-          ),
-        }
-      },
-    },
-    {
-      method: "GET",
-      path: "/v1/me/messages/:id",
-      access: ["session"],
-      summary: "read one of the calling agent's messages (marks it read)",
-      handler: ({ caller, params }) => ({
-        message: messages.read(me(caller), String(params.id)),
-      }),
     },
     {
       method: "GET",
@@ -1370,7 +1336,6 @@ export async function startServer(
       if (ticker) clearInterval(ticker)
       if (rebind) clearInterval(rebind)
       hosts.close()
-      messages.close()
       asks.close()
       await Promise.all(servers.map((s) => s.stop(true)))
       db.close()

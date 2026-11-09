@@ -80,8 +80,8 @@ The answer is `Registered as team:lead (status idle). How Autocode works: autoco
 - `action=unregister` when your work is finished (it removes your wakes). `action=status` shows your ID,
   description, status (`idle`, `working` during a turn, `error` when your last turn failed (see When a Turn Fails),
   `paused` when the owner paused your injections, or `offline` when your machine cannot reach the server) and
-  machine; the server's time and time zone; how Autocode delivers to you (`min_interval`, `inline_limit`); your
-  wakes (how many, the next one due) and unread messages.
+  machine; the server's time and time zone; how Autocode delivers to you (`min_interval`); your wakes (how many, the
+  next one due), how many messages wait for your next prompt, and your spend and context.
 - `action=help` returns the guide; `topic=` one part of it: `overview`, `delivery`, `wakes`, `checks`, `recipes`,
   `messages`, `locks`, `asks`, `costs`, `jobs`, `prompts`, `scripts`, `trouble`.
 - You are unregistered automatically when your session is deleted, or `expire_after` (14 days) after its last turn.
@@ -182,21 +182,16 @@ autocode_message  action=send  to=team:worker-1  subject="New fold split"  text=
 autocode_message  action=send  to=team:*  text="Stop new runs: GPU maintenance at 14:00."
 autocode_message  action=send  to=owner  subject="Need a decision"  text="Two options: ..."
 autocode_message  action=send  to=team:worker-2  text="The plot is in results/plot.png."
-autocode_message  action=list
-autocode_message  action=read  id=m_123
-autocode_message  action=wait  seconds=120
 ```
 
 - A message is text, up to 32,000 characters. To share a file, send its path (or put it where the other agent can
   read it).
 - `to` can be one ID, a pattern or a comma list; a group never includes you. A message to `owner` lands in the
   owner's inbox, and the reply comes back to you as a message from the owner. `reply_to=<id>` marks a reply.
-- A new message is announced by an injection. Text messages up to 1024 characters (the owner's `inline_limit`) are
-  shown whole (and count as read); longer ones are listed: read them with `action=read`. A message you already read
-  with `action=read` (say during a turn, before its announcement came) is left out of the prompt; `list` does not
-  mark anything read.
-- `wait` holds the tool call until a message comes (at most the owner's `max_tool_wait`, 5 minutes by default) and
-  costs no tokens.
+- Messages to you come whole in an injected prompt, delivered like wakes: only while your session is idle, so one
+  sent during your turn comes after it ends. One prompt carries up to 32,000 characters of messages; more come in the
+  next one. `autocode_me action=status` says how many wait for your next prompt.
+- There is no reading or waiting inside a turn (Phase 1): to wait for a reply, end your turn; the reply wakes you.
 - Notices arrive as messages from `autocode`: a lock granted, expired, released by the owner, or you taken out of its
   queue; a question, permission or approval sent to you to answer; your approval's answer; a cost warning; a run's
   result or failure.

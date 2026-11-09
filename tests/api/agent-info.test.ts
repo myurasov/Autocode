@@ -1,6 +1,7 @@
 /*
  * What an agent is told (tier 0b2): its status shows the server, its time and
- * zone, the delivery settings, its wakes and unread messages; each wake says
+ * zone, the delivery settings, its wakes and the messages that wait for its
+ * next prompt; each wake says
  * when it falls due next (an estimate for idle wakes); an idle wake counts
  * from the later of the session's idle start and the time it was set; an
  * injected wake states its trigger and next run in the server's zone; every
@@ -53,7 +54,7 @@ beforeEach(async () => {
 afterEach(() => t.stop())
 
 describe("status", () => {
-  test("shows the server, its time and zone, the delivery settings, the wakes and unread messages", async () => {
+  test("shows the server, its time and zone, the delivery settings, the wakes and the messages waiting", async () => {
     await as(a, "PUT", "/v1/me/wakes/later", {
       text: "Later.",
       trigger: "every 2h",
@@ -73,12 +74,13 @@ describe("status", () => {
         time: "2026-10-28T12:00:00.000Z",
         timezone: "America/Los_Angeles",
       },
-      settings: { min_interval: "1m", inline_limit: 1024, max_tool_wait: "5m" },
+      settings: { min_interval: "1m", max_tool_wait: "5m" },
       wakes: {
         count: 2,
         next: { name: "sooner", due: "2026-10-28T12:30:00.000Z" },
       },
-      unread: 1,
+      // Phase 1: the messages waiting for the next prompt
+      waiting: 1,
     })
   })
 

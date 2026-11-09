@@ -41,7 +41,6 @@ const MESSAGES: Message[] = [
     state: 'queued',
     created_at: '2026-10-28T11:00:00.000Z',
     delivered_at: null,
-    read_at: null,
   },
   {
     id: 'msg_1',
@@ -52,10 +51,9 @@ const MESSAGES: Message[] = [
     reply_to: null,
     size: 17,
     preview: 'Here is the plan.',
-    state: 'read',
+    state: 'delivered',
     created_at: '2026-10-28T10:00:00.000Z',
     delivered_at: '2026-10-28T10:00:01.000Z',
-    read_at: '2026-10-28T10:05:00.000Z',
   },
 ];
 
@@ -143,7 +141,7 @@ describe('MessagesPage', () => {
       'Plan',
       'Here is the plan.',
       '17',
-      'read',
+      'delivered',
     ]);
     expect(page.querySelector('table.messages td.kind')).toBeNull();
     // Agent IDs are data (code that wraps after ":") that links to the

@@ -66,7 +66,7 @@ talk to the same server.
 |---|---|---|
 | Agents | register by ID (`project:role:name`), discover by pattern, status (`waiting` while an ask is open), the owner's pause, resume, Stop All | — |
 | Wakes | `every 30m [from 09:00]`, `in 45m`, `at 09:00`, `cron "*/30 8-16 * * 1-5" [zone]`, `idle 30m [repeat]`, `fire-only`; a check command that decides whether to wake (exit 0) or skip (exit 1) | — |
-| Messages | text to an agent, a pattern, a list, or the owner; inline or by ID; `wait` | — |
+| Messages | text to an agent, a pattern, a list, or the owner; always whole in the recipient's next prompt (Phase 1: no reading or waiting inside a turn) | — |
 | Inbox | messages to the owner, answered from the CLI or web UI; alerts; questions (the question tool) and permission prompts, routed by `question_mode` and `permission_mode` to the owner, answered at once, or sent to another agent (`agent:<id>`, which answers or escalates) or a job's run (`job:<name>`); approvals (`autocode_approval`, with options and expiry); the first answer counts | — |
 | Failures | a failed turn puts the agent in the `error` state; a retry prompt every `retry_interval` (1m), up to `retry_attempts` (0: no limit); errors that would fail again are not retried; a turn cut by an OpenCode restart is resumed; the machine's background OpenCode service is started again when it is gone | — |
 | Coordination | named locks (a mutex) and semaphores (N places) shared by agents on every machine: `try`, or a queue in arrival order with a notice when granted; a required `ttl`, renewal, expiry with a notice | — |

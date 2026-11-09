@@ -157,10 +157,10 @@ describe("notices", () => {
         FOOTER,
     )
     expect(sent.ses_a).toBeUndefined()
-    // it is a message from autocode, shown whole, so read
-    const mine = (await call(t.url, b, "GET", "/v1/me/messages?all=1")).body
+    // it is a message from autocode, carried whole: delivered
+    const mine = (await owner("GET", "/v1/messages?agent=team:b")).body
     expect(mine.messages).toMatchObject([
-      { from: "autocode", subject: 'lock "gpu-0" granted', state: "read" },
+      { from: "autocode", subject: 'lock "gpu-0" granted', state: "delivered" },
     ])
   })
 
@@ -322,7 +322,8 @@ describe("review findings", () => {
     await lock(a, "gpu-0", "release")
     await call(t.url, b, "DELETE", "/v1/me")
     const again = await registered(t, HOST, "ses_b", "team:b")
-    const mine = (await call(t.url, again, "GET", "/v1/me/messages")).body
+    expect((await call(t.url, again, "GET", "/v1/me")).body.waiting).toBe(0)
+    const mine = (await owner("GET", "/v1/messages?agent=team:b")).body
     expect(mine.messages).toEqual([])
   })
 })

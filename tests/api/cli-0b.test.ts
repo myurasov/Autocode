@@ -326,7 +326,7 @@ describe("owner commands", () => {
 
   // The owner, 2026-11-05: viewing or listing a message does not make it
   // read.
-  test("messages and messages read by the owner leave a message unread", async () => {
+  test("messages and messages read by the owner leave a message queued", async () => {
     const sent = await cli(["send", "kaggle:worker", "for", "later"], asLead())
     const id = /(m_\w+)/.exec(sent.stdout)![1]!
     const all = await cli(["messages"], asAdmin())
@@ -337,12 +337,6 @@ describe("owner commands", () => {
       (await cli(["messages", "--json"], asAdmin())).stdout,
     )
     expect(json.find((m: any) => m.id === id)?.state).toBe("queued")
-    // the agent reads it; then it is read
-    await call(t.url, worker, "GET", `/v1/me/messages/${id}`)
-    const after = JSON.parse(
-      (await cli(["messages", "--json"], asAdmin())).stdout,
-    )
-    expect(after.find((m: any) => m.id === id)?.state).toBe("read")
   })
 
   // Tier 0c: every lock, by pattern; the owner releases a hold.
