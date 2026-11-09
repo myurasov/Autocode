@@ -1,8 +1,9 @@
 /*
  * The Agents page: the agents (optionally filtered by an ID pattern) by
  * machine, with their hosts (links to the Hosts page), their model, spend
- * today and in total, and the context's share of the compaction threshold
- * (tier 0g; links to the Costs page), refreshed every 10 s;
+ * today and in total, and the context (now / threshold / window, with a bar
+ * of the threshold's share under it; tier 0g; links to the Costs page),
+ * refreshed every 10 s;
  * the agent a link led to (?agent=) highlighted and scrolled into view, a
  * filter that would hide it cleared, or a line that says it is not there.
  * An agent in the error state (its turns fail) shows its error type and how
@@ -26,6 +27,7 @@ import { RouterLink } from '@angular/router';
 import { type Agent, type AgentError, Api, errorText } from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
 import {
+  contextBar,
   contextShort,
   contextTitle,
   dotClass,
@@ -147,6 +149,7 @@ export class AgentsPage {
   protected readonly dotClass = dotClass;
   protected readonly spendParts = spendParts;
   protected readonly modelParts = modelParts;
+  protected readonly contextBar = contextBar;
   protected readonly contextShort = contextShort;
   protected readonly contextTitle = contextTitle;
   protected readonly errorTimes = errorTimes;

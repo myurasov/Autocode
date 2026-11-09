@@ -2209,6 +2209,25 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
     await openTab(page, "Agents")
     const agent = page.locator('tr[data-agent="smoke:agent"]')
     await expect(agent.locator("td.context")).toHaveText("60K/100K/200K")
+    // a bar under the numbers: 60% of the threshold (the owner, 2026-11-09)
+    const under = await agent.locator("td.context").evaluate((td) => {
+      const n = td.querySelector(".numbers")!.getBoundingClientRect()
+      const bar = td.querySelector(".bar") as HTMLElement
+      const b = bar.getBoundingClientRect()
+      const fill = (
+        bar.firstElementChild as HTMLElement
+      ).getBoundingClientRect()
+      return {
+        below: b.top >= n.bottom - 0.5,
+        share: Math.round((fill.width / b.width) * 100),
+        height: b.height,
+        color: getComputedStyle(bar.firstElementChild!).backgroundColor,
+      }
+    })
+    expect(under.below, "the bar under the numbers").toBe(true)
+    expect(under.share).toBe(60)
+    expect(under.height).toBe(4)
+    expect(under.color).not.toBe("rgba(0, 0, 0, 0)")
     await expect(agent.locator("td.spend")).toContainText(" today / $")
     // a click on Spend: the Costs tab with this agent's row highlighted
     await agent.locator("td.spend a").click()

@@ -482,7 +482,12 @@ table.costs .cap-line {
   justify-content: space-between;
   gap: 0.6rem;
 }
-table.costs .bar {
+/*
+ * A share as a bar under its numbers: the Costs tab's Daily Cap and the
+ * Agents tab's Context (the owner, 2026-11-09); amber from 75%, red from 100%.
+ */
+table.costs .bar,
+table.agents td.context .bar {
   display: block;
   height: 4px;
   margin-top: 3px;
@@ -490,16 +495,22 @@ table.costs .bar {
   border-radius: 2px;
   overflow: hidden;
 }
-table.costs .bar > span {
+table.costs .bar > span,
+table.agents td.context .bar > span {
   display: block;
   height: 100%;
   background: var(--ok);
 }
-table.costs .bar.near > span {
+table.costs .bar.near > span,
+table.agents td.context .bar.near > span {
   background: var(--warn);
 }
-table.costs .bar.over > span {
+table.costs .bar.over > span,
+table.agents td.context .bar.over > span {
   background: var(--err);
+}
+table.agents td.context .numbers {
+  display: block;
 }
 table.costs tr.days > td {
   background: var(--softer);

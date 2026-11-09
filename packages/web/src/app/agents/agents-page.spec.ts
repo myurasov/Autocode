@@ -27,7 +27,7 @@ import {
   type,
 } from '../../testing/helpers';
 import type { Agent, AgentError, CostNumbers } from '../api';
-import { contextShort, localTime, tokensShort } from '../format';
+import { contextBar, contextShort, localTime, tokensShort } from '../format';
 import {
   AgentsPage,
   FILTER_DELAY_MS,
@@ -156,11 +156,59 @@ describe('AgentsPage', () => {
       '80,000 tokens now; compacted past 100,000 (compact_at); the ' +
         "model's window 200,000",
     );
-    // an agent with no cost or model yet
+    // under the numbers a bar of the threshold's share (the owner,
+    // 2026-11-09), amber from 75%, as the Costs tab's Daily Cap
+    expect(context.firstElementChild!.className).toBe('numbers');
+    const bar = context.querySelector('.numbers + .bar') as HTMLElement;
+    expect(bar.classList).toContain('near');
+    expect(bar.classList).not.toContain('over');
+    expect((bar.firstElementChild as HTMLElement).style.width).toBe('80%');
+    // an agent with no cost or model yet: no bar
     const worker = page.querySelector('tr[data-agent="kaggle:worker"]')!;
     expect(text(worker.querySelector('td.spend'))).toBe('—');
     expect(text(worker.querySelector('td.context'))).toBe('—');
+    expect(worker.querySelector('td.context .bar')).toBeNull();
     expect(text(worker.querySelector('td.model'))).toBe('—');
+  });
+
+  // The owner, 2026-11-09: "add bar under the context numbers on agents tab".
+  it("the context's bar: its share of the threshold (amber from 75%, red from 100%, full at most); else of the window", () => {
+    const k = (over: Partial<CostNumbers>): CostNumbers => ({
+      today_usd: 0,
+      total_usd: 0,
+      daily_usd: 'off',
+      left_usd: null,
+      context: 50_000,
+      context_limit: 200_000,
+      compact_at: 100_000,
+      context_share: 50,
+      ...over,
+    });
+    expect(contextBar(k({}))).toEqual({ width: 50, near: false, over: false });
+    expect(contextBar(k({ context: 75_000, context_share: 75 }))).toEqual({
+      width: 75,
+      near: true,
+      over: false,
+    });
+    // past the threshold: a full bar, red
+    expect(contextBar(k({ context: 109_900, context_share: 109.9 }))).toEqual({
+      width: 100,
+      near: true,
+      over: true,
+    });
+    // no threshold (compact_at off): the window's share, never amber or red
+    expect(
+      contextBar(
+        k({ context: 180_000, compact_at: null, context_share: null }),
+      ),
+    ).toEqual({ width: 90, near: false, over: false });
+    // neither: no bar; nor before the first step
+    expect(
+      contextBar(
+        k({ compact_at: null, context_share: null, context_limit: null }),
+      ),
+    ).toBeNull();
+    expect(contextBar(k({ context: null, context_share: null }))).toBeNull();
   });
 
   it('tokens in K and M; the context without a threshold, or without a window', () => {

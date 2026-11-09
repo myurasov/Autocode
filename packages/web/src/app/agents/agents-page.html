@@ -1,8 +1,9 @@
 <!--
   The Agents page: Stop All and Resume All (an action's result beside them), a
   filter by ID pattern and the Unregistered box (the gone agents too), the agents by machine (their hosts link to the Hosts
-  page; each one's model, spend today and in total, and its context's share of
-  the compaction threshold, linking to the Costs page; an agent in error shows its error type and
+  page; each one's model, spend today and in total, and its context with a bar
+  of the compaction threshold's share, linking to the Costs page; an agent in
+  error shows its error type and
   retries; Retry, Edit, Pause
   or Resume, New Token, Unregister), the agent a link led to
   highlighted (or a line that says it is not there), and when the list last
@@ -176,7 +177,17 @@
             [attr.title]="a.cost ? contextTitle(a.cost) : null"
           >
             @if (a.cost && a.cost.context !== null) {
-              {{ contextShort(a.cost) }}
+              <!-- the numbers, then a bar of the threshold's share (the
+                   owner, 2026-11-09) -->
+              <span class="numbers">{{ contextShort(a.cost) }}</span>
+              @if (contextBar(a.cost); as bar) {
+                <span
+                  class="bar"
+                  [class.near]="bar.near"
+                  [class.over]="bar.over"
+                  ><span [style.width]="bar.width + '%'"></span
+                ></span>
+              }
             } @else {
               <span class="muted">—</span>
             }

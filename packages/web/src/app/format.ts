@@ -64,6 +64,29 @@ export function modelParts(model: string): [string, string] {
   return at < 0 ? ['', model] : [model.slice(0, at + 1), model.slice(at + 1)];
 }
 
+/*
+ * The bar under the context on the Agents tab (the owner, 2026-11-09): its
+ * share of the compaction threshold (a percentage, full at most), amber from
+ * 75% and red from 100% as the Costs tab's Daily Cap; without a threshold
+ * the window's share, plain; null without either, or before the first step.
+ */
+export function contextBar(
+  k: CostNumbers,
+): { width: number; near: boolean; over: boolean } | null {
+  if (k.context === null) return null;
+  if (k.context_share !== null) {
+    const share = k.context_share;
+    return {
+      width: Math.min(100, Math.max(0, share)),
+      near: share >= 75,
+      over: share >= 100,
+    };
+  }
+  if (!k.context_limit) return null;
+  const share = Math.round((k.context / k.context_limit) * 1000) / 10;
+  return { width: Math.min(100, share), near: false, over: false };
+}
+
 // The context's tooltip: the tokens now, the threshold and the window, whole.
 export function contextTitle(k: CostNumbers): string {
   if (k.context === null) return 'No model step yet';

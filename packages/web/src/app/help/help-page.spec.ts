@@ -497,6 +497,10 @@ describe('HelpPage', () => {
     expect(section(page, 'web-hosts')).toContain('the Offline box');
     expect(costs).toContain("a click on an agent's Spend there leads here");
     expect(agents).toContain('854K/777K/1M');
+    // a bar under the context (the owner, 2026-11-09)
+    expect(agents).toContain(
+      "under it a bar of the threshold's share, amber from 75%, red from 100%",
+    );
     expect(section(page, 'commands')).toContain(
       'autocode costs [AGENT] [--match PATTERN]',
     );

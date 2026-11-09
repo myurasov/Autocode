@@ -853,7 +853,10 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       offline or error), its model (the one its last step ran), Spend (today
       and in total; a click shows its row on the Costs tab) and Context (now /
       its compaction threshold / the model's window, in K and M, like
-      <code>854K/777K/1M</code>; the exact tokens in its tooltip), host (a link to its row on the Hosts page), folder,
+      <code>854K/777K/1M</code>; the exact tokens in its tooltip; under it a
+      bar of the threshold's share, amber from 75%, red from 100%, or of the
+      window's without a threshold), host (a link to its row on the Hosts
+      page), folder,
       session and times. A waiting agent has an ask open in the Inbox; a
       paused one's tooltip says who paused it: you, Stop All or its daily cost
       cap. An

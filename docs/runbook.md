@@ -178,7 +178,8 @@ was read are the server's). Pages:
   column).
 - **Agents:** the agents by machine (status: idle, working, waiting, error, paused or offline; model, spend today
   and in total (a click shows its row on Costs), context as now/threshold/window in K and M (`854K/777K/1M`; the
-  exact tokens in its tooltip); host, folder, session, times), refreshed every 10 s, with a pattern filter that
+  exact tokens in its tooltip) with a bar under it of the threshold's share (amber from 75%, red from 100%; the
+  window's without a threshold); host, folder, session, times), refreshed every 10 s, with a pattern filter that
   applies a second after the last key (Enter or **Refresh** at once; **Show All** clears it) and an **Unregistered**
   box (off by default: the agents that unregistered too, dimmed, with their spend; a link from Costs turns it on);
   edit a description, **Pause** or **Resume** an agent's injections, **New Token** (the same as `autocode token

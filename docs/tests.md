@@ -1040,6 +1040,11 @@ in what it read.
   100 px wide, at least 100 and at most 150 (the owner: "make on daily cap width 100px, min width 100px, max width
   150px"; the same smoke test, red at 150 px with a $9.00 cap, then green: 100 px for $9.00, 150 px for $1000000.00,
   every cell within 100 to 150).
+- **A bar under the Agents tab's Context** (the owner, 2026-11-09: "add bar under the context numbers on agents tab";
+  tests first, red, then green): `agents-page.spec.ts` 2 (`contextBar`: the threshold's share, amber from 75%, red
+  and full from 100%; the window's share without a threshold, plain; none without either or before the first step;
+  the cell: the numbers, then the bar; none for an agent without a step), `help-page.spec.ts`, `smoke.spec.ts` (the
+  bar below the numbers, 60% wide for 60K of a 100K threshold, 4 px, colored). The Costs tab's bar styles are shared.
 - **Every date as 05-Nov-26** (the owner, 2026-11-09: "wherever we have dates format it like 05-Nov-26 (on costs tab
   its different rn)"; tests first, red, then green: `format.spec.ts` `dayText`, `costs-page.spec.ts` (the read time
   `08-Nov-26 17:02:03 PT`, still the server's zone; the Days table `08-Nov-26`), `smoke.spec.ts` (both forms),
