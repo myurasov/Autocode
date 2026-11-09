@@ -21,7 +21,7 @@
     id="lock-match"
     type="text"
     spellcheck="false"
-    placeholder="for example gpu-* or a,b:* (empty shows all)"
+    placeholder="for example gpu-* or a,b:*"
     [value]="pattern()"
     (input)="typed($any($event.target).value)"
     (keydown.enter)="applyMatch()"

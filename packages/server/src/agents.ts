@@ -245,6 +245,37 @@ export class Agents {
     return { status: 201, agent: this.ownerView(this.byId(id)) }
   }
 
+  /*
+   * What the history still knows of an unregistered ID: its last session's
+   * machine and folder, and when it was last active (the owner, 2026-11-08:
+   * unregistered agents on the Agents tab).
+   */
+  lastSeen(id: string): {
+    machine?: string
+    directory?: string
+    host?: string
+    session?: string
+    last_active: string
+  } {
+    const h = this.db
+      .query(
+        `SELECT y.at, y.host, y.session, s.directory, ho.machine
+         FROM history y
+         LEFT JOIN sessions s ON s.id = y.session
+         LEFT JOIN hosts ho ON ho.id = y.host
+         WHERE y.agent = ? AND y.kind = 'agent.unregistered'
+         ORDER BY y.id DESC LIMIT 1`,
+      )
+      .get(id) as any
+    return {
+      ...(h?.machine ? { machine: h.machine } : {}),
+      ...(h?.directory ? { directory: h.directory } : {}),
+      ...(h?.host ? { host: h.host } : {}),
+      ...(h?.session ? { session: h.session } : {}),
+      last_active: new Date(h?.at ?? 0).toISOString(),
+    }
+  }
+
   unregister(id: string, by: "self" | "owner" | "expired") {
     const row = this.byId(id)
     if (!row) throw new AutocodeError("not_registered", `no agent ${id}`, 404)

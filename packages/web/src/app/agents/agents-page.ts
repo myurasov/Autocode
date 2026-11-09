@@ -153,6 +153,13 @@ export class AgentsPage {
 
   // The agent a link led to, and the filter the list on show was loaded with.
   protected readonly target = highlightParam('agent');
+  /*
+   * The unregistered agents too (the owner, 2026-11-08): off by default; a
+   * link that asks for them (?unregistered=1, from the Costs tab) turns it
+   * on.
+   */
+  private readonly goneParam = highlightParam('unregistered');
+  protected readonly showGone = signal(false);
   private readonly listedFor = signal<string | null>(null);
   // The agent a link led to when the list (for this filter) does not have it.
   protected readonly missing = computed(() => {
@@ -167,6 +174,11 @@ export class AgentsPage {
   private typing?: ReturnType<typeof setTimeout>;
 
   constructor() {
+    // a link that asks for the gone agents: at once, then as the address goes
+    if (this.goneParam() === '1') this.showGone.set(true);
+    effect(() => {
+      if (this.goneParam() === '1') untracked(() => this.setShowGone(true));
+    });
     void this.refresh();
     // A tick is skipped while the last refresh is still out.
     const timer = setInterval(() => {
@@ -191,12 +203,19 @@ export class AgentsPage {
     });
   }
 
+  protected setShowGone(on: boolean): void {
+    if (on === this.showGone()) return;
+    this.showGone.set(on);
+    void this.refresh();
+  }
+
   protected async refresh(): Promise<void> {
     const match = this.applied();
+    const gone = this.showGone();
     this.inFlight++;
     try {
-      const agents = await this.api.agents(match);
-      if (match !== this.applied()) return;
+      const agents = await this.api.agents(match, gone);
+      if (match !== this.applied() || gone !== this.showGone()) return;
       this.agents.set(agents);
       this.listedFor.set(match);
       this.error.set('');

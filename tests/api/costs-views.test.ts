@@ -193,6 +193,59 @@ describe("an agent's model", () => {
   })
 })
 
+// The owner, 2026-11-08: unregistered agents on Agents too (a box), and
+// Costs' Total over the last X days.
+describe("unregistered agents and days", () => {
+  test("GET /v1/agents?unregistered=1 adds the IDs that spent and are gone, marked, with their last machine", async () => {
+    await registered(t, HOST, "ses_b", "team:b")
+    await report(t, HOST, [step(0.2, 1000, "ses_b")])
+    await owner("DELETE", "/v1/agents/team:b")
+    const plain = (await owner("GET", "/v1/agents")).body.agents
+    expect(plain.map((x: any) => x.id)).toEqual(["team:a"])
+    const all = (await owner("GET", "/v1/agents?unregistered=1")).body.agents
+    expect(all.map((x: any) => [x.id, x.status])).toEqual([
+      ["team:a", "idle"],
+      ["team:b", "unregistered"],
+    ])
+    expect(all[1]).toMatchObject({
+      registered: false,
+      cost: { total_usd: 0.2 },
+    })
+    expect(all[1].machine).toBe("m")
+    // a pattern applies to both
+    const one = (await owner("GET", "/v1/agents?unregistered=1&match=team:b"))
+      .body.agents
+    expect(one.map((x: any) => x.id)).toEqual(["team:b"])
+    // agents themselves see only registered ones
+    const mine = (await as(a, "GET", "/v1/agents?unregistered=1")).body.agents
+    expect(mine.map((x: any) => x.id)).toEqual(["team:a"])
+  })
+
+  test("/v1/costs?days=X: Total and the totals over the last X days; gone agents without spend then drop out", async () => {
+    await registered(t, HOST, "ses_b", "team:b")
+    await report(t, HOST, [step(1), step(0.5, 1000, "ses_b")])
+    await owner("DELETE", "/v1/agents/team:b")
+    t.clock.advance(3 * DAY)
+    await report(t, HOST, [step(0.25)])
+    const week = (await owner("GET", "/v1/costs?days=7")).body
+    expect(week.days).toBe(7)
+    expect(week.agents.map((x: any) => [x.agent, x.total_usd])).toEqual([
+      ["team:a", 1.25],
+      ["team:b", 0.5],
+    ])
+    const two = (await owner("GET", "/v1/costs?days=2")).body
+    // team:a keeps its row (registered); team:b spent nothing in 2 days
+    expect(two.agents.map((x: any) => [x.agent, x.total_usd])).toEqual([
+      ["team:a", 0.25],
+    ])
+    expect(two.totals).toEqual({ agents: 1, today_usd: 0.25, total_usd: 0.25 })
+    // all time without days; bad days refused
+    expect((await owner("GET", "/v1/costs")).body.days).toBeNull()
+    expect((await owner("GET", "/v1/costs?days=0")).status).toBe(400)
+    expect((await owner("GET", "/v1/costs?days=x")).status).toBe(400)
+  })
+})
+
 describe("GET /v1/costs", () => {
   test("every agent's numbers, by ID; one agent's with its days, newest first", async () => {
     await registered(t, HOST, "ses_b", "team:b")

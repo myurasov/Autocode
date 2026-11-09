@@ -111,7 +111,7 @@ ID before it sends a token. Every command takes `--json`.
 |---|---|
 | `autocode info` | the server's ID and version (`v0.1.0-build<n>`: the release and the build number) |
 | `autocode agents [PATTERN]` | agents with status, machine, spend today, context (the share of the compaction threshold) and last activity (`kaggle:*`, `a,b`) |
-| `autocode costs [AGENT] [--match PATTERN]` | every agent's spend today and in total (unregistered ones too, and the totals), daily cap and what is left, context and its compaction threshold; `AGENT`: its spend per day (kept `history_days`, at least 31 days) |
+| `autocode costs [AGENT] [--match PATTERN] [--days X]` | every agent's spend today and in total (unregistered ones too, and the totals), daily cap and what is left, context and its compaction threshold; `AGENT`: its spend per day (kept `history_days`, at least 31 days) |
 | `autocode agents rm AGENT` | unregister an agent (its history stays) |
 | `autocode agents register AGENT --session SES [--force]` | bind an ID to a session; `--force` moves it away from a live session |
 | `autocode hosts` | plugin instances: machine, folder, online, OpenCode process, whether its shells get Autocode values |
@@ -166,22 +166,24 @@ token are refused. The token is kept for that browser tab, or on that browser wi
 Out**; a token the server stops accepting sends you back to sign-in. Other sites cannot frame the UI. Pages:
 
 - **Hosts:** each OpenCode server folder the plugin connects from, by machine (folder, status, the OpenCode process
-  it runs in, OpenCode and plugin versions, last seen), refreshed every 10 s;
-  it says how many seconds ago it last loaded. The process is the background service (`opencode serve --service`)
-  or `opencode serve` (also the private server a TUI or `opencode run` starts for itself with `--standalone` or with
-  the service turned off), with its process ID. A TUI attaches to the background service
-  by default, so its folders stay online after the TUI exits, until OpenCode unloads a folder after an hour unused.
-  **no shell values** under the process: that server's shells get no Autocode values, because the plugin cannot
-  reach its local API (see Troubleshooting; `autocode hosts` shows a SHELL VALUES column).
-- **Agents:** the agents by machine (status: idle, working, waiting, error, paused or offline; model, spend today and
-  in total (a click shows its row on Costs), context as now/threshold/window in K and M (`854K/777K/1M`; the exact
-  tokens in its tooltip); host, folder, session, times),
-  refreshed every 10 s, with a pattern filter that applies a second after the last key (Enter or **Refresh** at once;
-  **Show All** clears it); edit a description, **Pause** or **Resume** an agent's injections, **New Token** (the same
-  as `autocode token rotate`), **Unregister**; **Stop All** (pause every agent and interrupt its session, after you
-  confirm) and **Resume All** (what Stop All paused). Like Hosts, it says how many seconds ago it last loaded. An
-  agent in the **error** state (its last turn failed) shows the error and its retries under its status (`retry 3 in
-  40s`, `retrying now`, `not retried`, `retries ran out`; the times in its tooltip), and **Retry** retries it now.
+  it runs in, OpenCode and plugin versions, last seen), refreshed every 10 s; offline ones only with the **Offline**
+  box (off by default; a link to an offline host turns it on); it says how many seconds ago it last loaded. The
+  process is the background service (`opencode serve --service`) or `opencode serve` (also the private server a TUI
+  or `opencode run` starts for itself with `--standalone` or with the service turned off), with its process ID. A
+  TUI attaches to the background service by default, so its folders stay online after the TUI exits, until OpenCode
+  unloads a folder after an hour unused. **no shell values** under the process: that server's shells get no Autocode
+  values, because the plugin cannot reach its local API (see Troubleshooting; `autocode hosts` shows a SHELL VALUES
+  column).
+- **Agents:** the agents by machine (status: idle, working, waiting, error, paused or offline; model, spend today
+  and in total (a click shows its row on Costs), context as now/threshold/window in K and M (`854K/777K/1M`; the
+  exact tokens in its tooltip); host, folder, session, times), refreshed every 10 s, with a pattern filter that
+  applies a second after the last key (Enter or **Refresh** at once; **Show All** clears it) and an **Unregistered**
+  box (off by default: the agents that unregistered too, dimmed, with their spend; a link from Costs turns it on);
+  edit a description, **Pause** or **Resume** an agent's injections, **New Token** (the same as `autocode token
+  rotate`), **Unregister**; **Stop All** (pause every agent and interrupt its session, after you confirm) and
+  **Resume All** (what Stop All paused). Like Hosts, it says how many seconds ago it last loaded. An agent in the
+  **error** state (its last turn failed) shows the error and its retries under its status (`retry 3 in 40s`,
+  `retrying now`, `not retried`, `retries ran out`; the times in its tooltip), and **Retry** retries it now.
 - **Links:** an agent's ID anywhere else (Inbox, Messages, Wakes, Settings) opens the Agents page with that agent's
   row highlighted; a host's ID (on Agents) opens the Hosts page with that host's row highlighted.
 - **Inbox:** messages to `owner` and alerts (a wake whose check failed three times in a row); **Answer** a message
@@ -206,8 +208,9 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
   dimmed), its daily cap with the share spent and what is left today, refreshed every 5 s (its context is on
   **Agents**; a click on an agent's Spend there leads here with its row highlighted); **Days** shows its spend per
   day (kept `history_days`, at least 31 days; days in the server's zone: right of **Refresh**, when the data was
-  read, in that zone); an **Agent** filter (a pattern, kept in the address) and a totals row. `autocode costs` is
-  the same in the CLI.
+  read, in that zone); an **Agent** filter (a pattern, kept in the address), a **days** field (Total and the totals
+  over the last X days; empty: all time; in the address), an **Unregistered** box (on by default; a gone agent's ID
+  leads to Agents with its box on) and a totals row. `autocode costs` is the same in the CLI (`--days X`).
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI, with a numbered table of contents.
 - **Settings:** the server-wide values (each shown in its edit box: change it and **Save**, or **Reset** to the
   built-in default), the pattern rules, the agents' own values, and **Resolved for an Agent** (an agent's values

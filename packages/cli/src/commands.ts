@@ -313,6 +313,7 @@ const left = (k: any) => (k.left_usd === null ? "—" : dollars(k.left_usd))
  * Every agent's spend today and in total, its daily cap and what is left of
  * it, its context and its compaction threshold with the share used (tier 0g),
  * unregistered ones with spend too, filtered by --match, with the totals;
+ * --days X: the total over the last X days;
  * `costs AGENT`: one agent's, with its spend per day.
  */
 export async function costs(args: Parsed): Promise<number> {
@@ -353,10 +354,11 @@ export async function costs(args: Parsed): Promise<number> {
     return 0
   }
   const match = args.flags.match as string | undefined
-  const res = await c.call(
-    "GET",
-    `/v1/costs${match ? `?match=${encodeURIComponent(match)}` : ""}`,
-  )
+  const days = args.flags.days as string | undefined
+  const q = new URLSearchParams()
+  if (match) q.set("match", match)
+  if (days) q.set("days", days)
+  const res = await c.call("GET", `/v1/costs${q.size ? `?${q}` : ""}`)
   const t = res.totals
   print(args, res, () =>
     [
@@ -376,7 +378,7 @@ export async function costs(args: Parsed): Promise<number> {
               ]),
               // the totals of what is listed
               [
-                "TOTAL",
+                res.days ? `TOTAL (${res.days} DAYS)` : "TOTAL",
                 `(${t.agents})`,
                 dollars(t.today_usd),
                 "",
@@ -393,7 +395,7 @@ export async function costs(args: Parsed): Promise<number> {
               "TODAY",
               "CAP",
               "LEFT",
-              "TOTAL",
+              res.days ? `${res.days} DAYS` : "TOTAL",
               "CONTEXT",
               "THRESHOLD",
               "SHARE",

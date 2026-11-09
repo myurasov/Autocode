@@ -481,13 +481,16 @@ describe('HelpPage', () => {
       'unregistered',
       'Agent filters by an ID pattern',
       'the total of what is listed',
+      'the days field makes Total and the totals the last so many days',
+      'Unregistered box is on (it is by default)',
       "when the data was read (the server's time, in its zone) is right of " +
         'Refresh',
     ])
       expect(costs).toContain(part);
     const agents = section(page, 'web-agents');
-    for (const part of ['model', 'Spend', 'Context'])
+    for (const part of ['model', 'Spend', 'Context', 'the Unregistered box'])
       expect(agents).toContain(part);
+    expect(section(page, 'web-hosts')).toContain('the Offline box');
     expect(costs).toContain("a click on an agent's Spend there leads here");
     expect(agents).toContain('854K/777K/1M');
     expect(section(page, 'commands')).toContain(

@@ -38,6 +38,7 @@ function view(): CostsView {
     // 17:02:03 PST on Nov 8 in the server's zone
     time: '2026-11-09T01:02:03.000Z',
     timezone: 'America/Los_Angeles',
+    days: null,
     agents: [
       {
         ...BASE,
@@ -83,9 +84,10 @@ describe('CostsPage', () => {
 
   afterEach(() => http.verify());
 
-  function load(start = view(), match?: string): void {
+  function load(start = view(), match?: string, days?: string): void {
     const req = http.expectOne((r) => r.url === '/v1/costs');
     expect(req.request.params.get('match')).toBe(match ?? null);
+    expect(req.request.params.get('days')).toBe(days ?? null);
     req.flush(start);
   }
 
@@ -210,15 +212,73 @@ describe('CostsPage', () => {
     expect(cell(page, 's:working', 'status')).toBe('working');
   });
 
-  it('an unregistered agent with spend shows, marked, without a link to Agents', async () => {
+  // The owner, 2026-11-08: an unregistered agent's ID links to Agents, which
+  // turns its Unregistered box on to show and highlight it; the Costs tab's
+  // own Unregistered box (on by default) hides the gone ones.
+  it('an unregistered agent with spend shows, marked, its ID a link to Agents with the box on', async () => {
     const page = await open();
     const gone = row(page, 'old:one');
     expect(gone.classList).toContain('gone');
     expect(text(gone.querySelector('td.agent'))).toBe('old:one');
-    expect(gone.querySelector('td.agent a')).toBeNull();
+    expect(gone.querySelector('td.agent a')!.getAttribute('href')).toBe(
+      '/agents?agent=old:one&unregistered=1',
+    );
     expect(text(gone.querySelector('td.status'))).toBe('unregistered');
     expect(gone.querySelector('td.status .dot')).toBeNull();
     expect(cell(page, 'old:one', 'total')).toBe('$3.50');
+  });
+
+  it('the Unregistered box, on by default, hides the gone agents when off; the totals follow', async () => {
+    const page = await open();
+    const box = page.querySelector(
+      '.toolbar #costs-unregistered',
+    ) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(text(box.closest('label'))).toBe('Unregistered');
+    box.click();
+    await settle(fixture);
+    expect(page.querySelector('tr[data-agent="old:one"]')).toBeNull();
+    // what is listed: the two registered ones
+    expect(text(page.querySelector('tfoot tr.totals td.agent'))).toBe(
+      'Total (2 agents)',
+    );
+    expect(text(page.querySelector('tfoot tr.totals td.today'))).toBe('$1.54');
+    expect(text(page.querySelector('tfoot tr.totals td.total'))).toBe('$12.39');
+  });
+
+  // The owner, 2026-11-08: "X days" right after the filter: Total and the
+  // totals over the last X days (empty: all time).
+  it('the days field, right after the filter, asks for the total over the last days', async () => {
+    vi.useFakeTimers();
+    try {
+      signedIn();
+      fixture = TestBed.createComponent(CostsPage);
+      await vi.advanceTimersByTimeAsync(0);
+      load();
+      const page = el(fixture);
+      const field = page.querySelector('#cost-days') as HTMLInputElement;
+      expect(field.previousElementSibling!.id).toBe('cost-match');
+      expect(text(field.nextElementSibling)).toBe('days');
+      expect(field.value).toBe('');
+      type(field, '7');
+      await vi.advanceTimersByTimeAsync(FILTER_DELAY_MS);
+      expect(TestBed.inject(Router).url).toBe('/?days=7');
+      await vi.advanceTimersByTimeAsync(0);
+      load({ ...view(), days: 7 }, undefined, '7');
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+      expect(
+        [...page.querySelectorAll('table.costs thead th')].map((th) =>
+          text(th),
+        ),
+      ).toContain('Last 7 Days');
+      expect(text(page.querySelector('tfoot tr.totals td.agent'))).toBe(
+        'Total (3 agents, last 7 days)',
+      );
+    } finally {
+      fixture.destroy();
+      vi.useRealTimers();
+    }
   });
 
   it('a totals row adds up what is listed', async () => {

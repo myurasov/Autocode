@@ -238,6 +238,11 @@ const TABS = Object.keys(LOADED)
 async function openTab(page: Page, tab: string) {
   await page.getByRole("link", { name: tab, exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/${tab.toLowerCase()}$`))
+  // the fixture's hosts go offline between their polls: show them all
+  if (tab === "Hosts") {
+    const offline = page.getByRole("checkbox", { name: "Offline" })
+    if (!(await offline.isChecked())) await offline.check()
+  }
   await expect(page.locator(`#frame ${LOADED[tab]}`).first()).toBeVisible()
 }
 
@@ -269,8 +274,8 @@ test("admin: Agents shows smoke:agent under machine smoke, Hosts its host", asyn
   const updated = page.locator("#frame footer")
   await expect(updated).toHaveText(/^Updated \d+s ago\.$/)
   await expect(updated).toHaveText(/^Updated [1-9]\d*s ago\.$/)
-  await page.getByRole("link", { name: "Hosts" }).click()
-  await expect(page.locator("#frame p.muted")).toHaveText(
+  await openTab(page, "Hosts")
+  await expect(page.locator("#frame .toolbar .muted")).toHaveText(
     "One per OpenCode server folder that the Autocode plugin connects from.",
   )
   await expect(updated).toHaveText(/^Updated \d+s ago\.$/)
@@ -2039,6 +2044,35 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
   }
 })
 
+// The owner, 2026-11-08: toolbar text fields 15rem on every tab, without
+// "(empty shows all)"; the Unregistered and Offline boxes.
+test("toolbars: text fields 15rem, no '(empty shows all)'; Unregistered and Offline boxes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, admin)
+  for (const tab of ["Agents", "Locks", "Costs", "History"]) {
+    await openTab(page, tab)
+    const field = page.locator('.toolbar input[type="text"]').first()
+    await expect(field, tab).toHaveCSS("width", "240px")
+    expect(await field.getAttribute("placeholder"), tab).not.toContain(
+      "empty shows all",
+    )
+  }
+  await openTab(page, "Agents")
+  await expect(
+    page.getByRole("checkbox", { name: "Unregistered" }),
+  ).not.toBeChecked()
+  await openTab(page, "Costs")
+  await expect(
+    page.getByRole("checkbox", { name: "Unregistered" }),
+  ).toBeChecked()
+  await page.getByRole("link", { name: "Hosts", exact: true }).click()
+  await expect(
+    page.getByRole("checkbox", { name: "Offline" }),
+  ).not.toBeChecked()
+})
+
 // What the plugin reports when smoke:agent's turn asks something (tier 0d):
 // the question tool's form, or a permission prompt.
 async function openAsk(api: APIRequestContext, event: Record<string, unknown>) {
@@ -2623,7 +2657,7 @@ for (const width of [1280]) {
     await expect(row.locator("td.folder")).toHaveText(LONG.directory)
     await expect(row.locator("td.session")).toHaveText(LONG.session)
     expect(await overflow(page), "Agents").toEqual({ frame: 0, page: 0 })
-    await page.getByRole("link", { name: "Hosts" }).click()
+    await openTab(page, "Hosts")
     const host = page.locator(`table.hosts tr[data-host="${LONG.host}"]`)
     await expect(host.locator("td.folder")).toHaveText(LONG.directory)
     expect(await overflow(page), "Hosts").toEqual({ frame: 0, page: 0 })
@@ -3298,7 +3332,9 @@ test("layout: the frame has its padding", async ({ page }) => {
   }
 })
 
-test("layout: the Agents toolbar has Refresh at the left, the filter at the right", async ({
+// The filter, then the Unregistered box at the right (the owner,
+// 2026-11-08).
+test("layout: the Agents toolbar has Refresh at the left, the filter and Unregistered at the right", async ({
   page,
 }) => {
   const box = (item: Locator) =>
@@ -3311,8 +3347,10 @@ test("layout: the Agents toolbar has Refresh at the left, the filter at the righ
   const refresh = await box(page.getByRole("button", { name: "Refresh" }))
   const label = await box(page.locator(".toolbar label[for=match]"))
   const field = await box(page.locator("#match"))
+  const gone = await box(page.locator(".toolbar label[for=show-unregistered]"))
   expect(refresh.left - toolbar.left, "Refresh").toBeLessThanOrEqual(1)
-  expect(toolbar.right - field.right, "the field").toBeLessThanOrEqual(1)
+  expect(toolbar.right - gone.right, "Unregistered").toBeLessThanOrEqual(1)
+  expect(gone.left, "Unregistered").toBeGreaterThanOrEqual(field.right)
   expect(label.left, "the label").toBeGreaterThan(
     (toolbar.left + toolbar.right) / 2,
   )

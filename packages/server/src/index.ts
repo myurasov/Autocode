@@ -578,13 +578,33 @@ export async function startServer(
       method: "GET",
       path: "/v1/agents",
       access: ["session", "admin", "consumer"],
-      summary: "discover agents by pattern",
-      handler: ({ caller, url }) => ({
-        agents: agents.list(
-          url.searchParams.get("match"),
-          caller!.kind === "session" ? "discover" : "owner",
-        ),
-      }),
+      summary:
+        "discover agents by pattern; the owner's ?unregistered=1 adds the " +
+        "IDs that spent and are gone, marked",
+      handler: ({ caller, url }) => {
+        const match = url.searchParams.get("match")
+        const owner = caller!.kind !== "session"
+        const list: any[] = agents
+          .list(match, owner ? "owner" : "discover")
+          .map((x) => (owner ? { ...x, registered: true } : x))
+        const gone = url.searchParams.get("unregistered")
+        if (!owner || !(gone === "1" || gone === "true"))
+          return { agents: list }
+        const pattern = match?.trim() ? parsePattern(match) : null
+        const ids = new Set(list.map((x) => x.id))
+        for (const id of costs.spenders())
+          if (!ids.has(id) && (!pattern || matchesPattern(pattern, id)))
+            list.push({
+              id,
+              registered: false,
+              status: "unregistered",
+              description: "",
+              ...agents.lastSeen(id),
+              cost: costs.view(id),
+            })
+        list.sort((p, q) => (p.id < q.id ? -1 : p.id > q.id ? 1 : 0))
+        return { agents: list }
+      },
     },
     {
       method: "GET",
@@ -805,27 +825,46 @@ export async function startServer(
       summary:
         "every agent's spend (today, total), daily cap and what is left, " +
         "context and its share of the compaction threshold, unregistered " +
-        "ones with spend too; ?match= an agent pattern; the totals (tier 0g)",
+        "ones with spend too; ?match= an agent pattern; ?days= the total " +
+        "over the last days; the totals (tier 0g)",
       handler: ({ url }) => {
         const match = url.searchParams.get("match")?.trim() || null
         const pattern = match ? parsePattern(match) : null
+        // ?days=X: Total and the totals over the last X days (the owner)
+        const daysText = url.searchParams.get("days")?.trim() || ""
+        const days = daysText ? Number(daysText) : null
+        if (
+          days !== null &&
+          !(Number.isInteger(days) && days >= 1 && days <= 3660)
+        )
+          throw new AutocodeError(
+            "bad_request",
+            "days must be a whole number of days from 1",
+          )
         const live = new Map(
           agents.list(null, "owner").map((x) => [x.id, x] as const),
         )
         const ids = [...new Set([...live.keys(), ...costs.spenders()])]
           .filter((id) => !pattern || matchesPattern(pattern, id))
           .sort()
-        const rows = ids.map((id) => {
-          const x = live.get(id)
-          return {
-            agent: id,
-            registered: !!x,
-            status: x ? x.status : "unregistered",
-            ...(x?.machine ? { machine: x.machine } : {}),
-            model: x?.model ?? null,
-            ...costs.view(id),
-          }
-        })
+        const rows = ids
+          .map((id) => {
+            const x = live.get(id)
+            const view = costs.view(id)
+            return {
+              agent: id,
+              registered: !!x,
+              status: x ? x.status : "unregistered",
+              ...(x?.machine ? { machine: x.machine } : {}),
+              model: x?.model ?? null,
+              ...view,
+              ...(days === null
+                ? {}
+                : { total_usd: costs.totalOver(id, days) }),
+            }
+          })
+          // in a period, a gone agent that spent nothing in it drops out
+          .filter((r) => r.registered || days === null || r.total_usd > 0)
         const sum = (key: "today_usd" | "total_usd") =>
           Math.round(rows.reduce((n, r) => n + r[key], 0) * 1e6) / 1e6
         return {
@@ -833,6 +872,7 @@ export async function startServer(
           // the server's time, for the Costs tab's clock
           time: new Date(now()).toISOString(),
           timezone: tz(),
+          days,
           agents: rows,
           totals: {
             agents: rows.length,

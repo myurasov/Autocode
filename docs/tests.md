@@ -1011,5 +1011,16 @@ in what it read.
 - **A share of the window was capped at 500,000** (the owner: "90%" for the dev agent showed 500K on Agents;
   `costs-views.test.ts`, red, then green): only the default (`50% max 500000`) or a `max N` caps a share; `90%` of a
   1,000,000 window is 900,000. The setting's help and Help say so.
+- **The owner's toolbar round** (23:1x PT; tests first): `costs-views.test.ts` 2 (`/v1/agents?unregistered=1`: the
+  gone IDs with spend, marked, with their last machine, a pattern for both, agents see only registered ones;
+  `/v1/costs?days=X`: Total and the totals over X days, a gone agent without spend in them drops out, bad days
+  refused), `cli-0b.test.ts` (`--days`), `agents-page.spec.ts` 2 (the Unregistered box right of the filter, off;
+  gone rows dimmed, no dot or buttons; a link with `unregistered=1` turns it on and highlights), `costs-page.spec.ts`
+  3 (gone IDs link to Agents with the box on; the box, on by default, and the totals of what is listed; the days
+  field after the filter, in the address, "Last 7 Days"), `hosts-page.spec.ts` (the Offline box, off; a link to an
+  offline host turns it on), `smoke.spec.ts` (15rem fields with no "(empty shows all)" on Agents, Locks, Costs and
+  History; the boxes' defaults; Agents' toolbar with Unregistered at the right; the fixture's hosts shown with the
+  Offline box). The question asked: what the days field does (the owner: Total over the last X days). Screenshots
+  looked at.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

@@ -17,7 +17,7 @@
     id="history-match"
     type="text"
     spellcheck="false"
-    placeholder="for example kaggle:* or a:b,c:* (empty shows all)"
+    placeholder="for example kaggle:* or a:b,c:*"
     [value]="pattern()"
     (input)="typed($any($event.target).value)"
     (keydown.enter)="applyMatch()"

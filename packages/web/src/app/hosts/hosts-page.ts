@@ -2,11 +2,21 @@
  * The Hosts page: one row per OpenCode server folder that the Autocode plugin
  * connects from, by machine, with the OpenCode process it runs in (marked when
  * its shells get no Autocode values), refreshed every 10 s (one refresh at a
- * time); the host a link led to (?host=) highlighted and scrolled into view,
- * or a line that says it is not there.
+ * time); offline ones only with the Offline box (off by default; the owner,
+ * 2026-11-08); the host a link led to (?host=) highlighted and scrolled into
+ * view (the box goes on when it is offline), or a line that says it is not
+ * there.
  */
 
-import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Host } from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
@@ -41,12 +51,16 @@ export class HostsPage {
   private readonly api = inject(Api);
 
   protected readonly hosts = signal<Host[]>([]);
+  // Offline hosts too (the owner, 2026-11-08: off by default).
+  protected readonly showOffline = signal(false);
   // The hosts by machine, as on the Agents page: machines in alphabetical
-  // order, hosts in the server's order within each.
+  // order, hosts in the server's order within each; offline ones only when
+  // asked for.
   protected readonly machines = computed(() => {
     const by = new Map<string, Host[]>();
     for (const h of this.hosts())
-      by.set(h.machine, [...(by.get(h.machine) ?? []), h]);
+      if (h.online || this.showOffline())
+        by.set(h.machine, [...(by.get(h.machine) ?? []), h]);
     return [...by]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([machine, hosts]) => ({ machine, hosts }));
@@ -68,6 +82,12 @@ export class HostsPage {
   });
 
   constructor() {
+    // a link to an offline host shows the offline ones
+    effect(() => {
+      const id = this.target();
+      const host = this.hosts().find((h) => h.id === id);
+      if (host && !host.online) untracked(() => this.showOffline.set(true));
+    });
     void this.refresh();
     const timer = setInterval(() => {
       if (this.inFlight === 0) void this.refresh();

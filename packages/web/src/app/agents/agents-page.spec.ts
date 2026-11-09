@@ -82,9 +82,12 @@ describe('AgentsPage', () => {
 
   afterEach(() => http.verify());
 
-  function load(agents = AGENTS, match?: string): void {
+  function load(agents = AGENTS, match?: string, unregistered = false): void {
     const req = http.expectOne((r) => r.url === '/v1/agents');
     expect(req.request.params.get('match')).toBe(match ?? null);
+    expect(req.request.params.get('unregistered')).toBe(
+      unregistered ? '1' : null,
+    );
     req.flush({ agents });
   }
 
@@ -188,6 +191,71 @@ describe('AgentsPage', () => {
     // no window known: the context and the threshold
     expect(contextShort(k({ context_limit: null }))).toBe('854K/777K');
     expect(contextShort(k({ context: null }))).toBe('—');
+  });
+
+  // The owner, 2026-11-08: an Unregistered box right of the filter, off by
+  // default, asks for the gone agents too; a link to one turns it on.
+  const GONE: Agent = {
+    id: 'old:one',
+    registered: false,
+    description: '',
+    status: 'unregistered',
+    machine: 'machine-a',
+    last_active: '2026-10-27T09:05:00.000Z',
+    cost: {
+      today_usd: 0,
+      total_usd: 3.5,
+      daily_usd: 'off',
+      left_usd: null,
+      context: null,
+      context_limit: null,
+      compact_at: null,
+      context_share: null,
+    },
+  };
+
+  it('the Unregistered box, right of the filter and off by default, shows the gone agents too', async () => {
+    const page = await open();
+    const box = page.querySelector(
+      '.toolbar #show-unregistered',
+    ) as HTMLInputElement;
+    expect(box.type).toBe('checkbox');
+    expect(box.checked).toBe(false);
+    expect(text(box.closest('label'))).toBe('Unregistered');
+    // right after the filter field
+    expect(box.closest('label')!.previousElementSibling!.id).toBe('match');
+    box.click();
+    await settle(fixture);
+    load([...AGENTS, GONE], undefined, true);
+    await settle(fixture);
+    const gone = page.querySelector('tr[data-agent="old:one"]')!;
+    // dimmed, as on Costs
+    expect(gone.classList).toContain('gone');
+    expect(text(gone.querySelector('td.status'))).toBe('unregistered');
+    expect(gone.querySelector('td.status .dot')).toBeNull();
+    // nothing to do with a gone agent
+    expect(gone.querySelectorAll('td.actions button').length).toBe(0);
+    expect(text(gone.querySelector('td.spend'))).toBe(
+      '$0.00 today / $3.50 total',
+    );
+  });
+
+  it('a link to an unregistered agent turns the box on and highlights it', async () => {
+    signedIn();
+    await TestBed.inject(Router).navigateByUrl(
+      '/?agent=old:one&unregistered=1',
+    );
+    fixture = TestBed.createComponent(AgentsPage);
+    await settle(fixture);
+    load([...AGENTS, GONE], undefined, true);
+    await settle(fixture);
+    const page = el(fixture);
+    expect(
+      (page.querySelector('#show-unregistered') as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(page.querySelector('tr[data-agent="old:one"]')!.classList).toContain(
+      'highlight',
+    );
   });
 
   it("shows each agent's host after its status, a link to the Hosts page", async () => {

@@ -27,7 +27,7 @@ import { IdParts } from './breaks';
   template: `<a
     class="id-link"
     routerLink="/agents"
-    [queryParams]="{ agent: id() }"
+    [queryParams]="gone() ? { agent: id(), unregistered: 1 } : { agent: id() }"
     title="Show on the Agents page"
     >@if (plain()) {<span [appId]="id()"></span>} @else {<code
         [appId]="id()"
@@ -38,6 +38,8 @@ export class AgentLink {
   readonly id = input.required<string>();
   // Plain text, not code: in a group's heading row.
   readonly plain = input(false);
+  // An unregistered agent: the Agents page shows the gone ones to show it.
+  readonly gone = input(false);
 }
 
 @Component({

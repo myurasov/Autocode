@@ -7,7 +7,10 @@
  * the Agents page. Unregistered agents with spend show too, marked; the Agent
  * filter (an ID pattern, kept in the address) applies a second after the last
  * key; a totals row adds up what is listed (the owner, 2026-11-08). The
- * agent a link led to (?agent=, the Agents tab's Spend) is highlighted.
+ * agent a link led to (?agent=, the Agents tab's Spend) is highlighted. The
+ * Unregistered box (on by default) shows the gone agents, whose IDs lead to
+ * the Agents tab with its own box on; "X days" makes Total and the totals
+ * the last X days (empty: all time).
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
@@ -21,7 +24,6 @@ import {
   type CostsView,
   errorText,
 } from '../api';
-import { IdParts } from '../breaks';
 import { clockText, dotClass } from '../format';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
@@ -42,7 +44,7 @@ export function tokensText(n: number): string {
 
 @Component({
   selector: 'app-costs-page',
-  imports: [AgentLink, IdParts, Updated],
+  imports: [AgentLink, Updated],
   templateUrl: './costs-page.html',
 })
 export class CostsPage {
@@ -56,13 +58,33 @@ export class CostsPage {
   // The filter in the address, and as typed.
   protected readonly match = signal('');
   protected readonly pattern = signal('');
+  // The days Total counts back, in the address and as typed (the owner,
+  // 2026-11-08: empty is all time).
+  protected readonly days = signal('');
+  protected readonly daysTyped = signal('');
+  // The agents that unregistered too (on by default here).
+  protected readonly showGone = signal(true);
+  // What is listed, and its totals (the gone ones only with the box).
+  protected readonly rows = computed(() =>
+    (this.view()?.agents ?? []).filter((a) => a.registered || this.showGone()),
+  );
+  protected readonly totals = computed(() => {
+    const rows = this.rows();
+    const sum = (key: 'today_usd' | 'total_usd') =>
+      Math.round(rows.reduce((n, a) => n + a[key], 0) * 1e6) / 1e6;
+    return {
+      agents: rows.length,
+      today_usd: sum('today_usd'),
+      total_usd: sum('total_usd'),
+    };
+  });
 
   protected readonly view = signal<CostsView | null>(null);
   protected readonly error = signal('');
   protected readonly updatedAt = signal<number | null>(null);
   // The agent whose days are open, and its days once loaded.
   protected readonly open = signal<string | null>(null);
-  protected readonly days = signal<CostDays | null>(null);
+  protected readonly perDay = signal<CostDays | null>(null);
   protected readonly daysError = signal('');
   protected readonly costText = costText;
   protected readonly dotClass = dotClass;
@@ -83,14 +105,17 @@ export class CostsPage {
     // The address sets the filter (a link, Back, or the toolbar's own).
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
       const match = params.get('match') ?? '';
+      const days = params.get('days') ?? '';
       this.pattern.set(match);
-      if (this.loaded && match === this.match()) return;
+      this.daysTyped.set(days);
+      if (this.loaded && match === this.match() && days === this.days()) return;
       this.match.set(match);
+      this.days.set(days);
       void this.refresh();
     });
     scrollToHighlight(
       this.target,
-      (id) => !!this.view()?.agents.some((a) => a.agent === id),
+      (id) => this.rows().some((a) => a.agent === id),
       'data-agent',
     );
     // A tick is skipped while the last refresh is still out.
@@ -105,39 +130,50 @@ export class CostsPage {
 
   protected async refresh(): Promise<void> {
     const match = this.match();
+    const days = this.days();
     this.inFlight++;
     try {
-      const view = await this.api.costs(match);
-      if (match !== this.match()) return;
+      const view = await this.api.costs(match, days);
+      if (match !== this.match() || days !== this.days()) return;
       this.view.set(view);
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {
-      if (match === this.match()) this.error.set(errorText(err));
+      if (match === this.match() && days === this.days())
+        this.error.set(errorText(err));
     } finally {
       this.inFlight--;
       this.loaded = true;
     }
   }
 
-  // The pattern as typed applies a second after the last key.
+  // The pattern or the days as typed apply a second after the last key.
   protected typed(value: string): void {
     this.pattern.set(value);
     clearTimeout(this.typing);
     this.typing = setTimeout(() => this.applyMatch(), FILTER_DELAY_MS);
   }
 
-  // The filter goes into the address, which sets it (and keeps it for Back).
+  protected typedDays(value: string): void {
+    this.daysTyped.set(value);
+    clearTimeout(this.typing);
+    this.typing = setTimeout(() => this.applyMatch(), FILTER_DELAY_MS);
+  }
+
+  // The filter and the days go into the address, which sets them (and keeps
+  // them for Back).
   protected applyMatch(): void {
     clearTimeout(this.typing);
     const match = this.pattern().trim();
-    if (match === this.match()) {
+    const days = this.daysTyped().trim();
+    if (match === this.match() && days === this.days()) {
       void this.refresh();
       return;
     }
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { match: match || null },
+      queryParams: { match: match || null, days: days || null },
+      queryParamsHandling: 'merge',
     });
   }
 
@@ -159,11 +195,11 @@ export class CostsPage {
       return;
     }
     this.open.set(agent);
-    this.days.set(null);
+    this.perDay.set(null);
     this.daysError.set('');
     try {
       const days = await this.api.costDays(agent);
-      if (this.open() === agent) this.days.set(days);
+      if (this.open() === agent) this.perDay.set(days);
     } catch (err) {
       if (this.open() === agent) this.daysError.set(errorText(err));
     }

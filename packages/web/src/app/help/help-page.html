@@ -834,8 +834,10 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       <code>opencode serve</code>, with its process ID), versions and last
       seen. "no shell values" under the process means that the shells of that
       server get no Autocode values (see
-      <a routerLink="/help" fragment="trouble">Troubleshooting</a>). A host's
-      link from the Agents page leads here with its row highlighted.
+      <a routerLink="/help" fragment="trouble">Troubleshooting</a>). Offline
+      hosts show only with the Offline box (off by default). A host's link
+      from the Agents page leads here with its row highlighted (an offline
+      one turns the box on).
     </p>
 
     <h3 id="web-agents">
@@ -857,7 +859,9 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       now.
       An agent's link from another page leads here with its row highlighted;
       a filter that would hide it goes. The filter takes an ID pattern and
-      applies a second after you stop typing. Edit a description, Pause or
+      applies a second after you stop typing; the Unregistered box (off by
+      default) adds the agents that unregistered, dimmed, with their spend.
+      Edit a description, Pause or
       Resume an agent's injections, give it a New Token, or Unregister it.
       Stop All pauses every agent and interrupts every running turn, after you
       confirm; Resume All resumes what Stop All paused.
@@ -952,14 +956,17 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       <code>history_days</code>), its daily cap with a bar of the share spent
       and what is left today, with a bar: amber from 75%, red from 100%. Its
       context is on the Agents tab; a click on an agent's Spend there leads
-      here with its row highlighted. Agents that unregistered show too, dimmed, with their
-      spend; Agent filters by an ID pattern (a second after you stop typing;
-      kept in the address), and the last row is the total of what is listed. The page follows each model step: it
-      refreshes every 5 seconds. Days shows an agent's spend per day, newest
-      first, kept <code>history_days</code> (at least 31 days); the day is the
-      server's: when the data was read (the server's time, in its zone) is
-      right of Refresh. An
-      agent's ID leads to its row on the Agents tab.
+      here with its row highlighted. Agents that unregistered show too,
+      dimmed, with their spend, while the Unregistered box is on (it is by
+      default); Agent filters by an ID pattern (a second after you stop
+      typing; kept in the address); the days field makes Total and the totals
+      the last so many days (empty: all time); and the last row is the total
+      of what is listed. The page follows each model step: it refreshes every
+      5 seconds. Days shows an agent's spend per day, newest first, kept
+      <code>history_days</code> (at least 31 days); the day is the server's:
+      when the data was read (the server's time, in its zone) is right of
+      Refresh. An agent's ID leads to its row on the Agents tab (an
+      unregistered one's turns its Unregistered box on).
     </p>
 
     <h3 id="web-history">

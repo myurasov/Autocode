@@ -68,11 +68,13 @@ owner:
   settings [--agent ID] | settings set|unset KEY [VALUE]
       [--agent ID | --match PATTERN]
   history [--agent ID] [--kind KIND] [--since TIME] [--limit N]
-  costs [AGENT] [--match PATTERN]        every agent's spend (today, total;
+  costs [AGENT] [--match PATTERN] [--days X]
+                                         every agent's spend (today, total;
                                          unregistered ones too, and the
                                          totals), cap, what is left, context
                                          and its compaction threshold; one
-                                         agent's days
+                                         agent's days; --days X: the total
+                                         over the last X days
   inbox [--all] | inbox close ID         the owner's inbox
   answer ID TEXT...                      answer a message, question, permission
                                          (once|always|reject) or approval

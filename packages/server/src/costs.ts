@@ -103,6 +103,20 @@ export class Costs {
       .get(agent)
   }
 
+  // An agent's spend over its last `days` days, today included.
+  totalOver(agent: string, days: number): number {
+    const from = this.day(this.now() - (days - 1) * 86_400_000)
+    const usd =
+      (
+        this.db
+          .query(
+            "SELECT SUM(usd) AS usd FROM costs WHERE agent_id = ? AND day >= ?",
+          )
+          .get(agent, from) as any
+      )?.usd ?? 0
+    return round(usd)
+  }
+
   // An agent's spend per day, newest first (the days history_days keeps).
   days(agent: string): { day: string; usd: number; steps: number }[] {
     return (

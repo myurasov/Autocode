@@ -42,6 +42,8 @@ export interface AgentError {
 
 export interface Agent {
   id: string;
+  // false for an unregistered agent (its spend kept), listed on request
+  registered?: boolean;
   description: string;
   // idle, working, paused, offline or error
   status: string;
@@ -97,6 +99,8 @@ export interface CostsView {
   // the server's time when it answered
   time: string;
   timezone: string;
+  // the days Total counts back (null: all time)
+  days: number | null;
   agents: AgentCost[];
   totals: { agents: number; today_usd: number; total_usd: number };
 }
@@ -470,10 +474,11 @@ export class Api {
     return this.call(this.http.get<WhoAmI>('/v1/whoami', { headers }));
   }
 
-  async agents(match?: string): Promise<Agent[]> {
-    const params = match?.trim()
-      ? new HttpParams().set('match', match.trim())
-      : undefined;
+  // Registered agents; with `unregistered` the gone ones (with spend) too.
+  async agents(match?: string, unregistered = false): Promise<Agent[]> {
+    let params = new HttpParams();
+    if (match?.trim()) params = params.set('match', match.trim());
+    if (unregistered) params = params.set('unregistered', '1');
     return (
       await this.call(
         this.http.get<{ agents: Agent[] }>('/v1/agents', { params }),
@@ -566,11 +571,12 @@ export class Api {
   }
 
   // Every lock, or those whose names match a pattern (gpu-*, a,b:*).
-  // Every agent's spend and context (tier 0g), filtered by an ID pattern.
-  costs(match?: string): Promise<CostsView> {
-    const params = match?.trim()
-      ? new HttpParams().set('match', match.trim())
-      : undefined;
+  // Every agent's spend and context (tier 0g), filtered by an ID pattern;
+  // with `days`, the total over the last so many days.
+  costs(match?: string, days?: string): Promise<CostsView> {
+    let params = new HttpParams();
+    if (match?.trim()) params = params.set('match', match.trim());
+    if (days?.trim()) params = params.set('days', days.trim());
     return this.call(this.http.get<CostsView>('/v1/costs', { params }));
   }
 

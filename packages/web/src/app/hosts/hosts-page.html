@@ -1,14 +1,27 @@
 <!--
-  The Hosts page: one row per OpenCode server folder that the Autocode plugin
-  connects from, by machine: its status, OpenCode process (marked when its
+  The Hosts page: the Offline box (offline hosts too; off by default), then
+  one row per OpenCode server folder that the Autocode plugin connects from,
+  by machine: its status, OpenCode process (marked when its
   shells get no Autocode values), and its versions; the host a link led to
   highlighted (or a line that says it is not there); then when the list last
   loaded.
 -->
 
-<p class="muted">
-  One per OpenCode server folder that the Autocode plugin connects from.
-</p>
+<div class="toolbar">
+  <span class="muted result">
+    One per OpenCode server folder that the Autocode plugin connects from.
+  </span>
+  <!-- Offline hosts too (the owner, 2026-11-08: off by default). -->
+  <label class="check" for="show-offline">
+    <input
+      id="show-offline"
+      type="checkbox"
+      [checked]="showOffline()"
+      (change)="showOffline.set($any($event.target).checked)"
+    />
+    Offline
+  </label>
+</div>
 
 @if (error()) {
   <p class="errmsg" role="alert">{{ error() }}</p>

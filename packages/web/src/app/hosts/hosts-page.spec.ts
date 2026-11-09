@@ -67,13 +67,40 @@ describe('HostsPage', () => {
     http.expectOne('/v1/hosts').flush({ hosts });
   }
 
+  // With the Offline box on: every host.
   async function open(): Promise<HTMLElement> {
     signedIn();
     fixture = TestBed.createComponent(HostsPage);
     load();
     await settle(fixture);
+    const box = el(fixture).querySelector('#show-offline') as HTMLInputElement;
+    if (!box.checked) box.click();
+    await settle(fixture);
     return el(fixture);
   }
+
+  // The owner, 2026-11-08: offline hosts only with the Offline box (off).
+  it('shows offline hosts only with the Offline box, off by default', async () => {
+    signedIn();
+    fixture = TestBed.createComponent(HostsPage);
+    load();
+    await settle(fixture);
+    const page = el(fixture);
+    const box = page.querySelector(
+      '.toolbar input[type="checkbox"]#show-offline',
+    ) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(text(box.closest('label'))).toBe('Offline');
+    expect(
+      page.querySelector('tr[data-host="laptop:project:6f3d676f"]'),
+    ).toBeNull();
+    expect(page.querySelector('tbody[data-machine="laptop"]')).toBeNull();
+    box.click();
+    await settle(fixture);
+    expect(
+      page.querySelector('tr[data-host="laptop:project:6f3d676f"]'),
+    ).not.toBeNull();
+  });
 
   it('lists hosts by machine with folder, status, process, versions and last seen (ISO in the tooltip)', async () => {
     const page = await open();
@@ -89,7 +116,7 @@ describe('HostsPage', () => {
       'Plugin',
       'Last Seen',
     ]);
-    expect(text(page.querySelector('p.muted'))).toBe(
+    expect(text(page.querySelector('.toolbar .muted'))).toBe(
       'One per OpenCode server folder that the Autocode plugin connects from.',
     );
     // When the list last loaded: in the footer, the page's last item.
@@ -251,6 +278,10 @@ describe('HostsPage', () => {
       expect(scroll.mock.contexts[0]).toBe(row);
       expect(scroll).toHaveBeenCalledWith({ block: 'center' });
       expect(page.querySelector('p.missing')).toBeNull();
+      // an offline host a link leads to turns the Offline box on
+      expect(
+        (page.querySelector('#show-offline') as HTMLInputElement).checked,
+      ).toBe(true);
       // The tab itself (no host in the address): nothing highlighted.
       await TestBed.inject(Router).navigateByUrl('/');
       await settle(fixture);

@@ -1,6 +1,6 @@
 <!--
   The Agents page: Stop All and Resume All (an action's result beside them), a
-  filter by ID pattern, the agents by machine (their hosts link to the Hosts
+  filter by ID pattern and the Unregistered box (the gone agents too), the agents by machine (their hosts link to the Hosts
   page; each one's model, spend today and in total, and its context's share of
   the compaction threshold, linking to the Costs page; an agent in error shows its error type and
   retries; Retry, Edit, Pause
@@ -39,11 +39,21 @@
     id="match"
     type="text"
     spellcheck="false"
-    placeholder="for example kaggle:* or a:b,c:* (empty shows all)"
+    placeholder="for example kaggle:* or a:b,c:*"
     [value]="pattern()"
     (input)="typed($any($event.target).value)"
     (keydown.enter)="applyFilter()"
   />
+  <!-- The agents that unregistered (with spend kept) too: off by default. -->
+  <label class="check" for="show-unregistered">
+    <input
+      id="show-unregistered"
+      type="checkbox"
+      [checked]="showGone()"
+      (change)="setShowGone($any($event.target).checked)"
+    />
+    Unregistered
+  </label>
   @if (applied()) {
     <button type="button" (click)="clearFilter()">Show All</button>
   }
@@ -86,6 +96,7 @@
       @for (a of m.agents; track a.id) {
         <tr
           [attr.data-agent]="a.id"
+          [class.gone]="a.registered === false"
           [class.highlight]="a.id === target()"
           [attr.aria-current]="a.id === target() ? 'true' : null"
         >
@@ -118,8 +129,10 @@
             }
           </td>
           <td class="status" [attr.title]="pausedText(a) || null">
-            <span [class]="'dot ' + dotClass(a.status)"></span
-            >{{ a.status }}
+            @if (a.registered !== false) {
+              <span [class]="'dot ' + dotClass(a.status)"></span>
+            }
+            {{ a.status }}
             @if (a.error; as e) {
               <!-- What is going on: the error type, and its retries. -->
               <span class="error-detail muted" [title]="errorTimes(e)">
@@ -188,6 +201,8 @@
             [appTime]="a.last_active"
           ></td>
           <td class="actions">
+            <!-- a gone agent has nothing to do on it -->
+            @if (a.registered !== false) {
             <div class="row-buttons">
               @if (a.error) {
                 <button
@@ -241,6 +256,7 @@
                 Unregister
               </button>
             </div>
+            }
           </td>
         </tr>
       }

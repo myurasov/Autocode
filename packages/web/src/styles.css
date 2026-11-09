@@ -109,6 +109,7 @@ label {
 }
 input[type="text"],
 input[type="password"],
+input[type="number"],
 select,
 textarea {
   width: 100%;
@@ -495,8 +496,12 @@ table.costs tr.days > td {
   color: var(--fg-dim);
   white-space: nowrap;
 }
-/* An unregistered agent's row: its spend, dimmed; the totals row: bold. */
-table.costs tr.gone > td {
+/*
+ * An unregistered agent's row (Costs, and Agents with its box on): dimmed;
+ * the totals row: bold.
+ */
+table.costs tr.gone > td,
+table.agents tr.gone > td {
   color: var(--fg-dim);
 }
 table.costs tfoot tr.totals > td {
@@ -660,9 +665,14 @@ tr.highlight {
 .toolbar label {
   margin: 0;
 }
+/* A toolbar's text field: 15rem on every tab (the owner, 2026-11-08). */
 .toolbar input[type="text"] {
-  width: 22rem;
+  width: 15rem;
   max-width: 100%;
+}
+/* The Costs tab's days: a few digits, with "days" after it. */
+.toolbar input.days-field {
+  width: 4.5rem;
 }
 /* A toolbar's list (History's Kind) as wide as its longest choice. */
 .toolbar select {

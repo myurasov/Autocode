@@ -28,11 +28,36 @@
     id="cost-match"
     type="text"
     spellcheck="false"
-    placeholder="for example kaggle:* or a,b:* (empty shows all)"
+    placeholder="for example kaggle:* or a,b:*"
     [value]="pattern()"
     (input)="typed($any($event.target).value)"
     (keydown.enter)="applyMatch()"
   />
+  <!-- Total over the last X days (empty: all time; the owner, 2026-11-08). -->
+  <input
+    id="cost-days"
+    class="days-field"
+    type="number"
+    min="1"
+    step="1"
+    aria-label="Days"
+    placeholder="all"
+    title="Total over the last so many days (empty: all time)"
+    [value]="daysTyped()"
+    (input)="typedDays($any($event.target).value)"
+    (keydown.enter)="applyMatch()"
+  />
+  <span class="days-label">days</span>
+  <!-- The agents that unregistered too: on by default here. -->
+  <label class="check" for="costs-unregistered">
+    <input
+      id="costs-unregistered"
+      type="checkbox"
+      [checked]="showGone()"
+      (change)="showGone.set($any($event.target).checked)"
+    />
+    Unregistered
+  </label>
 </div>
 
 
@@ -44,12 +69,14 @@
       <th class="num">Today</th>
       <th>Daily Cap</th>
       <th class="num">Left Today</th>
-      <th class="num">Total</th>
+      <th class="num">
+        {{ view()?.days ? 'Last ' + view()?.days + ' Days' : 'Total' }}
+      </th>
       <th></th>
     </tr>
   </thead>
   <tbody>
-    @for (a of view()?.agents ?? []; track a.agent) {
+    @for (a of rows(); track a.agent) {
       <tr
         [attr.data-agent]="a.agent"
         [class.gone]="!a.registered"
@@ -57,11 +84,7 @@
         [attr.aria-current]="a.agent === target() ? 'true' : null"
       >
         <td class="agent id-like">
-          @if (a.registered) {
-            <app-agent-link [id]="a.agent" />
-          } @else {
-            <code [appId]="a.agent"></code>
-          }
+          <app-agent-link [id]="a.agent" [gone]="!a.registered" />
         </td>
         <td class="status">
           @if (a.registered) {
@@ -110,7 +133,7 @@
           <td colspan="7">
             @if (daysError()) {
               <span class="errmsg" role="alert">{{ daysError() }}</span>
-            } @else if (days(); as d) {
+            } @else if (perDay(); as d) {
               @if (d.days.length) {
                 <table class="cost-days">
                   <thead>
@@ -153,22 +176,21 @@
       </tr>
     }
   </tbody>
-  @if (view(); as v) {
-    @if (v.agents.length) {
-      <!-- The totals of what is listed. -->
-      <tfoot>
-        <tr class="totals">
-          <td class="agent" colspan="2">
-            Total ({{ v.totals.agents }}
-            {{ v.totals.agents === 1 ? 'agent' : 'agents' }})
-          </td>
-          <td class="num today">{{ costText(v.totals.today_usd) }}</td>
-          <td colspan="2"></td>
-          <td class="num total">{{ costText(v.totals.total_usd) }}</td>
-          <td></td>
-        </tr>
-      </tfoot>
-    }
+  @if (rows().length) {
+    <!-- The totals of what is listed. -->
+    <tfoot>
+      <tr class="totals">
+        <td class="agent" colspan="2">
+          Total ({{ totals().agents }}
+          {{ totals().agents === 1 ? 'agent' : 'agents'
+          }}{{ view()?.days ? ', last ' + view()?.days + ' days' : '' }})
+        </td>
+        <td class="num today">{{ costText(totals().today_usd) }}</td>
+        <td colspan="2"></td>
+        <td class="num total">{{ costText(totals().total_usd) }}</td>
+        <td></td>
+      </tr>
+    </tfoot>
   }
 </table>
 
