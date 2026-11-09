@@ -830,6 +830,8 @@ export async function startServer(
           Math.round(rows.reduce((n, r) => n + r[key], 0) * 1e6) / 1e6
         return {
           day: costs.day(),
+          // the server's time, for the Costs tab's clock
+          time: new Date(now()).toISOString(),
           timezone: tz(),
           agents: rows,
           totals: {

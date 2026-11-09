@@ -204,7 +204,8 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
 - **Costs:** every agent's spend today and in total (also past `history_days`; agents that unregistered too, dimmed),
   its daily cap with the share spent and what is left today, and its Context (the share of its compaction threshold,
   the threshold, the model's window as its most, and a bar), refreshed every 5 s; **Days** shows its spend per day
-  (kept `history_days`, at least 31 days); an **Agent** filter (a pattern, kept in the address) and a totals row.
+  (kept `history_days`, at least 31 days; days in the server's zone: its clock is left of **Refresh**); an **Agent**
+  filter (a pattern, kept in the address) and a totals row.
   `autocode costs` is the same in the CLI.
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI, with a numbered table of contents.
 - **Settings:** the server-wide values (each shown in its edit box: change it and **Save**, or **Reset** to the

@@ -489,6 +489,12 @@ table.costs .bar.over > span {
 table.costs tr.days > td {
   background: var(--softer);
 }
+/* The server's clock left of Refresh: its digits keep their width. */
+.toolbar .clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
 /* An unregistered agent's row: its spend, dimmed; the totals row: bold. */
 table.costs tr.gone > td {
   color: var(--fg-dim);

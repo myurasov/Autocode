@@ -185,6 +185,8 @@ describe("GET /v1/costs", () => {
       total_usd: 0.35,
     })
     expect(all.day).toMatch(/^\d{4}-\d\d-\d\d$/)
+    // the server's time, for the Costs tab's clock (the owner, 2026-11-08)
+    expect(all.time).toBe(new Date(t.clock.now()).toISOString())
     const one = (await owner("GET", "/v1/costs/team:a")).body
     expect(one.agent).toBe("team:a")
     expect(one.cost).toMatchObject({ today_usd: 0.05, total_usd: 0.35 })

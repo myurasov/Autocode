@@ -94,6 +94,8 @@ export interface AgentCost extends CostNumbers {
 // totals of what is listed.
 export interface CostsView {
   day: string;
+  // the server's time when it answered
+  time: string;
   timezone: string;
   agents: AgentCost[];
   totals: { agents: number; today_usd: number; total_usd: number };

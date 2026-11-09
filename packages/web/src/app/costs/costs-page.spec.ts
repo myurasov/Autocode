@@ -35,6 +35,8 @@ const BASE: AgentCost = {
 function view(): CostsView {
   return {
     day: '2026-11-08',
+    // 17:02:03 PST on Nov 8 in the server's zone
+    time: '2026-11-09T01:02:03.000Z',
     timezone: 'America/Los_Angeles',
     agents: [
       {
@@ -150,9 +152,13 @@ describe('CostsPage', () => {
         .querySelector('td.agent a')!
         .getAttribute('href'),
     ).toBe('/agents?agent=kaggle:lead');
-    expect(text(page.querySelector('p.day'))).toBe(
-      'Today is 2026-11-08 (America/Los_Angeles); the totals count every day.',
-    );
+    // the server's time in its zone, left of Refresh (the owner, 2026-11-08)
+    const toolbar = page.querySelector('.toolbar')!;
+    const clock = toolbar.firstElementChild!;
+    expect(clock.classList).toContain('clock');
+    expect(text(clock)).toBe('17:02:03 Nov 8 2026 PST');
+    expect(text(clock.nextElementSibling)).toBe('Refresh');
+    expect(page.querySelector('p.day')).toBeNull();
     expect(text(page.querySelector('footer'))).toBe('Updated 0s ago.');
   });
 
@@ -273,6 +279,26 @@ describe('CostsPage', () => {
       'No agent has spent anything or is registered.',
     );
     expect(page.querySelector('table.costs tfoot')).toBeNull();
+  });
+
+  it('the clock goes on between loads, a second at a time', async () => {
+    vi.useFakeTimers();
+    try {
+      signedIn();
+      fixture = TestBed.createComponent(CostsPage);
+      await vi.advanceTimersByTimeAsync(0);
+      load();
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+      const clock = () => text(el(fixture).querySelector('.toolbar .clock'));
+      expect(clock()).toBe('17:02:03 Nov 8 2026 PST');
+      await vi.advanceTimersByTimeAsync(2000);
+      fixture.detectChanges();
+      expect(clock()).toBe('17:02:05 Nov 8 2026 PST');
+    } finally {
+      fixture.destroy();
+      vi.useRealTimers();
+    }
   });
 
   it('a share as a percentage to a tenth', () => {

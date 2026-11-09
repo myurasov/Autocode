@@ -1,6 +1,6 @@
 <!--
-  The Costs page: Refresh (a failed load's message beside it); what day it is
-  and in which zone; the Agent filter (a pattern, in the address); every
+  The Costs page: the server's time in its zone (a clock), Refresh (a failed
+  load's message beside it); the Agent filter (a pattern, in the address); every
   agent's status (its dot, as on Agents; unregistered ones with spend too,
   marked), spend
   today, its daily cap (a bar of the share spent), what is left today, its
@@ -10,6 +10,12 @@
 -->
 
 <div class="toolbar">
+  <!-- The server's time in its zone, a second at a time (the owner). -->
+  @if (clock(); as c) {
+    <span class="clock" [title]="'The server\'s time (' + view()?.timezone + ')'"
+      >{{ c }}</span
+    >
+  }
   <button type="button" (click)="applyMatch()">Refresh</button>
   <span class="result">
     @if (error()) {
@@ -28,11 +34,6 @@
   />
 </div>
 
-@if (view(); as v) {
-  <p class="day muted">
-    Today is {{ v.day }} ({{ v.timezone }}); the totals count every day.
-  </p>
-}
 
 <table class="costs">
   <thead>

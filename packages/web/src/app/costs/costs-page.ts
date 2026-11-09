@@ -9,7 +9,7 @@
  * key; a totals row adds up what is listed (the owner, 2026-11-08).
  */
 
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FILTER_DELAY_MS } from '../agents/agents-page';
@@ -21,7 +21,7 @@ import {
   errorText,
 } from '../api';
 import { IdParts } from '../breaks';
-import { contextText, contextTitle, dotClass } from '../format';
+import { clockText, contextText, contextTitle, dotClass } from '../format';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink } from '../links';
 import { Updated } from '../updated';
@@ -71,6 +71,18 @@ export class CostsPage {
   private typing?: ReturnType<typeof setTimeout>;
   private loaded = false;
 
+  /*
+   * The server's time in its zone, a second at a time: its time at the last
+   * load (against this browser's clock then), plus the time since.
+   */
+  private readonly tick = signal(Date.now());
+  private offset = 0;
+  protected readonly clock = computed(() => {
+    const v = this.view();
+    if (!v?.time) return '';
+    return clockText(this.tick() + this.offset, v.timezone);
+  });
+
   constructor() {
     // The address sets the filter (a link, Back, or the toolbar's own).
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
@@ -84,8 +96,10 @@ export class CostsPage {
     const timer = setInterval(() => {
       if (this.inFlight === 0) void this.refresh();
     }, COSTS_REFRESH_MS);
+    const second = setInterval(() => this.tick.set(Date.now()), 1000);
     inject(DestroyRef).onDestroy(() => {
       clearInterval(timer);
+      clearInterval(second);
       clearTimeout(this.typing);
     });
   }
@@ -96,6 +110,9 @@ export class CostsPage {
     try {
       const view = await this.api.costs(match);
       if (match !== this.match()) return;
+      const now = Date.now();
+      this.offset = Date.parse(view.time) - now;
+      this.tick.set(now);
       this.view.set(view);
       this.error.set('');
       this.updatedAt.set(Date.now());

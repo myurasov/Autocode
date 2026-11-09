@@ -108,6 +108,30 @@ export function localTime(
   );
 }
 
+/*
+ * A clock in a zone (the owner, 2026-11-08: the Costs tab's): "17:02:03 Nov 8
+ * 2026 PST", the zone's short name as the zone itself says it.
+ */
+export function clockText(at: number, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    timeZoneName: 'short',
+  }).formatToParts(new Date(at));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return (
+    `${part('hour')}:${part('minute')}:${part('second')} ` +
+    `${part('month')} ${part('day')} ${part('year')} ${part('timeZoneName')}`
+  );
+}
+
 // A setting's value as text: on/off for switches.
 export function valueText(value: unknown): string {
   if (value === true) return 'on';
