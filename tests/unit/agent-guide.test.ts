@@ -590,6 +590,8 @@ describe("the guide", () => {
       "what `read` or `wait` returned is never put into a prompt",
       "`from=` and `reply_to=`",
       "Autocode's own notices too",
+      // the compaction notice comes mid-turn too (the owner, 2026-11-09)
+      "into a running turn too (`compaction next, during your turn`)",
     ])
       expect(guide).toContain(answer)
     for (const gone of [

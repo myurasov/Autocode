@@ -90,7 +90,7 @@ export class Delivery {
     compactDue(agent: string): CompactDue | null
     compacted(agent: string, due: CompactDue): void
     compactNotice(due: CompactDue): { header: string; text: string }
-    compactNoticed(agent: string, due: CompactDue): void
+    compactNoticed(agent: string, due: CompactDue, steer?: boolean): void
     injected(agent: string): void
     resumeNote(agent: string): { header: string; text: string } | null
     resumed(agent: string): void
@@ -200,6 +200,7 @@ export class Delivery {
             .all() as { id: string }[]
         ).map((r) => r.id),
         ...this.idlePastCompactAt(),
+        ...this.busyPastCompactAt(),
       ]),
     ].map((agent_id) => ({ agent_id }))
     for (const { agent_id } of agents)
@@ -227,6 +228,31 @@ export class Delivery {
          WHERE a.context_tokens IS NOT NULL AND a.compacting = 0
            AND a.compact_notified = 0 AND a.paused = '' AND a.error IS NULL
            AND s.busy = 0 AND s.deleted_at IS NULL AND h.online = 1
+         ORDER BY a.id`,
+      )
+      .all() as { id: string }[]
+    return rows
+      .map((r) => r.id)
+      .filter((id) => {
+        const due = this.costs!.compactDue(id)
+        return !!due && !due.notified
+      })
+  }
+
+  /*
+   * Agents whose own turn runs with a context past compact_at, not yet told
+   * (the owner, 2026-11-09: the notice comes into that turn).
+   */
+  private busyPastCompactAt(): string[] {
+    if (!this.costs) return []
+    const rows = this.db
+      .query(
+        `SELECT a.id FROM agents a JOIN sessions s ON s.id = a.session_id
+         JOIN hosts h ON h.id = s.host_id
+         WHERE a.context_tokens IS NOT NULL AND a.compacting = 0
+           AND a.compact_notified = 0 AND a.paused = '' AND a.error IS NULL
+           AND s.busy = 1 AND s.inject_pending_at IS NULL
+           AND s.deleted_at IS NULL AND h.online = 1
          ORDER BY a.id`,
       )
       .all() as { id: string }[]
@@ -501,11 +527,12 @@ export class Delivery {
    * (it has not started a turn yet), in the error state, during a compaction,
    * while the agent waits for its messages itself (its wait takes them), or
    * after a steer of this turn failed (what waits comes after the turn).
-   * Its busy state and min_interval stay as they are.
+   * Its busy state and min_interval stay as they are. A context past
+   * compact_at goes first, the same way: its notice into the turn (the owner,
+   * 2026-11-09), and the compaction when the turn ends.
    */
   private steer(row: any) {
     if (row.inject_pending_at || row.error || row.compacting) return
-    if (this.messages().waitingFor(row.id)) return
     const failed = this.db
       .query(
         "SELECT 1 FROM injections WHERE session_id = ? AND error IS NOT NULL " +
@@ -513,6 +540,18 @@ export class Delivery {
       )
       .get(row.session_id, row.turn_started_at ?? 0)
     if (failed) return
+    const due = this.costs?.compactDue(row.id)
+    if (due && !due.notified && due.limit > 0) {
+      this.inject(
+        row,
+        [],
+        { n: 0, of: 0, ...this.costs!.compactNotice(due) },
+        true,
+      )
+      this.costs!.compactNoticed(row.id, due, true)
+      return
+    }
+    if (this.messages().waitingFor(row.id)) return
     const items = this.db
       .query(
         "SELECT * FROM queue WHERE agent_id = ? AND kind = 'message' " +
@@ -734,7 +773,7 @@ export class Delivery {
     }
     const text =
       `[autocode] ${reasons.join(", ")}\n\n` +
-      (steer
+      (steer && !retry
         ? "These came while your turn runs: take them into account, then " +
           "go on with your work.\n\n"
         : "") +

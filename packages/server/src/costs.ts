@@ -440,13 +440,18 @@ export class Costs {
     }
   }
 
-  compactNoticed(agent: string, due: CompactDue) {
+  compactNoticed(agent: string, due: CompactDue, steer = false) {
     this.db
       .query("UPDATE agents SET compact_notified = 1 WHERE id = ?")
       .run(agent)
     this.history.record("session.compact.noticed", {
       agent,
-      data: { context: due.context, limit: due.limit },
+      data: {
+        context: due.context,
+        limit: due.limit,
+        // into a running turn (the owner, 2026-11-09)
+        ...(steer ? { steer: true } : {}),
+      },
     })
   }
 

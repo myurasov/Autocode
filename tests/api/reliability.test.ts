@@ -221,6 +221,50 @@ describe("compaction", () => {
     expect(h[0].data).toMatchObject({ context: 125_000, limit: 100_000 })
   })
 
+  /*
+   * The owner, 2026-11-09: "i want compaction notice/compaction message to be
+   * injected mid turn, if we're past the threshold": the notice steers into
+   * the running turn at its next step; the compaction comes when the turn
+   * ends, as with any notice.
+   */
+  test("past compact_at during a turn: the notice goes into that turn (steer); the compaction when it ends", async () => {
+    await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await report(t, HOST, [step(0.01, 90_000)])
+    // below the threshold: nothing
+    expect((await sent()).map((i) => i.type)).toEqual([])
+    await report(t, HOST, [step(0.01, 120_000)])
+    const [notice] = await sent()
+    expect(notice.type).toBe("inject")
+    expect(notice.payload.delivery).toBe("steer")
+    expect(notice.payload.text).toStartWith(
+      "[autocode] compaction next, during your turn\n\n",
+    )
+    expect(notice.payload.text).toContain("120,000 tokens")
+    // once: the next steps of the same turn send nothing more
+    await report(t, HOST, [step(0.01, 130_000)])
+    t.clock.advance(MIN)
+    expect((await sent()).map((i) => i.type)).toEqual([])
+    // the turn goes on (busy); when it ends, the compaction
+    expect((await as(a, "GET", "/v1/me")).body.agent.busy).toBe(true)
+    await turnEnds()
+    const out = await sent()
+    expect(out.map((i) => i.type)).toEqual(["compact"])
+    const h = (await owner("GET", "/v1/history?kind=session.compact.noticed"))
+      .body.history
+    expect(h[0].data).toMatchObject({ steer: true })
+  })
+
+  test("past compact_at during a turn: no notice while paused or in the error state", async () => {
+    await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await owner("POST", "/v1/agents/team:a/pause")
+    await report(t, HOST, [step(0.01, 120_000)])
+    expect((await sent()).map((i) => i.type)).toEqual([])
+    await owner("POST", "/v1/agents/team:a/resume")
+    expect((await sent()).map((i) => i.payload?.delivery)).toEqual(["steer"])
+  })
+
   test("a notice no turn took (the session never started one) does not hold the compaction back", async () => {
     await owner("PATCH", "/v1/settings", { server: { compact_at: "50%" } })
     await report(t, HOST, [step(0.01, 120_000)])
