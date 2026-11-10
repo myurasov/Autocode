@@ -243,6 +243,12 @@ async function openTab(page: Page, tab: string) {
     const offline = page.getByRole("checkbox", { name: "Offline" })
     if (!(await offline.isChecked())) await offline.check()
   }
+  // the fixture's messages are read soon after they are sent: show them all
+  // (the Read box is off by default: the owner, 2026-11-09)
+  if (tab === "Messages") {
+    const read = page.locator(".toolbar #show-read")
+    if (!(await read.isChecked())) await read.check()
+  }
   await expect(page.locator(`#frame ${LOADED[tab]}`).first()).toBeVisible()
 }
 
@@ -3933,4 +3939,31 @@ test("the Inbox's Kind is colored by kind, in both themes", async ({
     await page.getByRole("button", { name: "Light or dark" }).click()
     await expect.poll(isDark).toBe(!dark)
   }
+})
+
+// The owner, 2026-11-09: the Messages tab's Read box, off by default, right
+// of Refresh like the other tabs' boxes; off, no read message shows.
+test("Messages: the Read box is off by default and hides read messages", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await page.getByRole("link", { name: "Messages", exact: true }).click()
+  const box = page.locator(".toolbar #show-read")
+  await expect(box).not.toBeChecked()
+  await expect(page.locator(".toolbar label.check")).toHaveText("Read")
+  await expect(page.locator("table.messages tbody")).toBeVisible()
+  const states = await page
+    .locator("table.messages tr[data-message] td.state")
+    .allTextContents()
+  expect(states.filter((s) => s.startsWith("read"))).toEqual([])
+  await box.check()
+  await expect
+    .poll(async () =>
+      (
+        await page
+          .locator("table.messages tr[data-message] td.state")
+          .allTextContents()
+      ).some((s) => s.startsWith("read")),
+    )
+    .toBe(true)
 })

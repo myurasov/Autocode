@@ -1090,6 +1090,9 @@ in what it read.
   a guide topic `owner` ("Writing to the Owner": only what the owner needs, the point first, a short list, the options
   and the default, plain words, details in a file); one sentence in the line every registered session gets; the
   message tool's text and the approval tool say it where the text is written; howto and Help.
+- **The Messages tab's Read box** (the owner, 2026-11-09: off by default; tests first: `messages-page.spec.ts`,
+  `smoke.spec.ts`, `help-page.spec.ts`, red, then green): off, only queued and dropped messages; on, every one. The
+  smoke helper turns it on for the other Messages checks.
 - **The Inbox's Kind in color** (the owner, 2026-11-09: "message green, alert red, question skyblue"; permission
   amber, approval violet; tests first: `inbox-page.spec.ts` (a class per kind), `smoke.spec.ts` (each kind's computed
   color in light and dark), red, then green).

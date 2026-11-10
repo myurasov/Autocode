@@ -2,14 +2,15 @@
  * The Messages page: every message, newest first, with its ID, sender and
  * recipient (an agent's a link to the Agents page), subject, text (every
  * message is text), size and state (read, with how and when in the tooltip:
- * the owner, 2026-11-09), refreshed every 10 s (one refresh at a
+ * the owner, 2026-11-09; read ones only with the Read box, off by default),
+ * refreshed every 10 s (one refresh at a
  * time); a long text shows its first 200 characters until a click anywhere in
  * its cell (or Enter) opens it, read whole once, and the next folds it; and a
  * form, collapsed until opened, to send a text as the owner, to an agent ID,
  * a pattern or a list.
  */
 
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Message } from '../api';
 import { IdParts, TimeText } from '../breaks';
@@ -68,6 +69,13 @@ export class MessagesPage {
   protected readonly stateTitle = stateTitle;
 
   protected readonly messages = signal<Message[]>([]);
+  // Read messages too (the owner, 2026-11-09: off by default).
+  protected readonly showRead = signal(false);
+  protected readonly shownMessages = computed(() =>
+    this.showRead()
+      ? this.messages()
+      : this.messages().filter((m) => m.state !== 'read'),
+  );
   protected readonly loaded = signal(false);
   protected readonly error = signal('');
   protected readonly updatedAt = signal<number | null>(null);

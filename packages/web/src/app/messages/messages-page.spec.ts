@@ -108,11 +108,17 @@ describe('MessagesPage', () => {
     req.flush({ messages });
   }
 
-  async function open(messages = MESSAGES): Promise<HTMLElement> {
+  // The page, with its Read box on (every message) unless told otherwise.
+  async function open(messages = MESSAGES, read = true): Promise<HTMLElement> {
     signedIn();
     fixture = TestBed.createComponent(MessagesPage);
     load(messages);
     await settle(fixture);
+    const box = el(fixture).querySelector('#show-read') as HTMLInputElement;
+    if (read && box && !box.checked) {
+      box.click();
+      await settle(fixture);
+    }
     return el(fixture);
   }
 
@@ -258,6 +264,24 @@ describe('MessagesPage', () => {
     await settle(fixture);
     http.expectNone('/v1/messages/msg_3');
     expect(wholeLines(page, 'msg_3')).toEqual(LONG_TEXT.split('\n'));
+  });
+
+  // The owner, 2026-11-09: a Read box, off by default: off, only what is
+  // not read (queued, dropped); on, every message.
+  it('the Read box, off by default, hides read messages; on, shows them', async () => {
+    const page = await open(MESSAGES, false);
+    const box = page.querySelector('.toolbar #show-read') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    expect(text(box.closest('label'))).toBe('Read');
+    const ids = () =>
+      [...page.querySelectorAll('table.messages tr[data-message]')].map((r) =>
+        r.getAttribute('data-message'),
+      );
+    // msg_1 is read: hidden
+    expect(ids()).toEqual(['msg_2']);
+    box.click();
+    await settle(fixture);
+    expect(ids()).toEqual(['msg_2', 'msg_1']);
   });
 
   // The owner, 2026-11-09: a text as markdown, in the page's own font; a

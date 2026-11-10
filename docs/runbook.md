@@ -192,7 +192,8 @@ was read are the server's). Pages:
 - **Inbox:** messages to `owner` and alerts (a wake whose check failed three times in a row); **Answer** a message
   (the reply goes to the agent as a message from the owner) or **Close** an item; **Closed** shows the answered
   and closed ones.
-- **Messages:** every message, newest first, with its ID, the first 200 characters of its text (a click shows it
+- **Messages:** every message not read yet (the **Read** box, off by default, adds the read ones), newest first, with
+  its ID, the first 200 characters of its text (a click shows it
   whole, as markdown, as the Inbox shows messages; another folds it; your read leaves its state) and its state
   (queued, read with how: prompt, steer, read, wait
   or inbox, when in its tooltip, or dropped); **Send a Message** (it opens from its title) as the owner, to an ID, a
