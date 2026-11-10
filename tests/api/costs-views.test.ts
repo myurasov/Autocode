@@ -57,6 +57,9 @@ describe("an agent's spend and context", () => {
     const view = {
       today_usd: 0.75,
       total_usd: 0.75,
+      // none of it its runs' (the owner, 2026-11-09)
+      runs_today_usd: 0,
+      runs_total_usd: 0,
       daily_usd: 2,
       left_usd: 1.25,
       context: 30_000,

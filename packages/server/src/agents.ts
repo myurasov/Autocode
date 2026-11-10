@@ -151,7 +151,12 @@ export class Agents {
       throw new AutocodeError("bad_request", "the body must be an object")
     const id = checkId(body.id, "agent ID")
     if (isReservedId(id))
-      throw new AutocodeError("reserved_id", `${id} is reserved`)
+      throw new AutocodeError(
+        "reserved_id",
+        id.startsWith("job:")
+          ? `${id} is reserved: IDs that start with job: name a job's costs`
+          : `${id} is reserved`,
+      )
     const description = body.description === undefined ? "" : body.description
     if (typeof description !== "string" || description.length > 1000)
       throw new AutocodeError(

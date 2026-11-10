@@ -495,6 +495,54 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX messages_to ON messages (to_id, state, created_at);
   CREATE INDEX messages_at ON messages (created_at);
   `,
+  /*
+   * 17 (the owner, 2026-11-09, rc2): a run's cost counts for whom it was for,
+   * its bill_to: the agent that set its job (jobs.created_by), else the agent
+   * that started it (up a chain of runs), the agent that asked (an ask's run),
+   * else job:<name> (the owner's or a schedule's). Each run's own spend is in
+   * run_costs (the Jobs page, run_usd); the spend kept under run IDs moves to
+   * their bill_to's rows, once.
+   */
+  `
+  ALTER TABLE jobs ADD COLUMN created_by TEXT;
+  ALTER TABLE runs ADD COLUMN bill_to TEXT;
+  CREATE TABLE run_costs (
+    run_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    usd REAL NOT NULL DEFAULT 0,
+    steps INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (run_id, day)
+  );
+  UPDATE runs SET bill_to = CASE
+      WHEN how = 'ask' THEN (SELECT agent_id FROM asks WHERE asks.id = runs.ask_id)
+      WHEN how IN ('owner', 'schedule') THEN 'job:' || job
+      ELSE started_by
+    END;
+  UPDATE runs SET bill_to = 'job:' || job WHERE bill_to IS NULL;
+  UPDATE runs SET bill_to = (SELECT p.bill_to FROM runs p
+      WHERE p.id = runs.bill_to) WHERE bill_to IN (SELECT id FROM runs);
+  UPDATE runs SET bill_to = (SELECT p.bill_to FROM runs p
+      WHERE p.id = runs.bill_to) WHERE bill_to IN (SELECT id FROM runs);
+  UPDATE runs SET bill_to = (SELECT p.bill_to FROM runs p
+      WHERE p.id = runs.bill_to) WHERE bill_to IN (SELECT id FROM runs);
+  UPDATE runs SET bill_to = 'job:' || job WHERE bill_to IN (SELECT id FROM runs);
+  INSERT INTO run_costs (run_id, day, usd, steps)
+    SELECT c.agent_id, c.day, c.usd, c.steps FROM costs c
+    WHERE c.agent_id IN (SELECT id FROM runs);
+  INSERT INTO costs (agent_id, day, usd, steps)
+    SELECT r.bill_to, c.day, SUM(c.usd), SUM(c.steps) FROM costs c
+    JOIN runs r ON r.id = c.agent_id GROUP BY r.bill_to, c.day
+    ON CONFLICT (agent_id, day) DO UPDATE SET usd = usd + excluded.usd,
+      steps = steps + excluded.steps;
+  INSERT INTO cost_totals (agent_id, usd, steps, first_day)
+    SELECT r.bill_to, SUM(t.usd), SUM(t.steps), MIN(t.first_day)
+    FROM cost_totals t JOIN runs r ON r.id = t.agent_id GROUP BY r.bill_to
+    ON CONFLICT (agent_id) DO UPDATE SET usd = usd + excluded.usd,
+      steps = steps + excluded.steps,
+      first_day = MIN(first_day, excluded.first_day);
+  DELETE FROM costs WHERE agent_id IN (SELECT id FROM runs);
+  DELETE FROM cost_totals WHERE agent_id IN (SELECT id FROM runs);
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

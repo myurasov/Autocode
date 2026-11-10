@@ -398,8 +398,14 @@ export async function startServer(
           messages.notice(id, subject, text)
     },
     alert: (title, body) => inbox.open("alert", { title, body }),
-    spent: (agent) => costs.total(agent),
+    spent: (agent) => costs.runCost(agent),
     askText: (ask) => asks.askText(ask),
+    askedBy: (ask) =>
+      (
+        db.query("SELECT agent_id FROM asks WHERE id = ?").get(ask) as {
+          agent_id: string
+        } | null
+      )?.agent_id ?? null,
     released: (agent) => asks.unregistered(agent),
     load: (hostId) => {
       const h = db
@@ -851,20 +857,34 @@ export async function startServer(
             "bad_request",
             "days must be a whole number of days from 1",
           )
+        // the runs' own IDs count for their bill_to's rows: no row of their
+        // own (the owner, 2026-11-09)
+        const runIds = new Set(
+          (db.query("SELECT id FROM runs").all() as { id: string }[]).map(
+            (r) => r.id,
+          ),
+        )
         const live = new Map(
-          agents.list(null, "owner").map((x) => [x.id, x] as const),
+          agents
+            .list(null, "owner")
+            .filter((x) => !runIds.has(x.id))
+            .map((x) => [x.id, x] as const),
         )
         const ids = [...new Set([...live.keys(), ...costs.spenders()])]
+          .filter((id) => !runIds.has(id))
           .filter((id) => !pattern || matchesPattern(pattern, id))
           .sort()
         const rows = ids
           .map((id) => {
             const x = live.get(id)
             const view = costs.view(id)
+            const job = id.startsWith("job:") ? id.slice(4) : null
             return {
               agent: id,
               registered: !!x,
-              status: x ? x.status : "unregistered",
+              // a job's row: its runs that no agent started
+              status: job ? "job" : x ? x.status : "unregistered",
+              ...(job ? { job } : {}),
               ...(x?.machine ? { machine: x.machine } : {}),
               model: x?.model ?? null,
               ...view,
@@ -903,8 +923,11 @@ export async function startServer(
         "(also after it unregistered; tier 0g)",
       handler: ({ params }) => {
         const id = String(params.agent)
-        const registered = agents.list(null, "owner").some((x) => x.id === id)
-        if (!registered && !costs.known(id))
+        // a run's own ID has no costs of its own (they count for its bill_to)
+        const isRun = !!db.query("SELECT 1 FROM runs WHERE id = ?").get(id)
+        const registered =
+          !isRun && agents.list(null, "owner").some((x) => x.id === id)
+        if (isRun || (!registered && !costs.known(id)))
           throw new AutocodeError("not_registered", `no agent ${id}`, 404)
         return {
           agent: id,

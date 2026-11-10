@@ -171,6 +171,134 @@ describe("store", () => {
     db.close()
   })
 
+  /*
+   * The owner, 2026-11-09 (rc2): a run's cost counts for whom it was for.
+   * Runs are given their bill_to: the agent that started them (up a chain of
+   * runs), the agent that asked (an ask's run), else job:<name>; the spend
+   * kept under their own IDs moves there, once.
+   */
+  test("migration 17: runs get bill_to; their spend moves from their own IDs to it", () => {
+    const path = tempDb()
+    const old = openStore(path, MIGRATIONS.slice(0, 16))
+    const run = (
+      id: string,
+      job: string,
+      by: string,
+      how: string,
+      ask = null as string | null,
+    ) =>
+      old.run(
+        "INSERT INTO runs (id, job, started_by, how, state, started_at, " +
+          "ask_id) VALUES (?, ?, ?, ?, 'succeeded', 1, ?)",
+        [id, job, by, how, ask],
+      )
+    run("mail:2026-11-08T10:00", "mail", "team:lead", "agent")
+    run("sub:2026-11-08T10:05", "sub", "mail:2026-11-08T10:00", "agent")
+    run("nightly:2026-11-08T02:00", "nightly", "schedule", "schedule")
+    run("nightly:2026-11-07T02:00", "nightly", "owner", "owner")
+    run("ans:2026-11-08T11:00", "ans", "ask", "ask", "ask_1")
+    old.run(
+      "INSERT INTO hosts (id, machine, directory, instance, first_seen, " +
+        "last_seen) VALUES ('m:1', 'm', '/w', 'i', 1, 1)",
+    )
+    old.run(
+      "INSERT INTO sessions (id, host_id, created_at, last_seen) " +
+        "VALUES ('ses_1', 'm:1', 1, 1)",
+    )
+    old.run(
+      "INSERT INTO asks (id, kind, agent_id, session_id, title, body, " +
+        "routed, created_at) VALUES ('ask_1', 'approval', 'team:asker', " +
+        "'ses_1', 't', '{}', 'agent:ans:2026-11-08T11:00', 1)",
+    )
+    const spend = (id: string, day: string, usd: number, steps: number) => {
+      old.run(
+        "INSERT INTO costs (agent_id, day, usd, steps) VALUES (?, ?, ?, ?) " +
+          "ON CONFLICT (agent_id, day) DO UPDATE SET usd = usd + excluded.usd, " +
+          "steps = steps + excluded.steps",
+        [id, day, usd, steps],
+      )
+      old.run(
+        "INSERT INTO cost_totals (agent_id, usd, steps, first_day) " +
+          "VALUES (?, ?, ?, ?) ON CONFLICT (agent_id) DO UPDATE SET " +
+          "usd = usd + excluded.usd, steps = steps + excluded.steps, " +
+          "first_day = MIN(first_day, excluded.first_day)",
+        [id, usd, steps, day],
+      )
+    }
+    spend("team:lead", "2026-11-08", 1, 2)
+    spend("mail:2026-11-08T10:00", "2026-11-08", 0.5, 3)
+    spend("sub:2026-11-08T10:05", "2026-11-08", 0.25, 1)
+    spend("nightly:2026-11-08T02:00", "2026-11-08", 2, 4)
+    spend("nightly:2026-11-07T02:00", "2026-11-07", 3, 5)
+    spend("ans:2026-11-08T11:00", "2026-11-08", 0.125, 1)
+    old.close()
+    const db = openStore(path)
+    expect(db.query("SELECT id, bill_to FROM runs ORDER BY id").all()).toEqual([
+      { id: "ans:2026-11-08T11:00", bill_to: "team:asker" },
+      { id: "mail:2026-11-08T10:00", bill_to: "team:lead" },
+      { id: "nightly:2026-11-07T02:00", bill_to: "job:nightly" },
+      { id: "nightly:2026-11-08T02:00", bill_to: "job:nightly" },
+      { id: "sub:2026-11-08T10:05", bill_to: "team:lead" },
+    ])
+    expect(
+      db.query("SELECT * FROM cost_totals ORDER BY agent_id").all(),
+    ).toEqual([
+      { agent_id: "job:nightly", usd: 5, steps: 9, first_day: "2026-11-07" },
+      { agent_id: "team:asker", usd: 0.125, steps: 1, first_day: "2026-11-08" },
+      { agent_id: "team:lead", usd: 1.75, steps: 6, first_day: "2026-11-08" },
+    ])
+    expect(
+      db.query("SELECT * FROM costs ORDER BY agent_id, day").all(),
+    ).toEqual([
+      { agent_id: "job:nightly", day: "2026-11-07", usd: 3, steps: 5 },
+      { agent_id: "job:nightly", day: "2026-11-08", usd: 2, steps: 4 },
+      { agent_id: "team:asker", day: "2026-11-08", usd: 0.125, steps: 1 },
+      { agent_id: "team:lead", day: "2026-11-08", usd: 1.75, steps: 6 },
+    ])
+    // the runs' own spend, as the Jobs page shows it
+    expect(
+      db.query("SELECT * FROM run_costs ORDER BY run_id, day").all(),
+    ).toEqual([
+      {
+        run_id: "ans:2026-11-08T11:00",
+        day: "2026-11-08",
+        usd: 0.125,
+        steps: 1,
+      },
+      {
+        run_id: "mail:2026-11-08T10:00",
+        day: "2026-11-08",
+        usd: 0.5,
+        steps: 3,
+      },
+      {
+        run_id: "nightly:2026-11-07T02:00",
+        day: "2026-11-07",
+        usd: 3,
+        steps: 5,
+      },
+      {
+        run_id: "nightly:2026-11-08T02:00",
+        day: "2026-11-08",
+        usd: 2,
+        steps: 4,
+      },
+      {
+        run_id: "sub:2026-11-08T10:05",
+        day: "2026-11-08",
+        usd: 0.25,
+        steps: 1,
+      },
+    ])
+    // the jobs of agents: their creator
+    db.run(
+      "INSERT INTO jobs (name, host_id, model, prompt, trigger, timeout_ms, " +
+        "created_at, updated_at, created_by) VALUES ('team:lead:x', 'm:1', " +
+        "'a/b', 'p', '{}', 1, 1, 1, 'team:lead')",
+    )
+    db.close()
+  })
+
   test("a failing migration leaves the database at the version before it", () => {
     const path = tempDb()
     openStore(path, ["CREATE TABLE t (a TEXT)"]).close()

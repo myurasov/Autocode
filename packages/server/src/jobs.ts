@@ -67,6 +67,8 @@ export interface JobsDeps {
   spent: (agent: string) => number
   // the asks' notice text for a run started for one
   askText: (ask: string) => string | null
+  // the agent that opened an ask
+  askedBy: (ask: string) => string | null
   // a run's asks go to the owner when it ends
   released: (agent: string) => void
   // an offline host on this machine: load its folder again
@@ -146,6 +148,8 @@ export class Jobs {
       session_kept: r.state === "failed" && !!r.session_id && !r.removed,
       ...(r.result && r.result.length > MAX_RESULT ? { cut: true } : {}),
       ...(r.ask_id ? { ask: r.ask_id } : {}),
+      // whom its cost counts for (the owner, 2026-11-09)
+      bill_to: r.bill_to ?? `job:${r.job}`,
     }
   }
 
@@ -377,15 +381,43 @@ export class Jobs {
     this.db
       .query(
         `INSERT INTO runs (id, job, started_by, how, extra, state,
-           started_at, ask_id)
-         VALUES (?, ?, ?, ?, ?, 'starting', ?, ?)`,
+           started_at, ask_id, bill_to)
+         VALUES (?, ?, ?, ?, ?, 'starting', ?, ?, ?)`,
       )
-      .run(id, name, by, how, extra, now, ask ?? null)
+      .run(
+        id,
+        name,
+        by,
+        how,
+        extra,
+        now,
+        ask ?? null,
+        this.billTo(job, how, by, ask),
+      )
     this.d.history.record("run.started", {
       data: { id, job: name, by, how },
     })
     this.spawn(this.runRow(id), job)
     return this.runView(this.runRow(id))
+  }
+
+  /*
+   * Whom a run's cost counts for (the owner, 2026-11-09, rc2): the agent
+   * that set its job; else the agent that started it, or the one that asked
+   * (an ask's run); a run started by a run, or asking, counts for whom that
+   * run counts for; else (the owner, a schedule) the job's own row.
+   */
+  private billTo(job: any, how: How, by: string, ask?: string): string {
+    const up = (id: string | null): string | null => {
+      if (!id) return null
+      const parent = this.runRow(id)
+      return parent ? (parent.bill_to ?? `job:${parent.job}`) : id
+    }
+    if (job.created_by) return job.created_by
+    if (how === "agent") return up(by) ?? `job:${job.name}`
+    if (how === "ask")
+      return up(ask ? this.d.askedBy(ask) : null) ?? `job:${job.name}`
+    return `job:${job.name}`
   }
 
   // Who started a run, in words.

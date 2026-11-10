@@ -30,6 +30,15 @@ export function checkId(id: unknown, what = "ID"): string {
   return id
 }
 
+/*
+ * IDs that start with job: name a job's row of costs (the owner, 2026-11-09:
+ * one row per job for the runs no agent started); no agent takes one.
+ */
+export const RESERVED_PREFIX = "job:"
+
 export function isReservedId(id: string): boolean {
-  return (RESERVED_IDS as readonly string[]).includes(id)
+  return (
+    (RESERVED_IDS as readonly string[]).includes(id) ||
+    id.startsWith(RESERVED_PREFIX)
+  )
 }

@@ -49,6 +49,9 @@ export interface CompactDue {
 export interface CostView {
   today_usd: number
   total_usd: number
+  // of which its runs' (the owner, 2026-11-09: the tooltip says so)
+  runs_today_usd: number
+  runs_total_usd: number
   daily_usd: number | "off"
   left_usd: number | null
   context: number | null
@@ -79,6 +82,42 @@ export class Costs {
     const w = wallTime(at, tz)
     const pad = (n: number) => String(n).padStart(2, "0")
     return `${w.year}-${pad(w.month)}-${pad(w.day)}`
+  }
+
+  /*
+   * Whom a run's steps count for (the owner, 2026-11-09, rc2): its bill_to,
+   * an agent's ID or job:<name>; null for a session that is not a run.
+   */
+  billTo(agent: string): string | null {
+    return (
+      (this.db.query("SELECT bill_to FROM runs WHERE id = ?").get(agent) as any)
+        ?.bill_to ?? null
+    )
+  }
+
+  // A run's own spend over all its days: its cost on the Jobs page, run_usd.
+  runCost(run: string): number {
+    const usd =
+      (
+        this.db
+          .query("SELECT SUM(usd) AS usd FROM run_costs WHERE run_id = ?")
+          .get(run) as any
+      )?.usd ?? 0
+    return round(usd)
+  }
+
+  // Of an agent's spend, its runs' (today, in total).
+  private runsSpend(agent: string): { today: number; total: number } {
+    const r = this.db
+      .query(
+        `SELECT
+           SUM(CASE WHEN c.day = ? THEN c.usd ELSE 0 END) AS today,
+           SUM(c.usd) AS total
+         FROM run_costs c JOIN runs r ON r.id = c.run_id
+         WHERE r.bill_to = ?`,
+      )
+      .get(this.day(), agent) as any
+    return { today: round(r?.today ?? 0), total: round(r?.total ?? 0) }
   }
 
   // An agent's spend over all days (a run's cost, which may cross midnight),
@@ -197,9 +236,12 @@ export class Costs {
     const context: number | null = row?.context_tokens ?? null
     const window: number | null = row?.context_limit ?? null
     const threshold = this.threshold(agent, window)
+    const runs = this.runsSpend(agent)
     return {
       today_usd: today,
       total_usd: this.total(agent),
+      runs_today_usd: runs.today,
+      runs_total_usd: runs.total,
       daily_usd: (this.values(agent).daily_usd as number | "off") ?? "off",
       left_usd: cap === null ? null : round(Math.max(0, cap - today)),
       context,
@@ -258,13 +300,25 @@ export class Costs {
         : Number(event.context)
     const limit = Number(event.limit)
     const day = this.day()
+    // a run's step: its own spend, and it counts for its bill_to (the owner,
+    // 2026-11-09: once, in one row)
+    const billTo = this.billTo(agent)
+    if (billTo)
+      this.db
+        .query(
+          `INSERT INTO run_costs (run_id, day, usd, steps) VALUES (?, ?, ?, 1)
+           ON CONFLICT (run_id, day) DO UPDATE SET usd = usd + excluded.usd,
+             steps = steps + 1`,
+        )
+        .run(agent, day, amount)
+    const payer = billTo ?? agent
     this.db
       .query(
         `INSERT INTO costs (agent_id, day, usd, steps) VALUES (?, ?, ?, 1)
          ON CONFLICT (agent_id, day) DO UPDATE SET usd = usd + excluded.usd,
            steps = steps + 1`,
       )
-      .run(agent, day, amount)
+      .run(payer, day, amount)
     this.db
       .query(
         `INSERT INTO cost_totals (agent_id, usd, steps, first_day)
@@ -272,7 +326,7 @@ export class Costs {
          ON CONFLICT (agent_id) DO UPDATE SET usd = usd + excluded.usd,
            steps = steps + 1`,
       )
-      .run(agent, amount, day)
+      .run(payer, amount, day)
     // the compaction's own step reads the old conversation: not the context
     const compacting = !!(
       this.db
@@ -299,7 +353,7 @@ export class Costs {
       this.db
         .query("UPDATE agents SET model = ? WHERE id = ?")
         .run(model, agent)
-    this.warn(agent)
+    this.warn(payer)
   }
 
   // The notice at cap_warn, once a day.
@@ -336,11 +390,23 @@ export class Costs {
 
   /*
    * A turn ended: past the cap, the agent is paused, once a day (the owner's
-   * resume holds for the rest of the day: cap_override).
+   * resume holds for the rest of the day: cap_override). A run's turn: the
+   * agent it counts for is paused once no turn of its own runs (the owner,
+   * 2026-11-09: its runs' spend counts toward its cap).
    */
   turnEnded(agent: string) {
     // the compaction's turn is over: steps count as the context again
     this.injected(agent)
+    const billTo = this.billTo(agent)
+    if (billTo) {
+      if (!billTo.startsWith("job:") && !this.busy(billTo))
+        this.capCheck(billTo)
+      return
+    }
+    this.capCheck(agent)
+  }
+
+  private capCheck(agent: string) {
     const cap = this.cap(agent)
     if (cap === null) return
     const spent = this.today(agent)
