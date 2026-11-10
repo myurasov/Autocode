@@ -150,7 +150,7 @@ an agent's shell use the CLI instead.
 
 | Tool | Actions (parameters) |
 |---|---|
-| `autocode_me` | `register` (`id`, `description`), `unregister`, `status`, `discover` (`pattern`), `help` (`topic`), `compact`, `jobs`, `run` (`job`, `text`), `finish` (`result`) |
+| `autocode_me` | `register` (`id`, `description`), `unregister`, `status`, `discover` (`pattern`), `help` (`topic`), `compact`, `jobs`, `run` (`job`, `text`), `finish` (`result`), `job_set` (`job`, `model`, `prompt`, `trigger`, `run_usd`; optional `host`, `to`, `timeout`, `variant`, `opencode_agent`, `keep_session`, `description`), `job_delete` (`job`) |
 | `autocode_wake` | `set` (`name`, `trigger`, `text`, `check`), `list`, `show` (`name`), `cancel` (`name`), `fire` (`agent`, `name`, `text`) |
 | `autocode_message` | `send` (`to`, `subject`, `text`, `reply_to`), `list` / `read` / `wait` (`id`, `from`, `reply_to`; wait: `seconds`), `answer` and `escalate` (`id`, `text`) |
 | `autocode_lock` | `acquire` (`name`, `ttl`, `max`, `mode`), `renew` (`name`, `ttl`), `release` (`name`), `list` (`pattern`) |
@@ -463,7 +463,8 @@ Autocode counts each agent's spend, can cap it per day, and compacts long sessio
 
 ### Spend and the Daily Cap
 
-- Each model step of an agent (its Subagents' too) counts toward its spend today, in the server's zone.
+- Each model step of an agent (its Subagents' too) counts toward its spend today, in the server's zone, and so do
+  the steps of the runs it counts for ([Whom a Run's Cost Counts For](#whom-a-runs-cost-counts-for)).
 - `autocode_me action=status` shows the agent its spend today and in total, its cap and what is left, and its context
   with its compaction threshold and the share used. The owner sees the same for every agent, live, also for agents
   that unregistered: the web UI's **Costs** tab and `autocode costs`.
@@ -524,10 +525,52 @@ The Jobs page does the same: Set a Job, Edit, Run Now, Delete.
   running run's ID and who started it.
 - The schedule starts runs on the trigger; the owner with `autocode job run NAME [--text T]` or Run Now.
 - Any agent starts one with `autocode_me action=run job=NAME text=...` (its text is added to the prompt, marked as its
-  own). The result comes back to it as a notice, `[autocode] result of run NAME:...`. The run's cost counts toward the
-  run's own cap, not the starting agent's.
+  own). The result comes back to it as a notice, `[autocode] result of run NAME:...`.
 - An ask routed to `job:<name>` starts a run that answers it with `autocode_message action=answer`, then finishes.
 - A run whose host is offline waits for it (an unloaded folder is loaded again), up to its time limit.
+
+### Whom a Run's Cost Counts For
+
+Each run's spend counts in exactly one row of the Costs tab, `/v1/costs` and `autocode costs`, so their totals are the
+true spend. Which row is fixed when the run starts:
+
+| The run | Its cost counts for |
+|---|---|
+| of a job an agent set | that agent, whoever started the run (scheduled runs too) |
+| started by an agent | that agent |
+| started by another run | whom that run counts for (up the chain to the first agent) |
+| started by an ask (`job:<name>`) | the agent that asked |
+| started by the owner or a schedule | the job's own row, `job:<name>` (Today, Last 7 Days, Total, Days) |
+
+- An agent's runs count toward its Today, Daily Cap, Last 7 Days and Total, and its `daily_usd`: its cap's notice and
+  pause apply to it (paused once no turn of its own runs); the run goes on to its own `run_usd` and time limit.
+- No row is a single run's. The tooltip on an agent's Today and Total, `autocode_me action=status` and `autocode costs
+  AGENT` say how much of its spend was its runs'.
+- Each run's own cost stays on the Jobs page (`autocode job runs`), and `run_usd` caps it.
+- IDs that start with `job:` are reserved for the jobs' rows.
+
+### Jobs That Agents Set
+
+An agent can set jobs of its own, with `autocode_me action=job_set`:
+
+```
+autocode_me  action=job_set  job=digest  model=openai/gpt-5  trigger='cron "0 9 * * 1-5"'  run_usd=2  prompt="Write the digest of incoming/ into digest.md."
+autocode_me  action=run  job=digest
+autocode_me  action=job_delete  job=digest
+```
+
+- Its name becomes `<agent>:<name>` (`team:lead:digest`), so the owner's rules for that ID pattern apply to its runs.
+  `run` finds it by either name.
+- `run_usd` is required. The host is the agent's own folder unless it names one; results go to the agent unless `to`
+  says otherwise.
+- `job_mode` (per agent or pattern) decides: `ask` (the default) puts an approval in the owner's Inbox with the whole
+  definition and prompt, and the job exists only once the owner approves it; `approve` sets it at once; `off` refuses.
+  The agent is told by the approval's notice (`[autocode] approval "Job team:lead:digest" approved`); meanwhile it
+  goes on with its work (a proposal does not make it `waiting`), and a new proposal of the same job replaces it.
+- Changing a job asks again; it stays as it was until approved.
+- The job records its creator (Set By on the Jobs page, SET BY in `autocode job list`); all its runs count for the
+  creator. `job_delete` deletes one of the agent's own; all of them go when the creator unregisters. The owner can
+  edit or delete them like any job.
 
 ### How a Run Ends
 
@@ -677,13 +720,15 @@ The web UI shows the owner every agent, wake, message, lock, job and cost, with 
   (**Remove**); both after you confirm, and the agent is told. A **Lock** filter.
 - **Wakes:** every agent's wakes: trigger, next run, text and check (a click shows a long one whole), who set it,
   **Last Set** (its schedule counts from then), last fired. **Fire**, **Cancel**, **Set a Wake** for any agent.
-- **Jobs:** the jobs (where, model, trigger, next run, where results go, Last Run) with **Run Now** (and text),
-  **Edit**, **Delete**, and **Set a Job** on an online host. Below, the runs, newest first: who started it, state,
-  times, cost, result, why one failed or was skipped; **Delete Session** for a failed run's kept session.
-- **Costs:** every agent's status, spend today and in total, daily cap with a bar of the share spent, and **Last 7
-  Days** (a bar per day, today at the right; hover for the value). **Days** shows an agent's spend per day. An
-  **Agent** filter, a **Days** field (totals over the last X days; empty: all time), an **Unregistered** box (on by
-  default) and a totals row.
+- **Jobs:** the jobs (where, model, trigger, next run, where results go, Last Run, **Set By**: the owner or the agent
+  that set it) with **Run Now** (and text), **Edit**, **Delete**, and **Set a Job** on an online host. Below, the
+  runs, newest first: who started it, state, times, its own cost, result, why one failed or was skipped; **Delete
+  Session** for a failed run's kept session. A link to a job (from Costs) highlights it.
+- **Costs:** every agent's status, spend today and in total (its runs' with it: the tooltip says how much), daily cap
+  with a bar of the share spent, and **Last 7 Days** (a bar per day, today at the right; hover for the value). A
+  job's runs that no agent started have the job's row, `job:<name>` (status `job`; its ID leads to the job). **Days**
+  shows a row's spend per day. An **Agent** filter, a **Days** field (totals over the last X days; empty: all time),
+  an **Unregistered** box (on by default; job rows stay) and a totals row: the true spend, each cost in one row.
 - **History:** every event, newest first: time, kind, agent, host, session, data (a click shows it whole). An
   **Agent** filter and a **Kind** list (one kind with its count, or a group like `wake.*`). Past the loaded rows, the
   "..." row fetches the next 100 from the server.
@@ -714,6 +759,7 @@ its ID (`--match PATTERN`; a new rule goes last); the server-wide value; the bui
 | `auto_answer_text` | agent | "Act according to your best judgement and safe practices to achieve my goals." | the answer in `auto` mode |
 | `permission_mode` | agent | `ask` | permission prompts: to the owner (`ask`), allowed once (`approve`), `agent:<id>` or `job:<name>` |
 | `approval_mode` | agent | `ask` | approvals: to the owner (`ask`), approved at once (`approve`), `agent:<id>` or `job:<name>` |
+| `job_mode` | agent | `ask` | jobs an agent sets: the owner approves first (`ask`), set at once (`approve`), or refused (`off`) |
 | `retry_interval` | agent | `1m` | the wait after a failed turn before a retry prompt, and between retries |
 | `retry_attempts` | agent | `0` | the most retries in a row before Autocode stops and tells the owner (0: no limit) |
 | `daily_usd` | agent | `off` | the agent's cost cap per day, in dollars (`12.50` or `$12.50`), or `off` |

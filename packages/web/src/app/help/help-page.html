@@ -560,6 +560,23 @@ autocode plugin install --url http://SERVER:4848 \
         <code>question_mode=job:daily-report</code> (or the permission and
         approval ones) sends each ask to a fresh run of that job.
       </li>
+      <li>
+        A run's cost counts for the agent that started it (a run started by a
+        run: up to the first agent; an ask's run: the agent that asked),
+        toward its Today, Total and daily cap. Runs you or a schedule started
+        count for the job's own row on Costs, job:&lt;name&gt;. Each run's own
+        cost stays on the Jobs tab, capped by its <code>run_usd</code>.
+      </li>
+      <li>
+        Agents can set jobs of their own with
+        <code>autocode_me action=job_set</code> (named
+        <code>&lt;agent&gt;:&lt;name&gt;</code>, a <code>run_usd</code>
+        required). With <code>job_mode</code> ask (the default) an approval in
+        your Inbox shows the whole definition, and the job exists once you
+        approve it; <code>approve</code> sets it at once, <code>off</code>
+        refuses. All its runs count for the agent that set it, and its jobs go
+        when it unregisters.
+      </li>
     </ul>
 
     <h3 id="sees">
@@ -960,7 +977,8 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       host. Below, the runs, newest first, of every job or the Job you pick:
       who started each, its state, times, cost, result (a click anywhere in a
       long one's cell shows it whole) and why one failed or was skipped. A
-      failed run's session is kept; Delete Session removes it.
+      failed run's session is kept; Delete Session removes it. Set By names
+      the agent that set a job, or owner.
     </p>
 
     <h3 id="web-costs">
@@ -987,7 +1005,11 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       <code>history_days</code> (at least 31 days); the day is the server's:
       when the data was read (the server's time, in its zone) is right of
       Refresh. An agent's ID leads to its row on the Agents tab (an
-      unregistered one's turns its Unregistered box on).
+      unregistered one's turns its Unregistered box on). An agent's spend
+      includes its runs' (its Today and Total tooltips say how much); a job's
+      runs that no agent started have the job's row, job:&lt;name&gt;, which
+      leads to the job. Each cost is in one row, so the total is the true
+      spend.
     </p>
 
     <h3 id="web-history">

@@ -36,7 +36,8 @@ What Autocode provides:
 - **The owner's inbox:** agents ask for a decision without stopping everything: questions, permissions and
   approvals, which the owner, another agent or a job's run answer.
 - **Limits:** a daily cost cap per agent, compaction of long sessions and expiry of old agents, while nobody watches.
-- **Jobs:** a task handed to a fresh agent for each run, on a schedule, by the owner or by an agent.
+- **Jobs:** a task handed to a fresh agent for each run, on a schedule, by the owner or by an agent; agents can set
+  jobs of their own (with the owner's approval), and a run's cost counts for the agent it was for.
 - **Control:** pause, resume and Stop All; a web UI and a CLI; the history of everything that happened.
 
 Features that do not serve long-running autonomy are left out or kept small, so that what is there stays simple to
@@ -161,11 +162,11 @@ Served by the server; sign in with the admin token. Light and dark.
 - **Messages:** every message, with its state (queued, read and how, or dropped); send one as the owner.
 - **Wakes:** every agent's wakes, when each runs next and was last set; Fire, Cancel, Set a Wake.
 - **Locks:** every lock with its capacity, holders (until when; Release) and line.
-- **Jobs:** the jobs and their runs; Run Now, Edit, Delete, Set a Job.
-- **Costs:** every agent's spend today and in total (unregistered ones too), its daily cap and the share spent,
-  live; its last 7 days as a bar per day, and its spend per day; an agent filter, a Days field (the total over the
-  last X days), an Unregistered box (on) and the totals; a click on an agent's Spend on Agents leads to its row, a
-  gone agent's ID to its row on Agents.
+- **Jobs:** the jobs (who set each) and their runs; Run Now, Edit, Delete, Set a Job.
+- **Costs:** every agent's spend today and in total (its runs' with it; unregistered ones too), its daily cap and the
+  share spent, live; a row per job for the runs no agent started (`job:<name>`); its last 7 days as a bar per day, and
+  its spend per day; an agent filter, a Days field (the total over the last X days), an Unregistered box (on) and the
+  totals; a click on an agent's Spend on Agents leads to its row, a gone agent's ID to its row on Agents.
 - **History:** every event, newest first, filtered by agent pattern and kind, with Older for more.
 - **Settings:** server values, pattern rules, agents' own values, and what an agent resolves to.
 - **Help:** how to use Autocode from OpenCode, the CLI and the web UI.

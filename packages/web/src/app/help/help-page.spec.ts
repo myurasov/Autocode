@@ -326,6 +326,12 @@ describe('HelpPage', () => {
       '[autocode] result of run',
       'autocode_me action=finish result=',
       'one run at a time',
+      // the owner, 2026-11-09 (rc2): whom a run counts for; agents' jobs
+      'counts for the agent that started it',
+      "the job's own row on Costs, job:",
+      'autocode_me action=job_set',
+      'job_mode',
+      'the job exists once you approve it',
     ])
       expect(jobs, part).toContain(part);
     expect(jobs).not.toMatch(/kaggle|casmi/i);
@@ -339,6 +345,7 @@ describe('HelpPage', () => {
       'Delete Session',
       'Job',
       'Last Run',
+      'Set By',
     ])
       expect(tab, part).toContain(part);
     const commands = rows(page.querySelector('table.commands')).map(
