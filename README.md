@@ -7,7 +7,7 @@ becomes an **agent**: Autocode can wake it later with a prompt (on a schedule, a
 when a script or another agent fires it), agents can message each other and you, and a turn that fails is retried. You
 watch and steer them from a web UI and a CLI.
 
-_Version 1.0.0-rc2, the second release candidate. Every detail is in [`reference.md`](reference.md); agents start
+_Version 1.0.0-rc3, the third release candidate. Every detail is in [`reference.md`](reference.md); agents start
 with [`AGENT.md`](AGENT.md)._
 
 - [Why Autocode](#why-autocode)
@@ -183,7 +183,7 @@ bun install
 bun run typecheck && bun run lint
 bun test tests/unit tests/api            # fast, no Docker
 ci/run.sh [suite...]                     # Docker suites in parallel (see below)
-ci/dist.sh                               # numbered build with the web UI: dist/autocode (v1.0.0-rc2-build<n>)
+ci/dist.sh                               # numbered build with the web UI: dist/autocode (v1.0.0-rc3-build<n>)
 AUTOCODE_TARGETS=all ci/dist.sh          # also linux-arm64, linux-x64, darwin-arm64
 ```
 

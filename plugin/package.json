@@ -1,6 +1,6 @@
 {
   "name": "@autocode/plugin",
-  "version": "1.0.0-rc2",
+  "version": "1.0.0-rc3",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
