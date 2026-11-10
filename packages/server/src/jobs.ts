@@ -75,6 +75,22 @@ export interface JobsDeps {
   load: (host: string) => void
 }
 
+// A job's definition, checked (Jobs.check): what store() keeps.
+export interface JobDef {
+  name: string
+  description: string
+  host: string
+  model: string
+  variant: string | null
+  agent: string | null
+  prompt: string
+  trigger: Trigger
+  to: string
+  timeout: number
+  runUsd: number | null
+  deleteSession: boolean
+}
+
 export class Jobs {
   constructor(private readonly d: JobsDeps) {}
 
@@ -82,7 +98,7 @@ export class Jobs {
     return this.d.db
   }
 
-  private row(name: string): any {
+  row(name: string): any {
     return this.db.query("SELECT * FROM jobs WHERE name = ?").get(name)
   }
 
@@ -117,6 +133,8 @@ export class Jobs {
       timeout: formatDuration(row.timeout_ms),
       run_usd: row.run_usd ?? "off",
       delete_session: !!row.delete_session,
+      // the agent that set it (the owner, 2026-11-09), else the owner's
+      created_by: row.created_by ?? null,
       last_run: last
         ? { id: last.id, state: last.state, started: iso(last.started_at) }
         : null,
@@ -153,7 +171,13 @@ export class Jobs {
     }
   }
 
-  set(nameInput: unknown, body: any) {
+  set(nameInput: unknown, body: any, createdBy: string | null = null) {
+    const def = this.check(nameInput, body)
+    return this.store(def, createdBy)
+  }
+
+  // A job's definition, checked (the owner's set, an agent's proposal).
+  check(nameInput: unknown, body: any): JobDef {
     const name = checkId(nameInput, "job name")
     if (!body || typeof body !== "object")
       throw new AutocodeError("bad_request", "the body must be an object")
@@ -238,6 +262,39 @@ export class Jobs {
         )
     }
     const deleteSession = body.delete_session !== false
+    return {
+      name,
+      description,
+      host,
+      model,
+      variant,
+      agent,
+      prompt,
+      trigger,
+      to,
+      timeout,
+      runUsd,
+      deleteSession,
+    }
+  }
+
+  // A checked definition stored: a new job, or the one of that name changed.
+  store(def: JobDef, createdBy: string | null = null) {
+    const {
+      name,
+      description,
+      host,
+      model,
+      variant,
+      agent,
+      prompt,
+      trigger,
+      to,
+      timeout,
+      runUsd,
+      deleteSession,
+    } = def
+    const now = this.d.now()
     // an every's runs keep to the time it was set (no drift from late ticks)
     const next = nextRun(trigger, now, { tz: this.d.tz(), anchor: now })
     const before = this.row(name)
@@ -245,8 +302,8 @@ export class Jobs {
       .query(
         `INSERT INTO jobs (name, description, host_id, model, variant, agent,
            prompt, trigger, next_at, dest, timeout_ms, run_usd,
-           delete_session, created_at, updated_at, anchor_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           delete_session, created_at, updated_at, anchor_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (name) DO UPDATE SET description = excluded.description,
            host_id = excluded.host_id, model = excluded.model,
            variant = excluded.variant, agent = excluded.agent,
@@ -273,9 +330,16 @@ export class Jobs {
         now,
         now,
         now,
+        // the creator stays when the owner changes an agent's job
+        createdBy ?? before?.created_by ?? null,
       )
     this.d.history.record("job.set", {
-      data: { name, trigger: formatTrigger(trigger), replaced: !!before },
+      data: {
+        name,
+        trigger: formatTrigger(trigger),
+        replaced: !!before,
+        ...(createdBy ? { by: createdBy } : {}),
+      },
     })
     return { status: before ? 200 : 201, job: this.view(this.row(name)) }
   }
@@ -295,13 +359,40 @@ export class Jobs {
     ).map((r) => ({ name: r.name, description: r.description }))
   }
 
-  remove(nameInput: unknown) {
+  remove(nameInput: unknown, why?: string) {
     const name = checkId(nameInput, "job name")
     if (!this.row(name))
       throw new AutocodeError("no_job", `no job ${name}`, 404)
     this.db.query("DELETE FROM jobs WHERE name = ?").run(name)
-    this.d.history.record("job.deleted", { data: { name } })
+    this.d.history.record("job.deleted", {
+      data: { name, ...(why ? { why } : {}) },
+    })
     return { deleted: name }
+  }
+
+  // The jobs an agent set (the owner, 2026-11-09): they go with it.
+  createdBy(agent: string): string[] {
+    return (
+      this.db
+        .query("SELECT name FROM jobs WHERE created_by = ? ORDER BY name")
+        .all(agent) as { name: string }[]
+    ).map((r) => r.name)
+  }
+
+  // A job's definition in words, for the owner's approval of an agent's.
+  describeDef(def: JobDef): string[] {
+    const usd = (n: number) => `$${n.toFixed(2)}`
+    return [
+      `- host: ${def.host}`,
+      `- model: ${def.model}${def.variant ? ` (${def.variant})` : ""}` +
+        (def.agent ? `, OpenCode agent ${def.agent}` : ""),
+      `- trigger: ${formatTrigger(def.trigger)}`,
+      `- run_usd: ${def.runUsd === null ? "off" : usd(def.runUsd)}`,
+      `- results to: ${def.to}`,
+      `- time limit: ${formatDuration(def.timeout)}`,
+      `- session: ${def.deleteSession ? "removed after the run" : "kept"}`,
+      ...(def.description ? [`- description: ${def.description}`] : []),
+    ]
   }
 
   runs(job?: string | null) {

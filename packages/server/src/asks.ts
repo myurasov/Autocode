@@ -124,6 +124,64 @@ export class Asks {
    */
   jobIdle: (job: string) => boolean = () => false
   startJob: (job: string, ask: string) => string | null = () => null
+  // an approved job of an agent's (the owner, 2026-11-09): it is set
+  setJob: (def: unknown, agent: string) => void = () => {}
+
+  /*
+   * A job an agent set, for the owner to approve (the owner, 2026-11-09:
+   * job_mode ask): an approval in the owner's inbox with the whole
+   * definition, kept with it; the job is set once the owner approves. It
+   * goes to the owner alone, never expires, and does not make the agent
+   * wait. A new proposal of the same job replaces an open one.
+   */
+  proposeJob(
+    agent: string,
+    session: string,
+    name: string,
+    change: boolean,
+    lines: string[],
+    def: unknown,
+  ): AskView {
+    for (const old of this.db
+      .query(
+        "SELECT * FROM asks WHERE agent_id = ? AND state = 'open' " +
+          "AND job_def IS NOT NULL",
+      )
+      .all(agent) as any[])
+      if (JSON.parse(old.job_def).name === name)
+        this.finish(old, "gone", null, null, true)
+    const text = [
+      `${agent} asks to ${change ? "change" : "set"} the job ${name}:`,
+      ...lines,
+      "",
+      "Its prompt:",
+      ...String((def as any).prompt)
+        .split("\n")
+        .map((l) => `> ${l}`),
+    ].join("\n")
+    const id = randomId()
+    this.db
+      .query(
+        `INSERT INTO asks (id, kind, agent_id, session_id, title, body,
+           routed, created_at, job_def)
+         VALUES (?, 'approval', ?, ?, ?, ?, 'owner', ?, ?)`,
+      )
+      .run(
+        id,
+        agent,
+        session,
+        `Job ${name}, set by ${agent}`,
+        JSON.stringify({ text, options: [], job: name }),
+        this.now(),
+        JSON.stringify(def),
+      )
+    this.history.record("ask.opened", {
+      agent,
+      session,
+      data: { id, kind: "approval", routed: "owner", job: name },
+    })
+    return this.approvalView(this.row(id))
+  }
 
   private row(id: string): any {
     return this.db.query("SELECT * FROM asks WHERE id = ?").get(id)
@@ -699,7 +757,13 @@ export class Asks {
     return { subject, text }
   }
 
-  private finish(row: any, state: string, answer: unknown, by: string | null) {
+  private finish(
+    row: any,
+    state: string,
+    answer: unknown,
+    by: string | null,
+    quiet = false,
+  ) {
     this.db
       .query(
         `UPDATE asks SET state = ?, answer = ?, answered_by = ?, closed_at = ?
@@ -719,12 +783,29 @@ export class Asks {
       })
     if (row.kind === "approval" && state !== "open") {
       this.wake(row.id)
-      if (by !== "auto") this.tellApproval(this.row(row.id))
+      // an agent's job, approved: it is set now (the owner, 2026-11-09)
+      const done = this.row(row.id)
+      let setNote = ""
+      if (row.job_def && state === "answered") {
+        const a = done.answer ? JSON.parse(done.answer) : null
+        if (a?.decision === "approve") {
+          const def = JSON.parse(row.job_def)
+          try {
+            this.setJob(def, row.agent_id)
+            setNote = `The job ${def.name} is set.`
+          } catch (err) {
+            setNote =
+              `The job ${def.name} could not be set: ` +
+              `${(err as Error).message}`
+          }
+        }
+      }
+      if (by !== "auto" && !quiet) this.tellApproval(done, setNote)
     }
   }
 
   // The asking agent is told how its approval ended.
-  private tellApproval(row: any) {
+  private tellApproval(row: any, extra = "") {
     const v = this.approvalView(row)
     const body = JSON.parse(row.body)
     const what =
@@ -739,18 +820,21 @@ export class Asks {
         : row.answered_by
           ? `agent ${row.answered_by}`
           : "nobody"
+    // a job's approval is named by its job (the owner, 2026-11-09)
+    const named = body.job ? `Job ${body.job}` : body.text
     const parts = [
       v.state === "expired"
-        ? `Your approval "${short(body.text, 80)}" expired unanswered: ` +
+        ? `Your approval "${short(named, 80)}" expired unanswered: ` +
           "treat it as rejected."
-        : `Your approval "${short(body.text, 80)}" was ${what} by ${by}.`,
+        : `Your approval "${short(named, 80)}" was ${what} by ${by}.`,
     ]
     if (v.option) parts.push(`Option: ${v.option}.`)
     if (v.note) parts.push(`Note: ${v.note}`)
+    if (extra) parts.push(extra)
     try {
       this.notify({
         agent: row.agent_id,
-        subject: `approval "${short(body.text, 60)}" ${what}`,
+        subject: `approval "${short(named, 60)}" ${what}`,
         text: parts.join(" "),
       })
     } catch {}
@@ -977,7 +1061,7 @@ export class Asks {
       this.db
         .query(
           "SELECT * FROM asks WHERE agent_id = ? AND state = 'open' " +
-            "ORDER BY created_at",
+            "AND job_def IS NULL ORDER BY created_at",
         )
         .all(agent) as any[]
     ).map((r) => this.view(r))

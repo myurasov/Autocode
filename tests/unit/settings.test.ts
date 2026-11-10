@@ -27,6 +27,9 @@ describe("settings", () => {
     )
     expect(d.permission_mode).toBe("ask")
     expect(d.approval_mode).toBe("ask")
+    // jobs set by agents: an approval of the owner first (the owner,
+    // 2026-11-09, rc2)
+    expect(d.job_mode).toBe("ask")
     expect(d.compact_at).toBe("50% max 500000")
     expect(d.check_timeout).toBe("60s")
     expect(d.check_output).toBe(2000)
@@ -211,4 +214,16 @@ describe("settings", () => {
     )
     expect(r.values.history_days).toBe(7)
   })
+})
+
+// The owner, 2026-11-09 (rc2): job_mode, per agent and pattern: ask (an
+// approval of the owner), approve (at once) or off (agents cannot set jobs).
+test("job_mode takes ask, approve or off, and nothing else", () => {
+  for (const v of ["ask", "approve", "off"])
+    expect(normalizeSetting("job_mode", v)).toBe(v)
+  for (const v of ["agent:team:lead", "job:mail", "auto", ""])
+    expect(() => normalizeSetting("job_mode", v), v).toThrow(
+      "expected one of ask, approve, off",
+    )
+  expect(SETTINGS.job_mode?.scope).toBe("agent")
 })

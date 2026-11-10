@@ -501,11 +501,14 @@ export const MIGRATIONS: string[] = [
    * that started it (up a chain of runs), the agent that asked (an ask's run),
    * else job:<name> (the owner's or a schedule's). Each run's own spend is in
    * run_costs (the Jobs page, run_usd); the spend kept under run IDs moves to
-   * their bill_to's rows, once.
+   * their bill_to's rows, once. An approval of a job an agent set keeps its
+   * definition (asks.job_def) until the owner answers; it does not make the
+   * agent wait.
    */
   `
   ALTER TABLE jobs ADD COLUMN created_by TEXT;
   ALTER TABLE runs ADD COLUMN bill_to TEXT;
+  ALTER TABLE asks ADD COLUMN job_def TEXT;
   CREATE TABLE run_costs (
     run_id TEXT NOT NULL,
     day TEXT NOT NULL,

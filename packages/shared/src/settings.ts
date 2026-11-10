@@ -79,6 +79,18 @@ export const SETTINGS: Record<string, SettingDef> = {
       "approvals go to the owner (ask), are approved at once (approve), or " +
       "go to agent:<id> or job:<name>",
   },
+  // The owner, 2026-11-09 (rc2): whether an agent may set jobs of its own:
+  // ask (an approval of the owner with the whole definition), approve (at
+  // once) or off.
+  job_mode: {
+    kind: "enum",
+    scope: "agent",
+    default: "ask",
+    values: ["ask", "approve", "off"],
+    help:
+      "jobs an agent sets: an approval of the owner first (ask), set at once " +
+      "(approve), or refused (off)",
+  },
   compact_at: {
     kind: "compact",
     scope: "agent",

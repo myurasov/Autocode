@@ -30,7 +30,7 @@ import { Delivery } from "./delivery.ts"
 import { History } from "./history.ts"
 import { Hosts } from "./hosts.ts"
 import { json, openapi, type Route, router } from "./http.ts"
-import { Jobs } from "./jobs.ts"
+import { type JobDef, Jobs } from "./jobs.ts"
 import {
   type EnsureService,
   ensureService,
@@ -348,6 +348,9 @@ export async function startServer(
       locks.unregistered(agent)
       asks.unregistered(agent)
       messages.dropNotices(agent)
+      // the jobs it set go with it (the owner, 2026-11-09)
+      for (const name of jobs.createdBy(agent))
+        jobs.remove(name, "creator unregistered")
     },
     (agent) => delivery.cancelPending(agent),
   )
@@ -417,6 +420,7 @@ export async function startServer(
     },
   })
   asks.jobIdle = (job) => jobs.idle(job)
+  asks.setJob = (def, agent) => jobs.store(def as JobDef, agent)
   asks.startJob = (job, ask) =>
     jobs.start(job, "ask", "ask", undefined, ask)?.id ?? null
   retries.onGivenUp = (agent, reason) => jobs.turnsFailed(agent, reason)
@@ -771,6 +775,98 @@ export async function startServer(
       access: ["admin"],
       summary: "delete a failed run's kept session",
       handler: ({ params }) => jobs.deleteSession(String(params.id)),
+    },
+    /*
+     * The owner, 2026-11-09 (rc2): an agent sets a job of its own, named
+     * <agent>:<name>, its run_usd required; job_mode: ask (an approval of the
+     * owner with the whole definition), approve (set at once), off.
+     */
+    {
+      method: "POST",
+      path: "/v1/me/jobs",
+      access: ["session"],
+      summary:
+        "set or change a job of the calling agent's own (name, and the " +
+        "owner's job fields; run_usd required; host: its own by default): " +
+        "201 set, or 202 asked (job_mode ask: the owner approves first)",
+      handler: async ({ caller, body }) => {
+        const agent = me(caller)
+        const b = (await body()) as any
+        if (!b || typeof b !== "object")
+          throw new AutocodeError("bad_request", "the body must be an object")
+        const mode = String(
+          resolveSettings(settings.layers(), agent).values.job_mode ?? "ask",
+        )
+        if (mode === "off")
+          throw new AutocodeError(
+            "forbidden",
+            "you cannot set jobs: job_mode is off (the owner's setting)",
+            403,
+          )
+        const { name: given, ...fields } = b
+        if (typeof given !== "string" || !given)
+          throw new AutocodeError("bad_request", "a job needs a name")
+        const name = given.startsWith(`${agent}:`) ? given : `${agent}:${given}`
+        if (
+          fields.run_usd === undefined ||
+          fields.run_usd === null ||
+          fields.run_usd === "off"
+        )
+          throw new AutocodeError(
+            "bad_request",
+            "run_usd is required for an agent's job: its most dollars a run",
+          )
+        const host =
+          fields.host ??
+          (
+            db
+              .query("SELECT host_id FROM sessions WHERE id = ?")
+              .get(caller!.session!) as any
+          )?.host_id
+        const def = jobs.check(name, {
+          ...fields,
+          host,
+          to: fields.to ?? agent,
+        })
+        const existing = jobs.row(name)
+        if (existing && existing.created_by !== agent)
+          throw new AutocodeError(
+            "forbidden",
+            `the job ${name} is not yours`,
+            403,
+          )
+        if (mode === "approve") {
+          jobs.store(def, agent)
+          return json(
+            { state: "set", name, job: jobs.view(jobs.row(name)) },
+            201,
+          )
+        }
+        const approval = asks.proposeJob(
+          agent,
+          caller!.session!,
+          name,
+          !!existing,
+          jobs.describeDef(def),
+          def,
+        )
+        return json({ state: "asked", name, approval: approval.id }, 202)
+      },
+    },
+    {
+      method: "DELETE",
+      path: "/v1/me/jobs/:name",
+      access: ["session"],
+      summary: "delete a job the calling agent set (<agent>:<name>)",
+      handler: ({ caller, params }) => {
+        const agent = me(caller)
+        const given = String(params.name)
+        const name = given.startsWith(`${agent}:`) ? given : `${agent}:${given}`
+        const row = jobs.row(name)
+        if (!row || row.created_by !== agent)
+          throw new AutocodeError("no_job", `no job ${name} of yours`, 404)
+        return jobs.remove(name)
+      },
     },
     {
       method: "POST",

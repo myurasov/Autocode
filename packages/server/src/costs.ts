@@ -604,7 +604,7 @@ export class Costs {
          JOIN sessions s ON s.id = a.session_id
          WHERE s.busy = 0 AND a.paused NOT IN ('owner', 'stop-all')
            AND NOT EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
-                           AND k.state = 'open')`,
+                           AND k.state = 'open' AND k.job_def IS NULL)`,
       )
       .all() as any[]) {
       const after = parseDuration(String(this.values(row.id).expire_after))
