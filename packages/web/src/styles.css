@@ -5,7 +5,8 @@
 :root {
   --bg: #fff;
   --panel: #fff;
-  --soft: #f5f5f5;
+  /* a little darker than before (the owner, 2026-11-09) */
+  --soft: #efefef;
   --softer: #fafafa;
   --code: #f2f2f2;
   --fg: #222;
@@ -34,7 +35,8 @@
 html.dark {
   --bg: #14181c;
   --panel: #1d2227;
-  --soft: #262d34;
+  /* a little lighter than before (the owner, 2026-11-09) */
+  --soft: #292f36;
   --softer: #21272d;
   --code: #2a3138;
   --fg: #d5dbe1;

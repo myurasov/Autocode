@@ -1081,5 +1081,8 @@ in what it read.
   `help-page.spec.ts`, `messages-page.spec.ts` (`read (inbox)`, its tooltip), `smoke.spec.ts`, and e2e
   `wakes-messages.test.ts` 2 with real OpenCode (a message sent during a turn reaches the model in that same turn;
   read in a turn, never injected after).
+- **`--soft` a little darker in light, lighter in dark** (the owner, 2026-11-09; tests first: `smoke.spec.ts` reads the
+  variable and a table head's color in both themes, red, then green): `#f5f5f5` to `#efefef`, `#262d34` to `#292f36`
+  (kept below `--code` `#2a3138`). Screenshots of the Costs tab in both looked at.
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

@@ -3746,3 +3746,34 @@ test.describe("in Pacific time", () => {
     )
   })
 })
+
+// The owner, 2026-11-09: --soft (table heads, the totals row, bar tracks) a
+// little darker in light and a little lighter in dark.
+test("layout: --soft is #efefef in light and #292f36 in dark; a table head shows it", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "Agents")
+  const head = page.locator("table.agents thead th").first()
+  const soft = () =>
+    page.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--soft")
+        .trim(),
+    )
+  const isDark = () =>
+    page.evaluate(() => document.documentElement.classList.contains("dark"))
+  const seen: Record<string, [string, string]> = {}
+  for (let i = 0; i < 2; i++) {
+    const dark = await isDark()
+    seen[dark ? "dark" : "light"] = [
+      await soft(),
+      await head.evaluate((th) => getComputedStyle(th).backgroundColor),
+    ]
+    await page.getByRole("button", { name: "Light or dark" }).click()
+    // the theme's class follows a moment after the click
+    await expect.poll(isDark).toBe(!dark)
+  }
+  expect(seen.light).toEqual(["#efefef", "rgb(239, 239, 239)"])
+  expect(seen.dark).toEqual(["#292f36", "rgb(41, 47, 54)"])
+})
