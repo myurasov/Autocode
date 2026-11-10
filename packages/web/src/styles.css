@@ -351,7 +351,16 @@ tr[app-fold] > th:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: -2px;
 }
-tr[app-fold] .chevron {
+/*
+ * Every expand/collapse marker is this chevron, turned the same way (the
+ * owner, 2026-11-09: "like they are on group expansion"): pointing down when
+ * open, right when closed, with the same turn between: a group's heading, a
+ * form's title line, the Costs tab's Days.
+ */
+tr[app-fold] .chevron,
+details.panel > summary::before,
+button.days::before {
+  content: '';
   display: inline-block;
   width: 0.7rem;
   height: 0.7rem;
@@ -360,7 +369,9 @@ tr[app-fold] .chevron {
   background: var(--chevron) center / contain no-repeat;
   transition: transform 0.12s;
 }
-tr[app-fold].folded .chevron {
+tr[app-fold].folded .chevron,
+details.panel:not([open]) > summary::before,
+button.days[aria-expanded='false']::before {
   transform: rotate(-90deg);
 }
 tr[app-fold] .fold-count {
@@ -1030,10 +1041,11 @@ details.panel > summary {
   color: var(--fg-label);
   font-weight: var(--bold);
   cursor: pointer;
+  list-style: none;
 }
-/* 2 px more after the fold marker (browsers ignore margins on ::marker). */
-details.panel > summary > span {
-  margin-left: 2px;
+/* the chevron (above) in place of the browser's own marker */
+details.panel > summary::-webkit-details-marker {
+  display: none;
 }
 details.panel > summary:hover {
   background: var(--sel);

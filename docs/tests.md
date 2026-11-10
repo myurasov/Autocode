@@ -1090,6 +1090,11 @@ in what it read.
   a guide topic `owner` ("Writing to the Owner": only what the owner needs, the point first, a short list, the options
   and the default, plain words, details in a file); one sentence in the line every registered session gets; the
   message tool's text and the approval tool say it where the text is written; howto and Help.
+- **Every fold marker is the group headings' chevron** (the owner, 2026-11-09: "make expand/collapse markers and
+  animation like they are on group expansion", "fold that into rc1"; tests first: `smoke.spec.ts` "expand/collapse
+  markers", red on the browser's own marker, then green): the Send a Message, Set a Wake and Set a Job title lines and
+  the Costs tab's Days button show the same chevron, size, gap and quarter turn (0.12 s) as a group's heading.
+- **The install suite reads a pre-release version** (`boot.test.ts`: `v1.0.0-rc1-dev`; it expected `v1.2.3-dev`).
 - **25 rows a table, folding groups, `...` in place of Older** (the owner, 2026-11-09: "in each table after max 25
   rows there should be "..." indicator at the bottom that loads 25 rows more"; grouped tables "25 per group with ... as
   the last row; also make groups collapsible on group row click and remember the collapse state for each group";

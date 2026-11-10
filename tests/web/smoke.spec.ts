@@ -1198,8 +1198,8 @@ test("layout: an action's result shows in the toolbar after its buttons", async 
 
 // The Send a Message and Set a Wake forms span the frame and start
 // collapsed: one clickable line with their title, which opens them; the
-// title in the neutral text color, 2 px further from its fold marker (the
-// owner, 2026-11-02), the line padded 6 px (the owner, 2026-11-07).
+// title in the neutral text color (the owner, 2026-11-02) after the chevron
+// every fold marker has, the line padded 6 px (the owner, 2026-11-07).
 test("layout: the forms are full width and start collapsed", async ({
   page,
 }) => {
@@ -1219,7 +1219,9 @@ test("layout: the forms are full width and start collapsed", async ({
     // the label color of the default (dark) theme (--fg-label; the owner,
     // 2026-11-07), not the link color
     await expect(summary, tab).toHaveCSS("color", "rgb(174, 183, 192)")
-    await expect(summary.locator("span"), tab).toHaveCSS("margin-left", "2px")
+    // the chevron's own gap, as on a group's heading (the owner, 2026-11-09:
+    // in place of the browser's marker and its 2 px)
+    await expect(summary.locator("span"), tab).toHaveCSS("margin-left", "0px")
     await expect(summary, tab).toHaveCSS("padding", "8px")
     const widths = await page.evaluate(() => {
       const width = (s: string) =>
@@ -3994,4 +3996,85 @@ test("Agents: a machine's group folds on a click and stays folded after a reload
   await expect(group.locator("tr[data-agent]")).toHaveCount(0)
   await heading.press("Enter")
   await expect(group.locator("tr[data-agent]").first()).toBeVisible()
+})
+
+// The owner, 2026-11-09: "make expand/collapse markers and animation like
+// they are on group expansion": the forms' title lines and the Costs tab's
+// Days button show the group headings' chevron, turned the same way when
+// closed and open, with the same turn.
+test("expand/collapse markers: the forms and Days have the group headings' chevron and turn", async ({
+  page,
+}) => {
+  type Look = {
+    image: string
+    width: string
+    height: string
+    gap: string
+    transition: string
+    transform: string
+  }
+  // its marker's look, measured in the page (on the element or its ::before)
+  const look = (el: Locator, pseudo: string | null): Promise<Look> =>
+    el.evaluate((e, p) => {
+      const css = getComputedStyle(e, p)
+      return {
+        image: css.backgroundImage,
+        width: css.width,
+        height: css.height,
+        gap: css.marginRight,
+        transition: `${css.transitionProperty} ${css.transitionDuration}`,
+        transform: css.transform,
+      }
+    }, pseudo)
+  await signIn(page, admin)
+  // the group heading: open, then folded (and back)
+  const heading = page.locator(
+    'table.agents tbody[data-machine="smoke"] tr.group th',
+  )
+  const chevron = heading.locator(".chevron")
+  const open = await look(chevron, null)
+  await heading.click()
+  await expect(heading).toHaveAttribute("aria-expanded", "false")
+  // after its turn: a quarter turn (rotate(-90deg))
+  await expect
+    .poll(() => chevron.evaluate((e) => getComputedStyle(e).transform))
+    .toBe("matrix(0, -1, 1, 0, 0, 0)")
+  const closed = await look(chevron, null)
+  await heading.click()
+  await expect(heading).toHaveAttribute("aria-expanded", "true")
+  expect(open.image).toContain("svg")
+  expect(closed.transform).not.toBe(open.transform)
+  const settled = async (el: Locator, want: string) =>
+    expect
+      .poll(() => el.evaluate((e) => getComputedStyle(e, "::before").transform))
+      .toBe(want)
+  for (const [tab, title] of [
+    ["Messages", "Send a Message"],
+    ["Wakes", "Set a Wake"],
+    ["Jobs", "Set a Job"],
+  ]) {
+    await openTab(page, tab!)
+    const summary = page.locator("details.panel summary", { hasText: title })
+    // no marker of the browser's own
+    expect(
+      await summary.evaluate((e) => getComputedStyle(e).listStyleType),
+      tab,
+    ).toBe("none")
+    await settled(summary, closed.transform)
+    expect(await look(summary, "::before"), tab).toEqual(closed)
+    await summary.click()
+    await settled(summary, open.transform)
+    expect(await look(summary, "::before"), tab).toEqual(open)
+    await summary.click()
+  }
+  await openTab(page, "Costs")
+  const days = page
+    .locator('table.costs tr[data-agent="smoke:agent"]')
+    .getByRole("button", { name: "Days", exact: true })
+  await settled(days, closed.transform)
+  expect(await look(days, "::before")).toEqual(closed)
+  await days.click()
+  await expect(days).toHaveAttribute("aria-expanded", "true")
+  await settled(days, open.transform)
+  expect(await look(days, "::before")).toEqual(open)
 })
