@@ -3994,10 +3994,10 @@ test("Agents: a machine's group folds on a click and stays folded after a reload
   await page.reload()
   await expect(heading).toHaveAttribute("aria-expanded", "false")
   await expect(group.locator("tr[data-agent]")).toHaveCount(0)
-  // the chevron 2 px below the text's baseline; the folded count 12 px after
+  // the chevron 2 px below the text's baseline; the folded count 11 px after
   // the name (the owner, 2026-11-09)
   await expect(heading.locator(".chevron")).toHaveCSS("vertical-align", "-2px")
-  await expect(heading.locator(".fold-count")).toHaveCSS("margin-left", "12px")
+  await expect(heading.locator(".fold-count")).toHaveCSS("margin-left", "11px")
   await heading.press("Enter")
   await expect(group.locator("tr[data-agent]").first()).toBeVisible()
 })

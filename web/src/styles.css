@@ -375,7 +375,7 @@ button.days[aria-expanded="false"]::before {
   transform: rotate(-90deg);
 }
 tr[app-fold] .fold-count {
-  margin-left: 12px;
+  margin-left: 11px;
   font-weight: normal;
 }
 /*
