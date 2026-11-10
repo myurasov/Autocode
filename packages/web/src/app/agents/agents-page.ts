@@ -36,6 +36,8 @@ import {
   spendParts,
 } from '../format';
 import { HostLink, highlightParam, scrollToHighlight } from '../links';
+import { FoldRow, Folds } from '../fold';
+import { MoreRow, Paged, paged } from '../more';
 import { Updated } from '../updated';
 
 export const REFRESH_MS = 10_000;
@@ -110,7 +112,16 @@ function count(n: number, thing: string): string {
 
 @Component({
   selector: 'app-agents-page',
-  imports: [Breaks, HostLink, IdParts, RouterLink, TimeText, Updated],
+  imports: [
+    Breaks,
+    FoldRow,
+    HostLink,
+    IdParts,
+    MoreRow,
+    RouterLink,
+    TimeText,
+    Updated,
+  ],
   templateUrl: './agents-page.html',
 })
 export class AgentsPage {
@@ -156,6 +167,13 @@ export class AgentsPage {
 
   // The agent a link led to, and the filter the list on show was loaded with.
   protected readonly target = highlightParam('agent');
+  // folded groups and at most 25 rows a group (the owner, 2026-11-09)
+  protected readonly folds = new Folds('agents');
+  protected readonly paging = new Paged();
+  protected groupRows(group: string, rows: Agent[]) {
+    if (this.folds.folded(group)) return { rows: [], left: 0 };
+    return paged(rows, this.paging.count(group), (a) => a.id === this.target());
+  }
   /*
    * The unregistered agents too (the owner, 2026-11-08): off by default; a
    * link that asks for them (?unregistered=1, from the Costs tab) turns it
@@ -196,6 +214,12 @@ export class AgentsPage {
       (id) => this.agents().some((a) => a.id === id),
       'data-agent',
     );
+    // A link into a folded group opens it.
+    effect(() => {
+      const id = this.target();
+      const row = id ? this.agents().find((a) => a.id === id) : undefined;
+      if (row) untracked(() => this.folds.open(row.machine ?? ''));
+    });
     // A filter that would hide the agent a link leads to goes.
     effect(() => {
       const id = this.target();

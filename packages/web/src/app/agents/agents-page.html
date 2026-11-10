@@ -86,15 +86,18 @@
   </thead>
   @for (m of machines(); track m.machine) {
     <tbody [attr.data-machine]="m.machine">
-      <tr class="group">
-        <th
-          class="id-like"
-          colspan="12"
-          scope="rowgroup"
-          [appId]="m.machine || 'unknown machine'"
-        ></th>
+      <!-- a click folds or opens the group; at most 25 rows, then "..."
+           (the owner, 2026-11-09) -->
+      <tr
+        app-fold
+        [columns]="12"
+        [folded]="folds.folded(m.machine)"
+        [count]="m.agents.length"
+        (toggle)="folds.toggle(m.machine)"
+      >
+        <span [appId]="m.machine || 'unknown machine'"></span>
       </tr>
-      @for (a of m.agents; track a.id) {
+      @for (a of groupRows(m.machine, m.agents).rows; track a.id) {
         <tr
           [attr.data-agent]="a.id"
           [class.gone]="a.registered === false"
@@ -270,6 +273,14 @@
             }
           </td>
         </tr>
+      }
+      @if (groupRows(m.machine, m.agents).left; as left) {
+        <tr
+          app-more
+          [columns]="12"
+          [left]="left"
+          (more)="paging.more(m.machine)"
+        ></tr>
       }
     </tbody>
   } @empty {

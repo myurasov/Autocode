@@ -313,21 +313,46 @@ describe('HistoryPage', () => {
     );
   });
 
-  it('Older loads the 100 before the last entry and appends them; it goes when a page comes back short', async () => {
+  // The owner, 2026-11-09: "..." in place of Older: 25 rows at a time of
+  // what is loaded; past them, the next 100 from the server.
+  const moreRow = (page: HTMLElement) =>
+    page.querySelector(
+      'table.history tr.more-rows button',
+    ) as HTMLElement | null;
+  // "..." until every loaded row shows (100 loaded: 3 clicks after the 25).
+  async function showLoaded(page: HTMLElement) {
+    while (moreRow(page) && rows(page).length % 100 !== 0) {
+      moreRow(page)!.click();
+      await settle(fixture);
+    }
+  }
+
+  it('shows 25 rows, then "..." 25 more of what is loaded; past them the 100 before the last; none when a page comes back short', async () => {
     const page = await open(run(300, PAGE));
+    expect(rows(page).length).toBe(25);
+    expect(button(page, 'Older')).toBeUndefined();
+    moreRow(page)!.click();
+    await settle(fixture);
+    expect(rows(page).length).toBe(50);
+    await showLoaded(page);
     expect(rows(page).length).toBe(100);
-    button(page, 'Older')!.click();
+    // past what is loaded: the next 100 from the server
+    moreRow(page)!.click();
     await settle(fixture);
     load(run(200, 30), { before: 201 });
     await settle(fixture);
+    expect(rows(page).length).toBe(125);
+    moreRow(page)!.click();
+    await settle(fixture);
     expect(rows(page).length).toBe(130);
     expect(ids(page).at(-1)).toBe(171);
-    expect(button(page, 'Older')).toBeUndefined();
+    expect(moreRow(page)).toBeNull();
   });
 
-  it('the refresh merges the newest page at the top and keeps what Older loaded', async () => {
+  it('the refresh merges the newest page at the top and keeps what was loaded before', async () => {
     const page = await open(run(300, PAGE));
-    button(page, 'Older')!.click();
+    await showLoaded(page);
+    moreRow(page)!.click();
     await settle(fixture);
     load(run(200, 30), { before: 201 });
     await settle(fixture);
@@ -335,21 +360,24 @@ describe('HistoryPage', () => {
     await settle(fixture);
     load([entry(302), entry(301), ...run(300, 98)]);
     await settle(fixture);
-    expect(rows(page).length).toBe(132);
     expect(ids(page).slice(0, 3)).toEqual([302, 301, 300]);
+    while (moreRow(page)) {
+      moreRow(page)!.click();
+      await settle(fixture);
+    }
+    expect(rows(page).length).toBe(132);
     expect(ids(page).at(-1)).toBe(171);
     expect(new Set(ids(page)).size).toBe(132);
-    expect(button(page, 'Older')).toBeUndefined();
 
     // A newest page with none of what is shown: it replaces the list, and
-    // Older comes back for what lies between.
+    // "..." comes back for what lies between.
     button(page, 'Refresh')!.click();
     await settle(fixture);
     load(run(600, PAGE));
     await settle(fixture);
     expect(ids(page)[0]).toBe(600);
-    expect(rows(page).length).toBe(100);
-    expect(button(page, 'Older')).toBeDefined();
+    expect(rows(page).length).toBe(25);
+    expect(moreRow(page)).not.toBeNull();
   });
 
   it('refreshes every 10 seconds, one refresh at a time', async () => {

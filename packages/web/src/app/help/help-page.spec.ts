@@ -584,6 +584,9 @@ describe('HelpPage', () => {
     );
     // every date the same way (the owner, 2026-11-09)
     expect(after('web')).toContain('Dates read like 05-Nov-26');
+    // 25 rows, "...", folding groups (the owner, 2026-11-09)
+    expect(after('web')).toContain('A table shows 25 rows at first');
+    expect(after('web')).toContain("a click on a group's heading folds");
     expect(after('web-hosts')).toContain('highlighted');
     const agents = after('web-agents');
     expect(agents).toContain('host');

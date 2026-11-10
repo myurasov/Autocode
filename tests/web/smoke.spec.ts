@@ -1548,11 +1548,11 @@ test("History: a row's Data opens as JSON and folds again", async ({
 })
 
 /*
- * Older: with more than 100 entries, the next 100 come under the first; it
- * goes when a page comes back short. The test makes 120 entries of its own
- * (a wake set and cancelled 60 times).
+ * "..." (the owner, 2026-11-09, in place of Older): 25 rows at a time; past
+ * the 100 loaded, the next 100 come under them; it goes at the end. The test
+ * makes 120 entries of its own (a wake set and cancelled 60 times).
  */
-test("History: Older loads the next entries when there are more than 100", async ({
+test("History: ... shows 25 more, then loads the next entries past 100", async ({
   page,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -1574,25 +1574,34 @@ test("History: Older loads the next entries when there are more than 100", async
   await signIn(page, admin)
   await openTab(page, "History")
   const rows = page.locator("table.history tr[data-entry]")
-  await expect(rows).toHaveCount(100)
-  const older = page.getByRole("button", { name: "Older", exact: true })
-  await expect(older).toBeVisible()
+  const more = page.locator("table.history tr.more-rows button")
+  await expect(rows).toHaveCount(25)
+  await expect(page.getByRole("button", { name: "Older" })).toHaveCount(0)
+  for (const n of [50, 75, 100]) {
+    await more.click()
+    await expect(rows).toHaveCount(n)
+  }
   const last = Number(await rows.last().getAttribute("data-entry"))
-  await older.click()
-  await expect.poll(() => rows.count()).toBeGreaterThan(100)
-  // The ones Older added are all older than the first page's last.
+  await more.click()
+  await expect.poll(() => rows.count()).toBe(125)
+  // the ones it fetched are all older than the first 100's last
   const added = await rows.evaluateAll((all) =>
     all.slice(100).map((r) => Number(r.getAttribute("data-entry"))),
   )
   for (const id of added) expect(id).toBeLessThan(last)
-  // Narrowed to these 120, two pages: Older goes after the second.
+  // Narrowed to these 120: "..." goes once all of them show.
   await page.getByLabel("Kind", { exact: true }).selectOption("wake.*")
   await page.getByLabel("Agent", { exact: true }).fill("smoke:agent")
   await page.getByLabel("Agent", { exact: true }).press("Enter")
-  await expect(rows).toHaveCount(100)
-  await older.click()
-  await expect.poll(() => rows.count()).toBeGreaterThan(120)
-  await expect(older).toHaveCount(0)
+  await expect(rows).toHaveCount(25)
+  // each click shows more (past 100 after the next page loads)
+  for (let i = 0; i < 12 && (await more.count()); i++) {
+    const shown = await rows.count()
+    await more.click()
+    await expect.poll(() => rows.count()).toBeGreaterThan(shown)
+  }
+  expect(await rows.count()).toBeGreaterThan(120)
+  await expect(more).toHaveCount(0)
 })
 
 /*
@@ -3966,4 +3975,23 @@ test("Messages: the Read box is off by default and hides read messages", async (
       ).some((s) => s.startsWith("read")),
     )
     .toBe(true)
+})
+
+// The owner, 2026-11-09: a group folds and opens on a click on its heading,
+// and stays so after a reload.
+test("Agents: a machine's group folds on a click and stays folded after a reload", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  const group = page.locator('table.agents tbody[data-machine="smoke"]')
+  const heading = group.locator("tr.group th")
+  await expect(group.locator("tr[data-agent]").first()).toBeVisible()
+  await heading.click()
+  await expect(group.locator("tr[data-agent]")).toHaveCount(0)
+  await expect(heading).toHaveAttribute("aria-expanded", "false")
+  await page.reload()
+  await expect(heading).toHaveAttribute("aria-expanded", "false")
+  await expect(group.locator("tr[data-agent]")).toHaveCount(0)
+  await heading.press("Enter")
+  await expect(group.locator("tr[data-agent]").first()).toBeVisible()
 })

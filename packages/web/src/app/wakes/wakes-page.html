@@ -106,12 +106,18 @@
   </thead>
   @for (g of agents(); track g.agent) {
     <tbody [attr.data-agent]="g.agent">
-      <tr class="group">
-        <th class="id-like" colspan="9" scope="rowgroup">
-          <app-agent-link [id]="g.agent" [plain]="true" />
-        </th>
+      <!-- a click folds or opens the group; at most 25 rows, then "..."
+           (the owner, 2026-11-09) -->
+      <tr
+        app-fold
+        [columns]="9"
+        [folded]="folds.folded(g.agent)"
+        [count]="g.wakes.length"
+        (toggle)="folds.toggle(g.agent)"
+      >
+        <app-agent-link [id]="g.agent" [plain]="true" />
       </tr>
-      @for (w of g.wakes; track w.name) {
+      @for (w of groupRows(g.agent, g.wakes).rows; track w.name) {
         <tr [attr.data-wake]="w.name">
           <td class="name id-like"><code [appId]="w.name"></code></td>
           <td class="trigger">{{ triggerText(w.trigger) }}</td>
@@ -208,6 +214,14 @@
             </div>
           </td>
         </tr>
+      }
+      @if (groupRows(g.agent, g.wakes).left; as left) {
+        <tr
+          app-more
+          [columns]="9"
+          [left]="left"
+          (more)="paging.more(g.agent)"
+        ></tr>
       }
     </tbody>
   } @empty {

@@ -1,11 +1,12 @@
 /*
  * The History page (the owner, 2026-11-04): every server event, newest first,
- * a page of 100 at a time (Older loads the next ones), filtered by an agent
+ * loaded 100 at a time and shown 25 at a time ("...": 25 more, then the next
+ * 100 from the server; the owner, 2026-11-09), filtered by an agent
  * pattern and a kind (a group like wake.*, or one kind), both kept in the
  * address; each entry's time, kind, agent and host (links to their pages),
  * session and a summary of its data, the whole data as JSON on a click
  * anywhere in its cell. Refreshed every 10 s (one refresh at a time): the
- * newest page merges at the top, keeping what Older loaded and what is open.
+ * newest page merges at the top, keeping what was loaded and what is open.
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
@@ -16,6 +17,7 @@ import { Api, errorText, type HistoryEntry, type HistoryKind } from '../api';
 import { IdParts, TimeText } from '../breaks';
 import { folded } from '../format';
 import { AgentLink, HostLink } from '../links';
+import { MoreRow, PAGE_ROWS, Paged, paged } from '../more';
 import { Updated } from '../updated';
 
 // How many entries a page has.
@@ -60,7 +62,7 @@ export function mergeNewest(
 
 @Component({
   selector: 'app-history-page',
-  imports: [AgentLink, HostLink, IdParts, TimeText, Updated],
+  imports: [AgentLink, HostLink, IdParts, MoreRow, TimeText, Updated],
   templateUrl: './history-page.html',
 })
 export class HistoryPage {
@@ -84,6 +86,18 @@ export class HistoryPage {
   });
   // Whether there may be older entries than those shown.
   protected readonly more = signal(false);
+  // 25 rows at a time of what is loaded (the owner, 2026-11-09).
+  protected readonly paging = new Paged();
+  protected readonly pageSize = PAGE_ROWS;
+  protected readonly page = computed(() =>
+    paged(this.entries(), this.paging.count('history')),
+  );
+
+  // "...": 25 more of what is loaded; past it, the next 100 from the server.
+  protected async showMore(): Promise<void> {
+    if (!this.page().left && this.more()) await this.older();
+    this.paging.more('history');
+  }
   protected readonly loaded = signal(false);
   protected readonly loadingOlder = signal(false);
   protected readonly error = signal('');
@@ -143,7 +157,11 @@ export class HistoryPage {
         ? { entries: page, replaced: true }
         : mergeNewest(this.entries(), page);
       this.entries.set(merged.entries);
-      if (merged.replaced) this.more.set(page.length === PAGE);
+      // a new list (new filters, or none of what was shown): 25 again
+      if (merged.replaced) {
+        this.more.set(page.length === PAGE);
+        this.paging.reset('history');
+      }
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {

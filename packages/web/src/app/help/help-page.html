@@ -593,7 +593,8 @@ autocode plugin install --url http://SERVER:4848 \
 [autocode] wake "standup", 2 messages
 [autocode] retry 3
 [autocode] lock "gpu-0" granted
-[autocode] compaction next</pre
+[autocode] compaction next
+[autocode] 1 message, during your turn</pre
     >
     <p>
       Below it come the parts: each wake with its text, and each message with
@@ -601,7 +602,8 @@ autocode plugin install --url http://SERVER:4848 \
       agent to continue where it left off; a lock's notice says until when
       the agent holds it; <code>[autocode] compaction next</code> says the
       session is compacted when that turn ends (its context passed
-      <code>compact_at</code>; it comes also when nothing else waits for it,
+      <code>compact_at</code>; it comes as soon as that happens, into a
+      running turn too, and also when nothing else waits for it,
       say after your own turns in the TUI), so the agent brings its work to a
       stable state and writes down what it needs first. What others wrote, and a check's
       output, is quoted: each such line starts with <code>&gt; </code>, so it
@@ -845,7 +847,10 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       scrolls it into view; the browser's back button returns. Dates read
       like 05-Nov-26, times like 05-Nov-26 14:22:03 PT, in your browser's
       zone (the Costs tab's days and when its data was read are the
-      server's).
+      server's). A table shows 25 rows at first; the "..." row at its end
+      shows 25 more (on History, past what is loaded, the next 100 from the
+      server). Agents, Hosts and Wakes are in groups, 25 rows each: a click on
+      a group's heading folds or opens it, and the page remembers it.
     </p>
 
     <h3 id="web-hosts">

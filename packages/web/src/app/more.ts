@@ -34,6 +34,11 @@ export class Paged {
   more(key: string): void {
     this.counts.update((c) => ({ ...c, [key]: this.count(key) + PAGE_ROWS }));
   }
+
+  // A new list: back to the first 25.
+  reset(key: string): void {
+    this.counts.update(({ [key]: _, ...rest }) => rest);
+  }
 }
 
 // The "..." row: one cell across the table's columns.

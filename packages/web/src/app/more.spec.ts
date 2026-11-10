@@ -30,11 +30,13 @@ describe('paged', () => {
     expect(v.left).toBe(0);
   });
 
-  it('keeps a count per list (a group of a grouped table)', () => {
+  it('keeps a count per list (a group of a grouped table); a new list starts at 25', () => {
     const p = new Paged();
     p.more('a');
     expect(p.count('a')).toBe(50);
     expect(p.count('b')).toBe(25);
+    p.reset('a');
+    expect(p.count('a')).toBe(25);
   });
 
   it('a row a link points at is shown, past the 25 too', () => {

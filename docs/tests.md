@@ -1090,6 +1090,20 @@ in what it read.
   a guide topic `owner` ("Writing to the Owner": only what the owner needs, the point first, a short list, the options
   and the default, plain words, details in a file); one sentence in the line every registered session gets; the
   message tool's text and the approval tool say it where the text is written; howto and Help.
+- **25 rows a table, folding groups, `...` in place of Older** (the owner, 2026-11-09: "in each table after max 25
+  rows there should be "..." indicator at the bottom that loads 25 rows more"; grouped tables "25 per group with ... as
+  the last row; also make groups collapsible on group row click and remember the collapse state for each group";
+  History "..." in place of Older; tests first, red, then green): `more.spec.ts` (paged, Paged, the row), `fold.spec.ts`
+  (fold, open, kept per table in localStorage, a link opens its group, the heading row), `agents-page.spec.ts` (a group
+  folds and stays folded; 25 a group, then "..."), `history-page.spec.ts` (25 at a time, then the next 100), and
+  `smoke.spec.ts` (a group folds and stays folded after a reload; History's "..." past 100). Inbox, Messages, Locks,
+  Jobs, Runs and Costs (and its days) show 25, then "..."; a row a link points at always shows. Settings and Help are
+  not limited.
+- **`compaction next` into a running turn** (the owner, 2026-11-09: "i want compaction notice/compaction message to be
+  injected mid turn, if we're past the threshold"; tests first: `reliability.test.ts` 2, `agent-guide.test.ts`, red,
+  then green): a step past `compact_at` during a turn sends the notice into it with `steer` at once (once; the
+  compaction when the turn ends; history `session.compact.noticed` with `steer`); not while paused (it comes on
+  resume) or in the error state.
 - **The Messages tab's Read box** (the owner, 2026-11-09: off by default; tests first: `messages-page.spec.ts`,
   `smoke.spec.ts`, `help-page.spec.ts`, red, then green): off, only queued and dropped messages; on, every one. The
   smoke helper turns it on for the other Messages checks.

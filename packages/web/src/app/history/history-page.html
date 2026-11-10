@@ -2,7 +2,8 @@
   The History page: Refresh (a failed load's message beside it), the Agent
   filter and the Kind list; the entries, newest first (agent and host IDs link
   to their pages; Data shows the whole data on a click anywhere in its cell);
-  Older, while there may be more; and when the list last loaded.
+  "..." for 25 more (then the next 100 from the server), while there may be
+  more; and when the list last loaded.
 -->
 
 <div class="toolbar">
@@ -57,7 +58,7 @@
     </tr>
   </thead>
   <tbody>
-    @for (e of entries(); track e.id) {
+    @for (e of page().rows; track e.id) {
       <tr [attr.data-entry]="e.id">
         <td class="time" [title]="e.at" [appTime]="e.at"></td>
         <td class="kind id-like"><code [appId]="e.kind"></code></td>
@@ -110,15 +111,17 @@
         </td>
       </tr>
     }
+    <!-- 25 more of what is loaded; past it, the next 100 from the server
+         (the owner, 2026-11-09: in place of Older) -->
+    @if (page().left || (more() && !loadingOlder())) {
+      <tr
+        app-more
+        [columns]="6"
+        [left]="page().left || pageSize"
+        (more)="showMore()"
+      ></tr>
+    }
   </tbody>
 </table>
-
-@if (more()) {
-  <div class="buttons older">
-    <button type="button" [disabled]="loadingOlder()" (click)="older()">
-      Older
-    </button>
-  </div>
-}
 
 <footer class="muted"><app-updated [at]="updatedAt()" /></footer>

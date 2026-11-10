@@ -338,6 +338,43 @@ tr.group th {
   background: var(--softer);
   color: var(--fg-strong);
 }
+/*
+ * It folds and opens its group on a click (the owner, 2026-11-09): a chevron
+ * before the name, pointing down when open; when folded, how many rows it
+ * hides after the name.
+ */
+tr[app-fold] > th {
+  cursor: pointer;
+  user-select: none;
+}
+tr[app-fold] > th:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+tr[app-fold] .chevron {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.45rem;
+  vertical-align: -1px;
+  background: var(--chevron) center / contain no-repeat;
+  transition: transform 0.12s;
+}
+tr[app-fold].folded .chevron {
+  transform: rotate(-90deg);
+}
+tr[app-fold] .fold-count {
+  margin-left: 0.5rem;
+  font-weight: normal;
+}
+/* The "..." row at a table's (or group's) end: 25 more on a click. */
+tr.more-rows > td {
+  text-align: center;
+}
+tr.more-rows button {
+  min-width: 3rem;
+  margin-right: 0.4rem;
+}
 td.from.set {
   color: var(--fg-strong);
   font-weight: var(--bold);

@@ -22,6 +22,8 @@ import { Api, errorText, type Host } from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
 import { versionText } from '../format';
 import { highlightParam, scrollToHighlight } from '../links';
+import { FoldRow, Folds } from '../fold';
+import { MoreRow, Paged, paged } from '../more';
 import { Updated } from '../updated';
 
 // What each kind of OpenCode process is called on the page.
@@ -44,7 +46,7 @@ export const NO_SHELL_VALUES =
 
 @Component({
   selector: 'app-hosts-page',
-  imports: [Breaks, IdParts, TimeText, Updated],
+  imports: [Breaks, FoldRow, IdParts, MoreRow, TimeText, Updated],
   templateUrl: './hosts-page.html',
 })
 export class HostsPage {
@@ -75,6 +77,13 @@ export class HostsPage {
 
   // The host a link led to, and whether the list on show lacks it.
   protected readonly target = highlightParam('host');
+  // folded groups and at most 25 rows a group (the owner, 2026-11-09)
+  protected readonly folds = new Folds('hosts');
+  protected readonly paging = new Paged();
+  protected groupRows(group: string, rows: Host[]) {
+    if (this.folds.folded(group)) return { rows: [], left: 0 };
+    return paged(rows, this.paging.count(group), (h) => h.id === this.target());
+  }
   protected readonly missing = computed(() => {
     const id = this.target();
     if (!id || this.updatedAt() === null) return null;
@@ -87,6 +96,8 @@ export class HostsPage {
       const id = this.target();
       const host = this.hosts().find((h) => h.id === id);
       if (host && !host.online) untracked(() => this.showOffline.set(true));
+      // and a link into a folded group opens it
+      if (host) untracked(() => this.folds.open(host.machine));
     });
     void this.refresh();
     const timer = setInterval(() => {

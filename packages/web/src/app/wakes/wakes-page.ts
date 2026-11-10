@@ -14,6 +14,8 @@ import { Api, errorText, type Wake, type WakeInput } from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
 import { FOLD_CHARS, folded, localTime } from '../format';
 import { AgentLink } from '../links';
+import { FoldRow, Folds } from '../fold';
+import { MoreRow, Paged, paged } from '../more';
 import { Updated } from '../updated';
 
 // The parts of a wake that fold when long.
@@ -30,7 +32,7 @@ export function triggerText(trigger: string): string {
 
 @Component({
   selector: 'app-wakes-page',
-  imports: [AgentLink, Breaks, IdParts, TimeText, Updated],
+  imports: [AgentLink, Breaks, FoldRow, IdParts, MoreRow, TimeText, Updated],
   templateUrl: './wakes-page.html',
 })
 export class WakesPage {
@@ -47,6 +49,13 @@ export class WakesPage {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([agent, wakes]) => ({ agent, wakes }));
   });
+  // folded groups and at most 25 rows a group (the owner, 2026-11-09)
+  protected readonly folds = new Folds('wakes');
+  protected readonly paging = new Paged();
+  protected groupRows(group: string, rows: Wake[]) {
+    if (this.folds.folded(group)) return { rows: [], left: 0 };
+    return paged(rows, this.paging.count(group));
+  }
   protected readonly loaded = signal(false);
   // Why the list did not load.
   protected readonly error = signal('');

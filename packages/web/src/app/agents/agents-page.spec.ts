@@ -91,10 +91,10 @@ describe('AgentsPage', () => {
     req.flush({ agents });
   }
 
-  async function open(): Promise<HTMLElement> {
+  async function open(agents = AGENTS): Promise<HTMLElement> {
     signedIn();
     fixture = TestBed.createComponent(AgentsPage);
-    load();
+    load(agents);
     await settle(fixture);
     return el(fixture);
   }
@@ -209,6 +209,56 @@ describe('AgentsPage', () => {
       ),
     ).toBeNull();
     expect(contextBar(k({ context: null, context_share: null }))).toBeNull();
+  });
+
+  // The owner, 2026-11-09: a group's heading folds and opens it, kept per
+  // group; at most 25 rows a group, then "...".
+  it('a click on a machine folds and opens its group, kept for the next visit', async () => {
+    let page = await open();
+    const heading = () =>
+      page.querySelector(
+        'tbody[data-machine="machine-a"] tr.group th',
+      ) as HTMLElement;
+    const rowsOf = () =>
+      page.querySelectorAll('tbody[data-machine="machine-a"] tr[data-agent]')
+        .length;
+    expect(rowsOf()).toBe(1);
+    heading().click();
+    await settle(fixture);
+    expect(rowsOf()).toBe(0);
+    expect(heading().getAttribute('aria-expanded')).toBe('false');
+    // the other group stays open
+    expect(
+      page.querySelectorAll('tbody[data-machine="laptop"] tr[data-agent]')
+        .length,
+    ).toBe(1);
+    fixture.destroy();
+    page = await open();
+    expect(rowsOf()).toBe(0);
+    heading().click();
+    await settle(fixture);
+    expect(rowsOf()).toBe(1);
+  });
+
+  it('shows at most 25 agents a machine, then a "..." row for 25 more', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      ...AGENTS[0]!,
+      id: `team:a${String(i).padStart(2, '0')}`,
+    }));
+    const page = await open(many);
+    const rows = () =>
+      page.querySelectorAll('tbody[data-machine="machine-a"] tr[data-agent]');
+    expect(rows().length).toBe(25);
+    const more = page.querySelector(
+      'tbody[data-machine="machine-a"] tr.more-rows',
+    )!;
+    expect(more.querySelector('td')!.getAttribute('colspan')).toBe('12');
+    (more.querySelector('button') as HTMLElement).click();
+    await settle(fixture);
+    expect(rows().length).toBe(30);
+    expect(
+      page.querySelector('tbody[data-machine="machine-a"] tr.more-rows'),
+    ).toBeNull();
   });
 
   it('tokens in K and M; the context without a threshold, or without a window', () => {

@@ -44,15 +44,18 @@
   </thead>
   @for (m of machines(); track m.machine) {
     <tbody [attr.data-machine]="m.machine">
-      <tr class="group">
-        <th
-          class="id-like"
-          colspan="7"
-          scope="rowgroup"
-          [appId]="m.machine || 'unknown machine'"
-        ></th>
+      <!-- a click folds or opens the group; at most 25 rows, then "..."
+           (the owner, 2026-11-09) -->
+      <tr
+        app-fold
+        [columns]="7"
+        [folded]="folds.folded(m.machine)"
+        [count]="m.hosts.length"
+        (toggle)="folds.toggle(m.machine)"
+      >
+        <span [appId]="m.machine || 'unknown machine'"></span>
       </tr>
-      @for (h of m.hosts; track h.id) {
+      @for (h of groupRows(m.machine, m.hosts).rows; track h.id) {
         <tr
           [attr.data-host]="h.id"
           [class.highlight]="h.id === target()"
@@ -79,6 +82,14 @@
           <td class="plugin">{{ versionText(h.plugin_version) }}</td>
           <td class="time" [title]="h.last_seen" [appTime]="h.last_seen"></td>
         </tr>
+      }
+      @if (groupRows(m.machine, m.hosts).left; as left) {
+        <tr
+          app-more
+          [columns]="7"
+          [left]="left"
+          (more)="paging.more(m.machine)"
+        ></tr>
       }
     </tbody>
   } @empty {

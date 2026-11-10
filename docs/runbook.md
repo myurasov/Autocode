@@ -167,6 +167,9 @@ Out**; a token the server stops accepting sends you back to sign-in. Other sites
 `05-Nov-26` and times like `05-Nov-26 14:22:03 PT`, in your browser's zone (the Costs tab's days and when its data
 was read are the server's). Pages:
 
+- **Every table** shows 25 rows at first; the **...** row at its end shows 25 more (on History, past what is loaded,
+  the next 100 from the server). Agents, Hosts and Wakes are grouped (by machine, by agent), 25 rows a group: a click
+  on a group's heading folds or opens it, and the browser remembers it; a link to a row opens its group.
 - **Hosts:** each OpenCode server folder the plugin connects from, by machine (folder, status, the OpenCode process
   it runs in, OpenCode and plugin versions, last seen), refreshed every 10 s; offline ones only with the **Offline**
   box (off by default; a link to an offline host turns it on); it says how many seconds ago it last loaded. The
