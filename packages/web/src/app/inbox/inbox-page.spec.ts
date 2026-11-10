@@ -375,6 +375,19 @@ describe('InboxPage', () => {
         'Permission',
         'Approval',
       ]);
+      // each kind its color (the owner, 2026-11-09)
+      expect(
+        [...page.querySelectorAll('table.inbox tr[data-item] td.kind')].map(
+          (td) => td.className,
+        ),
+      ).toEqual([
+        'kind kind-message',
+        'kind kind-alert',
+        'kind kind-question',
+        'kind kind-question',
+        'kind kind-permission',
+        'kind kind-approval',
+      ]);
       const q1 = row(page, 'ask_q1');
       expect(text(q1.querySelector('.title'))).toBe(
         'Question from team:worker: Which fold?',

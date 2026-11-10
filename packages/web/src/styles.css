@@ -393,6 +393,41 @@ table.inbox .body:not(app-markdown) {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/*
+ * The Inbox's Kind in color (the owner, 2026-11-09): a message green, an
+ * alert red, a question sky blue, a permission amber, an approval violet;
+ * lighter shades in the dark theme.
+ */
+table.inbox td.kind-message {
+  color: #284;
+}
+table.inbox td.kind-alert {
+  color: #c33;
+}
+table.inbox td.kind-question {
+  color: #18c;
+}
+table.inbox td.kind-permission {
+  color: #b70;
+}
+table.inbox td.kind-approval {
+  color: #74c;
+}
+html.dark table.inbox td.kind-message {
+  color: #4c8;
+}
+html.dark table.inbox td.kind-alert {
+  color: #e77;
+}
+html.dark table.inbox td.kind-question {
+  color: #6cf;
+}
+html.dark table.inbox td.kind-permission {
+  color: #da4;
+}
+html.dark table.inbox td.kind-approval {
+  color: #b9f;
+}
 table.inbox .answer,
 table.inbox textarea {
   margin-top: 0.35rem;

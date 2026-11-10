@@ -1090,6 +1090,9 @@ in what it read.
   a guide topic `owner` ("Writing to the Owner": only what the owner needs, the point first, a short list, the options
   and the default, plain words, details in a file); one sentence in the line every registered session gets; the
   message tool's text and the approval tool say it where the text is written; howto and Help.
+- **The Inbox's Kind in color** (the owner, 2026-11-09: "message green, alert red, question skyblue"; permission
+  amber, approval violet; tests first: `inbox-page.spec.ts` (a class per kind), `smoke.spec.ts` (each kind's computed
+  color in light and dark), red, then green).
 - **Every message's text as markdown** (the owner, 2026-11-09: first "messages to owner to use <pre> and fixed wdth
   font", "Every message everywhere"; then, in a message steered into this session's turn: "I changed my mind about
   messages. Let them use normal font, but render markdown"; tests first, red, then green): `markdown.spec.ts`

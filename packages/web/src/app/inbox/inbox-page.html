@@ -52,7 +52,8 @@
           [title]="item.created_at"
           [appTime]="item.created_at"
         ></td>
-        <td class="kind">{{ kindText(item) }}</td>
+        <!-- each kind its color (the owner, 2026-11-09) -->
+        <td [class]="'kind kind-' + item.kind">{{ kindText(item) }}</td>
         <td class="agent id-like">
           @if (item.agent) {
             <app-agent-link [id]="item.agent" />

@@ -3881,3 +3881,56 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
     await api.dispose()
   }
 })
+
+// The owner, 2026-11-09: the Inbox's Kind in color: Message green, Alert red,
+// Question sky blue (Permission amber, Approval violet), in both themes.
+test("the Inbox's Kind is colored by kind, in both themes", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "Inbox")
+  const kind = page
+    .locator("table.inbox tr[data-item] td.kind", { hasText: /^Message$/ })
+    .first()
+  const isDark = () =>
+    page.evaluate(() => document.documentElement.classList.contains("dark"))
+  const want = {
+    light: {
+      message: "rgb(34, 136, 68)",
+      alert: "rgb(204, 51, 51)",
+      question: "rgb(17, 136, 204)",
+      permission: "rgb(187, 119, 0)",
+      approval: "rgb(119, 68, 204)",
+    },
+    dark: {
+      message: "rgb(68, 204, 136)",
+      alert: "rgb(238, 119, 119)",
+      question: "rgb(102, 204, 255)",
+      permission: "rgb(221, 170, 68)",
+      approval: "rgb(187, 153, 255)",
+    },
+  }
+  for (let i = 0; i < 2; i++) {
+    const dark = await isDark()
+    const theme = dark ? "dark" : "light"
+    // every kind's class, measured on one cell
+    const seen = await kind.evaluate((td) => {
+      const out: Record<string, string> = {}
+      for (const k of [
+        "message",
+        "alert",
+        "question",
+        "permission",
+        "approval",
+      ]) {
+        td.className = `kind kind-${k}`
+        out[k] = getComputedStyle(td).color
+      }
+      td.className = "kind kind-message"
+      return out
+    })
+    expect(seen, theme).toEqual(want[theme])
+    await page.getByRole("button", { name: "Light or dark" }).click()
+    await expect.poll(isDark).toBe(!dark)
+  }
+})
