@@ -677,6 +677,23 @@ describe("the plugin in-process, tier 0b", () => {
         delivery: "queue",
       },
     })
+    // a steer goes into the running turn at its next step (the owner,
+    // 2026-11-09)
+    await instruct(host, "inject", {
+      session: "ses_inj",
+      prompt_id: "msg_0123456789abcdef01234568",
+      text: "[autocode] 1 message, during your turn",
+      delivery: "steer",
+    })
+    expect(fake.calls).toContainEqual({
+      kind: "prompt",
+      input: {
+        sessionID: "ses_inj",
+        id: "msg_0123456789abcdef01234568",
+        text: "[autocode] 1 message, during your turn",
+        delivery: "steer",
+      },
+    })
     await instruct(host, "interrupt", { session: "ses_inj" })
     expect(fake.calls).toContainEqual({
       kind: "interrupt",
@@ -897,10 +914,18 @@ describe("the plugin in-process, tier 0b", () => {
         "ses_tool_a",
       ),
     ).toMatch(/^Sent to tools:b \(m_\w+\)\.$/)
-    // Phase 1: no list or read; a message reaches an agent in its prompt
+    // the owner, 2026-11-09: list and read are back
     expect(
       await run("autocode_message", { action: "list" }, "ses_tool_b"),
-    ).toBe("error: autocode_message has send, answer and escalate")
+    ).toMatch(
+      /^Waiting: m_\w+ from agent tools:a, subject "plot", 6 characters\./,
+    )
+    expect(
+      await run("autocode_message", { action: "read" }, "ses_tool_b"),
+    ).toMatch(/^Message m_\w+ from agent tools:a, subject "plot":\n> see it$/)
+    expect(
+      await run("autocode_message", { action: "list" }, "ses_tool_b"),
+    ).toBe("No messages wait for you.")
     expect(
       await run(
         "autocode_message",

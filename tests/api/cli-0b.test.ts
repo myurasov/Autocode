@@ -339,6 +339,21 @@ describe("owner commands", () => {
     expect(json.find((m: any) => m.id === id)?.state).toBe("queued")
   })
 
+  // The owner, 2026-11-09: one state, read, with how (prompt, steer, read,
+  // wait, inbox).
+  test("messages: a read copy says how it was read", async () => {
+    const sent = await cli(["send", "kaggle:worker", "hello"], asLead())
+    const id = /(m_\w+)/.exec(sent.stdout)![1]!
+    const read = await call(t.url, worker, "POST", "/v1/me/messages/read", {
+      id,
+    })
+    expect(read.status).toBe(200)
+    const all = await cli(["messages"], asAdmin())
+    const line = all.stdout.split("\n").find((l) => l.includes(id))!
+    expect(line).toMatch(/\sread \(read\)\s/)
+    expect(all.stdout.split("\n")[0]).toMatch(/\bSTATE\b/)
+  })
+
   // Tier 0c: every lock, by pattern; the owner releases a hold.
   test("locks: holders and queues, by pattern; the owner releases a hold", async () => {
     const acquire = (token: string, name: string, body: object) =>

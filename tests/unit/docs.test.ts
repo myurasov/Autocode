@@ -44,22 +44,21 @@ test("howto's prose lines are at most 120 columns", () => {
   expect(long).toEqual([])
 })
 
-// The final review (2026-11-08): no word of the message actions Phase 1 took
-// out (list, read, wait), inline_limit, unread, or the read state, in what
-// owners and agents read; the Costs tab and `autocode costs` are named.
+// The final review (2026-11-08): no word of inline_limit or unread in what
+// owners and agents read; the owner, 2026-11-09: list, read and wait are
+// back, one final state `read` (no `delivered`), and no "no reading or
+// waiting". The Costs tab and `autocode costs` are named.
 const read = (path: string) =>
   readFileSync(resolve(import.meta.dir, "../..", path), "utf8")
 const gone = [
-  /list, read/,
-  /read and wait/,
   /\binline_limit\b/,
   /\bunread\b/i,
-  /queued, delivered,? (and |or )?read/,
-  /\(queued, delivered, read\)/,
-  /`read` \(id\)/,
+  /queued, delivered/,
+  /\bdelivered \(in a prompt/,
+  /no reading or waiting/i,
 ]
 
-test("README, runbook, howto and Help say nothing of what Phase 1 took out", () => {
+test("README, runbook, howto and Help say nothing of what went", () => {
   for (const path of [
     "README.md",
     "docs/runbook.md",
@@ -70,6 +69,22 @@ test("README, runbook, howto and Help say nothing of what Phase 1 took out", () 
     for (const pattern of gone)
       expect(text, `${path} ${pattern}`).not.toMatch(pattern)
   }
+})
+
+test("README, runbook, howto and Help say messages steer into a running turn, and list, read and wait", () => {
+  for (const path of [
+    "README.md",
+    "docs/runbook.md",
+    "docs/howto.md",
+    "packages/web/src/app/help/help-page.html",
+  ]) {
+    const text = read(path).replace(/\s+/g, " ")
+    expect(text, path).toMatch(/at (its|the turn's) next step/)
+    expect(text, path).toMatch(/\bread\b.*\bwait\b/)
+  }
+  const howto = read("docs/howto.md").replace(/\s+/g, " ")
+  for (const action of ["action=list", "action=read", "action=wait"])
+    expect(howto).toContain(action)
 })
 
 test("README and runbook name the Costs tab and autocode costs", () => {

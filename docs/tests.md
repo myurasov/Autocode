@@ -1066,5 +1066,20 @@ in what it read.
   `title`, which the browser shows late), `help-page.spec.ts`, `smoke.spec.ts` (each day's hover area its whole
   column; a hover at a short day's empty top shows the tip within 300 ms, above the bar, inside the frame, on top;
   the totals row's too; it goes when the mouse leaves). Screenshots of a hover looked at.
+- **Messages steer into a running turn; list, read and wait back; one state `read`** (the owner, 2026-11-09:
+  "co sa meetins processing session couldnt read response from update loop session ... right away"; "bring back wait,
+  list and read"; "lets implement (2)"; tests first, red, then green): `messages-read.test.ts` 20 (read via prompt,
+  a lost prompt requeues, the owner's copy read at answer or close, the owner's views change nothing; a message and a
+  lock notice steer into a running turn at once, not a wake; no steer while paused, before our prompt's turn starts,
+  while the agent's own wait is open, or after a failed steer, which comes in the next prompt; list without text,
+  by sender and reply; read whole, oldest first, never injected, `message.read` history; by id, sender, reply; 32,000
+  characters a call; notices; wait at once, on a new message, filtered, until `max_tool_wait`; bad input; dropped
+  vs read), `store.test.ts` (migration 16), `agent-guide.test.ts` (the tool's actions and texts, list/read/wait,
+  status), `plugin-asks.test.ts`, `plugin-inprocess.test.ts` (inject with `delivery: "steer"`; list and read through
+  the plugin), `cli-0b.test.ts` (`read (read)`), `messages`/`messages-injected`/`locks` (read for delivered),
+  `docs.test.ts` (no "no reading or waiting", no `delivered (in a prompt`; steer, read and wait named),
+  `help-page.spec.ts`, `messages-page.spec.ts` (`read (inbox)`, its tooltip), `smoke.spec.ts`, and e2e
+  `wakes-messages.test.ts` 2 with real OpenCode (a message sent during a turn reaches the model in that same turn;
+  read in a turn, never injected after).
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

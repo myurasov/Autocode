@@ -1,7 +1,8 @@
 /*
  * The Messages page: every message, newest first, with its ID, sender and
  * recipient (an agent's a link to the Agents page), subject, text (every
- * message is text), size and state, refreshed every 10 s (one refresh at a
+ * message is text), size and state (read, with how and when in the tooltip:
+ * the owner, 2026-11-09), refreshed every 10 s (one refresh at a
  * time); a long text shows its first 200 characters until a click anywhere in
  * its cell (or Enter) opens it, read whole once, and the next folds it; and a
  * form, collapsed until opened, to send a text as the owner, to an agent ID,
@@ -12,9 +13,31 @@ import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Message } from '../api';
 import { IdParts, TimeText } from '../breaks';
-import { FOLD_CHARS } from '../format';
+import { FOLD_CHARS, localTime } from '../format';
 import { AgentLink } from '../links';
 import { Updated } from '../updated';
+
+// How a copy was read, for its state's tooltip.
+const VIA: Record<string, string> = {
+  prompt: 'in a prompt',
+  steer: 'during a turn of its recipient',
+  read: "with its recipient's read",
+  wait: "with its recipient's wait",
+  inbox: 'in your Inbox',
+};
+
+// A message's state as shown: read with how ("read (inbox)").
+export function stateText(m: Message): string {
+  return m.state === 'read' && m.read_via ? `read (${m.read_via})` : m.state;
+}
+
+// Its tooltip: when and how it was read, or what it waits for.
+export function stateTitle(m: Message): string {
+  if (m.state === 'queued') return 'Waiting for its recipient';
+  if (m.state === 'dropped') return 'Dropped: its agent unregistered first';
+  const how = m.read_via ? `, ${VIA[m.read_via] ?? m.read_via}` : '';
+  return m.read_at ? `Read ${localTime(m.read_at)}${how}` : `Read${how}`;
+}
 
 // An opened long text: the whole text, why it could not be read, or nothing
 // yet.
@@ -40,6 +63,8 @@ export function recipients(to: string): string | string[] {
 })
 export class MessagesPage {
   private readonly api = inject(Api);
+  protected readonly stateText = stateText;
+  protected readonly stateTitle = stateTitle;
 
   protected readonly messages = signal<Message[]>([]);
   protected readonly loaded = signal(false);

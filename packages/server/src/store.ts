@@ -438,6 +438,63 @@ export const MIGRATIONS: string[] = [
     at INTEGER NOT NULL
   );
   `,
+  /*
+   * 16 (the owner, 2026-11-09): one final state, read, however a copy got
+   * there (read_via: a prompt to an idle session, a steer into a running
+   * turn, the agent's read or wait, the owner's inbox). Delivered copies are
+   * read via prompt; the owner's are read once their inbox item closed, else
+   * queued.
+   */
+  `
+  CREATE TABLE messages_new (
+    id TEXT PRIMARY KEY,
+    send_id TEXT NOT NULL,
+    from_id TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    to_spec TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    reply_to TEXT,
+    body TEXT NOT NULL,
+    mime TEXT,
+    size INTEGER NOT NULL,
+    state TEXT NOT NULL DEFAULT 'queued'
+      CHECK (state IN ('queued', 'read', 'dropped')),
+    created_at INTEGER NOT NULL,
+    read_at INTEGER,
+    read_via TEXT
+      CHECK (read_via IN ('prompt', 'steer', 'read', 'wait', 'inbox'))
+  );
+  INSERT INTO messages_new (id, send_id, from_id, to_id, to_spec, subject,
+      reply_to, body, mime, size, state, created_at, read_at, read_via)
+    SELECT m.id, m.send_id, m.from_id, m.to_id, m.to_spec, m.subject,
+      m.reply_to, m.body, m.mime, m.size,
+      CASE
+        WHEN m.state != 'delivered' THEN m.state
+        WHEN m.to_id != 'owner' THEN 'read'
+        WHEN i.closed_at IS NOT NULL THEN 'read'
+        ELSE 'queued'
+      END,
+      m.created_at,
+      CASE
+        WHEN m.state != 'delivered' THEN NULL
+        WHEN m.to_id != 'owner' THEN m.delivered_at
+        ELSE i.closed_at
+      END,
+      CASE
+        WHEN m.state != 'delivered' THEN NULL
+        WHEN m.to_id != 'owner' THEN 'prompt'
+        WHEN i.closed_at IS NOT NULL THEN 'inbox'
+        ELSE NULL
+      END
+    FROM messages m
+    LEFT JOIN (SELECT message_id, MAX(closed_at) AS closed_at FROM inbox
+               WHERE message_id IS NOT NULL GROUP BY message_id) i
+      ON i.message_id = m.id;
+  DROP TABLE messages;
+  ALTER TABLE messages_new RENAME TO messages;
+  CREATE INDEX messages_to ON messages (to_id, state, created_at);
+  CREATE INDEX messages_at ON messages (created_at);
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

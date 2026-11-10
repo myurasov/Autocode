@@ -381,7 +381,10 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
   await expect(message.locator("td.text .more")).toHaveCount(0)
   await expect(message.locator("td.sender")).toHaveText("smoke:agent")
   await expect(message.locator("td.recipient")).toHaveText("owner")
-  await expect(message.locator("td.state")).toHaveText("delivered")
+  // read once the owner closes or answers it (the owner, 2026-11-09)
+  await expect(message.locator("td.state")).toHaveText(
+    /^(queued|read \(inbox\))$/,
+  )
 
   await openTab(page, "Wakes")
   await expect(page.locator("table.wakes thead th")).toHaveText([
@@ -504,7 +507,9 @@ test("admin: sends a message from the Messages page", async ({ page }) => {
   ).toBeLessThanOrEqual(2)
   const first = page.locator("table.messages tr[data-message]").first()
   await expect(first.locator("td.recipient")).toHaveText("smoke:agent")
-  await expect(first.locator("td.state")).toHaveText(/^(queued|delivered)$/)
+  await expect(first.locator("td.state")).toHaveText(
+    /^(queued|read \((prompt|steer|read|wait)\))$/,
+  )
   await page.getByLabel("To", { exact: true }).fill("nobody:here")
   await page.getByLabel("Text", { exact: true }).fill("Anyone?")
   await form.getByRole("button", { name: "Send", exact: true }).click()

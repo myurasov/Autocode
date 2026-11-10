@@ -52,13 +52,14 @@ talk to the same server.
   each OpenCode folder to the server over a long-polled channel: it reports turns, runs wakes' checks, types
   Autocode's prompts into idle sessions, and gives agents the tools and the guide.
 - **Agents** use five tools in the conversation: `autocode_me` (register, status, discover, help), `autocode_wake`
-  (set, list, show, cancel, fire), `autocode_message` (send; answer and escalate another agent's ask; messages come
-  whole in the recipient's next prompt), `autocode_lock` (acquire, renew, release, list) and `autocode_approval`
-  (ask, wait); OpenCode's own question tool and permission prompts reach the owner (or another agent) through
-  Autocode. The `autocode` skill, and `autocode_me action=help`, is their exact reference. Scripts and background
-  jobs in an agent's shell use the same binary as a CLI (`autocode fire me job-done`).
-- Autocode only types into a session while it is **idle**, never into a running turn, and at most once per
-  `min_interval` (1 minute by default). What comes meanwhile goes into one prompt, starting with `[autocode]`.
+  (set, list, show, cancel, fire), `autocode_message` (send, list, read, wait; answer and escalate another agent's
+  ask), `autocode_lock` (acquire, renew, release, list) and `autocode_approval` (ask, wait); OpenCode's own question
+  tool and permission prompts reach the owner (or another agent) through Autocode. The `autocode` skill, and
+  `autocode_me action=help`, is their exact reference. Scripts and background jobs in an agent's shell use the same
+  binary as a CLI (`autocode fire me job-done`).
+- Autocode types wakes into a session only while it is **idle**, at most once per `min_interval` (1 minute by
+  default); what comes meanwhile goes into one prompt, starting with `[autocode]`. Messages and Autocode's notices
+  are the exception: while a turn runs they go into it at its next step (OpenCode's steer delivery).
 
 ## What Works Now
 
@@ -66,7 +67,7 @@ talk to the same server.
 |---|---|---|
 | Agents | register by ID (`project:role:name`), discover by pattern, status (`waiting` while an ask is open), the owner's pause, resume, Stop All | — |
 | Wakes | `every 30m [from 09:00]`, `in 45m`, `at 09:00`, `cron "*/30 8-16 * * 1-5" [zone]`, `idle 30m [repeat]`, `fire-only`; a check command that decides whether to wake (exit 0) or skip (exit 1) | — |
-| Messages | text to an agent, a pattern, a list, or the owner; always whole in the recipient's next prompt (Phase 1: no reading or waiting inside a turn) | — |
+| Messages | text to an agent, a pattern, a list, or the owner; always whole: into the recipient's running turn at its next step, or in its next prompt; the agent can also list, read and wait for its messages (by sender or reply); each is read once | — |
 | Inbox | messages to the owner, answered from the CLI or web UI; alerts; questions (the question tool) and permission prompts, routed by `question_mode` and `permission_mode` to the owner, answered at once, or sent to another agent (`agent:<id>`, which answers or escalates) or a job's run (`job:<name>`); approvals (`autocode_approval`, with options and expiry); the first answer counts | — |
 | Failures | a failed turn puts the agent in the `error` state; a retry prompt every `retry_interval` (1m), up to `retry_attempts` (0: no limit); errors that would fail again are not retried; a turn cut by an OpenCode restart is resumed; the machine's background OpenCode service is started again when it is gone | — |
 | Coordination | named locks (a mutex) and semaphores (N places) shared by agents on every machine: `try`, or a queue in arrival order with a notice when granted; a required `ttl`, renewal, expiry with a notice | — |
@@ -170,7 +171,7 @@ Served by the server; sign in with the admin token. Light and dark.
   Pause, Resume, Retry, New Token, Unregister; Stop All and Resume All; a pattern filter; an Unregistered box (the
   gone agents too, with their spend).
 - **Inbox:** messages to you and alerts; answer or close.
-- **Messages:** every message; send one as the owner.
+- **Messages:** every message, with its state (queued, read and how, or dropped); send one as the owner.
 - **Wakes:** every agent's wakes, when each runs next and was last set; Fire, Cancel, Set a Wake.
 - **Locks:** every lock with its capacity, holders (until when; Release) and line.
 - **Jobs:** the jobs and their runs; Run Now, Edit, Delete, Set a Job.

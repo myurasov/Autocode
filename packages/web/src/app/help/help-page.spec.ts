@@ -262,11 +262,20 @@ describe('HelpPage', () => {
 
   it('gives the settings in use with their defaults', async () => {
     const page = await open();
-    // Phase 1: messages come whole, in prompts only
+    // messages come whole; into a running turn at its next step; list, read
+    // and wait (the owner, 2026-11-09)
     const messages = section(page, 'messages');
     expect(messages).toContain('whole');
     expect(messages).not.toContain('inline_limit');
-    expect(messages).not.toContain('action=read');
+    for (const part of [
+      'at its next step',
+      'action=list',
+      'action=read',
+      'action=wait',
+      'read once',
+      'when you answer or close its Inbox item',
+    ])
+      expect(messages).toContain(part);
     const settings = rows(page.querySelector('table.settings-help'));
     expect(settings.map((r) => r.slice(0, 2))).toEqual([
       ['min_interval', '1m'],
@@ -580,6 +589,9 @@ describe('HelpPage', () => {
     const messages = after('web-messages');
     expect(messages).toContain('first 200 characters');
     expect(messages).toContain('anywhere in its cell');
+    // one state, read, with how (the owner, 2026-11-09)
+    expect(messages).toContain('queued, read (how: prompt, steer, read, wait');
+    expect(messages).not.toContain('delivered');
     const wakes = after('web-wakes');
     expect(wakes).toContain('first 200 characters');
     expect(wakes).toContain('anywhere in its cell');

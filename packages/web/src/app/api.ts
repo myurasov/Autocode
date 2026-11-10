@@ -294,11 +294,14 @@ export interface Message {
   size: number;
   // A text message's first 100 characters (the owner's list only).
   preview?: string;
-  // queued, then delivered: in a prompt, whole, or in the owner's inbox;
-  // dropped: its agent unregistered first
-  state: 'queued' | 'delivered' | 'dropped';
+  // queued, then read (the owner, 2026-11-09: one state, however it got
+  // there), or dropped: its agent unregistered first
+  state: 'queued' | 'read' | 'dropped';
   created_at: string;
-  delivered_at: string | null;
+  read_at: string | null;
+  // how it was read: in a prompt, into a running turn, by the agent's read or
+  // wait, or (the owner's) when its Inbox item was answered or closed
+  read_via: 'prompt' | 'steer' | 'read' | 'wait' | 'inbox' | null;
 }
 
 // A message whole, as the owner reads it: its text.

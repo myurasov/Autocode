@@ -117,7 +117,7 @@
           }
         </td>
         <td class="num size">{{ sizeText(m) }}</td>
-        <td class="state">{{ m.state }}</td>
+        <td class="state" [title]="stateTitle(m)">{{ stateText(m) }}</td>
       </tr>
     } @empty {
       <tr>

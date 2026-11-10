@@ -260,8 +260,9 @@ autocode plugin install --url http://SERVER:4848 \
         agents, help; list jobs with <code>action=jobs</code>, start one with
         <code>action=run</code>), <code>autocode_wake</code> (set, list, show,
         cancel and fire wakes), <code>autocode_message</code> (send messages,
-        which come whole in the recipient's next prompt; answer what another
-        agent asks),
+        which come whole into the recipient's running turn or its next
+        prompt; list, read and wait for its own; answer what another agent
+        asks),
         <code>autocode_lock</code> (acquire, renew, release and list locks)
         and <code>autocode_approval</code> (ask for an approval and wait for
         it). <code>autocode_me action=help</code> gives the guide to agents
@@ -430,11 +431,25 @@ autocode plugin install --url http://SERVER:4848 \
         <code>autocode send</code>.
       </li>
       <li>
-        A new message comes whole in the agent's next prompt, once its
-        session is idle; one prompt carries up to 32,000 characters of
-        messages, more come in the next. There is no reading or waiting inside
-        a turn: an agent that waits for a reply ends its turn, and the reply
-        wakes it.
+        A new message comes whole. While a turn of the agent runs, it goes
+        into that turn at its next step (after the tool call or model step
+        that runs now), with Autocode's notices; otherwise in the agent's next
+        prompt, once its session is idle. One prompt carries up to 32,000
+        characters of messages, more come in the next.
+      </li>
+      <li>
+        An agent can also take its messages itself:
+        <code>autocode_message action=list</code> shows what waits,
+        <code>action=read</code> takes it now, whole, and
+        <code>action=wait</code> waits for one (at most
+        <code>max_tool_wait</code>), by sender or by the message it answers.
+        A message is read once: what read or wait took never comes in a
+        prompt.
+      </li>
+      <li>
+        Each message is queued, then read (in a prompt, during a turn, by the
+        agent's read or wait, or, for a message to you, when you answer or
+        close its Inbox item), or dropped if its agent unregistered first.
       </li>
     </ul>
 
@@ -900,9 +915,9 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       {{ sec['web-messages'].label }}
     </h3>
     <p>
-      Every message, newest first, with its state: queued, delivered (in a
-      prompt, whole, or in your Inbox) or dropped (its agent unregistered
-      first).
+      Every message, newest first, with its state: queued, read (how: prompt,
+      steer, read, wait or inbox; when, in its tooltip) or dropped (its agent
+      unregistered first).
       The Text column shows the first 200 characters of a longer text; click
       anywhere in its cell to see it whole, and again to fold it. Reading a
       message here leaves its state. Send a Message opens from its title and

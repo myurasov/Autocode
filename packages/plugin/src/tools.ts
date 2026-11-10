@@ -249,7 +249,8 @@ export async function runMe(
       if (set)
         lines.push(
           "Delivery: only while this session is idle, at most once per " +
-            `${set.min_interval}; messages come whole in the prompt.`,
+            `${set.min_interval}; messages come whole, into a running turn ` +
+            "at its next step.",
         )
       const w = me.wakes
       if (w)
@@ -262,10 +263,13 @@ export async function runMe(
               : `Wakes: ${w.count}; none due at a known time. ` +
                 "See autocode_wake list.",
         )
-      // Phase 1: messages come only in prompts; how many wait for the next
+      // how many messages wait (for a prompt, a steer or a read)
       if (me.waiting !== undefined)
         lines.push(
-          `Messages waiting for your next prompt: ${me.waiting || "none"}.`,
+          me.waiting
+            ? `Messages waiting: ${me.waiting}. See autocode_message list ` +
+                "or read."
+            : "Messages waiting: none.",
         )
       // spend today and in total, the cap and what is left, the context and
       // its share of the compaction threshold (tiers 0e, 0g)
@@ -424,21 +428,26 @@ export const WAKE_TOOL = {
 }
 
 export interface MessageInput {
-  action: "send" | "answer" | "escalate"
+  action: "send" | "list" | "read" | "wait" | "answer" | "escalate"
   to?: string
   subject?: string
   text?: string
   reply_to?: string
   id?: string
+  from?: string
+  seconds?: number
 }
 
 export const MESSAGE_TOOL = {
   name: "autocode_message",
   description:
     "Autocode messages between agents and the owner. Messages to you come " +
-    "whole in an injected prompt, once your session is idle: to wait for a " +
-    "reply, end your turn. Actions: send (to: an agent ID, a pattern like " +
-    "team:*, a comma list, or owner; subject; text; reply_to), answer (id, " +
+    "whole, in your turn's next step while it runs, else in an injected " +
+    "prompt. Actions: send (to: an agent ID, a pattern like team:*, a " +
+    "comma list, or owner; subject; text; reply_to), list (what waits for " +
+    "you; from, reply_to), read (take what waits now, whole: id, from, " +
+    "reply_to; then it is not injected), wait (read that waits for a " +
+    "message: seconds, up to max_tool_wait; costs no tokens), answer (id, " +
     "text: answer a question, permission or approval another agent sent " +
     "you), escalate (id, text: say why you cannot; the owner takes it).",
   input: {
@@ -446,7 +455,7 @@ export const MESSAGE_TOOL = {
     properties: {
       action: {
         type: "string",
-        enum: ["send", "answer", "escalate"],
+        enum: ["send", "list", "read", "wait", "answer", "escalate"],
       },
       to: {
         type: "string",
@@ -463,11 +472,24 @@ export const MESSAGE_TOOL = {
       },
       reply_to: {
         type: "string",
-        description: "send: the ID of the message this answers",
+        description:
+          "send: the ID of the message this answers; list, read, wait: only " +
+          "the replies to that message",
       },
       id: {
         type: "string",
-        description: "answer, escalate: the ask's ID",
+        description:
+          "read, wait: one message's ID; answer, escalate: the ask's ID",
+      },
+      from: {
+        type: "string",
+        description:
+          "list, read, wait: only messages from this agent (owner, or " +
+          "autocode for Autocode's notices)",
+      },
+      seconds: {
+        type: "number",
+        description: "wait: at most this long (default 300)",
       },
     },
     required: ["action"],
@@ -812,9 +834,53 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
   }
 }
 
+// Who sent a message, as the prompt says it.
+const sender = (from: string) =>
+  from === "owner"
+    ? "the owner"
+    : from === "autocode"
+      ? "Autocode"
+      : `agent ${from}`
+
+// A message's head: its ID, who sent it, its subject, what it answers.
+function messageHead(m: any): string {
+  return (
+    `${m.id} from ${sender(m.from)}` +
+    (m.subject ? `, subject "${m.subject}"` : "") +
+    (m.reply_to ? `, in reply to ${m.reply_to}` : "")
+  )
+}
+
+// The messages read returned, whole and quoted, and how many more wait.
+function readText(res: any): string {
+  const out = (res.messages as any[]).map(
+    (m) =>
+      `Message ${messageHead(m)}:\n` +
+      String(m.text)
+        .split("\n")
+        .map((l) => `> ${l}`)
+        .join("\n"),
+  )
+  if (res.left)
+    out.push(`${res.left} more wait${res.left === 1 ? "s" : ""}: read again.`)
+  return out.join("\n\n")
+}
+
+const NONE_WAIT = "No messages wait for you."
+
+// The filters list, read and wait take.
+function filterOf(input: MessageInput): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (input.id) out.id = input.id
+  if (input.from) out.from = input.from
+  if (input.reply_to) out.reply_to = input.reply_to
+  return out
+}
+
 export async function runMessage(
   input: MessageInput,
   call: Call,
+  wait?: (body: Record<string, unknown>) => Promise<any>,
 ): Promise<string> {
   switch (input?.action) {
     case "send": {
@@ -841,6 +907,34 @@ export async function runMessage(
           : "")
       )
     }
+    case "list": {
+      const q = new URLSearchParams()
+      if (input.from) q.set("from", input.from)
+      if (input.reply_to) q.set("reply_to", input.reply_to)
+      const qs = q.toString()
+      const res = await call("GET", `/v1/me/messages${qs ? `?${qs}` : ""}`)
+      if (!res.messages.length) return NONE_WAIT
+      const lines = (res.messages as any[]).map(
+        (m) => `Waiting: ${messageHead(m)}, ${m.size} characters.`,
+      )
+      return `${lines.join("\n")} Read it with autocode_message read.`
+    }
+    case "read": {
+      const res = await call("POST", "/v1/me/messages/read", filterOf(input))
+      return res.messages.length ? readText(res) : NONE_WAIT
+    }
+    case "wait": {
+      const seconds = Math.max(1, Math.min(Number(input.seconds) || 300, 3600))
+      const body = { ...filterOf(input), wait: seconds }
+      const res = wait
+        ? await wait(body)
+        : await call("POST", "/v1/me/messages/read", body)
+      if (res.messages.length) return readText(res)
+      return (
+        `No message came within ${seconds} seconds; one that comes later is ` +
+        "in your next prompt or turn."
+      )
+    }
     case "answer": {
       if (!input.id || !input.text)
         return "error: answer needs the ask's id and your text"
@@ -861,7 +955,10 @@ export async function runMessage(
       return `Handed ${input.id} to the owner, with your reason.`
     }
     default:
-      return "error: autocode_message has send, answer and escalate"
+      return (
+        "error: autocode_message has send, list, read, wait, answer and " +
+        "escalate"
+      )
   }
 }
 

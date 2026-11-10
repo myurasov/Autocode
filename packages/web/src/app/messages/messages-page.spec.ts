@@ -40,7 +40,8 @@ const MESSAGES: Message[] = [
     preview: 'Status, now?',
     state: 'queued',
     created_at: '2026-10-28T11:00:00.000Z',
-    delivered_at: null,
+    read_at: null,
+    read_via: null,
   },
   {
     id: 'msg_1',
@@ -51,9 +52,10 @@ const MESSAGES: Message[] = [
     reply_to: null,
     size: 17,
     preview: 'Here is the plan.',
-    state: 'delivered',
+    state: 'read',
     created_at: '2026-10-28T10:00:00.000Z',
-    delivered_at: '2026-10-28T10:00:01.000Z',
+    read_at: '2026-10-28T10:00:01.000Z',
+    read_via: 'inbox',
   },
 ];
 
@@ -74,7 +76,8 @@ const LONG: Message = {
   subject: 'Report',
   size: LONG_TEXT.length,
   preview: LONG_TEXT.slice(0, 200),
-  state: 'delivered',
+  state: 'read',
+  read_via: 'steer',
 };
 
 // What a field of the page holds.
@@ -141,8 +144,15 @@ describe('MessagesPage', () => {
       'Plan',
       'Here is the plan.',
       '17',
-      'delivered',
+      'read (inbox)',
     ]);
+    // when it was read, in the tooltip (the owner, 2026-11-09)
+    expect(rows[1]!.querySelector('td.state')!.getAttribute('title')).toBe(
+      `Read ${localTime('2026-10-28T10:00:01.000Z')}, in your Inbox`,
+    );
+    expect(rows[0]!.querySelector('td.state')!.getAttribute('title')).toBe(
+      'Waiting for its recipient',
+    );
     expect(page.querySelector('table.messages td.kind')).toBeNull();
     // Agent IDs are data (code that wraps after ":") that links to the
     // agent's row on the Agents page; the owner is a word.

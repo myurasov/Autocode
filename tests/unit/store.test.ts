@@ -129,6 +129,48 @@ describe("store", () => {
     db.close()
   })
 
+  // The owner, 2026-11-09: one final state, read, however a copy got there.
+  test("migration 16: delivered copies are read (via prompt); the owner's are read once their item closed", () => {
+    const path = tempDb()
+    const old = openStore(path, MIGRATIONS.slice(0, 15))
+    const msg = (id: string, to: string, state: string, at: number | null) =>
+      old.run(
+        "INSERT INTO messages (id, send_id, from_id, to_id, to_spec, body, " +
+          "size, state, created_at, delivered_at) " +
+          "VALUES (?, 's', 'a:b', ?, ?, 'x', 1, ?, 1, ?)",
+        [id, to, to, state, at],
+      )
+    msg("m_q", "c:d", "queued", null)
+    msg("m_d", "c:d", "delivered", 5)
+    msg("m_x", "c:d", "dropped", null)
+    msg("m_open", "owner", "delivered", 6)
+    msg("m_done", "owner", "delivered", 7)
+    old.run(
+      "INSERT INTO inbox (id, kind, message_id, title, created_at, " +
+        "closed_at) VALUES ('ib_1', 'message', 'm_open', 't', 6, NULL), " +
+        "('ib_2', 'message', 'm_done', 't', 7, 9)",
+    )
+    old.close()
+    const db = openStore(path)
+    const rows = db
+      .query("SELECT id, state, read_at, read_via FROM messages ORDER BY id")
+      .all()
+    expect(rows).toEqual([
+      { id: "m_d", state: "read", read_at: 5, read_via: "prompt" },
+      { id: "m_done", state: "read", read_at: 9, read_via: "inbox" },
+      { id: "m_open", state: "queued", read_at: null, read_via: null },
+      { id: "m_q", state: "queued", read_at: null, read_via: null },
+      { id: "m_x", state: "dropped", read_at: null, read_via: null },
+    ])
+    expect(() =>
+      db.run("UPDATE messages SET state = 'delivered' WHERE id = 'm_q'"),
+    ).toThrow()
+    expect(() =>
+      db.run("UPDATE messages SET read_via = 'mail' WHERE id = 'm_d'"),
+    ).toThrow()
+    db.close()
+  })
+
   test("a failing migration leaves the database at the version before it", () => {
     const path = tempDb()
     openStore(path, ["CREATE TABLE t (a TEXT)"]).close()

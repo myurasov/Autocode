@@ -188,10 +188,18 @@ autocode_message  action=send  to=team:worker-2  text="The plot is in results/pl
   read it).
 - `to` can be one ID, a pattern or a comma list; a group never includes you. A message to `owner` lands in the
   owner's inbox, and the reply comes back to you as a message from the owner. `reply_to=<id>` marks a reply.
-- Messages to you come whole in an injected prompt, delivered like wakes: only while your session is idle, so one
-  sent during your turn comes after it ends. One prompt carries up to 32,000 characters of messages; more come in the
-  next one. `autocode_me action=status` says how many wait for your next prompt.
-- There is no reading or waiting inside a turn (Phase 1): to wait for a reply, end your turn; the reply wakes you.
+- Messages to you come whole: while a turn of yours runs, into it at its next step (after the tool call or model step
+  that runs now), as `[autocode] 1 message, during your turn`; otherwise in an injected prompt, delivered like wakes.
+  One prompt carries up to 32,000 characters of messages; more come in the next one.
+- Or take them yourself: `autocode_message action=list` shows what waits (no text; it marks nothing);
+  `action=read` takes it now, whole, oldest first (up to 32,000 characters a call); `action=wait seconds=120` waits
+  for one (at most `max_tool_wait`, 5 minutes by default; it costs no tokens). All three take `from=` and `reply_to=`,
+  read and wait also `id=`; Autocode's notices are among them (`from=autocode`). A message is read once: what read or
+  wait returned never comes in a prompt. `autocode_me action=status` says how many wait.
+
+```
+autocode_message  action=wait  reply_to=m_3f2a...  seconds=180
+```
 - Notices arrive as messages from `autocode`: a lock granted, expired, released by the owner, or you taken out of its
   queue; a question, permission or approval sent to you to answer; your approval's answer; a cost warning; a run's
   result or failure.

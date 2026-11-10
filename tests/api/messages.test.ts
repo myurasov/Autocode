@@ -1,6 +1,6 @@
 /*
  * Messages (spec, Messages): direct and group sends, refusals, the size limit,
- * text only, the states of each copy (queued, delivered), the injection that
+ * text only, the states of each copy (queued, then read), the injection that
  * carries them whole (Phase 1: the only way they reach an agent; see also
  * messages-injected.test.ts), and messages to and from the owner through the
  * inbox.
@@ -47,7 +47,7 @@ beforeEach(async () => {
 afterEach(() => t.stop())
 
 describe("sending", () => {
-  test("a direct message: stored for the recipient, queued, then delivered in a prompt", async () => {
+  test("a direct message: stored for the recipient, queued, then read in a prompt", async () => {
     const sent = await as(a, "POST", "/v1/messages", {
       to: "team:b",
       subject: "results",
@@ -74,9 +74,9 @@ describe("sending", () => {
       `Message ${id} from agent team:a, subject "results":`,
     )
     expect(prompt.payload.text).toContain("The run finished: 0.91.")
-    // carried whole in the prompt: delivered
+    // carried whole in the prompt: read
     const after = await owner("GET", `/v1/messages/${id}`)
-    expect(after.body.message.state).toBe("delivered")
+    expect(after.body.message.state).toBe("read")
   })
 
   test("a group: one copy per matching agent, never the sender", async () => {

@@ -133,7 +133,7 @@ ID before it sends a token. Every command takes `--json`.
 | `autocode wake cancel AGENT NAME` | cancel a wake |
 | `autocode fire AGENT WAKE [--text TEXT]` | deliver a wake now (it skips its check); the prompt says the owner fired it |
 | `autocode send TO TEXT...` | send a text message as the owner to an ID, a pattern or a list |
-| `autocode messages` | every message, newest first, with its state (queued; delivered: in a prompt, whole, or in your inbox; dropped: its agent unregistered first); your views (here, `messages read`, the web UI) never change a state |
+| `autocode messages` | every message, newest first, with its state: queued; read, with how (`prompt`; `steer`: into its agent's running turn at its next step; `read` or `wait`: the agent's own; `inbox`: you answered or closed its item); dropped: its agent unregistered first. Your views (here, `messages read`, the web UI) never change a state |
 
 In an agent's shell the same binary acts as that agent, with three commands only: `autocode me`, `autocode fire me
 WAKE [--text TEXT]` and `autocode send TO TEXT...` (see `howto.md`); the owner's commands are refused there.
@@ -193,8 +193,10 @@ was read are the server's). Pages:
   (the reply goes to the agent as a message from the owner) or **Close** an item; **Closed** shows the answered
   and closed ones.
 - **Messages:** every message, newest first, with its ID, the first 200 characters of its text (a click shows it
-  whole, another folds it; your read leaves its state) and its state (queued, delivered or dropped); **Send a Message**
-  (it opens from its title) as the owner, to an ID, a pattern or a list.
+  whole, another folds it; your read leaves its state) and its state (queued, read with how: prompt, steer, read, wait
+  or inbox, when in its tooltip, or dropped); **Send a Message** (it opens from its title) as the owner, to an ID, a
+  pattern or a list. A message reaches a working agent at its turn's next step; an agent can also list, read and
+  wait for its messages itself, and each is read once.
 - **Wakes:** every agent's wakes (trigger, next run, text and check (each the first 200 characters; a click
   anywhere in the cell shows it whole, another folds it; the check in a fixed-width font), end, who set it, when it
   was last set (its schedule counts from then), last fired), **Fire** one now or **Cancel** it; **Set a Wake** for

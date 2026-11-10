@@ -1,10 +1,10 @@
 /*
- * Phase 1 (the owner, 2026-11-08: option C): messages reach an agent only in
- * an injection, always whole. No `inline_limit`; a copy is queued, then
- * delivered (no `read` state); one prompt carries messages up to 32,000
- * characters of their text together, the rest wait for the next one; the
- * agent's own message routes are gone, and /v1/me says how many wait. The
- * owner's views keep every message.
+ * Phase 1 (the owner, 2026-11-08: option C): messages come always whole. No
+ * `inline_limit`; one prompt carries messages up to 32,000 characters of
+ * their text together, the rest wait for the next one; /v1/me says how many
+ * wait. A copy is queued, then read (the owner, 2026-11-09: one state for
+ * every way; see messages-read.test.ts). The owner's views keep every
+ * message.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import {
@@ -50,7 +50,7 @@ beforeEach(async () => {
 afterEach(() => t.stop())
 
 describe("messages through injections only", () => {
-  test("a long message arrives whole, and is then delivered", async () => {
+  test("a long message arrives whole, and is then read", async () => {
     const long = "x".repeat(5000)
     const sent = await as(a, "POST", "/v1/messages", {
       to: "team:b",
@@ -62,8 +62,8 @@ describe("messages through injections only", () => {
     expect(text).toContain(`> ${long}`)
     expect(text).not.toContain("read it with")
     const view = (await owner("GET", `/v1/messages/${id}`)).body.message
-    expect(view.state).toBe("delivered")
-    expect(view).not.toHaveProperty("read_at")
+    expect(view.state).toBe("read")
+    expect(view.read_via).toBe("prompt")
   })
 
   test("one prompt carries up to 32,000 characters of messages; the rest come in the next", async () => {
@@ -100,15 +100,9 @@ describe("messages through injections only", () => {
     )
   })
 
-  test("the agent's message routes are gone; /v1/me says how many wait", async () => {
+  test("/v1/me says how many wait", async () => {
     await owner("POST", "/v1/agents/team:b/pause")
-    const sent = await as(a, "POST", "/v1/messages", {
-      to: "team:b",
-      text: "hello",
-    })
-    const id = sent.body.messages[0].id
-    expect((await as(b, "GET", "/v1/me/messages")).status).toBe(404)
-    expect((await as(b, "GET", `/v1/me/messages/${id}`)).status).toBe(404)
+    await as(a, "POST", "/v1/messages", { to: "team:b", text: "hello" })
     const me = (await as(b, "GET", "/v1/me")).body
     expect(me.waiting).toBe(1)
     expect(me).not.toHaveProperty("unread")
@@ -117,13 +111,11 @@ describe("messages through injections only", () => {
     expect((await as(b, "GET", "/v1/me")).body.waiting).toBe(0)
   })
 
-  test("a message sent during a turn comes when that turn ends; a reply wakes the agent that waits for it", async () => {
-    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+  test("a reply wakes the agent that ended its turn to wait for it", async () => {
     await as(a, "POST", "/v1/messages", { to: "team:b", text: "Ready?" })
     const asked = (await promptFor("ses_b")).payload.text as string
     expect(asked).toContain("> Ready?")
-    // team:a ends its turn to wait; team:b's reply wakes it
-    await turnEnds("ses_a")
+    // team:a ended its turn to wait; team:b's reply wakes it
     await as(b, "POST", "/v1/messages", { to: "team:a", text: "Yes." })
     t.clock.advance(2000)
     const reply = (await promptFor("ses_a")).payload.text as string
@@ -131,7 +123,7 @@ describe("messages through injections only", () => {
     expect(reply).toContain("> Yes.")
   })
 
-  test("the owner still sees every message, queued or delivered", async () => {
+  test("the owner still sees every message, queued or read", async () => {
     await owner("POST", "/v1/agents/team:b/pause")
     await as(a, "POST", "/v1/messages", { to: "team:b", text: "one" })
     let list = (await owner("GET", "/v1/messages")).body.messages
@@ -139,6 +131,6 @@ describe("messages through injections only", () => {
     await owner("POST", "/v1/agents/team:b/resume")
     await prompts()
     list = (await owner("GET", "/v1/messages")).body.messages
-    expect(list.map((m: any) => m.state)).toEqual(["delivered"])
+    expect(list.map((m: any) => m.state)).toEqual(["read"])
   })
 })

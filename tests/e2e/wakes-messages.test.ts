@@ -197,6 +197,78 @@ describe("messages", () => {
     const prompt = await promptWith(a, `Answer ${run}.`)
     expect(prompt).toContain("from the owner")
   })
+
+  /*
+   * The owner, 2026-11-09: a message to an agent whose turn runs goes into
+   * that turn at its next step (OpenCode's steer delivery), not after it.
+   */
+  test("a message sent while the recipient's turn runs reaches its model in that turn", async () => {
+    const from = agents[0]!
+    const to = nodes.length > 1 ? agents[2]! : agents[1]!
+    const fake = new FakeModel(to.node)
+    // a turn with a slow tool call, then a step that sees the steer, then
+    // its end
+    await fake.script(
+      [
+        {
+          session: to.session,
+          tool_calls: [{ name: "shell", arguments: { command: "sleep 6" } }],
+        },
+        { session: to.session, reply: "saw it" },
+      ],
+      true,
+    )
+    const turn = to.oc.run(to.session, `long turn ${run}`, 90_000)
+    await until(
+      async () =>
+        (await admin("GET", `/v1/agents/${to.id}`)).agent.status === "working",
+      { timeoutMs: 15_000, intervalMs: 200, what: "the turn to start" },
+    )
+    await callTool(from.oc, from.session, "autocode_message", {
+      action: "send",
+      to: to.id,
+      text: `Steered ${run}.`,
+    })
+    await turn
+    // one turn: its second model request already carried the message
+    const requests = (await fake.requests()).filter(
+      (r) => r.session === to.session && r.kind === "primary",
+    )
+    const i = requests.findIndex((r) =>
+      JSON.stringify(r.messages).includes(`long turn ${run}`),
+    )
+    const later = requests.slice(i + 1)
+    expect(
+      later.some((r) => JSON.stringify(r.messages).includes(`Steered ${run}.`)),
+    ).toBe(true)
+    const m = (await admin("GET", `/v1/messages?agent=${to.id}`)).messages.find(
+      (x: any) => x.preview.includes(`Steered ${run}.`),
+    )
+    expect(m).toMatchObject({ state: "read", read_via: "steer" })
+  }, 120_000)
+
+  test("an agent reads and waits for a message in its own turn; it is not injected again", async () => {
+    const from = agents[0]!
+    const to = nodes.length > 1 ? agents[2]! : agents[1]!
+    await admin("POST", `/v1/agents/${to.id}/pause`)
+    await callTool(from.oc, from.session, "autocode_message", {
+      action: "send",
+      to: to.id,
+      text: `For reading ${run}.`,
+    })
+    // paused: nothing comes on its own; read takes it in the agent's turn
+    const out = await callTool(to.oc, to.session, "autocode_message", {
+      action: "read",
+    })
+    expect(out).toContain(`> For reading ${run}.`)
+    await admin("POST", `/v1/agents/${to.id}/resume`)
+    await Bun.sleep(2500)
+    expect(
+      (await prompts(to.node, to.session)).some(
+        (p) => p.startsWith("[autocode]") && p.includes(`For reading ${run}.`),
+      ),
+    ).toBe(false)
+  }, 120_000)
 })
 
 describe("turn status", () => {

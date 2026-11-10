@@ -295,12 +295,16 @@ export default {
           await renewShellValues(session)
           return { renewed: true }
         case "inject": {
-          // queue: a prompt that meets a running turn waits for its end
+          /*
+           * queue: a prompt that meets a running turn waits for its end;
+           * steer (messages into a running turn, the owner 2026-11-09): at
+           * its next step
+           */
           await ctx.session.prompt({
             sessionID: session,
             id: String(p.prompt_id),
             text: String(p.text),
-            delivery: "queue",
+            delivery: p.delivery === "steer" ? "steer" : "queue",
           })
           return { injected: true }
         }
@@ -422,8 +426,35 @@ export default {
         asTool(WAKE_TOOL, (input: WakeInput, call) => runWake(input, call)),
       )
       tools.add(
-        asTool(MESSAGE_TOOL, (input: MessageInput, call) =>
-          runMessage(input, call),
+        asTool(MESSAGE_TOOL, (input: MessageInput, call, sessionID, signal) =>
+          runMessage(input, call, async (body) => {
+            /*
+             * The server answers within 240 s (or max_tool_wait); wait
+             * again until the end, but not when it answered early with
+             * nothing: max_tool_wait cut the wait.
+             */
+            const seconds = Number(body.wait)
+            const end = Date.now() + seconds * 1000
+            for (;;) {
+              const left = Math.ceil((end - Date.now()) / 1000)
+              const chunk = Math.max(1, Math.min(left, 240))
+              const asked = Date.now()
+              const res = await callAs(
+                sessionID,
+                "POST",
+                "/v1/me/messages/read",
+                { ...body, wait: chunk },
+                (chunk + 15) * 1000,
+                signal,
+              )
+              if (
+                res.messages?.length ||
+                Date.now() >= end - 1000 ||
+                Date.now() - asked < (chunk - 2) * 1000
+              )
+                return res
+            }
+          }),
         ),
       )
       tools.add(

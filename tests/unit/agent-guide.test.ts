@@ -124,19 +124,114 @@ describe("the tools' descriptions", () => {
     expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("path")
   })
 
-  // Phase 1 (the owner, 2026-11-08): messages come only in prompts, whole.
-  test("autocode_message: send, answer and escalate only; messages come in prompts", () => {
+  // The owner, 2026-11-09: list, read and wait back; messages steer into a
+  // running turn.
+  test("autocode_message: send, list, read, wait, answer and escalate", () => {
     expect((MESSAGE_TOOL.input.properties.action as any).enum).toEqual([
       "send",
+      "list",
+      "read",
+      "wait",
       "answer",
       "escalate",
     ])
-    expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("seconds")
-    expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("id_to_read")
+    for (const key of ["id", "from", "reply_to", "seconds"])
+      expect(MESSAGE_TOOL.input.properties).toHaveProperty(key)
     expect(MESSAGE_TOOL.description).toContain(
-      "Messages to you come whole in an injected prompt",
+      "Messages to you come whole, in your turn's next step while it runs",
     )
-    expect(MESSAGE_TOOL.description).not.toMatch(/\blist \(|\bread \(|wait \(/)
+    expect(MESSAGE_TOOL.description).toContain("list (")
+    expect(MESSAGE_TOOL.description).toContain("read (")
+    expect(MESSAGE_TOOL.description).toContain("wait (")
+  })
+})
+
+describe("autocode_message list, read and wait", () => {
+  const MSG = {
+    id: "m_1",
+    from: "team:b",
+    to: "team:a",
+    subject: "plot",
+    reply_to: "m_0",
+    size: 6,
+    state: "queued",
+  }
+  test("list: one line each, or none; filters go to the server", async () => {
+    const calls: string[] = []
+    const call = async (method: string, path: string) => {
+      calls.push(`${method} ${path}`)
+      return { messages: path.includes("from=") ? [] : [MSG] }
+    }
+    expect(await runMessage({ action: "list" }, call)).toBe(
+      'Waiting: m_1 from agent team:b, subject "plot", in reply to m_0, ' +
+        "6 characters. Read it with autocode_message read.",
+    )
+    expect(await runMessage({ action: "list", from: "team:c" }, call)).toBe(
+      "No messages wait for you.",
+    )
+    expect(calls).toEqual([
+      "GET /v1/me/messages",
+      "GET /v1/me/messages?from=team%3Ac",
+    ])
+  })
+
+  test("read: each whole, quoted, with what is left; none", async () => {
+    const bodies: unknown[] = []
+    const answers = [
+      {
+        messages: [
+          { ...MSG, text: "see it\nthere", state: "read" },
+          { ...MSG, id: "m_2", from: "autocode", subject: "lock", text: "x" },
+        ],
+        left: 1,
+      },
+      { messages: [], left: 0 },
+    ]
+    const call = async (_m: string, _p: string, body?: unknown) => {
+      bodies.push(body)
+      return answers.shift()
+    }
+    expect(await runMessage({ action: "read", reply_to: "m_0" }, call)).toBe(
+      [
+        'Message m_1 from agent team:b, subject "plot", in reply to m_0:',
+        "> see it",
+        "> there",
+        "",
+        'Message m_2 from Autocode, subject "lock", in reply to m_0:',
+        "> x",
+        "",
+        "1 more waits: read again.",
+      ].join("\n"),
+    )
+    expect(await runMessage({ action: "read", id: "m_9" }, call)).toBe(
+      "No messages wait for you.",
+    )
+    expect(bodies).toEqual([{ reply_to: "m_0" }, { id: "m_9" }])
+  })
+
+  test("wait: holds the call; nothing within its seconds says so", async () => {
+    const seen: number[] = []
+    const wait = async (body: Record<string, unknown>) => {
+      seen.push(Number(body.wait))
+      return { messages: [] as any[], left: 0 }
+    }
+    const call = async () => {
+      throw new Error("wait goes through its own loop")
+    }
+    expect(
+      await runMessage(
+        { action: "wait", seconds: 30, from: "team:b" },
+        call,
+        wait,
+      ),
+    ).toBe(
+      "No message came within 30 seconds; one that comes later is in your " +
+        "next prompt or turn.",
+    )
+    // the default, and the bounds
+    await runMessage({ action: "wait" }, call, wait)
+    await runMessage({ action: "wait", seconds: 99_999 }, call, wait)
+    expect(seen).toEqual([30, 300, 3600])
   })
 })
 
@@ -158,10 +253,10 @@ describe("autocode_me", () => {
         "Status idle on machine m1.",
         "Server api-test; its time 2026-10-28 05:00 PDT (America/Los_Angeles).",
         "Delivery: only while this session is idle, at most once per 1m; " +
-          "messages come whole in the prompt.",
+          "messages come whole, into a running turn at its next step.",
         'Wakes: 2; next "sooner" at 2026-10-28 05:30 PDT (in 30m). ' +
           "See autocode_wake list.",
-        "Messages waiting for your next prompt: 1.",
+        "Messages waiting: 1. See autocode_message list or read.",
         "How Autocode works: autocode_me action=help.",
       ].join("\n"),
     )
@@ -180,7 +275,7 @@ describe("autocode_me", () => {
         "resumes you.",
     )
     expect(text).toContain("Wakes: none.")
-    expect(text).toContain("Messages waiting for your next prompt: none.")
+    expect(text).toContain("Messages waiting: none.")
     const loose = server({
       "GET /v1/me": {
         registered: false,
@@ -485,16 +580,21 @@ describe("the guide", () => {
       "Continue where you left off",
       // why a wake did not come: the error state too
       "you are in the error state (`autocode_me status`)",
-      // Phase 1 (the owner, 2026-11-08): only in prompts, whole
-      "New messages come whole in an injected prompt",
-      "end your turn: the reply wakes you",
+      // the owner, 2026-11-09: whole; into a running turn at its next step
+      // (steer); list, read and wait; read once, never injected again
+      "New messages come whole",
+      "at its next step",
+      "`autocode_message read` takes what waits now",
+      "`wait` holds the call until a message comes",
+      "what `read` or `wait` returned is never put into a prompt",
+      "`from=` and `reply_to=`",
+      "Autocode's own notices too",
     ])
       expect(guide).toContain(answer)
     for (const gone of [
       "`inline_limit`",
-      "autocode_message read",
       "`list` shows your unread messages",
-      "`wait` holds the tool call until a message comes",
+      "There is no reading or waiting",
     ])
       expect(guide, gone).not.toContain(gone)
   })

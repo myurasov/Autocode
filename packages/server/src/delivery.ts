@@ -10,7 +10,11 @@
  * and are Autocode's own text, not quoted (tier 0c). Messages come whole, in
  * their order, up to 32,000 characters a prompt (Phase 1). Past compact_at an
  * agent is told first, then compacted after that turn (tier 0g), also when
- * idle with nothing waiting (the owner, 2026-11-09).
+ * idle with nothing waiting (the owner, 2026-11-09). Messages and notices for
+ * an agent whose own turn runs go into it at once, with OpenCode's steer
+ * delivery (the owner, 2026-11-09); wakes, retries, resumes and compaction
+ * notices wait for the turn's end. A carried copy is read; a lost
+ * injection's wait again.
  */
 
 import type { Database } from "bun:sqlite"
@@ -241,10 +245,8 @@ export class Delivery {
     const items = JSON.parse(inj.items ?? "[]") as any[]
     for (const it of items)
       if (it.kind === "wake") this.enqueueWake(inj.agent_id, it)
-      else if (it.kind === "message") {
-        this.messages().requeue(it.id)
+      else if (it.kind === "message" && this.messages().requeue(it.id))
         this.enqueueMessage(inj.agent_id, it.id)
-      }
   }
 
   // Whether an injection was a retry prompt.
@@ -271,12 +273,14 @@ export class Delivery {
       this.db
         .query("UPDATE agents SET compact_notified = 0 WHERE id = ?")
         .run(inj.agent_id)
-    this.db
-      .query(
-        "UPDATE sessions SET busy = 0, inject_pending_at = NULL " +
-          "WHERE id = ? AND inject_pending_at IS NOT NULL",
-      )
-      .run(inj.session_id)
+    // a steer went into a running turn: the session's state is that turn's
+    if (!this.reasonsOf(inj).steer)
+      this.db
+        .query(
+          "UPDATE sessions SET busy = 0, inject_pending_at = NULL " +
+            "WHERE id = ? AND inject_pending_at IS NOT NULL",
+        )
+        .run(inj.session_id)
     this.requeue(inj)
     this.history.record("injection.failed", {
       agent: inj.agent_id,
@@ -347,12 +351,13 @@ export class Delivery {
         this.db
           .query("UPDATE injections SET settled_at = ?, error = ? WHERE id = ?")
           .run(this.now(), "cancelled", inj.id)
-        this.db
-          .query(
-            "UPDATE sessions SET busy = 0, inject_pending_at = NULL " +
-              "WHERE id = ?",
-          )
-          .run(inj.session_id)
+        if (!this.reasonsOf(inj).steer)
+          this.db
+            .query(
+              "UPDATE sessions SET busy = 0, inject_pending_at = NULL " +
+                "WHERE id = ?",
+            )
+            .run(inj.session_id)
         this.requeue(inj)
         if (this.isRetry(inj)) this.retries.unsent(agent, false)
       }
@@ -376,7 +381,8 @@ export class Delivery {
       .query(
         `SELECT a.id, a.paused, a.last_injection_at, a.session_id, a.error,
                 a.error_since, a.error_at, a.retries, a.retry_at,
-                s.busy, s.deleted_at, s.directory, s.host_id, h.online,
+                a.compacting, s.busy, s.inject_pending_at, s.turn_started_at,
+                s.deleted_at, s.directory, s.host_id, h.online,
                 h.machine, h.directory AS host_directory, h.process_kind,
                 EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
                         AND k.state = 'open') AS asking
@@ -393,15 +399,12 @@ export class Delivery {
         process_kind: row.process_kind,
       })
     // an open question, permission or approval holds everything (tier 0d)
-    if (
-      !row ||
-      row.paused ||
-      !row.online ||
-      row.deleted_at ||
-      row.busy ||
-      row.asking
-    )
+    if (!row || row.paused || !row.online || row.deleted_at || row.asking)
       return
+    if (row.busy) {
+      this.steer(row)
+      return
+    }
     const values = this.values(agent)
     const now = this.now()
     const minInterval = parseDuration(String(values.min_interval))
@@ -489,6 +492,34 @@ export class Delivery {
       ready.some((i) => i.kind === "message" && now - i.created_at >= timeout)
     )
       this.inject(row, ready)
+  }
+
+  /*
+   * The owner, 2026-11-09: what agents and Autocode sent goes into a turn of
+   * the agent's own session that runs now, at its next step (OpenCode's
+   * steer delivery), not after it: not while a prompt of ours is on its way
+   * (it has not started a turn yet), in the error state, during a compaction,
+   * while the agent waits for its messages itself (its wait takes them), or
+   * after a steer of this turn failed (what waits comes after the turn).
+   * Its busy state and min_interval stay as they are.
+   */
+  private steer(row: any) {
+    if (row.inject_pending_at || row.error || row.compacting) return
+    if (this.messages().waitingFor(row.id)) return
+    const failed = this.db
+      .query(
+        "SELECT 1 FROM injections WHERE session_id = ? AND error IS NOT NULL " +
+          "AND created_at >= ? AND reasons LIKE '%\"steer\":true%' LIMIT 1",
+      )
+      .get(row.session_id, row.turn_started_at ?? 0)
+    if (failed) return
+    const items = this.db
+      .query(
+        "SELECT * FROM queue WHERE agent_id = ? AND kind = 'message' " +
+          "ORDER BY id",
+      )
+      .all(row.id) as any[]
+    if (items.length) this.inject(row, items, undefined, true)
   }
 
   /*
@@ -616,7 +647,7 @@ export class Delivery {
     }
   }
 
-  private inject(row: any, items: any[], retry?: RetryNote) {
+  private inject(row: any, items: any[], retry?: RetryNote, steer = false) {
     // Runs of one wake left waiting: only the newest goes in.
     const seen = new Set<string>()
     const wakes = items
@@ -676,6 +707,8 @@ export class Delivery {
         `${messages.length} message${messages.length > 1 ? "s" : ""}`,
       )
     if (retry) reasons.unshift(retry.header)
+    if (steer && reasons.length)
+      reasons[reasons.length - 1] += ", during your turn"
     const used = items.map((i) => i.id).filter((id) => !later.has(id))
     if (!reasons.length) {
       for (const id of used)
@@ -700,16 +733,21 @@ export class Delivery {
       sections.push(`${head}:\n${quote(m.body)}`)
     }
     const text =
-      `[autocode] ${reasons.join(", ")}\n\n${sections.join("\n\n")}` +
-      `\n\n${FOOTER}`
+      `[autocode] ${reasons.join(", ")}\n\n` +
+      (steer
+        ? "These came while your turn runs: take them into account, then " +
+          "go on with your work.\n\n"
+        : "") +
+      `${sections.join("\n\n")}\n\n${FOOTER}`
     const now = this.now()
     const id = promptId(now)
     const instruction = this.hosts.enqueue(row.host_id, "inject", {
       session: row.session_id,
       prompt_id: id,
       text,
+      ...(steer ? { delivery: "steer" } : {}),
     })
-    this.costs?.injected(row.id)
+    if (!steer) this.costs?.injected(row.id)
     const summary = {
       header: reasons,
       wakes: wakes.map((w) => w.wake),
@@ -718,6 +756,8 @@ export class Delivery {
       ...(retry ? { retry: retry.n } : {}),
       // the compaction notice (tier 0g): sent again if it does not arrive
       ...(retry?.header === "compaction next" ? { compact_notice: true } : {}),
+      // into a running turn (the owner, 2026-11-09)
+      ...(steer ? { steer: true } : {}),
     }
     const kept = [
       ...wakes.map((w) => ({
@@ -751,6 +791,7 @@ export class Delivery {
         )
       for (const qid of used)
         this.db.query("DELETE FROM queue WHERE id = ?").run(qid)
+      if (steer) return
       this.db
         .query("UPDATE agents SET last_injection_at = ? WHERE id = ?")
         .run(now, row.id)
@@ -761,7 +802,8 @@ export class Delivery {
         )
         .run(now, row.session_id)
     })()
-    for (const m of all) this.messages().delivered(m.id)
+    for (const m of all)
+      this.messages().markRead(m.id, steer ? "steer" : "prompt")
     this.history.record("injection.sent", {
       agent: row.id,
       session: row.session_id,

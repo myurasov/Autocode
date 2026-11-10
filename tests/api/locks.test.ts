@@ -157,10 +157,10 @@ describe("notices", () => {
         FOOTER,
     )
     expect(sent.ses_a).toBeUndefined()
-    // it is a message from autocode, carried whole: delivered
+    // it is a message from autocode, carried whole: read
     const mine = (await owner("GET", "/v1/messages?agent=team:b")).body
     expect(mine.messages).toMatchObject([
-      { from: "autocode", subject: 'lock "gpu-0" granted', state: "delivered" },
+      { from: "autocode", subject: 'lock "gpu-0" granted', state: "read" },
     ])
   })
 

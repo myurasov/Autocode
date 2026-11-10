@@ -643,8 +643,8 @@ export async function startServer(
       access: ["session"],
       summary:
         "the calling session's registration and status, the server's time " +
-        "and zone, the delivery settings, its wakes, the messages waiting " +
-        "for its next prompt, its spend and context",
+        "and zone, the delivery settings, its wakes, how many messages " +
+        "wait for it, its spend and context",
       handler: ({ caller }) => {
         const res: any = agents.me(caller!.session!)
         const agent: string | undefined = res.registered
@@ -671,7 +671,7 @@ export async function startServer(
           ...(agent
             ? {
                 wakes: wakes.summary(agent),
-                // Phase 1: the messages waiting for the next prompt
+                // the messages waiting for a prompt, a steer or a read
                 waiting: messages.waiting(agent),
                 locks: locks.of(agent),
                 asks: asks.of(agent),
@@ -1005,6 +1005,56 @@ export async function startServer(
       summary: "send a message to an agent, a pattern, a list or the owner",
       handler: async ({ caller, body }) =>
         json(messages.send(actor(caller), await body()), 201),
+    },
+    // the agent's list, read and wait (the owner, 2026-11-09)
+    {
+      method: "GET",
+      path: "/v1/me/messages",
+      access: ["session"],
+      summary:
+        "the calling agent's messages that wait, without text (?from=, " +
+        "?reply_to=); marks nothing",
+      handler: ({ caller, url }) => {
+        const q = url.searchParams
+        return {
+          messages: messages.list(me(caller), {
+            from: q.get("from") ?? undefined,
+            reply_to: q.get("reply_to") ?? undefined,
+          }),
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/v1/me/messages/read",
+      access: ["session"],
+      summary:
+        "read the calling agent's waiting messages now, whole ({id, from, " +
+        "reply_to}; wait: seconds to wait for one, up to max_tool_wait); " +
+        "they are read and never injected",
+      handler: async ({ caller, body, req }) => {
+        const agent = me(caller)
+        const b = (await body()) ?? {}
+        if (typeof b !== "object" || Array.isArray(b))
+          throw new AutocodeError("bad_request", "the body must be an object")
+        onlyFields(b, ["id", "from", "reply_to", "wait"])
+        for (const key of ["id", "from", "reply_to"] as const)
+          if (b[key] !== undefined && typeof b[key] !== "string")
+            throw new AutocodeError("bad_request", `${key} must be a string`)
+        const filter = { id: b.id, from: b.from, reply_to: b.reply_to }
+        if (b.wait === undefined) return messages.take(agent, filter)
+        const wait = Number(b.wait)
+        if (typeof b.wait !== "number" || !Number.isFinite(wait) || wait < 0)
+          throw new AutocodeError("bad_request", "wait must be seconds")
+        const values = resolveSettings(settings.layers(), agent).values
+        const most = parseDuration(String(values.max_tool_wait)) / 1000
+        return await messages.wait(
+          agent,
+          filter,
+          Math.min(wait, most),
+          req.signal,
+        )
+      },
     },
     {
       method: "GET",
@@ -1406,6 +1456,7 @@ export async function startServer(
       if (ticker) clearInterval(ticker)
       if (rebind) clearInterval(rebind)
       hosts.close()
+      messages.close()
       asks.close()
       await Promise.all(servers.map((s) => s.stop(true)))
       db.close()
