@@ -417,6 +417,15 @@ export async function startServer(
   hosts.runsOf = (host) => jobs.runSessionsOf(host)
   history.record("server.started", { data: { id, version: VERSION } })
   locks.sweep()
+  // alerts about failed turns of agents that work again (or are gone)
+  for (const r of db
+    .query(
+      "SELECT DISTINCT i.agent_id AS id FROM inbox i LEFT JOIN agents a " +
+        "ON a.id = i.agent_id WHERE i.kind = 'alert' AND i.closed_at IS NULL " +
+        "AND i.agent_id IS NOT NULL AND a.error IS NULL",
+    )
+    .all() as { id: string }[])
+    inbox.closeErrorAlerts(r.id)
 
   // The calling session's agent ID; a session that is not registered has no
   // wakes or messages.

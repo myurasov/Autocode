@@ -6,6 +6,9 @@
  * turn that succeeds clears the state; the owner can retry at once.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   ack,
   call,
@@ -283,5 +286,66 @@ describe("limits and alerts", () => {
       type: "failed",
       retryable: true,
     })
+  })
+
+  /*
+   * The owner, 2026-11-09: an alert said "its turn failed ... not retried"
+   * long after the agent was working again, and the Agents tab had no Retry.
+   * An agent's error alerts close once a turn of its succeeds.
+   */
+  test("an agent's error alerts close when it recovers; other alerts stay", async () => {
+    await fail("provider.content-filter")
+    await owner("PATCH", "/v1/settings", { server: { retry_attempts: 1 } })
+    await ended("succeeded")
+    await fail()
+    t.clock.advance(MIN)
+    await tick()
+    await started()
+    await fail()
+    expect((await alerts()).map((i: any) => i.title)).toEqual([
+      "Agent team:a: its turns still fail after 1 retries (provider.internal)",
+    ])
+    const other = (await owner("GET", "/v1/inbox")).body.items.filter(
+      (i: any) => i.kind === "alert" && i.agent === "team:b",
+    )
+    expect(other).toEqual([])
+    // the content-filter one closed at the first success
+    const closed = (await owner("GET", "/v1/inbox?all=1")).body.items.filter(
+      (i: any) => i.kind === "alert" && i.closed_at,
+    )
+    expect(closed.map((i: any) => i.title)).toEqual([
+      "Agent team:a: its turn failed (provider.content-filter); not retried",
+    ])
+    await ended("succeeded")
+    expect(await alerts()).toEqual([])
+    expect((await kinds("inbox.closed")).length).toBe(2)
+  })
+
+  test("at the start, alerts of agents no longer in error close", async () => {
+    // a data folder of the test's own, kept across the restart
+    await t.stop()
+    const dir = mkdtempSync(join(tmpdir(), "autocode-alerts-"))
+    try {
+      t = await testServer({ dataDir: dir })
+      await hello(t, HOST)
+      await registered(t, HOST, "ses_a", "team:a")
+      await fail("provider.auth")
+      expect((await alerts()).length).toBe(1)
+      // recovered while the alert stayed open (a build before this fix)
+      t.server.db
+        .query(
+          "UPDATE agents SET error = NULL, error_since = NULL, " +
+            "error_at = NULL WHERE id = 'team:a'",
+        )
+        .run()
+      await t.stop()
+      t = await testServer({ dataDir: dir })
+      expect(await alerts()).toEqual([])
+    } finally {
+      await t.stop()
+      rmSync(dir, { recursive: true, force: true })
+      // afterEach stops it again: a fresh one to stop
+      t = await testServer()
+    }
   })
 })

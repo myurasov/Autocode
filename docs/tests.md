@@ -1084,6 +1084,10 @@ in what it read.
 - **`--soft` a little darker in light, lighter in dark** (the owner, 2026-11-09; tests first: `smoke.spec.ts` reads the
   variable and a table head's color in both themes, red, then green): `#f5f5f5` to `#efefef`, `#262d34` to `#292f36`
   (kept below `--code` `#2a3138`). Screenshots of the Costs tab in both looked at.
+- **An agent's error alerts close when it recovers** (the owner, 2026-11-09: "its turn failed (provider.content-filter);
+  not retried" stayed in the Inbox after the agent worked again, with no Retry on Agents; tests first:
+  `retries.test.ts` 2, red, then green): the not-retried and retries-ran-out alerts close at a succeeding turn
+  (`inbox.closed`, why `recovered`), other alerts stay; at the server's start, those of agents no longer in error close.
 - **The Agents table fits a laptop** (the owner, 2026-11-09: a live Agents page was 128 px too wide at 1280 px;
   tests first: `smoke.spec.ts` "Agents fits 1280 px with long descriptions, models, spend and context", agents shaped
   like the live ones, red at 243 px over, then 8, then green at 1280 and 1440; `breaks.spec.ts` TimeText, and

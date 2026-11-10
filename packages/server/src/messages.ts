@@ -666,6 +666,30 @@ export class Inbox {
       .run(this.now() - days * 86_400_000)
   }
 
+  /*
+   * An agent's open alerts about its failed turns (not retried, retries ran
+   * out) close once it recovers (the owner, 2026-11-09: one stayed open
+   * long after the agent worked again, with no Retry to press).
+   */
+  closeErrorAlerts(agent: string) {
+    const open = this.db
+      .query(
+        "SELECT id FROM inbox WHERE kind = 'alert' AND agent_id = ? " +
+          "AND closed_at IS NULL AND (title LIKE '% not retried' " +
+          "OR title LIKE '%: its turns still fail after %')",
+      )
+      .all(agent) as { id: string }[]
+    for (const r of open) {
+      this.db
+        .query("UPDATE inbox SET closed_at = ? WHERE id = ?")
+        .run(this.now(), r.id)
+      this.history.record("inbox.closed", {
+        agent,
+        data: { id: r.id, why: "recovered" },
+      })
+    }
+  }
+
   // Unregistering closes the agent's open items (its messages to the owner
   // are read then, as at any close).
   closeForAgent(agent: string) {

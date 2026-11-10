@@ -118,7 +118,7 @@ ID before it sends a token. Every command takes `--json`.
 | `autocode token rotate AGENT` | replace an agent's session token |
 | `autocode settings ...` | see [Settings](#settings) |
 | `autocode history [--agent ID] [--kind KIND] [--since TIME] [--limit N]` | the history, newest first |
-| `autocode inbox [--all]` | the owner's inbox: messages to `owner`, alerts (three failed checks in a row; a failed turn not retried; retries run out), and agents' questions, permission prompts and approvals (tier 0d; TO says whether one was also sent to an agent) |
+| `autocode inbox [--all]` | the owner's inbox: messages to `owner`, alerts (three failed checks in a row; a failed turn not retried; retries run out: these two close by themselves once the agent works again), and agents' questions, permission prompts and approvals (tier 0d; TO says whether one was also sent to an agent) |
 | `autocode answer ITEM TEXT...` | answer a message (the reply goes to the agent as a message from the owner), a question (an option or words; one line per question), a permission (`once`, `always`, or `reject: why`) or an approval (`approve` or `reject`, then an option and a note); the first answer counts |
 | `autocode inbox close ITEM` | close an inbox item (an alert, or a message you will not answer) |
 | `autocode pause AGENT` / `resume AGENT` | stop or restart an agent's injections (wakes and messages keep queuing) |

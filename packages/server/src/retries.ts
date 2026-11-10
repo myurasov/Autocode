@@ -128,6 +128,7 @@ export class Retries {
         agent,
         data: { error: row.error, retries: row.retries },
       })
+      this.inbox.closeErrorAlerts(agent)
       return
     }
     if (outcome === "interrupted") {
