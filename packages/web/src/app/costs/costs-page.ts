@@ -18,7 +18,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FILTER_DELAY_MS } from '../agents/agents-page';
 import {
   type AgentCost,
@@ -29,6 +29,7 @@ import {
   errorText,
 } from '../api';
 import { clockText, dayText, dotClass } from '../format';
+import { IdParts } from '../breaks';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { MoreRow, Paged, paged } from '../more';
@@ -72,7 +73,7 @@ export function weekTotals(weeks: CostDay[][]): CostDay[] {
 
 @Component({
   selector: 'app-costs-page',
-  imports: [AgentLink, MoreRow, NgTemplateOutlet, Updated],
+  imports: [AgentLink, IdParts, MoreRow, NgTemplateOutlet, RouterLink, Updated],
   templateUrl: './costs-page.html',
 })
 export class CostsPage {
@@ -93,9 +94,17 @@ export class CostsPage {
   // The agents that unregistered too (on by default here).
   protected readonly showGone = signal(true);
   // What is listed, and its totals (the gone ones only with the box).
+  // A job's row is not a gone agent: it stays with the box off.
   protected readonly rows = computed(() =>
-    (this.view()?.agents ?? []).filter((a) => a.registered || this.showGone()),
+    (this.view()?.agents ?? []).filter(
+      (a) => a.registered || !!a.job || this.showGone(),
+    ),
   );
+
+  // How much of a spend was the agent's runs' (the owner, 2026-11-09).
+  protected runsTip(usd: number | undefined): string | null {
+    return usd && usd > 0 ? `${costText(usd)} of it its runs` : null;
+  }
   // at most 25 rows, then "..."; the agent a link led to always shows (the
   // owner, 2026-11-09)
   protected readonly paging = new Paged();

@@ -193,12 +193,17 @@
       <th>Next</th>
       <th>To</th>
       <th>Last Run</th>
+      <th>Set By</th>
       <th></th>
     </tr>
   </thead>
   <tbody>
     @for (j of jobPage().rows; track j.name) {
-      <tr [attr.data-job]="j.name">
+      <tr
+        [attr.data-job]="j.name"
+        [class.highlight]="j.name === jobTarget()"
+        [attr.aria-current]="j.name === jobTarget() ? 'true' : null"
+      >
         <td class="name id-like" [attr.title]="j.description || null">
           <code [appId]="j.name"></code>
         </td>
@@ -252,6 +257,14 @@
             <span class="muted">—</span>
           }
         </td>
+        <!-- who set it: an agent, else the owner (the owner, 2026-11-09) -->
+        <td class="by id-like">
+          @if (j.created_by) {
+            <app-agent-link [id]="j.created_by" />
+          } @else {
+            owner
+          }
+        </td>
         <td class="actions">
           <div class="run-now">
             <input
@@ -278,7 +291,7 @@
       </tr>
     } @empty {
       <tr>
-        <td class="muted" colspan="8">
+        <td class="muted" colspan="9">
           @if (!loaded()) {
             Loading...
           } @else {
@@ -290,7 +303,7 @@
     }
     <!-- at most 25 rows, then "..." for 25 more (the owner, 2026-11-09) -->
     @if (jobPage().left) {
-      <tr app-more [columns]="8" [left]="jobPage().left" (more)="paging.more('jobs')"></tr>
+      <tr app-more [columns]="9" [left]="jobPage().left" (more)="paging.more('jobs')"></tr>
     }
   </tbody>
 </table>

@@ -73,7 +73,11 @@ export class JobsPage {
   // (the owner, 2026-11-09)
   protected readonly paging = new Paged();
   protected readonly jobPage = computed(() =>
-    paged(this.jobs(), this.paging.count('jobs')),
+    paged(
+      this.jobs(),
+      this.paging.count('jobs'),
+      (j) => j.name === this.jobTarget(),
+    ),
   );
   protected readonly runPage = computed(() =>
     paged(
@@ -99,6 +103,8 @@ export class JobsPage {
   protected readonly opened = signal<ReadonlySet<string>>(new Set());
   // The run a link led to (?run=): highlighted, and scrolled into view.
   protected readonly target = highlightParam('run');
+  // a job a link points at (the Costs tab's job rows: the owner, 2026-11-09)
+  protected readonly jobTarget = highlightParam('job');
 
   // The Set a Job form, and how its last try went.
   protected readonly form = {
@@ -153,6 +159,11 @@ export class JobsPage {
       if (this.inFlight === 0) void this.refresh();
     }, REFRESH_MS);
     inject(DestroyRef).onDestroy(() => clearInterval(timer));
+    scrollToHighlight(
+      this.jobTarget,
+      (name) => this.jobs().some((j) => j.name === name),
+      'data-job',
+    );
     scrollToHighlight(
       this.target,
       (id) => this.runs().some((r) => r.id === id),

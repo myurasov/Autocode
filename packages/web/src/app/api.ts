@@ -74,6 +74,9 @@ export interface Agent {
 export interface CostNumbers {
   today_usd: number;
   total_usd: number;
+  // of which its runs' (the owner, 2026-11-09)
+  runs_today_usd?: number;
+  runs_total_usd?: number;
   daily_usd: number | 'off';
   left_usd: number | null;
   context: number | null;
@@ -86,8 +89,10 @@ export interface CostNumbers {
 export interface AgentCost extends CostNumbers {
   agent: string;
   registered: boolean;
-  // its status, or unregistered
+  // its status, or unregistered; job for a job's row (job:<name>: the runs
+  // of the job no agent started)
   status: string;
+  job?: string;
   machine?: string;
   model?: string | null;
   // its last 7 days, oldest first, today last (up to 7: from its first day;
@@ -149,6 +154,8 @@ export interface Job {
   // a run's cap in dollars, or off
   run_usd: number | 'off';
   delete_session: boolean;
+  // the agent that set it (the owner, 2026-11-09), else null: the owner's
+  created_by?: string | null;
   last_run: { id: string; state: string; started: string } | null;
   created_at: string;
   updated_at: string;

@@ -83,12 +83,23 @@
     @for (a of page().rows; track a.agent) {
       <tr
         [attr.data-agent]="a.agent"
-        [class.gone]="!a.registered"
+        [class.gone]="!a.registered && !a.job"
         [class.highlight]="a.agent === target()"
         [attr.aria-current]="a.agent === target() ? 'true' : null"
       >
         <td class="agent id-like">
-          <app-agent-link [id]="a.agent" [gone]="!a.registered" />
+          @if (a.job) {
+            <!-- a job's row leads to its job (the owner, 2026-11-09) -->
+            <a
+              class="id-link"
+              routerLink="/jobs"
+              [queryParams]="{ job: a.job }"
+              title="Show on the Jobs page"
+              ><code [appId]="a.agent"></code
+            ></a>
+          } @else {
+            <app-agent-link [id]="a.agent" [gone]="!a.registered" />
+          }
         </td>
         <td class="status">
           @if (a.registered) {
@@ -96,7 +107,9 @@
           }
           {{ a.status }}
         </td>
-        <td class="num today">{{ costText(a.today_usd) }}</td>
+        <td class="num today" [attr.title]="runsTip(a.runs_today_usd)">
+          {{ costText(a.today_usd) }}
+        </td>
         <td class="cap">
           @if (a.daily_usd === 'off') {
             <span class="muted">off</span>
@@ -121,7 +134,9 @@
             *ngTemplateOutlet="graph; context: { $implicit: weekBars(a.week) }"
           />
         </td>
-        <td class="num total">{{ costText(a.total_usd) }}</td>
+        <td class="num total" [attr.title]="runsTip(a.runs_total_usd)">
+          {{ costText(a.total_usd) }}
+        </td>
         <td class="actions">
           <button
             type="button"

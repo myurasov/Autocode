@@ -75,6 +75,7 @@ function jobs(): Job[] {
       timeout: '30m',
       run_usd: 'off',
       delete_session: false,
+      created_by: 'team:lead',
       last_run: null,
       created_at: '2026-11-07T09:00:00.000Z',
       updated_at: '2026-11-07T09:00:00.000Z',
@@ -222,9 +223,12 @@ describe('JobsPage', () => {
       'Next',
       'To',
       'Last Run',
+      'Set By',
       '',
     ]);
     const mail = job(page, 'mail');
+    // the owner set it (the owner, 2026-11-09: an agent's job names it)
+    expect(cell(mail, 'by')).toBe('owner');
     expect(mail.querySelector('td.name')!.classList).toContain('id-like');
     expect(parts(mail.querySelector('td.name code'))).toEqual(['mail']);
     expect(mail.querySelector('td.name')!.getAttribute('title')).toBe(
@@ -263,6 +267,19 @@ describe('JobsPage', () => {
       '/agents?agent=team:lead',
     );
     expect(cell(nightly, 'last')).toBe('—');
+    expect(
+      nightly.querySelector('td.by a.id-link')!.getAttribute('href'),
+    ).toBe('/agents?agent=team:lead');
+  });
+
+  // The owner, 2026-11-09 (rc2): a job's row on Costs links here.
+  it('highlights the job a link led to (?job=)', async () => {
+    Element.prototype.scrollIntoView = () => {};
+    signedIn();
+    await TestBed.inject(Router).navigateByUrl('/?job=team:nightly');
+    const page = await open(jobs());
+    expect(job(page, 'team:nightly').classList).toContain('highlight');
+    expect(job(page, 'mail').classList).not.toContain('highlight');
   });
 
   it("lists the runs, newest first: who started them, state, times, cost, result and reason; Delete Session for a failed run's kept session", async () => {

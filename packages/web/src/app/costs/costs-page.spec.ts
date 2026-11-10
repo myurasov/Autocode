@@ -257,6 +257,56 @@ describe('CostsPage', () => {
     expect(cell(page, 'old:one', 'total')).toBe('$3.50');
   });
 
+  // The owner, 2026-11-09 (rc2): runs no agent started count for their
+  // job's row; an agent's tooltip says how much of its spend was its runs'.
+  it("a job's row: its ID a link to Jobs, the status job, no cap; it stays with the Unregistered box off", async () => {
+    const start = view();
+    start.agents.push({
+      ...BASE,
+      agent: 'job:nightly',
+      job: 'nightly',
+      registered: false,
+      status: 'job',
+      today_usd: 0.4,
+      total_usd: 2.4,
+    });
+    const page = await open(start);
+    const job = row(page, 'job:nightly');
+    expect(job.classList).not.toContain('gone');
+    const link = job.querySelector('td.agent a')!;
+    expect(text(link)).toBe('job:nightly');
+    expect(link.getAttribute('href')).toBe('/jobs?job=nightly');
+    expect(text(job.querySelector('td.status'))).toBe('job');
+    expect(job.querySelector('td.status .dot')).toBeNull();
+    expect(cell(page, 'job:nightly', 'cap')).toBe('off');
+    const box = page.querySelector('#costs-unregistered') as HTMLInputElement;
+    box.click();
+    await settle(fixture);
+    expect(row(page, 'job:nightly')).not.toBeNull();
+  });
+
+  it("an agent's Today and Total say how much was its runs'", async () => {
+    const start = view();
+    Object.assign(start.agents[0]!, {
+      runs_today_usd: 0.5,
+      runs_total_usd: 4.25,
+    });
+    const page = await open(start);
+    const lead = row(page, 'kaggle:lead');
+    expect(lead.querySelector('td.today')!.getAttribute('title')).toBe(
+      '$0.50 of it its runs',
+    );
+    expect(lead.querySelector('td.total')!.getAttribute('title')).toBe(
+      '$4.25 of it its runs',
+    );
+    // none: no tooltip
+    expect(
+      row(page, 'kaggle:worker')
+        .querySelector('td.today')!
+        .getAttribute('title'),
+    ).toBeNull();
+  });
+
   it('the Unregistered box, on by default, hides the gone agents when off; the totals follow', async () => {
     const page = await open();
     const box = page.querySelector(
