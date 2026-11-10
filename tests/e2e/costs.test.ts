@@ -43,6 +43,128 @@ afterAll(async () => {
   })
 })
 
+/*
+ * The owner, 2026-11-10: "verify that when agents use opencode subagents (not
+ * jobs), the cost is accounted for". A Subagent's steps (OpenCode's own
+ * subagent tool, its own child session) count for the agent: its spend today
+ * and in total, once each; no row of its own; its context is not the agent's.
+ */
+describe("a Subagent's cost", () => {
+  // a session and agent of its own: the other tests' context and steps stay
+  test("a Subagent's steps count for the agent, once each; it has no row of its own", async () => {
+    const own = await readySession(oc)
+    const sub = `e2e:${run}:subcost`
+    await callTool(oc, own.id, "autocode_me", { action: "register", id: sub })
+    try {
+      const marker = `SUBCOST-${run}`
+      const fake = new FakeModel(node)
+      const before = (await admin("GET", `/v1/costs/${enc(sub)}`)).cost
+      // the fake model's price: input $1, output $2 per million tokens; four
+      // scripted steps (the parent's call, the Subagent's two, the parent's
+      // last), whichever session takes each
+      /*
+       * OpenCode sends the Subagent's requests with its top-level session's
+       * header, so the steps go by their text (the fake model takes, for each
+       * request, the first step whose text it holds, in this order): the
+       * agent's last request alone holds the Subagent's result; the
+       * Subagent's hold its prompt; the agent's first holds the user prompt.
+       * Small prompts (a big one starts OpenCode's own compaction).
+       */
+      await fake.script(
+        [
+          {
+            match: "<subagent sessionID",
+            usage: { prompt_tokens: 1_000, completion_tokens: 12_000 },
+            reply: "parent done",
+          },
+          {
+            match: `${marker} child work`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 150_000 },
+            tool_calls: [
+              {
+                name: "shell",
+                arguments: { command: "echo child", description: "say" },
+              },
+            ],
+          },
+          {
+            match: `${marker} child work`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 175_000 },
+            reply: "child done",
+          },
+          {
+            match: `use a subagent ${run}`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 10_000 },
+            tool_calls: [
+              {
+                name: "subagent",
+                arguments: {
+                  agent: "general",
+                  description: "costly child",
+                  prompt: `${marker} child work`,
+                },
+              },
+            ],
+          },
+        ],
+        true,
+      )
+      await oc.run(own.id, `use a subagent ${run}`, 120_000)
+      // the Subagent ran in a session of its own: the agent's result names it
+      const results = (await fake.requests()).flatMap((r: any) =>
+        (r.messages as any[])
+          .filter((m) => m?.role === "tool")
+          .map((m) => String(m.content)),
+      )
+      const tag = results
+        .map((t) => /<subagent sessionID="([^"]+)" state="completed">/.exec(t))
+        .find(Boolean)
+      expect(tag, JSON.stringify(results.slice(-4))).toBeTruthy()
+      const child = tag![1]!
+      expect(child).not.toBe(own.id)
+      // its shell ran: it took its own scripted steps
+      expect(results).toContain("child\n")
+      // the steps' cost ($1 a million input, $2 a million output): the
+      // agent's $0.021 and $0.025, the Subagent's $0.301 and $0.351
+      const expected = 0.021 + 0.301 + 0.351 + 0.025
+      const after = await until(
+        async () => {
+          const c = (await admin("GET", `/v1/costs/${enc(sub)}`)).cost
+          return c.total_usd - before.total_usd >= expected - 1e-6
+            ? c
+            : undefined
+        },
+        {
+          timeoutMs: 60_000,
+          intervalMs: 500,
+          what: `the Subagent's cost (served: ${JSON.stringify(
+            (await fake.requests())
+              .filter((r: any) => JSON.stringify(r.messages).includes(marker))
+              .map((r: any) => ({
+                s: r.session === own.id ? "agent" : r.session,
+                step: r.step,
+                kind: r.kind,
+              })),
+          )})`,
+        },
+      )
+      // each step once (a session title's request costs a little more)
+      expect(after.total_usd - before.total_usd).toBeLessThan(expected + 0.01)
+      expect(after.today_usd - before.today_usd).toBeCloseTo(
+        after.total_usd - before.total_usd,
+        6,
+      )
+      // no row of the Subagent's own session
+      const rows = (await admin("GET", "/v1/costs")).agents.map(
+        (a: any) => a.agent,
+      )
+      expect(rows).not.toContain(child)
+    } finally {
+      await admin("DELETE", `/v1/agents/${enc(sub)}`).catch(() => {})
+    }
+  }, 180_000)
+})
+
 describe("costs and compaction", () => {
   test("steps' costs add up; the cap pauses after the turn that passes it", async () => {
     // no compaction notice into this turn (past compact_at, it would come at
