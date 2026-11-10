@@ -327,12 +327,18 @@ export async function costs(args: Parsed): Promise<number> {
     const k = res.cost
     print(args, res, () =>
       [
-        `${res.agent} (${res.registered ? "registered" : "not registered"})`,
+        res.agent.startsWith("job:")
+          ? `${res.agent} (a job's runs that no agent started)`
+          : `${res.agent} (${res.registered ? "registered" : "not registered"})`,
         `today ${dollars(k.today_usd)}` +
           (k.daily_usd === "off"
             ? " (no daily cap)"
             : ` of ${cap(k)} (${left(k)} left)`) +
-          `; in total ${dollars(k.total_usd)}`,
+          `; in total ${dollars(k.total_usd)}` +
+          // of it, its runs' (the owner, 2026-11-09)
+          (k.runs_total_usd > 0
+            ? ` (${dollars(k.runs_total_usd)} of it its runs')`
+            : ""),
         k.context === null
           ? "context unknown yet"
           : `context ${tokens(k.context)} tokens` +

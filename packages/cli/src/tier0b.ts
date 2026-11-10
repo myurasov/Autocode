@@ -382,8 +382,10 @@ export async function job(args: Parsed): Promise<number> {
               j.last_run
                 ? `${j.last_run.state} ${local(j.last_run.started)}`
                 : "",
+              // an agent's job names it (the owner, 2026-11-09)
+              j.created_by ?? "owner",
             ]),
-            ["NAME", "WHERE", "MODEL", "TRIGGER", "NEXT", "LAST RUN"],
+            ["NAME", "WHERE", "MODEL", "TRIGGER", "NEXT", "LAST RUN", "SET BY"],
           )
         : "no jobs",
     )

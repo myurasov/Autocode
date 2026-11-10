@@ -505,9 +505,11 @@ describe("owner commands", () => {
     expect(set.stdout).toContain("job digest set: fire-only on m:1")
     const list = await cli(["job", "list"], asAdmin())
     expect(list.stdout).toMatch(
-      /NAME\s+WHERE\s+MODEL\s+TRIGGER\s+NEXT\s+LAST RUN/,
+      /NAME\s+WHERE\s+MODEL\s+TRIGGER\s+NEXT\s+LAST RUN\s+SET BY/,
     )
     expect(list.stdout).toMatch(/digest\s+m:\/work\s+fake\/main\s+fire-only/)
+    // who set it: the owner here (an agent's job names its agent)
+    expect(list.stdout).toMatch(/\sowner$/m)
     const run = await cli(
       ["job", "run", "digest", "--text", "short"],
       asAdmin(),
@@ -636,5 +638,61 @@ describe("costs", () => {
       /^ID\s+STATUS\s+MACHINE\s+TODAY\s+CONTEXT\s+LAST ACTIVE\s+DESCRIPTION$/m,
     )
     expect(res.stdout).toMatch(/kaggle:lead\s+idle\s+\S+\s+\$0\.50\s+60\.0%/)
+  })
+})
+
+// The owner, 2026-11-09 (rc2): a run counts for whom it was for; runs no
+// agent started count for their job's row. A server of its own: the costs it
+// makes do not reach the shared one's checks.
+describe("costs of runs", () => {
+  let own: TestServer
+  afterAll(async () => {
+    await own?.stop()
+  })
+  test("costs: a job's row for its owner runs; an agent's runs' share", async () => {
+    own = await testServer()
+    await hello(own, "m:1")
+    const me = await registered(own, "m:1", "ses_1", "kaggle:lead")
+    for (const i of await instructions(own, "m:1")) await ack(own, "m:1", i.id)
+    const env = { AUTOCODE_URL: own.url, AUTOCODE_TOKEN: own.admin }
+    for (const name of ["nightly", "helper"])
+      await call(own.url, own.admin, "PUT", `/v1/jobs/${name}`, {
+        host: "m:1",
+        model: "fake/main",
+        prompt: "x",
+        trigger: "fire-only",
+      })
+    const spawnRun = async (session: string) => {
+      own.server.tick()
+      for (const i of await instructions(own, "m:1"))
+        await ack(
+          own,
+          "m:1",
+          i.id,
+          i.type === "spawn" ? { session } : { ok: true },
+        )
+      own.server.tick()
+      for (const i of await instructions(own, "m:1"))
+        await ack(own, "m:1", i.id)
+    }
+    await call(own.url, own.admin, "POST", "/v1/jobs/nightly/run")
+    await spawnRun("ses_r1")
+    await call(own.url, me, "POST", "/v1/jobs/helper/run", {})
+    await spawnRun("ses_r2")
+    await report(own, "m:1", [
+      { type: "cost", session: "ses_r1", usd: 0.4, context: 100 },
+      { type: "cost", session: "ses_r2", usd: 0.3, context: 100 },
+    ])
+    const res = await cli(["costs"], env)
+    expect(res.code, res.stderr).toBe(0)
+    expect(res.stdout).toMatch(/^job:nightly\s+job\s+\$0\.40\s+off\s+—/m)
+    expect(res.stdout).toMatch(/^kaggle:lead\s+idle\s+\$0\.30\s/m)
+    expect(res.stdout).not.toMatch(/nightly:20|helper/)
+    const one = await cli(["costs", "kaggle:lead"], env)
+    expect(one.stdout).toContain("($0.30 of it its runs')")
+    const job = await cli(["costs", "job:nightly"], env)
+    expect(job.stdout).toContain(
+      "job:nightly (a job's runs that no agent started)",
+    )
   })
 })
