@@ -108,6 +108,107 @@ describe("autocode_me jobs, run and finish", () => {
   })
 })
 
+// The owner, 2026-11-09 (rc2): agents set jobs of their own.
+describe("autocode_me job_set and job_delete", () => {
+  const call = (answers: Record<string, unknown>, calls: any[] = []) =>
+    (async (method: string, path: string, body?: unknown) => {
+      calls.push([`${method} ${path}`, body])
+      return answers[`${method} ${path}`] as any
+    }) as any
+
+  test("the actions and their fields are described", () => {
+    const props = ME_TOOL.input.properties as any
+    for (const a of ["job_set", "job_delete"])
+      expect(props.action.enum).toContain(a)
+    for (const f of [
+      "model",
+      "prompt",
+      "trigger",
+      "run_usd",
+      "host",
+      "to",
+      "timeout",
+      "variant",
+      "opencode_agent",
+      "keep_session",
+    ])
+      expect(props[f], f).toBeDefined()
+    expect(ME_TOOL.description).toContain("job_set (job, model, prompt")
+    expect(ME_TOOL.description).toContain("job_delete (job")
+  })
+
+  test("job_set sends the definition; the answer says set or asked", async () => {
+    const calls: any[] = []
+    const c = call(
+      {
+        "POST /v1/me/jobs": {
+          state: "asked",
+          name: "team:lead:digest",
+          approval: "ask_1",
+        },
+        "DELETE /v1/me/jobs/digest": { deleted: "team:lead:digest" },
+      },
+      calls,
+    )
+    expect(
+      await runMe(
+        {
+          action: "job_set",
+          job: "digest",
+          model: "fake/main",
+          prompt: "Write the digest.",
+          trigger: 'cron "0 9 * * 1-5"',
+          run_usd: 2,
+          opencode_agent: "build",
+          keep_session: true,
+        } as any,
+        c,
+      ),
+    ).toBe(
+      "Job team:lead:digest is with the owner for approval (ask_1): it " +
+        'exists once approved, and a notice tells you (approval "Job ' +
+        'team:lead:digest" approved or rejected). Go on with your work.',
+    )
+    expect(calls[0]).toEqual([
+      "POST /v1/me/jobs",
+      {
+        name: "digest",
+        model: "fake/main",
+        prompt: "Write the digest.",
+        trigger: 'cron "0 9 * * 1-5"',
+        run_usd: 2,
+        agent: "build",
+        delete_session: false,
+      },
+    ])
+    expect(await runMe({ action: "job_delete", job: "digest" } as any, c)).toBe(
+      "Deleted the job team:lead:digest.",
+    )
+    const set = call({
+      "POST /v1/me/jobs": { state: "set", name: "team:lead:digest" },
+    })
+    expect(
+      await runMe(
+        {
+          action: "job_set",
+          job: "digest",
+          model: "m/x",
+          prompt: "p",
+          trigger: "fire-only",
+          run_usd: 1,
+        } as any,
+        set,
+      ),
+    ).toBe(
+      "Job team:lead:digest is set. Run it with autocode_me action=run " +
+        "job=team:lead:digest; every run's cost counts for you.",
+    )
+    expect(await runMe({ action: "job_set" } as any, set)).toBe(
+      "error: job_set needs job (its name), model, prompt, trigger and run_usd",
+    )
+  })
+})
+
 describe("the guide's jobs part", () => {
   test("jobs, runs, finish, the result, one run at a time", () => {
     expect(TOPICS).toContain("jobs")

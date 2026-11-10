@@ -139,6 +139,40 @@ describe("autocode_me compact and status", () => {
   })
 })
 
+// The owner, 2026-11-09 (rc2): a run an agent starts counts for it; status
+// says how much of its spend was its runs'.
+test("status says how much of the spend was its runs'", async () => {
+  const call = async () => ({
+    registered: true,
+    session: "ses_a",
+    agent: { id: "a:b", description: "", status: "idle", machine: "m" },
+    server: {
+      id: "s",
+      time: "2026-10-28T12:00:00.000Z",
+      timezone: "UTC",
+    },
+    settings: { min_interval: "1m" },
+    wakes: { count: 0, next: null },
+    waiting: 0,
+    cost: {
+      today_usd: 0.5,
+      total_usd: 1.5,
+      runs_today_usd: 0.4,
+      runs_total_usd: 1.2,
+      daily_usd: "off",
+      left_usd: null,
+      context: null,
+      context_limit: null,
+      compact_at: null,
+      context_share: null,
+    },
+  })
+  expect(await runMe({ action: "status" }, call as any)).toContain(
+    "Cost today: $0.50 (no daily cap; $0.40 of it your runs'); in total " +
+      "$1.50 ($1.20 your runs').",
+  )
+})
+
 describe("the guide's costs part", () => {
   test("the daily cap, its warning and pause, compaction, resume, expiry", () => {
     expect(TOPICS).toContain("costs")

@@ -302,8 +302,9 @@ submission, a refresh of shared data.
 
 ## Costs and Context
 
-- Each model step of yours (Subagents too) counts toward your spend
-  today, in the server's zone; `autocode_me status` shows it and your
+- Each model step of yours (Subagents too, and the runs you start or
+  whose jobs you set) counts toward your spend today, in the server's
+  zone; `autocode_me status` shows it and your
   spend in total, your daily cap (`daily_usd`, unless the owner set
   none) and what is left of it today, and your context with the
   compaction threshold and its share. The owner sees the same, live.
@@ -329,14 +330,28 @@ submission, a refresh of shared data.
 
 ## Jobs and Runs
 
-The owner defines jobs: a machine and folder, a model, a prompt and a
-schedule. Each run is a fresh session, an agent of its own.
+A job is a task for fresh sessions: a machine and folder, a model, a
+prompt and a schedule. Each run is a fresh session, an agent of its own.
 
 - `autocode_me action=jobs` lists the ones you can run;
   `action=run job=NAME text=...` starts one (your text is added to its
   prompt, marked as yours). Its result comes to you as a notice:
   `[autocode] result of run NAME:...`. A job has one run at a time:
   starting one while it runs is refused, with the running run's ID.
+- A run you start costs you: each of its steps counts toward your spend
+  and your daily cap (the runs it starts too). Start runs only when you
+  need their result.
+- You can set jobs of your own: `autocode_me action=job_set job=NAME
+  model=... prompt=... trigger=... run_usd=...` (optional `host`, your own
+  folder by default; `to`, you by default; `timeout`, `variant`,
+  `opencode_agent`, `keep_session`, `description`). Its name becomes
+  `<your ID>:NAME`. `run_usd`, the most a run may spend, is required.
+  Unless the owner lets you set jobs at once (`job_mode`), the owner
+  approves it first: the answer comes as a notice (`[autocode] approval
+  "Job ..." approved` or rejected), and meanwhile you go on with your
+  work. Changing a job asks again. Every run of your jobs counts for you,
+  scheduled ones too. `action=job_delete job=NAME` deletes one of yours;
+  they all go when you unregister.
 - Started as a run yourself (your prompt ends by saying so): do the
   work, then `autocode_me action=finish result=...`. If you end a turn
   with nothing waiting and without finishing, its last reply is the

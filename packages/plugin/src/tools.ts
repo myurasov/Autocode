@@ -23,8 +23,21 @@ export interface MeInput {
     | "jobs"
     | "run"
     | "finish"
+    | "job_set"
+    | "job_delete"
   job?: string
   text?: string
+  // job_set (the owner, 2026-11-09: agents set jobs of their own)
+  model?: string
+  prompt?: string
+  trigger?: string
+  run_usd?: number
+  host?: string
+  to?: string
+  timeout?: string
+  variant?: string
+  opencode_agent?: string
+  keep_session?: boolean
   result?: string
   id?: string
   description?: string
@@ -47,7 +60,11 @@ export const ME_TOOL = {
     "(compact " +
     "your session after this turn), jobs (the jobs you can run), run (job, " +
     "text: start a run; its result comes to you), finish (result: a run of " +
-    "a job ends with it).",
+    "a job ends with it), job_set (job, model, prompt, trigger, run_usd; " +
+    "optional host, to, timeout, variant, opencode_agent, keep_session, " +
+    "description: set a job of your own, <your ID>:<job>; the owner may " +
+    "approve it first; its runs' cost counts for you), job_delete (job: " +
+    "one of yours).",
   input: {
     type: "object",
     properties: {
@@ -63,9 +80,55 @@ export const ME_TOOL = {
           "jobs",
           "run",
           "finish",
+          "job_set",
+          "job_delete",
         ],
       },
-      job: { type: "string", description: "run: the job's name" },
+      job: {
+        type: "string",
+        description:
+          "run, job_set, job_delete: the job's name (yours: <your ID>:<name>; " +
+          "the prefix is added)",
+      },
+      model: {
+        type: "string",
+        description: "job_set: provider/model for its runs",
+      },
+      prompt: {
+        type: "string",
+        description: "job_set: what each run is told (self-contained)",
+      },
+      trigger: {
+        type: "string",
+        description:
+          'job_set: every 1h | at 09:00 | cron "0 9 * * 1-5" | fire-only ' +
+          "(run it with action=run)",
+      },
+      run_usd: {
+        type: "number",
+        description: "job_set (required): the most dollars a run may spend",
+      },
+      host: {
+        type: "string",
+        description: "job_set: where it runs (default: your own folder)",
+      },
+      to: {
+        type: "string",
+        description: "job_set: who gets results (default: you)",
+      },
+      timeout: {
+        type: "string",
+        description: "job_set: a run's time limit, 1m to 7d (default 1h)",
+      },
+      variant: { type: "string", description: "job_set: the model's variant" },
+      opencode_agent: {
+        type: "string",
+        description: "job_set: the OpenCode agent its runs use",
+      },
+      keep_session: {
+        type: "boolean",
+        description: "job_set: keep each run's session (default: removed)",
+      },
       text: {
         type: "string",
         description: "run: added to the job's prompt, marked as yours",
@@ -82,7 +145,8 @@ export const ME_TOOL = {
       },
       description: {
         type: "string",
-        description: "register: what you do, in a sentence",
+        description:
+          "register: what you do, in a sentence; job_set: what the job does",
       },
       pattern: {
         type: "string",
@@ -332,6 +396,52 @@ export async function runMe(
         "from autocode (result of run ...)."
       )
     }
+    case "job_set": {
+      if (
+        !input.job ||
+        !input.model ||
+        !input.prompt ||
+        !input.trigger ||
+        input.run_usd === undefined
+      )
+        return (
+          "error: job_set needs job (its name), model, prompt, trigger and " +
+          "run_usd"
+        )
+      const body: Record<string, unknown> = {
+        name: input.job,
+        model: input.model,
+        prompt: input.prompt,
+        trigger: input.trigger,
+        run_usd: input.run_usd,
+      }
+      if (input.host) body.host = input.host
+      if (input.to) body.to = input.to
+      if (input.timeout) body.timeout = input.timeout
+      if (input.variant) body.variant = input.variant
+      if (input.opencode_agent) body.agent = input.opencode_agent
+      if (input.keep_session) body.delete_session = false
+      if (input.description) body.description = input.description
+      const res = await call("POST", "/v1/me/jobs", body)
+      if (res.state === "set")
+        return (
+          `Job ${res.name} is set. Run it with autocode_me action=run ` +
+          `job=${res.name}; every run's cost counts for you.`
+        )
+      return (
+        `Job ${res.name} is with the owner for approval (${res.approval}): ` +
+        "it exists once approved, and a notice tells you (approval " +
+        `"Job ${res.name}" approved or rejected). Go on with your work.`
+      )
+    }
+    case "job_delete": {
+      if (!input.job) return "error: job_delete needs the job's name"
+      const res = await call(
+        "DELETE",
+        `/v1/me/jobs/${encodeURIComponent(input.job)}`,
+      )
+      return `Deleted the job ${res.deleted}.`
+    }
     case "finish": {
       if (!input.result) return "error: finish needs your result"
       const res = await call("POST", "/v1/me/finish", {
@@ -355,7 +465,7 @@ export async function runMe(
     default:
       return (
         "error: action must be register, unregister, status, discover, " +
-        "help, compact, jobs, run or finish"
+        "help, compact, jobs, run, finish, job_set or job_delete"
       )
   }
 }
@@ -667,15 +777,24 @@ const tokens = (n: unknown) => Number(n).toLocaleString("en-US")
 // What status says of the agent's spend and context (tiers 0e, 0g).
 function costLine(k: any): string {
   const capped = k.daily_usd !== "off" && k.daily_usd !== undefined
+  // of it, the runs it started or whose jobs it set (the owner, 2026-11-09)
+  const runsToday = Number(k.runs_today_usd ?? 0)
+  const runsTotal = Number(k.runs_total_usd ?? 0)
+  const today = runsToday > 0 ? `${dollars(runsToday)} of it your runs'` : ""
   let line =
     `Cost today: ${dollars(k.today_usd)}` +
     (capped
       ? ` of your daily cap of ${dollars(k.daily_usd)}` +
         (k.left_usd !== undefined && k.left_usd !== null
-          ? ` (${dollars(k.left_usd)} left)`
-          : "")
-      : " (no daily cap)") +
-    (k.total_usd !== undefined ? `; in total ${dollars(k.total_usd)}` : "") +
+          ? ` (${dollars(k.left_usd)} left${today ? `; ${today}` : ""})`
+          : today
+            ? ` (${today})`
+            : "")
+      : ` (no daily cap${today ? `; ${today}` : ""})`) +
+    (k.total_usd !== undefined
+      ? `; in total ${dollars(k.total_usd)}` +
+        (runsTotal > 0 ? ` (${dollars(runsTotal)} your runs')` : "")
+      : "") +
     "."
   if (k.context) {
     line += ` Context: ${tokens(k.context)} tokens`
