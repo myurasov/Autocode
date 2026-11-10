@@ -17,6 +17,7 @@ import { IdParts, TimeText } from '../breaks';
 import { FOLD_CHARS, localTime } from '../format';
 import { AgentLink } from '../links';
 import { Markdown } from '../markdown';
+import { MoreRow, Paged, paged } from '../more';
 import { Updated } from '../updated';
 
 // How a copy was read, for its state's tooltip.
@@ -60,7 +61,7 @@ export function recipients(to: string): string | string[] {
 
 @Component({
   selector: 'app-messages-page',
-  imports: [AgentLink, IdParts, Markdown, TimeText, Updated],
+  imports: [AgentLink, IdParts, Markdown, MoreRow, TimeText, Updated],
   templateUrl: './messages-page.html',
 })
 export class MessagesPage {
@@ -75,6 +76,11 @@ export class MessagesPage {
     this.showRead()
       ? this.messages()
       : this.messages().filter((m) => m.state !== 'read'),
+  );
+  // at most 25 rows, then "..." (the owner, 2026-11-09)
+  protected readonly paging = new Paged();
+  protected readonly page = computed(() =>
+    paged(this.shownMessages(), this.paging.count('messages')),
   );
   protected readonly loaded = signal(false);
   protected readonly error = signal('');

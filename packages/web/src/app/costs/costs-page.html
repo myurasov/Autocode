@@ -80,7 +80,7 @@
     </tr>
   </thead>
   <tbody>
-    @for (a of rows(); track a.agent) {
+    @for (a of page().rows; track a.agent) {
       <tr
         [attr.data-agent]="a.agent"
         [class.gone]="!a.registered"
@@ -149,12 +149,20 @@
                     </tr>
                   </thead>
                   <tbody>
-                    @for (x of d.days; track x.day) {
+                    @for (x of dayRows(d.days).rows; track x.day) {
                       <tr>
                         <td>{{ dayText(x.day) }}</td>
                         <td class="num">{{ costText(x.usd) }}</td>
                         <td class="num">{{ x.steps }}</td>
                       </tr>
+                    }
+                    @if (dayRows(d.days).left) {
+                      <tr
+                        app-more
+                        [columns]="3"
+                        [left]="dayRows(d.days).left"
+                        (more)="paging.more('days')"
+                      ></tr>
                     }
                   </tbody>
                 </table>
@@ -179,6 +187,10 @@
           }
         </td>
       </tr>
+    }
+    <!-- at most 25 rows, then "..." for 25 more (the owner, 2026-11-09) -->
+    @if (page().left) {
+      <tr app-more [columns]="7" [left]="page().left" (more)="paging.more('costs')"></tr>
     }
   </tbody>
   @if (rows().length) {

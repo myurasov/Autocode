@@ -10,7 +10,7 @@
  * shows in the toolbar, and the list refreshes after each.
  */
 
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { type AskAnswer, Api, errorText, type InboxItem } from '../api';
 import { IdParts, TimeText } from '../breaks';
@@ -18,6 +18,7 @@ import { localTime } from '../format';
 import { AgentLink } from '../links';
 import { leftText } from '../locks/locks-page';
 import { Markdown } from '../markdown';
+import { MoreRow, Paged, paged } from '../more';
 import { Updated } from '../updated';
 
 // What each kind of item is called on the page.
@@ -70,7 +71,7 @@ export function askAnswerText(item: InboxItem): string {
 
 @Component({
   selector: 'app-inbox-page',
-  imports: [AgentLink, IdParts, Markdown, TimeText, Updated],
+  imports: [AgentLink, IdParts, Markdown, MoreRow, TimeText, Updated],
   templateUrl: './inbox-page.html',
 })
 export class InboxPage {
@@ -86,6 +87,11 @@ export class InboxPage {
   protected readonly updatedAt = signal<number | null>(null);
   protected readonly busy = signal(false);
   protected readonly showClosed = signal(false);
+  // at most 25 rows, then "..." (the owner, 2026-11-09)
+  protected readonly paging = new Paged();
+  protected readonly page = computed(() =>
+    paged(this.items(), this.paging.count('inbox')),
+  );
   // The answers as typed, by item ID; they stay through refreshes.
   protected readonly drafts = signal<Record<string, string>>({});
   // An ask's fields as typed or chosen (its own words for each question, a

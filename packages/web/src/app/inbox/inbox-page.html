@@ -45,7 +45,7 @@
     </tr>
   </thead>
   <tbody>
-    @for (item of items(); track item.id) {
+    @for (item of page().rows; track item.id) {
       <tr [attr.data-item]="item.id" [class.closed]="!!item.closed_at">
         <td
           class="time"
@@ -306,6 +306,10 @@
           {{ loaded() ? 'Nothing in the inbox.' : 'Loading...' }}
         </td>
       </tr>
+    }
+    <!-- at most 25 rows, then "..." for 25 more (the owner, 2026-11-09) -->
+    @if (page().left) {
+      <tr app-more [columns]="6" [left]="page().left" (more)="paging.more('inbox')"></tr>
     }
   </tbody>
 </table>

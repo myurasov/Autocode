@@ -38,7 +38,7 @@
     </tr>
   </thead>
   <tbody>
-    @for (l of locks(); track l.name) {
+    @for (l of page().rows; track l.name) {
       <tr [attr.data-lock]="l.name">
         <td class="name id-like"><code [appId]="l.name"></code></td>
         <td class="capacity">{{ capacityText(l.max) }}</td>
@@ -114,6 +114,10 @@
           }
         </td>
       </tr>
+    }
+    <!-- at most 25 rows, then "..." for 25 more (the owner, 2026-11-09) -->
+    @if (page().left) {
+      <tr app-more [columns]="4" [left]="page().left" (more)="paging.more('locks')"></tr>
     }
   </tbody>
 </table>

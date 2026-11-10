@@ -86,7 +86,7 @@
     </tr>
   </thead>
   <tbody>
-    @for (m of shownMessages(); track m.id) {
+    @for (m of page().rows; track m.id) {
       <tr [attr.data-message]="m.id">
         <td class="id id-like"><code [appId]="m.id"></code></td>
         <td class="time" [title]="m.created_at" [appTime]="m.created_at"></td>
@@ -146,6 +146,10 @@
           }}
         </td>
       </tr>
+    }
+    <!-- at most 25 rows, then "..." for 25 more (the owner, 2026-11-09) -->
+    @if (page().left) {
+      <tr app-more [columns]="8" [left]="page().left" (more)="paging.more('messages')"></tr>
     }
   </tbody>
 </table>

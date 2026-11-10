@@ -33,6 +33,7 @@ import { FOLD_CHARS, folded } from '../format';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { leftText } from '../locks/locks-page';
 import { TRIGGER_HINT } from '../wakes/wakes-page';
+import { MoreRow, Paged, paged } from '../more';
 import { Updated } from '../updated';
 
 // A run's state as the page says it: Starting, Running, Succeeded...
@@ -59,7 +60,7 @@ const STARTERS = ['owner', 'schedule', 'ask'];
 
 @Component({
   selector: 'app-jobs-page',
-  imports: [AgentLink, Breaks, IdParts, RouterLink, TimeText, Updated],
+  imports: [AgentLink, Breaks, IdParts, MoreRow, RouterLink, TimeText, Updated],
   templateUrl: './jobs-page.html',
 })
 export class JobsPage {
@@ -68,6 +69,19 @@ export class JobsPage {
 
   protected readonly jobs = signal<Job[]>([]);
   protected readonly runs = signal<Run[]>([]);
+  // at most 25 rows each, then "..."; a run a link points at always shows
+  // (the owner, 2026-11-09)
+  protected readonly paging = new Paged();
+  protected readonly jobPage = computed(() =>
+    paged(this.jobs(), this.paging.count('jobs')),
+  );
+  protected readonly runPage = computed(() =>
+    paged(
+      this.runs(),
+      this.paging.count('runs'),
+      (r) => r.id === this.target(),
+    ),
+  );
   protected readonly hosts = signal<Host[]>([]);
   protected readonly loaded = signal(false);
   // Why the lists did not load.

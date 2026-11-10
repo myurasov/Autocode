@@ -197,7 +197,7 @@
     </tr>
   </thead>
   <tbody>
-    @for (j of jobs(); track j.name) {
+    @for (j of jobPage().rows; track j.name) {
       <tr [attr.data-job]="j.name">
         <td class="name id-like" [attr.title]="j.description || null">
           <code [appId]="j.name"></code>
@@ -288,6 +288,10 @@
         </td>
       </tr>
     }
+    <!-- at most 25 rows, then "..." for 25 more (the owner, 2026-11-09) -->
+    @if (jobPage().left) {
+      <tr app-more [columns]="8" [left]="jobPage().left" (more)="paging.more('jobs')"></tr>
+    }
   </tbody>
 </table>
 
@@ -319,7 +323,7 @@
     </tr>
   </thead>
   <tbody>
-    @for (r of runs(); track r.id) {
+    @for (r of runPage().rows; track r.id) {
       <tr
         [attr.data-run]="r.id"
         [class.highlight]="r.id === target()"
@@ -390,6 +394,10 @@
           {{ loaded() ? 'No runs yet.' : 'Loading...' }}
         </td>
       </tr>
+    }
+    <!-- at most 25 rows, then "..." for 25 more (the owner, 2026-11-09) -->
+    @if (runPage().left) {
+      <tr app-more [columns]="9" [left]="runPage().left" (more)="paging.more('runs')"></tr>
     }
   </tbody>
 </table>

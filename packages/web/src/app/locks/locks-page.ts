@@ -8,7 +8,7 @@
  * the others move up; the result shows in the toolbar and the list reloads.
  */
 
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
@@ -21,6 +21,7 @@ import {
 } from '../api';
 import { IdParts, TimeText } from '../breaks';
 import { AgentLink } from '../links';
+import { MoreRow, Paged, paged } from '../more';
 import { Updated } from '../updated';
 
 // A lock's type, by its capacity: a mutex (1), or so many places.
@@ -46,7 +47,7 @@ export function leftText(ms: number): string {
 
 @Component({
   selector: 'app-locks-page',
-  imports: [AgentLink, IdParts, TimeText, Updated],
+  imports: [AgentLink, IdParts, MoreRow, TimeText, Updated],
   templateUrl: './locks-page.html',
 })
 export class LocksPage {
@@ -55,6 +56,11 @@ export class LocksPage {
   private readonly route = inject(ActivatedRoute);
 
   protected readonly locks = signal<Lock[]>([]);
+  // at most 25 rows, then "..." (the owner, 2026-11-09)
+  protected readonly paging = new Paged();
+  protected readonly page = computed(() =>
+    paged(this.locks(), this.paging.count('locks')),
+  );
   // The filter in the address, and as typed.
   protected readonly match = signal('');
   protected readonly pattern = signal('');

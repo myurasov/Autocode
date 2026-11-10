@@ -31,6 +31,7 @@ import {
 import { clockText, dayText, dotClass } from '../format';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
+import { MoreRow, Paged, paged } from '../more';
 import { Updated } from '../updated';
 
 // The page follows each model step: a refresh every 5 s.
@@ -71,7 +72,7 @@ export function weekTotals(weeks: CostDay[][]): CostDay[] {
 
 @Component({
   selector: 'app-costs-page',
-  imports: [AgentLink, NgTemplateOutlet, Updated],
+  imports: [AgentLink, MoreRow, NgTemplateOutlet, Updated],
   templateUrl: './costs-page.html',
 })
 export class CostsPage {
@@ -95,6 +96,19 @@ export class CostsPage {
   protected readonly rows = computed(() =>
     (this.view()?.agents ?? []).filter((a) => a.registered || this.showGone()),
   );
+  // at most 25 rows, then "..."; the agent a link led to always shows (the
+  // owner, 2026-11-09)
+  protected readonly paging = new Paged();
+  protected readonly page = computed(() =>
+    paged(
+      this.rows(),
+      this.paging.count('costs'),
+      (a) => a.agent === this.target(),
+    ),
+  );
+  protected dayRows<T>(days: readonly T[]) {
+    return paged(days, this.paging.count('days'));
+  }
   protected readonly totals = computed(() => {
     const rows = this.rows();
     const sum = (key: 'today_usd' | 'total_usd') =>
