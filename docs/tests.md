@@ -1084,6 +1084,10 @@ in what it read.
 - **`--soft` a little darker in light, lighter in dark** (the owner, 2026-11-09; tests first: `smoke.spec.ts` reads the
   variable and a table head's color in both themes, red, then green): `#f5f5f5` to `#efefef`, `#262d34` to `#292f36`
   (kept below `--code` `#2a3138`). Screenshots of the Costs tab in both looked at.
+- **Every message's text in a fixed-width `<pre>`** (the owner, 2026-11-09: "messages to owner to use <pre> and fixed
+  wdth font", then "Every message everywhere"; tests first: `inbox-page.spec.ts`, `messages-page.spec.ts`,
+  `smoke.spec.ts` (a `PRE`, `ui-monospace` first, 15 px, no margin), red, then green): the Inbox's message bodies and
+  answers, the Messages tab's short, folded and whole texts. Screenshots of both, light and dark, looked at.
 - **An agent's error alerts close when it recovers** (the owner, 2026-11-09: "its turn failed (provider.content-filter);
   not retried" stayed in the Inbox after the agent worked again, with no Retry on Agents; tests first:
   `retries.test.ts` 2, red, then green): the not-retried and retries-ran-out alerts close at a succeeding turn

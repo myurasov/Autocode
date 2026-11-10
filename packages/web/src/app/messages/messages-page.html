@@ -100,20 +100,20 @@
         -->
         <td class="text" [class.folds]="isLong(m)" (click)="cellClick(m)">
           @if (isLong(m)) {
-            <span
+            <pre
               class="more"
               role="button"
               tabindex="0"
               [attr.aria-expanded]="isOpen(m.id)"
               (keydown.enter)="toggle(m)"
               (keydown.space)="$event.preventDefault(); toggle(m)"
-              >{{ shown(m) }}</span
+              >{{ shown(m) }}</pre
             >
             @if (isOpen(m.id) && bodyOf(m.id)?.error; as error) {
               <span class="errmsg" role="alert">{{ error }}</span>
             }
           } @else {
-            <span class="whole">{{ m.preview ?? '' }}</span>
+            <pre class="whole">{{ m.preview ?? '' }}</pre>
           }
         </td>
         <td class="num size">{{ sizeText(m) }}</td>

@@ -737,6 +737,24 @@ table.messages td.text {
   width: 30%;
 }
 /*
+ * Every message's text (the Messages tab, the Inbox's messages and answers)
+ * in a <pre>, in a fixed-width font at the page's own size (the owner,
+ * 2026-11-09): its lines kept, long ones wrapped, no margins of its own.
+ */
+table.messages td.text pre,
+table.inbox pre.body {
+  margin: 0;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    "DejaVu Sans Mono", monospace;
+  font-size: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+table.inbox .answer pre.body {
+  display: inline;
+}
+/*
  * An agent or host ID that leads to its page (the owner, 2026-11-03): it looks
  * like the ID it is, underlined on hover.
  */

@@ -252,6 +252,16 @@ describe('MessagesPage', () => {
     expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
   });
 
+  // The owner, 2026-11-09: every message's text in a <pre>, in a fixed-width
+  // font.
+  it('shows every text, short, folded or whole, in a pre', async () => {
+    const page = await open([LONG, ...MESSAGES]);
+    expect(cell(page, 'msg_2').querySelector('pre.whole')!.textContent).toBe(
+      'Status, now?',
+    );
+    expect(toggle(page, 'msg_3')!.tagName).toBe('PRE');
+  });
+
   it('a short text shows whole and does not open, nor does the row', async () => {
     const page = await open([LONG, ...MESSAGES]);
     expect(toggle(page, 'msg_2')).toBeNull();

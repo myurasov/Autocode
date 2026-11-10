@@ -123,8 +123,8 @@ describe('InboxPage', () => {
     expect(text(message.querySelector('.title'))).toBe(
       'Message from kaggle:lead: "Plan"',
     );
-    // The body keeps its lines.
-    expect(message.querySelector('.body')!.textContent).toBe(
+    // The body keeps its lines, in a <pre> (the owner, 2026-11-09).
+    expect(message.querySelector('pre.body')!.textContent).toBe(
       'Line one.\nLine two.',
     );
     expect(

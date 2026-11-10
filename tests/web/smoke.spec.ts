@@ -357,6 +357,14 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
   const body = item.locator(".body")
   await expect(body).toContainText("A second line.")
   await expect(body).toHaveCSS("white-space", "pre-wrap")
+  // a message in a <pre>, fixed-width, at the page's own text size (the
+  // owner, 2026-11-09)
+  const fixed = async (el: typeof body) =>
+    el.evaluate((e) => {
+      const css = getComputedStyle(e)
+      return [e.tagName, css.fontFamily.split(",")[0], css.fontSize]
+    })
+  expect(await fixed(body)).toEqual(["PRE", "ui-monospace", "15px"])
   await expect(item.getByRole("button", { name: "Close" })).toBeVisible()
 
   await openTab(page, "Messages")
@@ -374,10 +382,16 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
     .locator("table.messages tr[data-message]")
     .filter({ has: page.locator("td.subject", { hasText: /^Smoke$/ }) })
     .first()
-  // A short text is shown whole, its lines kept.
+  // A short text is shown whole, its lines kept, in a fixed-width <pre>.
   await expect(message.locator("td.text")).toHaveText(
     /^Hello from the smoke test\.\s+A second line\.$/,
   )
+  expect(
+    await message.locator("td.text pre").evaluate((e) => {
+      const css = getComputedStyle(e)
+      return [css.fontFamily.split(",")[0], css.whiteSpace, css.marginTop]
+    }),
+  ).toEqual(["ui-monospace", "pre-wrap", "0px"])
   await expect(message.locator("td.text .more")).toHaveCount(0)
   await expect(message.locator("td.sender")).toHaveText("smoke:agent")
   await expect(message.locator("td.recipient")).toHaveText("owner")
