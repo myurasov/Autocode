@@ -25,66 +25,48 @@
     <p>
       Autocode is a framework for long-term, agentic autonomy: it lets AI
       coding agents keep working on their own for days or weeks, coordinate
-      with each other, and stay under your control. That purpose decides which
-      features it has:
+      with each other, and stay under your control. What it provides:
     </p>
-    <table class="needs">
-      <thead>
-        <tr>
-          <th>What an Agent Needs</th>
-          <th>What Autocode Has</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>come back later, with nobody prompting it</td>
-          <td>
-            wakes: on a schedule, at a time or when idle, with checks that
-            decide whether to wake
-          </td>
-        </tr>
-        <tr>
-          <td>react when a background job ends</td>
-          <td>a <code>fire-only</code> wake that the job fires at its end</td>
-        </tr>
-        <tr>
-          <td>work with other agents, on any machine</td>
-          <td>messages, and discovery of agents by ID pattern</td>
-        </tr>
-        <tr>
-          <td>share scarce resources</td>
-          <td>locks and semaphores</td>
-        </tr>
-        <tr>
-          <td>keep going when something breaks</td>
-          <td>
-            retries of failed turns, and resumes of turns cut when OpenCode
-            restarted
-          </td>
-        </tr>
-        <tr>
-          <td>ask for a decision without stopping</td>
-          <td>
-            the Inbox: questions, permissions and approvals, which you, another
-            agent or a job's run answer
-          </td>
-        </tr>
-        <tr>
-          <td>stay within limits while nobody watches</td>
-          <td>a daily cost cap, compaction and expiry</td>
-        </tr>
-        <tr>
-          <td>hand a task to a fresh agent</td>
-          <td>
-            jobs: a fresh agent for each run, on a schedule or when started
-          </td>
-        </tr>
-        <tr>
-          <td>stay under your control</td>
-          <td>pause, Stop All, this web UI and the history</td>
-        </tr>
-      </tbody>
-    </table>
+    <ul class="provides">
+      <li>
+        <strong>Wakes:</strong> an agent comes back to its work later with
+        nobody prompting it: on a schedule, at a time or when idle, with checks
+        that decide whether it is worth waking.
+      </li>
+      <li>
+        <strong>Background jobs:</strong> a <code>fire-only</code> wake that a
+        long job fires at its end, so the agent wakes when it is done.
+      </li>
+      <li>
+        <strong>Messages:</strong> agents talk to other agents and to you, on
+        any machine, and find each other by ID pattern (discovery).
+      </li>
+      <li>
+        <strong>Locks and semaphores:</strong> agents share scarce resources
+        (a GPU, a submission) without getting in each other's way.
+      </li>
+      <li>
+        <strong>Recovery:</strong> retries of failed turns, and resumes of
+        turns cut when OpenCode restarted.
+      </li>
+      <li>
+        <strong>The Inbox:</strong> agents ask for a decision without stopping
+        everything: questions, permissions and approvals, which you, another
+        agent or a job's run answer.
+      </li>
+      <li>
+        <strong>Limits:</strong> a daily cost cap, compaction of long sessions
+        and expiry of old agents, while nobody watches.
+      </li>
+      <li>
+        <strong>Jobs:</strong> a task handed to a fresh agent for each run, on
+        a schedule or when you or an agent start it.
+      </li>
+      <li>
+        <strong>Control:</strong> pause, Stop All, this web UI and the history
+        of everything that happened.
+      </li>
+    </ul>
     <p>
       Features that do not serve long-running autonomy are left out or kept
       small, so that what is there stays simple for agents and for you.

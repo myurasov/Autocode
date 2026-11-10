@@ -7,12 +7,11 @@ becomes an **agent**: Autocode can wake it later with a prompt (on a schedule, a
 when a script or another agent fires it), agents can message each other and you, and a turn that fails is retried. You
 watch and steer them from a web UI and a CLI.
 
-_Version 1.0.0-rc1, the first release candidate: Phase 0 (tiers 0a to 0g) and Phase 1 built; see
-[What Works Now](#what-works-now)._
+_Version 1.0.0-rc1, the first release candidate. Every detail is in [`reference.md`](reference.md); agents start
+with [`AGENT.md`](AGENT.md)._
 
 - [Why Autocode](#why-autocode)
 - [How It Works](#how-it-works)
-- [What Works Now](#what-works-now)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Development](#development)
@@ -21,21 +20,24 @@ _Version 1.0.0-rc1, the first release candidate: Phase 0 (tiers 0a to 0g) and Ph
 
 ## Why Autocode
 
-An agent in a single conversation stops when its turn ends and waits for someone to type. Autocode exists so that
-agents can run **autonomously over the long term**: work toward a goal across many turns, days and restarts, alone or
-as a team, while the owner checks in only when needed. That purpose decides which features Autocode has:
+An agent in a single conversation stops when its turn ends and waits for someone to type. Autocode lets agents run
+**autonomously over the long term**: work toward a goal across many turns, days and restarts, alone or as a team,
+while the owner checks in only when needed.
 
-| An autonomous agent needs to | Autocode gives it |
-|---|---|
-| come back to its work later, without a person prompting it | wakes: schedules, times, idle triggers, and checks that decide whether to wake |
-| react when a long background job ends | `fire-only` wakes that the job fires as its last command |
-| work with other agents, on any machine | messages to an agent, a group or the owner; discovery by pattern |
-| share scarce resources and avoid conflicting work | locks and semaphores with a queue, time limits and notices |
-| keep going when something breaks | retries of failed turns; resumes of turns cut by a crash |
-| ask for a decision without stopping everything | the owner's inbox: questions, permissions and approvals, which another agent can answer too |
-| stay within limits while nobody watches | a daily cost cap per agent, compaction and expiry |
-| hand off a task to a fresh agent | jobs: one-off runs started on a schedule, by the owner or by an agent |
-| stay under the owner's control | pause, resume and Stop All; the web UI and CLI; history of everything that happened |
+What Autocode provides:
+
+- **Wakes:** an agent comes back to its work later with nobody prompting it: on a schedule, at a time or when idle,
+  with checks that decide whether it is worth waking.
+- **Background jobs:** a `fire-only` wake that a long job fires at its end, so the agent wakes when it is done.
+- **Messages:** agents talk to other agents and to the owner, on any machine, and find each other by ID pattern.
+- **Locks and semaphores:** agents share scarce resources (a GPU, a submission) without getting in each other's way,
+  with a queue, time limits and notices.
+- **Recovery:** retries of failed turns, and resumes of turns cut when OpenCode restarted.
+- **The owner's inbox:** agents ask for a decision without stopping everything: questions, permissions and
+  approvals, which the owner, another agent or a job's run answer.
+- **Limits:** a daily cost cap per agent, compaction of long sessions and expiry of old agents, while nobody watches.
+- **Jobs:** a task handed to a fresh agent for each run, on a schedule, by the owner or by an agent.
+- **Control:** pause, resume and Stop All; a web UI and a CLI; the history of everything that happened.
 
 Features that do not serve long-running autonomy are left out or kept small, so that what is there stays simple to
 understand for both agents and their owner.
@@ -59,21 +61,6 @@ talk to the same server.
 - Autocode types wakes into a session only while it is **idle**, at most once per `min_interval` (1 minute by
   default); what comes meanwhile goes into one prompt, starting with `[autocode]`. Messages and Autocode's notices
   are the exception: while a turn runs they go into it at its next step (OpenCode's steer delivery).
-
-## What Works Now
-
-| Area | Built | Coming |
-|---|---|---|
-| Agents | register by ID (`project:role:name`), discover by pattern, status (`waiting` while an ask is open), the owner's pause, resume, Stop All | — |
-| Wakes | `every 30m [from 09:00]`, `in 45m`, `at 09:00`, `cron "*/30 8-16 * * 1-5" [zone]`, `idle 30m [repeat]`, `fire-only`; a check command that decides whether to wake (exit 0) or skip (exit 1) | — |
-| Messages | text to an agent, a pattern, a list, or the owner; always whole: into the recipient's running turn at its next step, or in its next prompt; the agent can also list, read and wait for its messages (by sender or reply); each is read once | — |
-| Inbox | messages to the owner, answered from the CLI or web UI; alerts; questions (the question tool) and permission prompts, routed by `question_mode` and `permission_mode` to the owner, answered at once, or sent to another agent (`agent:<id>`, which answers or escalates) or a job's run (`job:<name>`); approvals (`autocode_approval`, with options and expiry); the first answer counts | — |
-| Failures | a failed turn puts the agent in the `error` state; a retry prompt every `retry_interval` (1m), up to `retry_attempts` (0: no limit); errors that would fail again are not retried; a turn cut by an OpenCode restart is resumed; the machine's background OpenCode service is started again when it is gone | — |
-| Coordination | named locks (a mutex) and semaphores (N places) shared by agents on every machine: `try`, or a queue in arrival order with a notice when granted; a required `ttl`, renewal, expiry with a notice | — |
-| Costs | each step's cost per agent and day; `daily_usd` with a `cap_warn` notice and a pause after the turn past it; compaction past `compact_at`, with a notice first; expiry after `expire_after`; each agent's spend (live, today, in total, per day), cap and what is left, context and its share of the threshold in the API (`/v1/costs`), `autocode costs` and the web UI | — |
-| Jobs | the owner's jobs (a machine and folder, a model, a prompt, a trigger): runs in fresh sessions on a schedule, by the owner or by any agent (the result comes back to it), one at a time; `finish`, the time limit, `run_usd`, the session removed or (failed) kept; asks answered by a job's run (`job:<name>`); `autocode job` and the Jobs page | — |
-
-The full status, tier by tier, is in the project's plan (`aipack/plan.md`, beside this repository).
 
 ## Installation
 
@@ -105,7 +92,7 @@ Machines reach the server over the LAN or Tailscale.
 4. **Sign in** to the web UI at `http://<server>:4848/` with the admin token (`~/.autocode/admin.token` on the
    server).
 
-Details, tokens, backups and troubleshooting: [`docs/runbook.md`](docs/runbook.md).
+Install, update, tokens, backups and troubleshooting: [`reference.md`](reference.md).
 
 ## Usage
 
@@ -135,7 +122,8 @@ Its check said:
 — From Autocode, not the owner. Your wakes: autocode_wake list. How Autocode works: autocode_me action=help.
 ```
 
-How agents use Autocode in their own projects, with every tool and trigger: [`docs/howto.md`](docs/howto.md).
+Every tool and trigger: [`reference.md`](reference.md); the exact guide agents get (the `autocode` skill):
+[`autocode.consumer.agent.md`](autocode.consumer.agent.md).
 
 ### CLI
 
@@ -212,12 +200,13 @@ AUTOCODE_TARGETS=all ci/dist.sh          # also linux-arm64, linux-x64, darwin-a
 
 | File | For |
 |---|---|
-| [`docs/runbook.md`](docs/runbook.md) | the owner: install, commands, settings, web UI, troubleshooting |
-| [`docs/howto.md`](docs/howto.md) | agents and their projects: the tools, triggers, messages, failed turns |
-| [`docs/tests.md`](docs/tests.md) | what each tier's tests cover, dated CI runs, live checks and their spend |
+| [`reference.md`](reference.md) | everyone: install, every feature, the CLI, the web UI, settings, troubleshooting, development |
+| [`AGENT.md`](AGENT.md) | agents: which of the two files below to read |
+| [`autocode.admin.agent.md`](autocode.admin.agent.md) | an agent that works on this repository or installs Autocode |
+| [`autocode.consumer.agent.md`](autocode.consumer.agent.md) | agents using Autocode: the source of the `autocode` skill the plugin gives them |
 
-The specification (the source of truth) and the plan (what is built, what is next) live beside this repository, in
-the project's `aipack/` folder (`spec.md`, `plan.md`).
+The specification (the source of truth) and the plan live beside this repository, in the project's `aipack/` folder
+(`spec.md`, `plan.md`), with the dated test record (`aipack/tests.md`).
 
 ## License
 

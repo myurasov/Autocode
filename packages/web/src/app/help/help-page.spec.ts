@@ -124,7 +124,7 @@ describe('HelpPage', () => {
     );
   });
 
-  it('says what Autocode is for: long-term, agentic autonomy, which decides its features', async () => {
+  it('says what Autocode is for: long-term, agentic autonomy, and what it provides', async () => {
     const page = await open();
     const what = section(page, 'what');
     for (const part of [
@@ -132,7 +132,7 @@ describe('HelpPage', () => {
       'days or weeks',
       'coordinate with each other',
       'under your control',
-      'decides which features it has',
+      'What it provides',
       'left out or kept small',
       // The two parts, and the owner's control, as before.
       'a server, which keeps the state and serves this web UI',
@@ -143,30 +143,28 @@ describe('HelpPage', () => {
     // Locks and retries are here now, not in a later tier.
     expect(what).not.toContain('Later tiers add locks');
     expect(what).not.toMatch(/kaggle|casmi/i);
-    // What an autonomous agent needs, and the feature that serves it.
-    const needs = page.querySelector('#what ~ table.needs')!;
-    expect(
-      [...needs.querySelectorAll('thead th')].map((th) => text(th)),
-    ).toEqual(['What an Agent Needs', 'What Autocode Has']);
-    const serves = (need: string) =>
-      rows(needs).find((r) => r[0]!.includes(need))?.[1] ?? '';
-    const map: [string, string[]][] = [
-      ['come back later', ['wakes', 'checks']],
-      ['background job ends', ['fire-only']],
-      ['other agents', ['messages', 'discovery']],
-      ['scarce resources', ['locks and semaphores']],
-      ['something breaks', ['retries', 'resumes']],
-      ['decision', ['Inbox', 'another agent']],
-      ['limits', ['daily cost cap', 'compaction', 'expiry']],
-      ['fresh agent', ['jobs']],
-      ['control', ['pause', 'Stop All', 'web UI', 'history']],
+    // What Autocode provides, as a list (the owner, 2026-11-09: in place of
+    // the "What an Agent Needs / What Autocode Has" table).
+    expect(page.querySelector('table.needs')).toBeNull();
+    const provides = [...page.querySelectorAll('#what ~ ul.provides > li')].map(
+      (li) => text(li),
+    );
+    const features: [string, string[]][] = [
+      ['Wakes', ['schedule', 'idle', 'checks']],
+      ['Background jobs', ['fire-only']],
+      ['Messages', ['other agents', 'discovery']],
+      ['Locks and semaphores', ['scarce']],
+      ['Recovery', ['retries', 'resumes']],
+      ['The Inbox', ['questions', 'permissions', 'approvals', 'another agent']],
+      ['Limits', ['daily cost cap', 'compaction', 'expiry']],
+      ['Jobs', ['fresh']],
+      ['Control', ['pause', 'Stop All', 'web UI', 'history']],
     ];
-    expect(rows(needs).length).toBe(map.length);
-    for (const [need, features] of map)
-      for (const feature of features)
-        expect(serves(need), `${need}: ${feature}`).toContain(feature);
-    // Every row is built now (tiers 0d to 0f): none is marked for later.
-    expect(text(needs)).not.toContain('later tier');
+    expect(provides.length).toBe(features.length);
+    features.forEach(([name, words], i) => {
+      expect(provides[i], name).toMatch(new RegExp(`^${name}:`));
+      for (const w of words) expect(provides[i], `${name}: ${w}`).toContain(w);
+    });
   });
 
   // The owner, 2026-11-08: a mode setting's lists.

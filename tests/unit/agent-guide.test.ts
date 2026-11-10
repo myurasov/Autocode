@@ -7,10 +7,13 @@
  * to the tools.
  */
 import { describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import {
   agentLine,
   guideText,
   helpText,
+  parseGuide,
   TOPICS,
 } from "../../packages/plugin/src/guide.ts"
 import {
@@ -747,5 +750,44 @@ describe("review of 0b2: the tools' texts", () => {
       .description as string
     expect(check).toContain("check_timeout, 60 s by default")
     expect(check).not.toContain("; 60 s limit")
+  })
+})
+
+// The owner, 2026-11-09: autocode.consumer.agent.md is the source of the
+// skill agents get. The guide is that file's text, filled in for the server.
+describe("the guide's source", () => {
+  const source = readFileSync(
+    resolve(import.meta.dir, "../../autocode.consumer.agent.md"),
+    "utf8",
+  )
+  test("every topic is a part of autocode.consumer.agent.md, in order", () => {
+    const marks = [...source.matchAll(/^<!-- topic: ([a-z]+) -->$/gm)].map(
+      (m) => m[1],
+    )
+    expect(marks).toEqual([...TOPICS])
+  })
+
+  test("the guide is the file's text with the server and tools filled in", () => {
+    const guide = guideText(FACTS)
+    expect(guide).not.toContain("<!--")
+    expect(guide).not.toContain("{{")
+    expect(guide).toContain(
+      "Autocode server (here `api-test` at http://server:4848)",
+    )
+    // a line of the file's own, word for word
+    const line =
+      "A check is a shell command that decides whether a run of a wake is"
+    expect(source).toContain(line)
+    expect(guide).toContain(line)
+    for (const t of FACTS.tools) expect(guide).toContain(`- \`${t.name}\``)
+  })
+
+  test("a part that names no topic or misses one is refused", () => {
+    expect(() => parseGuide("<!-- topic: nonsense -->\n\nx\n")).toThrow(
+      "unknown topic nonsense",
+    )
+    expect(() => parseGuide("<!-- topic: overview -->\n\nx\n")).toThrow(
+      "no topic delivery",
+    )
   })
 })
