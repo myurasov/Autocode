@@ -253,6 +253,28 @@ describe("an agent sets a job", () => {
     expect(run.bill_to).toBe("team:lead")
   })
 
+  // Found in the agents suite (haiku-5.5, 2026-11-09): job_set took
+  // job=count, then run job=count said "no job count".
+  test("run takes the agent's own job by its short name too", async () => {
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:lead": { job_mode: "approve" } },
+    })
+    await as(lead, "POST", "/v1/me/jobs", { ...DEF, trigger: "fire-only" })
+    const res = await as(lead, "POST", "/v1/jobs/digest/run", {})
+    expect(res.status).toBe(201)
+    expect(res.body.run.id).toMatch(/^team:lead:digest:/)
+    // a job of that very name (the owner's) comes first
+    await owner("PUT", "/v1/jobs/plain", {
+      host: HOST,
+      model: "fake/main",
+      prompt: "x",
+      trigger: "fire-only",
+    })
+    expect(
+      (await as(lead, "POST", "/v1/jobs/plain/run", {})).body.run.id,
+    ).toMatch(/^plain:/)
+  })
+
   test("the creator's jobs go when it unregisters", async () => {
     await owner("PATCH", "/v1/settings", {
       agents: { "team:lead": { job_mode: "approve" } },

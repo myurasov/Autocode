@@ -345,7 +345,8 @@ prompt and a schedule. Each run is a fresh session, an agent of its own.
   model=... prompt=... trigger=... run_usd=...` (optional `host`, your own
   folder by default; `to`, you by default; `timeout`, `variant`,
   `opencode_agent`, `keep_session`, `description`). Its name becomes
-  `<your ID>:NAME`. `run_usd`, the most a run may spend, is required.
+  `<your ID>:NAME` (`action=run job=NAME` finds it by either name).
+  `run_usd`, the most a run may spend, is required.
   Unless the owner lets you set jobs at once (`job_mode`), the owner
   approves it first: the answer comes as a notice (`[autocode] approval
   "Job ..." approved` or rejected), and meanwhile you go on with your

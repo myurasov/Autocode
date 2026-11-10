@@ -7,7 +7,8 @@
  * approval and follow it (tier 0d); ask another agent and act on the reply
  * that comes in a prompt after its turn (Phase 1); start a job's run and use
  * its result, and have a job's runs answer its question, permission and
- * approval (job:<name>; the owner, 2026-11-09). With the tools, never the
+ * approval (job:<name>; the owner, 2026-11-09); propose a job of its own,
+ * which the owner approves, then run it (rc2). With the tools, never the
  * CLI (but in a job's own command) or the API, and without reading the
  * plugin's code.
  *
@@ -1110,6 +1111,78 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
       await ac("PATCH", "/v1/settings", { agents: { [ctx.id]: null } }).catch(
         () => {},
       )
+    }
+  },
+
+  /*
+   * Jobs agents set (the owner, 2026-11-09, rc2): the agent proposes a job of
+   * its own from a plain request (autocode_me job_set, with a run_usd); the
+   * owner approves it (here, the test as the owner); the agent runs it once
+   * approved and writes its result down. The run counts for the agent.
+   */
+  async propose(ctx) {
+    writeFileSync(file(ctx, "data.csv"), "a\nb\nc\nd\ne\n")
+    const before = await idleTime(ctx)
+    await oc("POST", `/api/session/${ctx.session}/prompt`, {
+      text:
+        `${register(ctx)} set up an Autocode job of your own named ` +
+        `\`count\`, with your own model (\`${ctx.m.model}\`), that counts ` +
+        "the lines of data.csv in this folder with `wc -l` and finishes " +
+        "with the count alone as its result; it runs only when started, and " +
+        "a run may spend at most $1. Once the job exists, run it once, and " +
+        "when its result comes back to you, write the count alone into " +
+        "count.txt here.",
+    })
+    const name = `${ctx.id}:count`
+    let item: any
+    try {
+      item = await until(
+        async () =>
+          (await ac("GET", "/v1/inbox")).items.find(
+            (i: any) => i.kind === "approval" && i.agent === ctx.id,
+          ),
+        turnMs,
+        "the job's approval in the inbox",
+      )
+    } catch {
+      await idleAfter(ctx, before, "the turn").catch(() => {})
+      return "did not set a job (autocode_me action=job_set)"
+    }
+    try {
+      if (!String(item.title).startsWith(`Job ${name},`))
+        return `proposed ${item.title}, not the job ${name}`
+      await ac("POST", `/v1/asks/${item.id}/answer`, { text: "approve" })
+      let r: any
+      try {
+        r = await until(
+          async () => {
+            const all = (
+              await ac("GET", `/v1/runs?job=${encodeURIComponent(name)}`)
+            ).runs
+            return all.find((x: any) => x.state !== "running" && x.ended)
+          },
+          turnMs * 2,
+          "a run of the job to end",
+        )
+      } catch {
+        return "did not run its job once approved (autocode_me action=run)"
+      }
+      if (r.state !== "succeeded") return `the run ${r.state}: ${r.reason}`
+      if (r.bill_to !== ctx.id) return `the run counted for ${r.bill_to}`
+      try {
+        await until(
+          async () => /^\s*5\s*$/.test(read(ctx, "count.txt") ?? ""),
+          turnMs * 2,
+          "count.txt after the result",
+        )
+      } catch {
+        return `did not write the run's result (${JSON.stringify(r.result)})`
+      }
+      await idleAfter(ctx, before, "the turn after the result").catch(() => {})
+      return misuse(ctx)
+    } finally {
+      await keepRuns(ctx, name)
+      await ac("DELETE", `/v1/jobs/${encodeURIComponent(name)}`).catch(() => {})
     }
   },
 }

@@ -763,10 +763,15 @@ export async function startServer(
         const b = (await body()) ?? {}
         onlyFields(b, ["text"])
         const by = actor(caller)
+        // an agent may name its own job by its short name: <agent>:<name>
+        // when no job has the name itself (agents suite, 2026-11-09)
+        let name = String(params.name)
+        if (by !== "owner" && !jobs.row(name) && jobs.row(`${by}:${name}`))
+          name = `${by}:${name}`
         return json(
           {
             run: jobs.start(
-              params.name,
+              name,
               by === "owner" ? "owner" : "agent",
               by,
               b.text,
