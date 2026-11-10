@@ -45,6 +45,11 @@ afterAll(async () => {
 
 describe("costs and compaction", () => {
   test("steps' costs add up; the cap pauses after the turn that passes it", async () => {
+    // no compaction notice into this turn (past compact_at, it would come at
+    // once since 2026-11-09, and its step is the context then)
+    await admin("PATCH", "/v1/settings", {
+      agents: { [id]: { compact_at: "off" } },
+    })
     const fake = new FakeModel(node)
     // the fake model's price: input $1, output $2 per million tokens
     await fake.script(
