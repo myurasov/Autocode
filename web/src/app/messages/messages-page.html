@@ -9,15 +9,15 @@
 <div class="toolbar">
   <button type="button" (click)="refresh()">Refresh</button>
   <span class="result"></span>
-  <!-- read messages too: off by default (the owner, 2026-11-09) -->
-  <label class="check" for="show-read">
+  <!-- processed messages too: off by default (the owner, 2026-11-09, -10) -->
+  <label class="check" for="show-processed">
     <input
-      id="show-read"
+      id="show-processed"
       type="checkbox"
-      [checked]="showRead()"
-      (change)="showRead.set($any($event.target).checked)"
+      [checked]="showProcessed()"
+      (change)="showProcessed.set($any($event.target).checked)"
     />
-    Read
+    Processed
   </label>
 </div>
 
@@ -141,7 +141,7 @@
             !loaded()
               ? 'Loading...'
               : messages().length
-                ? 'No message waits: every one is read (the Read box shows them).'
+                ? 'No message waits: every one is processed (the Processed box shows them).'
                 : 'No messages yet.'
           }}
         </td>

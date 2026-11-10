@@ -40,8 +40,8 @@ const MESSAGES: Message[] = [
     preview: 'Status, now?',
     state: 'queued',
     created_at: '2026-10-28T11:00:00.000Z',
-    read_at: null,
-    read_via: null,
+    processed_at: null,
+    processed_via: null,
   },
   {
     id: 'msg_1',
@@ -52,10 +52,10 @@ const MESSAGES: Message[] = [
     reply_to: null,
     size: 17,
     preview: 'Here is the plan.',
-    state: 'read',
+    state: 'processed',
     created_at: '2026-10-28T10:00:00.000Z',
-    read_at: '2026-10-28T10:00:01.000Z',
-    read_via: 'inbox',
+    processed_at: '2026-10-28T10:00:01.000Z',
+    processed_via: 'inbox',
   },
 ];
 
@@ -76,8 +76,8 @@ const LONG: Message = {
   subject: 'Report',
   size: LONG_TEXT.length,
   preview: LONG_TEXT.slice(0, 200),
-  state: 'read',
-  read_via: 'steer',
+  state: 'processed',
+  processed_via: 'steer',
 };
 
 // An opened text's lines as markdown shows them (one <br> a line break).
@@ -108,13 +108,15 @@ describe('MessagesPage', () => {
     req.flush({ messages });
   }
 
-  // The page, with its Read box on (every message) unless told otherwise.
+  // The page, with its Processed box on (every message) unless told otherwise.
   async function open(messages = MESSAGES, read = true): Promise<HTMLElement> {
     signedIn();
     fixture = TestBed.createComponent(MessagesPage);
     load(messages);
     await settle(fixture);
-    const box = el(fixture).querySelector('#show-read') as HTMLInputElement;
+    const box = el(fixture).querySelector(
+      '#show-processed',
+    ) as HTMLInputElement;
     if (read && box && !box.checked) {
       box.click();
       await settle(fixture);
@@ -158,11 +160,11 @@ describe('MessagesPage', () => {
       'Plan',
       'Here is the plan.',
       '17',
-      'read (inbox)',
+      'processed (inbox)',
     ]);
-    // when it was read, in the tooltip (the owner, 2026-11-09)
+    // when it was processed, in the tooltip (the owner, 2026-11-09, -10)
     expect(rows[1]!.querySelector('td.state')!.getAttribute('title')).toBe(
-      `Read ${localTime('2026-10-28T10:00:01.000Z')}, in your Inbox`,
+      `Processed ${localTime('2026-10-28T10:00:01.000Z')}, in your Inbox`,
     );
     expect(rows[0]!.querySelector('td.state')!.getAttribute('title')).toBe(
       'Waiting for its recipient',
@@ -266,18 +268,21 @@ describe('MessagesPage', () => {
     expect(wholeLines(page, 'msg_3')).toEqual(LONG_TEXT.split('\n'));
   });
 
-  // The owner, 2026-11-09: a Read box, off by default: off, only what is
+  // The owner, 2026-11-09: a box, off by default (Processed since -10): off, only what is
   // not read (queued, dropped); on, every message.
-  it('the Read box, off by default, hides read messages; on, shows them', async () => {
+  // The owner, 2026-11-10: the state is processed, and so is the box.
+  it('the Processed box, off by default, hides processed messages; on, shows them', async () => {
     const page = await open(MESSAGES, false);
-    const box = page.querySelector('.toolbar #show-read') as HTMLInputElement;
+    const box = page.querySelector(
+      '.toolbar #show-processed',
+    ) as HTMLInputElement;
     expect(box.checked).toBe(false);
-    expect(text(box.closest('label'))).toBe('Read');
+    expect(text(box.closest('label'))).toBe('Processed');
     const ids = () =>
       [...page.querySelectorAll('table.messages tr[data-message]')].map((r) =>
         r.getAttribute('data-message'),
       );
-    // msg_1 is read: hidden
+    // msg_1 is processed: hidden
     expect(ids()).toEqual(['msg_2']);
     box.click();
     await settle(fixture);

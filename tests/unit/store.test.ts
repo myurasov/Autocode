@@ -151,7 +151,8 @@ describe("store", () => {
         "('ib_2', 'message', 'm_done', 't', 7, 9)",
     )
     old.close()
-    const db = openStore(path)
+    // as migration 16 left it (19 renames the state and its columns)
+    const db = openStore(path, MIGRATIONS.slice(0, 16))
     const rows = db
       .query("SELECT id, state, read_at, read_via FROM messages ORDER BY id")
       .all()
@@ -296,6 +297,50 @@ describe("store", () => {
         "created_at, updated_at, created_by) VALUES ('team:lead:x', 'm:1', " +
         "'a/b', 'p', '{}', 1, 1, 1, 'team:lead')",
     )
+    db.close()
+  })
+
+  // The owner, 2026-11-10: the message state read is processed now.
+  test("migration 19: read messages are processed, with when and how", () => {
+    const path = tempDb()
+    const old = openStore(path, MIGRATIONS.slice(0, 18))
+    const msg = (
+      id: string,
+      state: string,
+      at: number | null,
+      via: string | null,
+    ) =>
+      old.run(
+        "INSERT INTO messages (id, send_id, from_id, to_id, to_spec, body, " +
+          "size, state, created_at, read_at, read_via) " +
+          "VALUES (?, 's', 'a:b', 'c:d', 'c:d', 'x', 1, ?, 1, ?, ?)",
+        [id, state, at, via],
+      )
+    msg("m_r", "read", 5, "steer")
+    msg("m_q", "queued", null, null)
+    msg("m_x", "dropped", null, null)
+    old.close()
+    const db = openStore(path)
+    expect(
+      db
+        .query(
+          "SELECT id, state, processed_at, processed_via FROM messages " +
+            "ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      { id: "m_q", state: "queued", processed_at: null, processed_via: null },
+      {
+        id: "m_r",
+        state: "processed",
+        processed_at: 5,
+        processed_via: "steer",
+      },
+      { id: "m_x", state: "dropped", processed_at: null, processed_via: null },
+    ])
+    expect(() =>
+      db.run("UPDATE messages SET state = 'read' WHERE id = 'm_q'"),
+    ).toThrow()
     db.close()
   })
 

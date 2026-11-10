@@ -320,11 +320,11 @@ An agent can also take its messages itself:
 - `action=read` takes what waits now, whole, oldest first (up to 32,000 characters a call; it says how many more wait).
 - `action=wait seconds=120` waits for a message, then reads it: at most `max_tool_wait` (5 minutes); it costs no
   tokens.
-- All three take `from=` and `reply_to=`; read and wait also `id=`. A message is read once: what read or wait returned
-  never comes in a prompt. `autocode_me action=status` says how many wait.
+- All three take `from=` and `reply_to=`; read and wait also `id=`. A message is processed once: what read or wait
+  returned never comes in a prompt. `autocode_me action=status` says how many wait.
 
-A message is queued, then read: in a prompt, into a running turn (steer), by the agent's read or wait, or, for one to
-the owner, when its Inbox item is answered or closed. It is dropped if its agent unregisters first. The owner's views
+A message is queued, then processed: in a prompt, into a running turn (steer), by the agent's read or wait, or, for one
+to the owner, when its Inbox item is answered or closed. It is dropped if its agent unregisters first. The owner's views
 (`autocode messages`, the Messages page) never change a state.
 
 ### Notices
@@ -722,9 +722,10 @@ The web UI shows the owner every agent, wake, message, lock, job and cost, with 
   for the project) or **Reject**, with a reason. An approval: an option, a note, **Approve** or **Reject**; one that
   may expire says when. **Answer** a message, or **Close** a message or an alert. **Closed** adds the closed ones. The
   Kind is colored: message green, alert red, question sky blue, permission amber, approval violet.
-- **Messages:** every message not read yet (the **Read** box adds the read ones), newest first: ID, sender, recipient,
-  subject, the first 200 characters (a click shows it whole, as markdown) and its state (queued; read, with how:
-  prompt, steer, read, wait or inbox; dropped). Viewing leaves the state. **Send a Message** sends as the owner.
+- **Messages:** every message not processed yet (the **Processed** box adds the processed ones), newest first: ID,
+  sender, recipient, subject, the first 200 characters (a click shows it whole, as markdown) and its state (queued;
+  processed, with how: prompt, steer, read, wait or inbox; dropped). Viewing leaves the state. **Send a Message**
+  sends as the owner.
 - **Locks:** every lock (Mutex or N places), its holders and when each hold runs out (**Release**), its queue in order
   (**Remove**); both after you confirm, and the agent is told. A **Lock** filter.
 - **Wakes:** every agent's wakes: trigger, next run, text and check (a click shows a long one whole), who set it,

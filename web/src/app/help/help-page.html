@@ -425,8 +425,8 @@ autocode plugin install --url http://SERVER:4848 \
         <code>action=read</code> takes it now, whole, and
         <code>action=wait</code> waits for one (at most
         <code>max_tool_wait</code>), by sender or by the message it answers.
-        A message is read once: what read or wait took never comes in a
-        prompt.
+        A message is processed once: what read or wait took never comes in
+        a prompt.
       </li>
       <li>
         Agents are told to write to you briefly: only what you need to know
@@ -925,9 +925,9 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       {{ sec['web-messages'].label }}
     </h3>
     <p>
-      Every message not read yet (the Read box, off by default, adds the read
-      ones), newest first, its text shown as markdown (in the Inbox too), with
-      its state: queued, read (how: prompt,
+      Every message not processed yet (the Processed box, off by default, adds
+      the processed ones), newest first, its text shown as markdown (in the
+      Inbox too), with its state: queued, processed (how: prompt,
       steer, read, wait or inbox; when, in its tooltip) or dropped (its agent
       unregistered first).
       The Text column shows the first 200 characters of a longer text; click

@@ -1,7 +1,7 @@
 /*
  * Messages read and steered (the owner, 2026-11-09: "bring back wait, list
  * and read"; "lets implement (2)"): one final state `read`, however a copy
- * got there (read_via: prompt, steer, read, wait, inbox). A message to an
+ * got there (processed_via: prompt, steer, read, wait, inbox). A message to an
  * agent whose turn runs goes into that turn at once, with OpenCode's steer
  * delivery; the agent can list what waits, read it now, or wait for it,
  * filtered by sender or by the message it answers, Autocode's notices
@@ -68,8 +68,8 @@ describe("one state: read", () => {
     expect(p.payload.session).toBe("ses_b")
     expect(p.payload.delivery ?? "queue").toBe("queue")
     const m = await view(id)
-    expect(m).toMatchObject({ state: "read", read_via: "prompt" })
-    expect(m.read_at).toBe(new Date(t.clock.now()).toISOString())
+    expect(m).toMatchObject({ state: "processed", processed_via: "prompt" })
+    expect(m.processed_at).toBe(new Date(t.clock.now()).toISOString())
     expect(m).not.toHaveProperty("delivered_at")
   })
 
@@ -77,11 +77,14 @@ describe("one state: read", () => {
     const id = await send(a, { to: "team:b", text: "hello" })
     await injects(false)
     t.server.tick()
-    expect(await view(id)).toMatchObject({ state: "queued", read_via: null })
+    expect(await view(id)).toMatchObject({
+      state: "queued",
+      processed_via: null,
+    })
     t.clock.advance(2000)
     const [again] = await injects()
     expect(again.payload.text).toContain("> hello")
-    expect((await view(id)).state).toBe("read")
+    expect((await view(id)).state).toBe("processed")
   })
 
   test("the owner's copy is read once its inbox item is answered or closed", async () => {
@@ -93,10 +96,16 @@ describe("one state: read", () => {
     await owner("POST", `/v1/inbox/${item("May I?").id}/answer`, {
       text: "Yes.",
     })
-    expect(await view(one)).toMatchObject({ state: "read", read_via: "inbox" })
+    expect(await view(one)).toMatchObject({
+      state: "processed",
+      processed_via: "inbox",
+    })
     expect((await view(two)).state).toBe("queued")
     await owner("POST", `/v1/inbox/${item("FYI").id}/close`)
-    expect(await view(two)).toMatchObject({ state: "read", read_via: "inbox" })
+    expect(await view(two)).toMatchObject({
+      state: "processed",
+      processed_via: "inbox",
+    })
   })
 
   test("the owner's views never change a state", async () => {
@@ -120,14 +129,17 @@ describe("steer: into a running turn", () => {
     expect(p.payload.text).toContain(
       `Message ${id} from agent team:a, subject "q":\n> Ready?`,
     )
-    expect(await view(id)).toMatchObject({ state: "read", read_via: "steer" })
+    expect(await view(id)).toMatchObject({
+      state: "processed",
+      processed_via: "steer",
+    })
     // the turn goes on: still busy, and min_interval does not count it
     expect((await as(b, "GET", "/v1/me")).body.agent.busy).toBe(true)
     const second = await send(c, { to: "team:b", text: "Me too." })
     const [p2] = await injects()
     expect(p2.payload.delivery).toBe("steer")
     expect(p2.payload.text).toContain("> Me too.")
-    expect((await view(second)).read_via).toBe("steer")
+    expect((await view(second)).processed_via).toBe("steer")
     const h = (await owner("GET", "/v1/history?kind=injection.sent")).body
       .history
     expect(h[0].data).toMatchObject({ steer: true, messages: [second] })
@@ -182,7 +194,7 @@ describe("steer: into a running turn", () => {
     const id = await send(a, { to: "team:b", text: "for the wait" })
     expect(await injects()).toEqual([])
     expect((await waiting).body.messages.map((m: any) => m.id)).toEqual([id])
-    expect((await view(id)).read_via).toBe("wait")
+    expect((await view(id)).processed_via).toBe("wait")
   })
 
   test("a steer the plugin could not deliver comes again in the next prompt", async () => {
@@ -196,7 +208,7 @@ describe("steer: into a running turn", () => {
     const [p] = await injects()
     expect(p.payload.delivery ?? "queue").toBe("queue")
     expect(p.payload.text).toContain("> try")
-    expect((await view(id)).read_via).toBe("prompt")
+    expect((await view(id)).processed_via).toBe("prompt")
   })
 })
 
@@ -234,11 +246,20 @@ describe("list, read and wait", () => {
     const res = await as(b, "POST", "/v1/me/messages/read", {})
     expect(res.status).toBe(200)
     expect(res.body.messages).toMatchObject([
-      { id: one, from: "team:a", subject: "s", text: "one", state: "read" },
-      { id: two, from: "team:c", text: "two", state: "read" },
+      {
+        id: one,
+        from: "team:a",
+        subject: "s",
+        text: "one",
+        state: "processed",
+      },
+      { id: two, from: "team:c", text: "two", state: "processed" },
     ])
     expect(res.body.left).toBe(0)
-    expect(await view(one)).toMatchObject({ state: "read", read_via: "read" })
+    expect(await view(one)).toMatchObject({
+      state: "processed",
+      processed_via: "read",
+    })
     await owner("POST", "/v1/agents/team:b/resume")
     expect(await injects()).toEqual([])
     const h = (await owner("GET", "/v1/history?kind=message.read")).body.history
@@ -267,8 +288,10 @@ describe("list, read and wait", () => {
     expect(p.payload.text).not.toContain("> y")
     // a message read already, by id: returned again, still read via read
     const again = (await as(b, "POST", "/v1/me/messages/read", { id: y })).body
-    expect(again.messages).toMatchObject([{ id: y, text: "y", state: "read" }])
-    expect((await view(y)).read_via).toBe("read")
+    expect(again.messages).toMatchObject([
+      { id: y, text: "y", state: "processed" },
+    ])
+    expect((await view(y)).processed_via).toBe("read")
     // another agent's message, or none: not found
     expect(
       (await as(c, "POST", "/v1/me/messages/read", { id: x })).status,
@@ -306,7 +329,10 @@ describe("list, read and wait", () => {
     const id = await send(a, { to: "team:b", text: "here" })
     const res = (await waiting).body
     expect(res.messages.map((m: any) => m.id)).toEqual([id])
-    expect(await view(id)).toMatchObject({ state: "read", read_via: "wait" })
+    expect(await view(id)).toMatchObject({
+      state: "processed",
+      processed_via: "wait",
+    })
     // filtered: a message from another sender does not end it
     const only = as(b, "POST", "/v1/me/messages/read", {
       wait: 5,
@@ -353,7 +379,7 @@ describe("dropped", () => {
     await as(b, "POST", "/v1/me/messages/read", { id: read })
     const left = await send(a, { to: "team:b", text: "left" })
     await owner("DELETE", "/v1/agents/team:b")
-    expect((await view(read)).state).toBe("read")
+    expect((await view(read)).state).toBe("processed")
     expect((await view(left)).state).toBe("dropped")
   })
 })

@@ -150,8 +150,8 @@ export async function send(args: Parsed): Promise<number> {
   return 0
 }
 
-// Every message (its state: queued, read with how, or dropped), or one
-// whole: the owner's; never marks one read.
+// Every message (its state: queued, processed with how, or dropped), or one
+// whole: the owner's; never changes a state.
 export async function messages(args: Parsed): Promise<number> {
   const [sub, id] = args.words
   const c = connect(args)
@@ -181,8 +181,10 @@ export async function messages(args: Parsed): Promise<number> {
             m.to,
             m.subject,
             String(m.size),
-            // read, with how (the owner, 2026-11-09)
-            m.state === "read" && m.read_via ? `read (${m.read_via})` : m.state,
+            // processed, with how (the owner, 2026-11-09, 2026-11-10)
+            m.state === "processed" && m.processed_via
+              ? `processed (${m.processed_via})`
+              : m.state,
             local(m.created_at),
           ]),
           ["ID", "FROM", "TO", "SUBJECT", "SIZE", "STATE", "CREATED"],

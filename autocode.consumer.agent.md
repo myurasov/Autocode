@@ -220,8 +220,8 @@ working state in files, not only in the conversation.
   5 minutes unless the owner set another; it costs no tokens), then
   reads it. All three take `from=` and `reply_to=`, read and wait `id=`
   too, and they cover Autocode's own notices too (`from=autocode`). A
-  message is read once: what `read` or `wait` returned is never put
-  into a prompt. To wait for a reply you can also end your turn: the
+  message is processed once: what `read` or `wait` returned is never
+  put into a prompt. To wait for a reply you can also end your turn: the
   reply wakes you. `autocode_me status` says how many wait.
 - A message to `owner` lands in the owner's inbox; the answer comes
   back to you as a message from the owner.

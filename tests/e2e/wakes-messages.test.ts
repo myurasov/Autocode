@@ -244,7 +244,7 @@ describe("messages", () => {
     const m = (await admin("GET", `/v1/messages?agent=${to.id}`)).messages.find(
       (x: any) => x.preview.includes(`Steered ${run}.`),
     )
-    expect(m).toMatchObject({ state: "read", read_via: "steer" })
+    expect(m).toMatchObject({ state: "processed", processed_via: "steer" })
   }, 120_000)
 
   test("an agent reads and waits for a message in its own turn; it is not injected again", async () => {

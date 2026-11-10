@@ -2,7 +2,7 @@
  * The Messages page: every message, newest first, with its ID, sender and
  * recipient (an agent's a link to the Agents page), subject, text (every
  * message is text), size and state (read, with how and when in the tooltip:
- * the owner, 2026-11-09; read ones only with the Read box, off by default),
+ * the owner, 2026-11-09; processed ones only with the Processed box, off by default),
  * refreshed every 10 s (one refresh at a
  * time); a long text shows its first 200 characters until a click anywhere in
  * its cell (or Enter) opens it, read whole once, and the next folds it; and a
@@ -29,17 +29,23 @@ const VIA: Record<string, string> = {
   inbox: 'in your Inbox',
 };
 
-// A message's state as shown: read with how ("read (inbox)").
+// A message's state as shown: processed with how ("processed (inbox)").
 export function stateText(m: Message): string {
-  return m.state === 'read' && m.read_via ? `read (${m.read_via})` : m.state;
+  return m.state === 'processed' && m.processed_via
+    ? `processed (${m.processed_via})`
+    : m.state;
 }
 
-// Its tooltip: when and how it was read, or what it waits for.
+// Its tooltip: when and how it was processed, or what it waits for.
 export function stateTitle(m: Message): string {
   if (m.state === 'queued') return 'Waiting for its recipient';
   if (m.state === 'dropped') return 'Dropped: its agent unregistered first';
-  const how = m.read_via ? `, ${VIA[m.read_via] ?? m.read_via}` : '';
-  return m.read_at ? `Read ${localTime(m.read_at)}${how}` : `Read${how}`;
+  const how = m.processed_via
+    ? `, ${VIA[m.processed_via] ?? m.processed_via}`
+    : '';
+  return m.processed_at
+    ? `Processed ${localTime(m.processed_at)}${how}`
+    : `Processed${how}`;
 }
 
 // An opened long text: the whole text, why it could not be read, or nothing
@@ -70,12 +76,13 @@ export class MessagesPage {
   protected readonly stateTitle = stateTitle;
 
   protected readonly messages = signal<Message[]>([]);
-  // Read messages too (the owner, 2026-11-09: off by default).
-  protected readonly showRead = signal(false);
+  // Processed messages too (the owner, 2026-11-09: off by default;
+  // 2026-11-10: processed, not read).
+  protected readonly showProcessed = signal(false);
   protected readonly shownMessages = computed(() =>
-    this.showRead()
+    this.showProcessed()
       ? this.messages()
-      : this.messages().filter((m) => m.state !== 'read'),
+      : this.messages().filter((m) => m.state !== 'processed'),
   );
   // at most 25 rows, then "..." (the owner, 2026-11-09)
   protected readonly paging = new Paged();

@@ -76,7 +76,7 @@ describe("sending", () => {
     expect(prompt.payload.text).toContain("The run finished: 0.91.")
     // carried whole in the prompt: read
     const after = await owner("GET", `/v1/messages/${id}`)
-    expect(after.body.message.state).toBe("read")
+    expect(after.body.message.state).toBe("processed")
   })
 
   test("a group: one copy per matching agent, never the sender", async () => {

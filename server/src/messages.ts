@@ -2,9 +2,9 @@
  * Messages and the owner's inbox (spec, Messages; Owner Controls): sending to
  * one agent, a pattern or a list (one copy each, never to the sender), to and
  * from the owner, text only (the owner, 2026-11-07); each copy's state: queued,
- * then read however it got there (the owner, 2026-11-09: one state; read_via
- * prompt, steer, read, wait or inbox), or dropped (its agent unregistered
- * first); the agent's list, read and wait (filters from and reply_to,
+ * then processed however it got there (the owner, 2026-11-09: one state;
+ * 2026-11-10: processed, no longer read; processed_via prompt, steer, read,
+ * wait or inbox), or dropped (its agent unregistered first); the agent's list, read and wait (filters from and reply_to,
  * Autocode's notices included; what they return is never injected);
  * Autocode's own notices (locks, asks sent to an agent, approvals' answers,
  * cost warnings, runs' results); the inbox of messages to the owner and
@@ -29,7 +29,7 @@ export const READ_LIMIT = 32_000
 export const MAX_WAIT_SECONDS = 240
 
 // How a copy came to be read (the owner, 2026-11-09).
-export type ReadVia = "prompt" | "steer" | "read" | "wait" | "inbox"
+export type ProcessedVia = "prompt" | "steer" | "read" | "wait" | "inbox"
 
 // What the agent's list, read and wait take: one message, or a sender and the
 // message they answer.
@@ -60,8 +60,8 @@ export interface MessageView {
   size: number
   state: string
   created_at: string
-  read_at: string | null
-  read_via: ReadVia | null
+  processed_at: string | null
+  processed_via: ProcessedVia | null
   text?: string
 }
 
@@ -76,8 +76,8 @@ export function messageView(row: any, body = false): MessageView {
     size: row.size,
     state: row.state,
     created_at: iso(row.created_at)!,
-    read_at: iso(row.read_at),
-    read_via: row.read_via ?? null,
+    processed_at: iso(row.processed_at),
+    processed_via: row.processed_via ?? null,
     ...(body ? { text: row.body } : {}),
   }
 }
@@ -322,16 +322,17 @@ export class Messages {
   }
 
   /*
-   * A copy is read, once: in a prompt or into a running turn (the
+   * A copy is processed, once: in a prompt or into a running turn (the
    * injection's, put back if it is lost), with the agent's read or wait, or
    * (the owner's) when its inbox item closes. True when it was queued.
    */
-  markRead(id: string, via: ReadVia): boolean {
+  markRead(id: string, via: ProcessedVia): boolean {
     const row = this.row(id)
     const done =
       this.db
         .query(
-          "UPDATE messages SET state = 'read', read_at = ?, read_via = ? " +
+          "UPDATE messages SET state = 'processed', processed_at = ?, " +
+            "processed_via = ? " +
             "WHERE id = ? AND state = 'queued'",
         )
         .run(this.now(), via, id).changes > 0
@@ -349,9 +350,9 @@ export class Messages {
     return (
       this.db
         .query(
-          "UPDATE messages SET state = 'queued', read_at = NULL, " +
-            "read_via = NULL WHERE id = ? AND state = 'read' " +
-            "AND read_via IN ('prompt', 'steer')",
+          "UPDATE messages SET state = 'queued', processed_at = NULL, " +
+            "processed_via = NULL WHERE id = ? AND state = 'processed' " +
+            "AND processed_via IN ('prompt', 'steer')",
         )
         .run(id).changes > 0
     )

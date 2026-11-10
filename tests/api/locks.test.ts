@@ -160,7 +160,7 @@ describe("notices", () => {
     // it is a message from autocode, carried whole: read
     const mine = (await owner("GET", "/v1/messages?agent=team:b")).body
     expect(mine.messages).toMatchObject([
-      { from: "autocode", subject: 'lock "gpu-0" granted', state: "read" },
+      { from: "autocode", subject: 'lock "gpu-0" granted', state: "processed" },
     ])
   })
 

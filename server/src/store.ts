@@ -559,6 +559,42 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE agents ADD COLUMN filter_compacting INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE agents ADD COLUMN filter_instruction TEXT;
   `,
+  /*
+   * 19 (the owner, 2026-11-10): "replace "read" status on messages with
+   * "processed"": the state, and its when and how (processed_at,
+   * processed_via; the ways are the same: prompt, steer, read, wait, inbox).
+   */
+  `
+  CREATE TABLE messages_new (
+    id TEXT PRIMARY KEY,
+    send_id TEXT NOT NULL,
+    from_id TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    to_spec TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    reply_to TEXT,
+    body TEXT NOT NULL,
+    mime TEXT,
+    size INTEGER NOT NULL,
+    state TEXT NOT NULL DEFAULT 'queued'
+      CHECK (state IN ('queued', 'processed', 'dropped')),
+    created_at INTEGER NOT NULL,
+    processed_at INTEGER,
+    processed_via TEXT
+      CHECK (processed_via IN ('prompt', 'steer', 'read', 'wait', 'inbox'))
+  );
+  INSERT INTO messages_new (id, send_id, from_id, to_id, to_spec, subject,
+      reply_to, body, mime, size, state, created_at, processed_at,
+      processed_via)
+    SELECT id, send_id, from_id, to_id, to_spec, subject, reply_to, body,
+      mime, size, CASE state WHEN 'read' THEN 'processed' ELSE state END,
+      created_at, read_at, read_via
+    FROM messages;
+  DROP TABLE messages;
+  ALTER TABLE messages_new RENAME TO messages;
+  CREATE INDEX messages_to ON messages (to_id, state, created_at);
+  CREATE INDEX messages_at ON messages (created_at);
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

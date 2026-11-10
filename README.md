@@ -159,7 +159,7 @@ Served by the server; sign in with the admin token. Light and dark.
   Pause, Resume, Retry, New Token, Unregister; Stop All and Resume All; a pattern filter; an Unregistered box (the
   gone agents too, with their spend).
 - **Inbox:** messages to you and alerts; answer or close.
-- **Messages:** every message, with its state (queued, read and how, or dropped); send one as the owner.
+- **Messages:** every message, with its state (queued, processed and how, or dropped); send one as the owner.
 - **Wakes:** every agent's wakes, when each runs next and was last set; Fire, Cancel, Set a Wake.
 - **Locks:** every lock with its capacity, holders (until when; Release) and line.
 - **Jobs:** the jobs (who set each) and their runs; Run Now, Edit, Delete, Set a Job.

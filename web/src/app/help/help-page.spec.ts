@@ -270,7 +270,7 @@ describe('HelpPage', () => {
       'action=list',
       'action=read',
       'action=wait',
-      'read once',
+      'processed once',
       'when you answer or close its Inbox item',
       // the owner, 2026-11-09: how agents write to you
       'Agents are told to write to you briefly',
@@ -602,11 +602,14 @@ describe('HelpPage', () => {
     const messages = after('web-messages');
     expect(messages).toContain('first 200 characters');
     expect(messages).toContain('anywhere in its cell');
-    // one state, read, with how (the owner, 2026-11-09)
-    expect(messages).toContain('queued, read (how: prompt, steer, read, wait');
-    // as markdown; the Read box (the owner, 2026-11-09)
+    // one state, with how (the owner, 2026-11-09); processed, not read
+    // (2026-11-10)
+    expect(messages).toContain(
+      'queued, processed (how: prompt, steer, read, wait',
+    );
+    // as markdown; the Processed box (the owner, 2026-11-09, 2026-11-10)
     expect(messages).toContain('its text shown as markdown');
-    expect(messages).toContain('the Read box, off by default');
+    expect(messages).toContain('the Processed box, off by default');
     expect(messages).not.toContain('delivered');
     const wakes = after('web-wakes');
     expect(wakes).toContain('first 200 characters');

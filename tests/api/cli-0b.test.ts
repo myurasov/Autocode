@@ -339,9 +339,9 @@ describe("owner commands", () => {
     expect(json.find((m: any) => m.id === id)?.state).toBe("queued")
   })
 
-  // The owner, 2026-11-09: one state, read, with how (prompt, steer, read,
-  // wait, inbox).
-  test("messages: a read copy says how it was read", async () => {
+  // The owner, 2026-11-09: one state, with how (prompt, steer, read, wait,
+  // inbox); 2026-11-10: the state is processed, no longer read.
+  test("messages: a processed copy says how it was processed", async () => {
     const sent = await cli(["send", "kaggle:worker", "hello"], asLead())
     const id = /(m_\w+)/.exec(sent.stdout)![1]!
     const read = await call(t.url, worker, "POST", "/v1/me/messages/read", {
@@ -350,7 +350,7 @@ describe("owner commands", () => {
     expect(read.status).toBe(200)
     const all = await cli(["messages"], asAdmin())
     const line = all.stdout.split("\n").find((l) => l.includes(id))!
-    expect(line).toMatch(/\sread \(read\)\s/)
+    expect(line).toMatch(/\sprocessed \(read\)\s/)
     expect(all.stdout.split("\n")[0]).toMatch(/\bSTATE\b/)
   })
 

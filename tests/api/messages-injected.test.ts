@@ -62,8 +62,8 @@ describe("messages through injections only", () => {
     expect(text).toContain(`> ${long}`)
     expect(text).not.toContain("read it with")
     const view = (await owner("GET", `/v1/messages/${id}`)).body.message
-    expect(view.state).toBe("read")
-    expect(view.read_via).toBe("prompt")
+    expect(view.state).toBe("processed")
+    expect(view.processed_via).toBe("prompt")
   })
 
   test("one prompt carries up to 32,000 characters of messages; the rest come in the next", async () => {
@@ -123,7 +123,7 @@ describe("messages through injections only", () => {
     expect(reply).toContain("> Yes.")
   })
 
-  test("the owner still sees every message, queued or read", async () => {
+  test("the owner still sees every message, queued or processed", async () => {
     await owner("POST", "/v1/agents/team:b/pause")
     await as(a, "POST", "/v1/messages", { to: "team:b", text: "one" })
     let list = (await owner("GET", "/v1/messages")).body.messages
@@ -131,6 +131,6 @@ describe("messages through injections only", () => {
     await owner("POST", "/v1/agents/team:b/resume")
     await prompts()
     list = (await owner("GET", "/v1/messages")).body.messages
-    expect(list.map((m: any) => m.state)).toEqual(["read"])
+    expect(list.map((m: any) => m.state)).toEqual(["processed"])
   })
 })
