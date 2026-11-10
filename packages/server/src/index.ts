@@ -314,8 +314,22 @@ export async function startServer(
   const answerAlert = (agent: string, title: string, body: string) =>
     inbox.open("alert", { agent, title, body })
   hosts.onCost = (event) => {
-    const agent = agents.agentOfSession(String(event.session))
-    if (agent) costs.step(agent, event)
+    const session = String(event.session)
+    // a run's session counts as its run, also once the run ended and its
+    // agent went (its last step comes after its finish: review of rc2)
+    const run = (
+      db.query("SELECT id FROM runs WHERE session_id = ?").get(session) as {
+        id: string
+      } | null
+    )?.id
+    const agent = run ?? agents.agentOfSession(session)
+    if (!agent) return
+    costs.step(agent, event)
+    if (run)
+      db.query("UPDATE runs SET cost = ? WHERE id = ?").run(
+        costs.runCost(run),
+        run,
+      )
   }
   hosts.onCut = (session) => {
     const agent = agents.agentOfSession(session)

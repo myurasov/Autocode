@@ -40,8 +40,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await admin("DELETE", `/v1/agents/${enc(starter.id)}`).catch(() => {})
-  for (const name of [job, `${job}-owner`, `${job}-slow`, `${job}-asks`])
-    await admin("DELETE", `/v1/jobs/${name}`).catch(() => {})
+  for (const name of [
+    job,
+    `${job}-owner`,
+    `${job}-slow`,
+    `${job}-asks`,
+    `${starter?.id}:own-${run}`,
+  ])
+    await admin("DELETE", `/v1/jobs/${enc(name)}`).catch(() => {})
   await admin("PATCH", "/v1/settings", {
     server: { min_interval: null },
     agents: { [starter.id]: null },
@@ -402,4 +408,88 @@ describe("jobs across machines", () => {
       `Approval ${approval}: approved by agent ${approver}. Option: tonight.`,
     )
   }, 600_000)
+
+  /*
+   * The owner, 2026-11-09 (rc2): an agent sets a job of its own with
+   * autocode_me job_set; the owner approves it in the inbox; the agent runs
+   * it; the run's cost counts for the agent.
+   */
+  test("an agent sets a job, the owner approves it, the agent runs it; its cost counts for the agent", async () => {
+    const own = `own-${run}`
+    const full = `${starter.id}:${own}`
+    const set = await callTool(starter.oc, starter.session, "autocode_me", {
+      action: "job_set",
+      job: own,
+      model: "fake/main",
+      prompt: `Count for ${run}.`,
+      trigger: "fire-only",
+      run_usd: 1,
+      host: jobHost,
+    })
+    expect(set).toContain(`Job ${full} is with the owner for approval`)
+    const item = await until(
+      async () =>
+        (await admin("GET", "/v1/inbox")).items.find(
+          (i: any) => i.kind === "approval" && i.agent === starter.id,
+        ),
+      { timeoutMs: 30_000, intervalMs: 500, what: "the job's approval" },
+    )
+    expect(item.text).toContain(`${starter.id} asks to set the job ${full}:`)
+    await admin("POST", `/v1/asks/${item.id}/answer`, { text: "approve" })
+    const listed = (await admin("GET", "/v1/jobs")).jobs.find(
+      (j: any) => j.name === full,
+    )
+    expect(listed).toMatchObject({ created_by: starter.id, run_usd: 1 })
+    // its run: a step with a cost, then finish
+    await new FakeModel(nodes.at(-1)!).script(
+      [
+        {
+          // the run's own prompt (its footer names its job); the starter's
+          // requests carry the prompt too, in its tool call
+          match: `of job ${full},`,
+          usage: { prompt_tokens: 100_000, completion_tokens: 10_000 },
+          tool_calls: [
+            {
+              name: "autocode_me",
+              arguments: { action: "finish", result: `counted ${run}` },
+            },
+          ],
+        },
+        { match: "Finished run", reply: "done" },
+      ],
+      true,
+    )
+    const before = (await admin("GET", `/v1/costs/${enc(starter.id)}`)).cost
+    const started = await callTool(starter.oc, starter.session, "autocode_me", {
+      action: "run",
+      job: full,
+    })
+    expect(started).toContain(`Started run ${full}:`)
+    const done = await until(
+      async () => {
+        const r = (await admin("GET", `/v1/runs?job=${enc(full)}`)).runs[0]
+        return r?.state === "succeeded" ? r : undefined
+      },
+      { timeoutMs: 120_000, intervalMs: 1000, what: "the run to end" },
+    )
+    expect(done).toMatchObject({
+      bill_to: starter.id,
+      result: `counted ${run}`,
+    })
+    // the step that called finish is reported just after the run ended
+    const cost = await until(
+      async () => {
+        const r = (await admin("GET", `/v1/runs?job=${enc(full)}`)).runs[0]
+        return r?.cost > 0 ? r.cost : undefined
+      },
+      { timeoutMs: 30_000, intervalMs: 500, what: "the run's cost" },
+    )
+    const after = (await admin("GET", `/v1/costs/${enc(starter.id)}`)).cost
+    expect(after.runs_total_usd - before.runs_total_usd).toBeCloseTo(cost, 6)
+    // no row of the run's own on Costs
+    const ids = (await admin("GET", "/v1/costs")).agents.map(
+      (a: any) => a.agent,
+    )
+    expect(ids).not.toContain(done.id)
+  }, 300_000)
 })

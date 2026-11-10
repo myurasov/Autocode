@@ -243,6 +243,26 @@ describe("whom a run's cost counts for", () => {
     expect(await row("team:lead")).toMatchObject({ today_usd: 0.6 })
   })
 
+  // A run's last step (the one that called finish) is reported after the
+  // run ended and its agent went: it still counts, for whom the run was
+  // for, and in the run's own cost (found in the review of rc2).
+  test("a step reported after the run finished still counts, and in the run's cost", async () => {
+    await owner("PUT", "/v1/jobs/mail", JOB)
+    await as(lead, "POST", "/v1/jobs/mail/run", {})
+    const run = await runs_()
+    await step(run.session, 0.1, "f1")
+    const fin = await as(run.token, "POST", "/v1/me/finish", { result: "done" })
+    expect(fin.status).toBe(200)
+    await step(run.session, 0.2, "f2")
+    expect(await row("team:lead")).toMatchObject({
+      today_usd: 0.3,
+      runs_today_usd: 0.3,
+    })
+    expect(
+      (await owner("GET", "/v1/runs?job=mail")).body.runs[0],
+    ).toMatchObject({ state: "succeeded", cost: 0.3 })
+  })
+
   test("an agent cannot take an ID that starts with job:", async () => {
     const t2 = await sessionToken(t, HOST, "ses_x")
     const res = await as(t2, "POST", "/v1/agents", { id: "job:mail" })
