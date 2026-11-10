@@ -123,10 +123,9 @@ describe('InboxPage', () => {
     expect(text(message.querySelector('.title'))).toBe(
       'Message from kaggle:lead: "Plan"',
     );
-    // The body keeps its lines, in a <pre> (the owner, 2026-11-09).
-    expect(message.querySelector('pre.body')!.textContent).toBe(
-      'Line one.\nLine two.',
-    );
+    // The body as markdown, its lines kept (the owner, 2026-11-09).
+    const body = message.querySelector('app-markdown.body')!;
+    expect(body.querySelector('p')!.innerHTML).toBe('Line one.<br>Line two.');
     expect(
       message.querySelector('textarea[aria-label="Answer"]'),
     ).not.toBeNull();

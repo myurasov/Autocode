@@ -80,6 +80,14 @@ const LONG: Message = {
   read_via: 'steer',
 };
 
+// An opened text's lines as markdown shows them (one <br> a line break).
+const wholeLines = (page: HTMLElement, id: string) => {
+  const md = page.querySelector(
+    `table.messages tr[data-message="${id}"] td.text app-markdown`,
+  );
+  return md ? (md.querySelector('p')!.innerHTML.split('<br>') as string[]) : [];
+};
+
 // What a field of the page holds.
 const value = (page: HTMLElement, selector: string) =>
   (page.querySelector(selector) as HTMLInputElement).value;
@@ -235,7 +243,7 @@ describe('MessagesPage', () => {
     read('msg_3', { text: LONG_TEXT });
     await settle(fixture);
     // The whole text, its lines kept.
-    expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
+    expect(wholeLines(page, 'msg_3')).toEqual(LONG_TEXT.split('\n'));
     expect(toggle(page, 'msg_3')!.getAttribute('aria-expanded')).toBe('true');
     // A click on the text itself folds it once, not twice.
     toggle(page, 'msg_3')!.click();
@@ -249,17 +257,26 @@ describe('MessagesPage', () => {
     );
     await settle(fixture);
     http.expectNone('/v1/messages/msg_3');
-    expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
+    expect(wholeLines(page, 'msg_3')).toEqual(LONG_TEXT.split('\n'));
   });
 
-  // The owner, 2026-11-09: every message's text in a <pre>, in a fixed-width
-  // font.
-  it('shows every text, short, folded or whole, in a pre', async () => {
-    const page = await open([LONG, ...MESSAGES]);
-    expect(cell(page, 'msg_2').querySelector('pre.whole')!.textContent).toBe(
-      'Status, now?',
-    );
-    expect(toggle(page, 'msg_3')!.tagName).toBe('PRE');
+  // The owner, 2026-11-09: a text as markdown, in the page's own font; a
+  // folded one is its first 200 characters as they are written.
+  it('shows a short text and a whole one as markdown; a folded one as written', async () => {
+    const page = await open([
+      { ...MESSAGES[0]!, preview: '**Status**, now?' },
+      LONG,
+      ...MESSAGES.slice(1),
+    ]);
+    const short = cell(page, 'msg_2').querySelector('app-markdown.whole')!;
+    expect(short.querySelector('strong')!.textContent).toBe('Status');
+    expect(toggle(page, 'msg_3')!.querySelector('app-markdown')).toBeNull();
+    cell(page, 'msg_3').click();
+    await settle(fixture);
+    read('msg_3', { text: '# Report\n\nAll **good**.' });
+    await settle(fixture);
+    const whole = toggle(page, 'msg_3')!.querySelector('app-markdown')!;
+    expect(whole.querySelector('h1')!.textContent).toBe('Report');
   });
 
   it('a short text shows whole and does not open, nor does the row', async () => {
@@ -311,7 +328,7 @@ describe('MessagesPage', () => {
     await settle(fixture);
     read('msg_3', { text: LONG_TEXT });
     await settle(fixture);
-    expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
+    expect(wholeLines(page, 'msg_3')).toEqual(LONG_TEXT.split('\n'));
   });
 
   it('an open text stays open when the list refreshes', async () => {
@@ -323,7 +340,7 @@ describe('MessagesPage', () => {
     button(page, 'Refresh')!.click();
     load([LONG, ...MESSAGES]);
     await settle(fixture);
-    expect(toggle(page, 'msg_3')!.textContent).toBe(LONG_TEXT);
+    expect(wholeLines(page, 'msg_3')).toEqual(LONG_TEXT.split('\n'));
   });
 
   it('says when there are no messages yet', async () => {

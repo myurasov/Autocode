@@ -389,7 +389,7 @@ table.inbox .title {
   font-weight: var(--bold);
   overflow-wrap: anywhere;
 }
-table.inbox .body {
+table.inbox .body:not(app-markdown) {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -722,6 +722,11 @@ table.wakes td.check code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* markdown keeps its own lines */
+.more:not(.folded):has(app-markdown),
+app-markdown.whole {
+  white-space: normal;
+}
 td.folds {
   cursor: pointer;
 }
@@ -737,22 +742,57 @@ table.messages td.text {
   width: 30%;
 }
 /*
- * Every message's text (the Messages tab, the Inbox's messages and answers)
- * in a <pre>, in a fixed-width font at the page's own size (the owner,
- * 2026-11-09): its lines kept, long ones wrapped, no margins of its own.
+ * A message's text as markdown (the owner, 2026-11-09), in the page's own
+ * font: its blocks without outer margins, close together; code in the fixed
+ * font; a long word or link wraps.
  */
-table.messages td.text pre,
-table.inbox pre.body {
-  margin: 0;
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
-    "DejaVu Sans Mono", monospace;
-  font-size: inherit;
-  white-space: pre-wrap;
+app-markdown {
+  display: block;
   overflow-wrap: anywhere;
 }
-table.inbox .answer pre.body {
-  display: inline;
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol,
+.md pre,
+.md blockquote,
+.md table {
+  margin: 0.35rem 0;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 1rem;
+  font-weight: var(--bold);
+}
+.md ul,
+.md ol {
+  padding-left: 1.4rem;
+}
+.md pre {
+  padding: 0.4rem 0.5rem;
+  background: var(--code);
+  border-radius: 3px;
+  white-space: pre-wrap;
+}
+.md blockquote {
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--border);
+  color: var(--fg-dim);
+}
+.md table {
+  width: auto;
+}
+table.inbox .answer app-markdown {
+  display: inline-block;
+  vertical-align: top;
 }
 /*
  * An agent or host ID that leads to its page (the owner, 2026-11-03): it looks

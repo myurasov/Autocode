@@ -1090,10 +1090,13 @@ in what it read.
   a guide topic `owner` ("Writing to the Owner": only what the owner needs, the point first, a short list, the options
   and the default, plain words, details in a file); one sentence in the line every registered session gets; the
   message tool's text and the approval tool say it where the text is written; howto and Help.
-- **Every message's text in a fixed-width `<pre>`** (the owner, 2026-11-09: "messages to owner to use <pre> and fixed
-  wdth font", then "Every message everywhere"; tests first: `inbox-page.spec.ts`, `messages-page.spec.ts`,
-  `smoke.spec.ts` (a `PRE`, `ui-monospace` first, 15 px, no margin), red, then green): the Inbox's message bodies and
-  answers, the Messages tab's short, folded and whole texts. Screenshots of both, light and dark, looked at.
+- **Every message's text as markdown** (the owner, 2026-11-09: first "messages to owner to use <pre> and fixed wdth
+  font", "Every message everywhere"; then, in a message steered into this session's turn: "I changed my mind about
+  messages. Let them use normal font, but render markdown"; tests first, red, then green): `markdown.spec.ts`
+  (headings, emphasis, code, lists, quotes, links in a new tab, tables, line breaks; `<script>`, `onerror` and
+  `javascript:` links removed by Angular's sanitizer), `inbox-page.spec.ts`, `messages-page.spec.ts` (short and whole
+  texts as markdown, folded ones as written), `help-page.spec.ts`, `smoke.spec.ts` (the page's font, `<br>` per line).
+  `marked` 18.2.0 (MIT, no dependencies; +50 KB). Screenshots of the Inbox and Messages, light and dark, looked at.
 - **An agent's error alerts close when it recovers** (the owner, 2026-11-09: "its turn failed (provider.content-filter);
   not retried" stayed in the Inbox after the agent worked again, with no Retry on Agents; tests first:
   `retries.test.ts` 2, red, then green): the not-retried and retries-ran-out alerts close at a succeeding turn

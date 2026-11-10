@@ -593,6 +593,8 @@ describe('HelpPage', () => {
     expect(messages).toContain('anywhere in its cell');
     // one state, read, with how (the owner, 2026-11-09)
     expect(messages).toContain('queued, read (how: prompt, steer, read, wait');
+    // as markdown (the owner, 2026-11-09)
+    expect(messages).toContain('its text shown as markdown');
     expect(messages).not.toContain('delivered');
     const wakes = after('web-wakes');
     expect(wakes).toContain('first 200 characters');

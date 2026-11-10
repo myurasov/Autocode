@@ -85,13 +85,13 @@
           }
           @if (!isAsk(item)) {
             @if (item.body) {
-              <!-- a message in a fixed-width font (the owner, 2026-11-09) -->
-              <pre class="body">{{ item.body }}</pre>
+              <!-- a message as markdown (the owner, 2026-11-09) -->
+              <app-markdown class="body" [text]="item.body" />
             }
             @if (messageAnswer(item); as answer) {
               <div class="answer">
                 <span class="muted">Answer: </span>
-                <pre class="body">{{ answer }}</pre>
+                <app-markdown class="body" [text]="answer" />
               </div>
             } @else if (!item.closed_at && item.kind === 'message') {
               <textarea
@@ -110,7 +110,7 @@
             @if (askAnswerText(item); as answer) {
               <div class="answer">
                 <span class="muted">Answer: </span>
-                <pre class="body">{{ answer }}</pre>
+                <app-markdown class="body" [text]="answer" />
               </div>
             }
           } @else if (item.kind === 'question') {

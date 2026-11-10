@@ -356,15 +356,18 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
   await expect(item.locator("td.sent-to")).toHaveText("owner")
   const body = item.locator(".body")
   await expect(body).toContainText("A second line.")
-  await expect(body).toHaveCSS("white-space", "pre-wrap")
-  // a message in a <pre>, fixed-width, at the page's own text size (the
-  // owner, 2026-11-09)
-  const fixed = async (el: typeof body) =>
-    el.evaluate((e) => {
-      const css = getComputedStyle(e)
-      return [e.tagName, css.fontFamily.split(",")[0], css.fontSize]
-    })
-  expect(await fixed(body)).toEqual(["PRE", "ui-monospace", "15px"])
+  // its lines kept: markdown makes each a <br> (the owner, 2026-11-09)
+  await expect(body.locator("p br")).toHaveCount(1)
+  // a message as markdown in the page's own font (the owner, 2026-11-09)
+  const font = await body.evaluate((e) => [
+    e.tagName,
+    getComputedStyle(e).fontFamily,
+    getComputedStyle(document.body).fontFamily,
+    getComputedStyle(e).fontSize,
+  ])
+  expect(font[0]).toBe("APP-MARKDOWN")
+  expect(font[1]).toBe(font[2])
+  expect(font[3]).toBe("15px")
   await expect(item.getByRole("button", { name: "Close" })).toBeVisible()
 
   await openTab(page, "Messages")
@@ -382,16 +385,21 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
     .locator("table.messages tr[data-message]")
     .filter({ has: page.locator("td.subject", { hasText: /^Smoke$/ }) })
     .first()
-  // A short text is shown whole, its lines kept, in a fixed-width <pre>.
-  await expect(message.locator("td.text")).toHaveText(
-    /^Hello from the smoke test\.\s+A second line\.$/,
+  // A short text is shown whole, its lines kept, as markdown in the page's
+  // font.
+  await expect(message.locator("td.text app-markdown p br")).toHaveCount(1)
+  expect(await message.locator("td.text").innerText()).toBe(
+    "Hello from the smoke test.\nA second line.",
   )
   expect(
-    await message.locator("td.text pre").evaluate((e) => {
-      const css = getComputedStyle(e)
-      return [css.fontFamily.split(",")[0], css.whiteSpace, css.marginTop]
-    }),
-  ).toEqual(["ui-monospace", "pre-wrap", "0px"])
+    await message
+      .locator("td.text app-markdown")
+      .evaluate(
+        (e) =>
+          getComputedStyle(e).fontFamily ===
+          getComputedStyle(document.body).fontFamily,
+      ),
+  ).toBe(true)
   await expect(message.locator("td.text .more")).toHaveCount(0)
   await expect(message.locator("td.sender")).toHaveText("smoke:agent")
   await expect(message.locator("td.recipient")).toHaveText("owner")
@@ -585,14 +593,18 @@ test("admin: a long message text is truncated to 200 characters; a click anywher
   const state = await row.locator("td.state").textContent()
   await clickCorner(cell)
   await expect(more).toHaveAttribute("aria-expanded", "true")
-  await expect(more).toHaveCSS("white-space", "pre-wrap")
-  await expect.poll(() => more.evaluate((e) => e.textContent)).toBe(long)
+  // whole, as markdown: its lines a <br> each (the owner, 2026-11-09)
+  await expect
+    .poll(() => more.locator("app-markdown").evaluate((e) => e.innerText))
+    .toBe(long)
   expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
   // A click on the text itself folds it once.
   await more.click()
   await expect(more).toHaveText(folded(long))
   await more.press("Enter")
-  await expect.poll(() => more.evaluate((e) => e.textContent)).toBe(long)
+  await expect
+    .poll(() => more.locator("app-markdown").evaluate((e) => e.innerText))
+    .toBe(long)
   await expect(row.locator("td.state")).toHaveText(state!)
   await row.locator("td.subject").click()
   await expect(page.locator("table.messages tr.detail")).toHaveCount(0)

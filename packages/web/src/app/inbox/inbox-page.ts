@@ -17,6 +17,7 @@ import { IdParts, TimeText } from '../breaks';
 import { localTime } from '../format';
 import { AgentLink } from '../links';
 import { leftText } from '../locks/locks-page';
+import { Markdown } from '../markdown';
 import { Updated } from '../updated';
 
 // What each kind of item is called on the page.
@@ -69,7 +70,7 @@ export function askAnswerText(item: InboxItem): string {
 
 @Component({
   selector: 'app-inbox-page',
-  imports: [AgentLink, IdParts, TimeText, Updated],
+  imports: [AgentLink, IdParts, Markdown, TimeText, Updated],
   templateUrl: './inbox-page.html',
 })
 export class InboxPage {

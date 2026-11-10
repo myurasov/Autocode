@@ -193,7 +193,8 @@ was read are the server's). Pages:
   (the reply goes to the agent as a message from the owner) or **Close** an item; **Closed** shows the answered
   and closed ones.
 - **Messages:** every message, newest first, with its ID, the first 200 characters of its text (a click shows it
-  whole, another folds it; your read leaves its state) and its state (queued, read with how: prompt, steer, read, wait
+  whole, as markdown, as the Inbox shows messages; another folds it; your read leaves its state) and its state
+  (queued, read with how: prompt, steer, read, wait
   or inbox, when in its tooltip, or dropped); **Send a Message** (it opens from its title) as the owner, to an ID, a
   pattern or a list. A message reaches a working agent at its turn's next step; an agent can also list, read and
   wait for its messages itself, and each is read once.

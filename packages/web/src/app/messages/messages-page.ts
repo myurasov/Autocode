@@ -15,6 +15,7 @@ import { Api, errorText, type Message } from '../api';
 import { IdParts, TimeText } from '../breaks';
 import { FOLD_CHARS, localTime } from '../format';
 import { AgentLink } from '../links';
+import { Markdown } from '../markdown';
 import { Updated } from '../updated';
 
 // How a copy was read, for its state's tooltip.
@@ -58,7 +59,7 @@ export function recipients(to: string): string | string[] {
 
 @Component({
   selector: 'app-messages-page',
-  imports: [AgentLink, IdParts, TimeText, Updated],
+  imports: [AgentLink, IdParts, Markdown, TimeText, Updated],
   templateUrl: './messages-page.html',
 })
 export class MessagesPage {
@@ -121,6 +122,12 @@ export class MessagesPage {
 
   // A long text's cell: the whole text once opened and read, else the list's
   // first 200 characters and "…".
+  // An opened text, read whole: its text (to show as markdown); else null.
+  protected wholeText(message: Message): string | null {
+    if (!this.isOpen(message.id)) return null;
+    return this.bodyOf(message.id)?.text ?? null;
+  }
+
   protected shown(message: Message): string {
     const read = this.bodyOf(message.id)?.text;
     if (this.isOpen(message.id) && read !== undefined) return read;

@@ -100,20 +100,24 @@
         -->
         <td class="text" [class.folds]="isLong(m)" (click)="cellClick(m)">
           @if (isLong(m)) {
-            <pre
+            <!-- open: the whole text as markdown; folded: as written -->
+            <div
               class="more"
               role="button"
               tabindex="0"
+              [class.folded]="!wholeText(m)"
               [attr.aria-expanded]="isOpen(m.id)"
               (keydown.enter)="toggle(m)"
               (keydown.space)="$event.preventDefault(); toggle(m)"
-              >{{ shown(m) }}</pre
+              >@if (wholeText(m); as whole) {<app-markdown [text]="whole" />} @else {{{
+                shown(m)
+              }}}</div
             >
             @if (isOpen(m.id) && bodyOf(m.id)?.error; as error) {
               <span class="errmsg" role="alert">{{ error }}</span>
             }
           } @else {
-            <pre class="whole">{{ m.preview ?? '' }}</pre>
+            <app-markdown class="whole" [text]="m.preview ?? ''" />
           }
         </td>
         <td class="num size">{{ sizeText(m) }}</td>
