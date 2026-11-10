@@ -460,7 +460,8 @@ describe('AgentsPage', () => {
       '/<wbr>home/<wbr>someone/<wbr>kaggle',
     );
     expect(code('folder').textContent).toBe('/home/someone/kaggle');
-    // A time wraps only between its date and its clock, which keeps its zone.
+    // A time wraps between its date, its clock and its zone (the owner,
+    // 2026-11-09: the Agents table fits a laptop).
     const time = lead.querySelector('td.time')!;
     const [date, clock, zone] = localTime('2026-10-28T10:00:00.000Z').split(
       ' ',
@@ -468,7 +469,7 @@ describe('AgentsPage', () => {
     expect(zone).toBeTruthy();
     expect(
       [...time.querySelectorAll('span')].map((s) => s.textContent),
-    ).toEqual([date, `${clock} ${zone}`]);
+    ).toEqual([date, clock, zone]);
   });
 
   it('filters by pattern on Enter and on Refresh, and shows a bad pattern error', async () => {

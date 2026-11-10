@@ -322,6 +322,14 @@ td.session.id-like {
 table.agents td.id {
   min-width: 7rem;
 }
+/*
+ * A description may hold a long path with no place to break: it breaks
+ * anywhere, so it never makes the table wider than a laptop's screen (the
+ * owner, 2026-11-09: a live page was 128 px too wide at 1280 px).
+ */
+table.agents td.desc {
+  overflow-wrap: anywhere;
+}
 td.time > span {
   white-space: nowrap;
 }

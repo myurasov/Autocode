@@ -3,12 +3,14 @@
  * a ":" or "_", never inside a part; its parts as shown, each kept whole, with
  * a break between them and nothing added to the text.
  * Breaks (folders, model names, error types): only after its characters.
+ * A time: its date, clock and zone, each kept whole.
  */
 
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { el, parts, settle, setup } from '../testing/helpers';
-import { Breaks, IdParts, idParts } from './breaks';
+import { localTime } from './format';
+import { Breaks, IdParts, idParts, TimeText } from './breaks';
 
 @Component({
   imports: [IdParts],
@@ -123,5 +125,26 @@ describe('Breaks', () => {
     expect(page.querySelector('code.model')!.textContent).toBe(
       'bedrock-claude-opus-5-5',
     );
+  });
+});
+
+// The owner, 2026-11-09: a time is its date, clock and zone, each kept
+// whole; a narrow column breaks between them.
+@Component({
+  imports: [TimeText],
+  template: `<span class="t" appTime="2026-10-28T10:00:00.000Z"></span>`,
+})
+class Times {}
+
+describe('TimeText', () => {
+  it('shows the date, the clock and the zone as three parts; the text stays the same', async () => {
+    setup();
+    const fixture = TestBed.createComponent(Times);
+    await settle(fixture);
+    const t = el(fixture).querySelector('.t')!;
+    const spans = [...t.querySelectorAll('span')].map((s) => s.textContent);
+    expect(spans.length).toBe(3);
+    expect(spans.join(' ')).toBe(localTime('2026-10-28T10:00:00.000Z'));
+    expect(t.textContent).toBe(localTime('2026-10-28T10:00:00.000Z'));
   });
 });

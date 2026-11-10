@@ -3777,3 +3777,81 @@ test("layout: --soft is #efefef in light and #292f36 in dark; a table head shows
   expect(seen.light).toEqual(["#efefef", "rgb(239, 239, 239)"])
   expect(seen.dark).toEqual(["#292f36", "rgb(41, 47, 54)"])
 })
+
+// The owner, 2026-11-09: the live Agents page overflowed a laptop screen
+// (1280 px: 128 px too wide) with agents that have a long description, a
+// model, spend and context. The fixture's agents had none of these, so the
+// page check above passed. Here, agents shaped like the live ones.
+test("layout: Agents fits 1280 px with long descriptions, models, spend and context", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const host = "smoke:fit:1"
+  const ids = ["fit:meeting-imports", "fit:update-loop", "fit:update-loop-dev"]
+  const sessions = ids.map((_, i) => `ses_e5fd30916ffeIdXcXQ7PtUBb5${i}`)
+  try {
+    const hello = await api.post(`/v1/hosts/${host}/hello`, {
+      headers: bearer(consumer),
+      data: {
+        instance: "i-fit",
+        machine: "smoke",
+        directory: "/home/someone/Projects-Co-SA",
+        sessions,
+      },
+    })
+    expect(hello.ok(), await hello.text()).toBe(true)
+    for (const [i, id] of ids.entries()) {
+      const t = await api.post(
+        `/v1/hosts/${host}/sessions/${sessions[i]}/token`,
+        { headers: bearer(consumer), data: { instance: "i-fit" } },
+      )
+      const token = (await t.json()).token
+      const reg = await api.post("/v1/agents", {
+        headers: bearer(token),
+        data: {
+          id,
+          description:
+            "Developer session for the update-loop agent " +
+            "(workspace/_custom/agents/autocode/update-loop/); changes and " +
+            "tests the loop's files, never runs the loop.",
+        },
+      })
+      expect([200, 201]).toContain(reg.status())
+      const step = await api.post(`/v1/hosts/${host}/events`, {
+        headers: bearer(consumer),
+        data: {
+          instance: "i-fit",
+          events: [
+            {
+              type: "cost",
+              session: sessions[i],
+              usd: 53.61,
+              context: 501_000,
+              limit: 1_000_000,
+              model: "nvidia-ih/aws/anthropic/bedrock-claude-opus-5-5",
+            },
+          ],
+        },
+      })
+      expect(step.ok()).toBe(true)
+    }
+    await signIn(page, admin)
+    for (const width of [1280, 1440]) {
+      await page.setViewportSize({ width, height: 800 })
+      await openTab(page, "Agents")
+      const row = page.locator(`table.agents tr[data-agent="${ids[2]}"]`)
+      await expect(row.locator("td.model")).toHaveText(
+        "bedrock-claude-opus-5-5",
+      )
+      await expect(row.locator("td.spend")).toContainText(" today / $")
+      expect(await overflow(page), `Agents at ${width}`).toEqual({
+        frame: 0,
+        page: 0,
+      })
+    }
+  } finally {
+    for (const id of ids)
+      await api.delete(`/v1/agents/${id}`, { headers: bearer(admin) })
+    await api.dispose()
+  }
+})

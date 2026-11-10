@@ -32,8 +32,9 @@ export class Breaks {
   }
 }
 
-// A time in the viewer's zone (see localTime) as a date and a clock with its
-// zone, each on one line.
+// A time in the viewer's zone (see localTime) as a date, a clock and its
+// zone, each kept whole: a narrow column breaks between them (the owner,
+// 2026-11-09: the Agents table must fit a laptop in any zone, "GMT+0" too).
 @Directive({ selector: '[appTime]' })
 export class TimeText {
   readonly appTime = input<string | null | undefined>('');
@@ -41,8 +42,8 @@ export class TimeText {
   constructor() {
     const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
     effect(() => {
-      const [date, ...rest] = localTime(this.appTime()).split(' ');
-      const parts = [date, rest.join(' ')].filter(Boolean);
+      const [date, clock, ...zone] = localTime(this.appTime()).split(' ');
+      const parts = [date, clock, zone.join(' ')].filter(Boolean);
       host.replaceChildren();
       parts.forEach((part, i) => {
         if (i > 0) host.append(' ');

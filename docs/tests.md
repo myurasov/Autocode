@@ -1084,6 +1084,12 @@ in what it read.
 - **`--soft` a little darker in light, lighter in dark** (the owner, 2026-11-09; tests first: `smoke.spec.ts` reads the
   variable and a table head's color in both themes, red, then green): `#f5f5f5` to `#efefef`, `#262d34` to `#292f36`
   (kept below `--code` `#2a3138`). Screenshots of the Costs tab in both looked at.
+- **The Agents table fits a laptop** (the owner, 2026-11-09: a live Agents page was 128 px too wide at 1280 px;
+  tests first: `smoke.spec.ts` "Agents fits 1280 px with long descriptions, models, spend and context", agents shaped
+  like the live ones, red at 243 px over, then 8, then green at 1280 and 1440; `breaks.spec.ts` TimeText, and
+  `agents-page.spec.ts` updated): a description breaks anywhere (a long path no longer widens it), and a time breaks
+  between its date, clock and zone (`GMT+0` kept the column wide). Screenshots of the live data at 1280, 1440 and
+  1512 looked at.
 - **Release 1.0.0-rc1** (the owner, 2026-11-09; tests first: `version.test.ts` red at 0.1.0, then green): `RELEASE`
   in `version.ts`, every `package.json` and lock, README, runbook, the spec's Versions; the smoke header checks read
   `v1.0.0-rc1-dev`. The build counter keeps counting (build 59 next).
