@@ -89,7 +89,9 @@ describe("autocode install", () => {
     expect(res.stderr).toBe("")
     expect(res.code).toBe(0)
     expect(res.stdout).toContain("installed: autocode.service")
-    expect(res.stdout).toMatch(/server install-host v\d+\.\d+\.\d+-dev answers/)
+    expect(res.stdout).toMatch(
+      /server install-host v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?-dev answers/,
+    )
     expect((await answers()).id).toBe("install-host")
     const active = await docker(
       [...asUser, "systemctl", "--user", "is-active", "autocode.service"],
