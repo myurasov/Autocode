@@ -7,8 +7,7 @@ becomes an **agent**: Autocode can wake it later with a prompt (on a schedule, a
 when a script or another agent fires it), agents can message each other and you, and a turn that fails is retried. You
 watch and steer them from a web UI and a CLI.
 
-_Version 0.1.0, Phase 0 built. Tiers 0a to 0c are tagged (`v0.1.0-0c`); tiers 0d (questions, permissions and
-approvals), 0e (resumes, the daily cost cap, compaction) and 0f (jobs) are built, not yet tagged: see
+_Version 1.0.0-rc1, the first release candidate: Phase 0 (tiers 0a to 0g) and Phase 1 built; see
 [What Works Now](#what-works-now)._
 
 - [Why Autocode](#why-autocode)
@@ -195,7 +194,7 @@ bun install
 bun run typecheck && bun run lint
 bun test tests/unit tests/api            # fast, no Docker
 ci/run.sh [suite...]                     # Docker suites in parallel (see below)
-ci/dist.sh                               # numbered build with the web UI: dist/autocode (v0.1.0-build<n>)
+ci/dist.sh                               # numbered build with the web UI: dist/autocode (v1.0.0-rc1-build<n>)
 AUTOCODE_TARGETS=all ci/dist.sh          # also linux-arm64, linux-x64, darwin-arm64
 ```
 

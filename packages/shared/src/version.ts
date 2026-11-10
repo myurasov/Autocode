@@ -5,7 +5,9 @@
  * see versions with a "v" before them; API data carries them without it.
  */
 
-export const RELEASE = "0.1.0"
+// The first release candidate (the owner, 2026-11-09). Build numbers keep
+// counting across releases: the counter is never reset.
+export const RELEASE = "1.0.0-rc1"
 
 declare const AUTOCODE_BUILD: string | undefined
 

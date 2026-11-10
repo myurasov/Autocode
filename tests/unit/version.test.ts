@@ -26,7 +26,9 @@ afterAll(async () => {
 
 describe("the version", () => {
   test("is the release plus the build number, or -dev", () => {
-    expect(RELEASE).toMatch(/^\d+\.\d+\.\d+$/)
+    // the first release candidate (the owner, 2026-11-09)
+    expect(RELEASE).toBe("1.0.0-rc1")
+    expect(versionOf(RELEASE, "59")).toBe("1.0.0-rc1-build59")
     expect(versionOf("0.1.0", "7")).toBe("0.1.0-build7")
     expect(versionOf("0.1.0", "")).toBe("0.1.0-dev")
     expect(versionOf("0.1.0")).toBe("0.1.0-dev")

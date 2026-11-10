@@ -16,7 +16,7 @@
     },
     "packages/cli": {
       "name": "@autocode/cli",
-      "version": "0.1.0",
+      "version": "1.0.0-rc1",
       "bin": {
         "autocode": "./src/main.ts",
       },
@@ -27,7 +27,7 @@
     },
     "packages/plugin": {
       "name": "@autocode/plugin",
-      "version": "0.1.0",
+      "version": "1.0.0-rc1",
       "dependencies": {
         "@autocode/shared": "workspace:*",
         "@opencode/client": "2.2.0",
@@ -35,7 +35,7 @@
     },
     "packages/server": {
       "name": "@autocode/server",
-      "version": "0.1.0",
+      "version": "1.0.0-rc1",
       "dependencies": {
         "@autocode/shared": "workspace:*",
         "@opencode/client": "2.2.0",
@@ -43,7 +43,7 @@
     },
     "packages/shared": {
       "name": "@autocode/shared",
-      "version": "0.1.0",
+      "version": "1.0.0-rc1",
     },
   },
   "packages": {

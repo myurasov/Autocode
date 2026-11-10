@@ -1084,5 +1084,8 @@ in what it read.
 - **`--soft` a little darker in light, lighter in dark** (the owner, 2026-11-09; tests first: `smoke.spec.ts` reads the
   variable and a table head's color in both themes, red, then green): `#f5f5f5` to `#efefef`, `#262d34` to `#292f36`
   (kept below `--code` `#2a3138`). Screenshots of the Costs tab in both looked at.
+- **Release 1.0.0-rc1** (the owner, 2026-11-09; tests first: `version.test.ts` red at 0.1.0, then green): `RELEASE`
+  in `version.ts`, every `package.json` and lock, README, runbook, the spec's Versions; the smoke header checks read
+  `v1.0.0-rc1-dev`. The build counter keeps counting (build 59 next).
 - **The Mac check on the final code** (`ci/mac-check.sh`, run by the owner on the Mac against the CI host, after
   build 42): 9 passed, 0 failed.

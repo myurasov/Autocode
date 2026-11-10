@@ -1,6 +1,6 @@
 {
   "name": "@autocode/web-smoke",
-  "version": "0.1.0",
+  "version": "1.0.0-rc1",
   "private": true,
   "description": "The web UI's smoke test in a real browser against a real server (ci/compose/web.yml)",
   "scripts": {

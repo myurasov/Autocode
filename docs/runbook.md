@@ -109,7 +109,7 @@ ID before it sends a token. Every command takes `--json`.
 
 | Command | Does |
 |---|---|
-| `autocode info` | the server's ID and version (`v0.1.0-build<n>`: the release and the build number) |
+| `autocode info` | the server's ID and version (`v1.0.0-rc1-build<n>`: the release and the build number, which keeps counting across releases) |
 | `autocode agents [PATTERN]` | agents with status, machine, spend today, context (the share of the compaction threshold) and last activity (`kaggle:*`, `a,b`) |
 | `autocode costs [AGENT] [--match PATTERN] [--days X]` | every agent's spend today and in total (unregistered ones too, and the totals), daily cap and what is left, context and its compaction threshold; `AGENT`: its spend per day (kept `history_days`, at least 31 days) |
 | `autocode agents rm AGENT` | unregister an agent (its history stays) |
