@@ -27,16 +27,16 @@ RUN apt-get update \
 
 WORKDIR /src
 COPY package.json bun.lock bunfig.toml ./
-COPY packages/shared/package.json packages/shared/
-COPY packages/server/package.json packages/server/
-COPY packages/plugin/package.json packages/plugin/
-COPY packages/cli/package.json packages/cli/
+COPY shared/package.json shared/
+COPY server/package.json server/
+COPY plugin/package.json plugin/
+COPY cli/package.json cli/
 RUN bun install --frozen-lockfile
 
 COPY . .
-COPY --from=web /web/dist/web/browser packages/web/dist/web/browser
+COPY --from=web /web/dist/web/browser web/dist/web/browser
 ARG AUTOCODE_TARGETS=""
-RUN AUTOCODE_TARGETS="$AUTOCODE_TARGETS" bun packages/cli/build.ts \
+RUN AUTOCODE_TARGETS="$AUTOCODE_TARGETS" bun cli/build.ts \
   && bun build tests/plugin/probe/probe.ts --outfile=dist/probe/index.js \
     --target=bun --format=esm \
   && ./dist/autocode --version

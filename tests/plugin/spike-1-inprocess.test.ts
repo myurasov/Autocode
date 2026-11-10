@@ -3,7 +3,7 @@
  * and what needs OpenCode's local API.
  */
 import { beforeAll, describe, expect, test } from "bun:test"
-import { sessionIsGone } from "../../packages/plugin/src/errors.ts"
+import { sessionIsGone } from "../../plugin/src/errors.ts"
 import { dockerExec } from "../helpers/docker.ts"
 import { nodes } from "../helpers/env.ts"
 import { FakeModel, toolResults } from "../helpers/fake.ts"

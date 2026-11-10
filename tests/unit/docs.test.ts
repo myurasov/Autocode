@@ -10,7 +10,7 @@
 import { expect, test } from "bun:test"
 import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { TOPICS } from "../../packages/plugin/src/guide.ts"
+import { TOPICS } from "../../plugin/src/guide.ts"
 
 const root = resolve(import.meta.dir, "../..")
 const read = (path: string) => readFileSync(resolve(root, path), "utf8")
@@ -23,7 +23,7 @@ const DOCS = [
   "AGENT.md",
   "autocode.admin.agent.md",
   "autocode.consumer.agent.md",
-  "packages/web/src/app/help/help-page.html",
+  "web/src/app/help/help-page.html",
 ]
 
 test("one reference: reference.md at the root; docs/ is gone", () => {
@@ -52,7 +52,7 @@ test("README and Help list what Autocode provides; no needs table", () => {
   const readme = read("README.md")
   expect(readme).not.toContain("| An autonomous agent needs to |")
   expect(readme).toContain("What Autocode provides:")
-  const help = read("packages/web/src/app/help/help-page.html")
+  const help = read("web/src/app/help/help-page.html")
   expect(help).not.toContain("What an Agent Needs")
   expect(help).toContain('<ul class="provides">')
 })
@@ -118,7 +118,7 @@ test("README, the reference and Help say messages steer into a running turn, and
   for (const path of [
     "README.md",
     "reference.md",
-    "packages/web/src/app/help/help-page.html",
+    "web/src/app/help/help-page.html",
   ]) {
     const text = flat(path)
     expect(text, path).toMatch(/at (its|the turn's) next step/)

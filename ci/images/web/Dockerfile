@@ -5,9 +5,9 @@ FROM node:24.22.1-slim
 
 ENV CI=1 NO_COLOR=1 NG_CLI_ANALYTICS=false NPM_CONFIG_UPDATE_NOTIFIER=false
 WORKDIR /web
-COPY packages/web/package.json packages/web/package-lock.json ./
+COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
-COPY packages/web/ ./
+COPY web/ ./
 RUN npx ng test --watch=false \
   && npx ng build \
   && test -f dist/web/browser/index.html

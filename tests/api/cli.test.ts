@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { VERSION } from "@autocode/shared"
-import { generate } from "../../packages/cli/build.ts"
+import { generate } from "../../cli/build.ts"
 import {
   call,
   hello,
@@ -26,7 +26,7 @@ import {
 import { fetchJson, until } from "../helpers/wait.ts"
 
 const root = resolve(import.meta.dir, "../..")
-const main = join(root, "packages/cli/src/main.ts")
+const main = join(root, "cli/src/main.ts")
 let t: TestServer
 let home: string
 

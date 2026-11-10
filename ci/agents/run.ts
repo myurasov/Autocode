@@ -163,7 +163,7 @@ for (const d of [tmp, ...Object.values(dirs)])
 if (process.env.AGENTS_SCRATCH_NOTE)
   writeFileSync(process.env.AGENTS_SCRATCH_NOTE, tmp)
 const bun = process.execPath
-const main = join(root, "packages/cli/src/main.ts")
+const main = join(root, "cli/src/main.ts")
 const PATH = [
   dirs.bin,
   dirname(bun),
@@ -211,7 +211,7 @@ let ocAuth = ""
 
 async function start() {
   log(`generating the plugin bundle`)
-  const gen = Bun.spawnSync([bun, join(root, "packages/cli/build.ts")], {
+  const gen = Bun.spawnSync([bun, join(root, "cli/build.ts")], {
     cwd: root,
     env: cleanEnv({ PATH }),
     stdout: "pipe",

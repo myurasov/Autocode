@@ -6,13 +6,8 @@
  * explains them. There is no mode=wait (the owner, 2026-11-07).
  */
 import { describe, expect, test } from "bun:test"
-import { guideText, helpText, TOPICS } from "../../packages/plugin/src/guide.ts"
-import {
-  LOCK_TOOL,
-  runLock,
-  runMe,
-  TOOLS,
-} from "../../packages/plugin/src/tools.ts"
+import { guideText, helpText, TOPICS } from "../../plugin/src/guide.ts"
+import { LOCK_TOOL, runLock, runMe, TOOLS } from "../../plugin/src/tools.ts"
 
 const FACTS = {
   serverId: "api-test",

@@ -6,7 +6,7 @@
 import { resolve } from "node:path"
 
 export async function buildPlugin(
-  root = resolve(import.meta.dir, "../.."),
+  root = resolve(import.meta.dir, ".."),
   options: { build?: string; outdir?: string } = {},
 ): Promise<string> {
   const outdir = options.outdir ?? resolve(root, "dist/plugin")

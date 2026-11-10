@@ -6,4 +6,4 @@
 **/__*
 **/.angular
 .git
-packages/cli/src/generated
+cli/src/generated

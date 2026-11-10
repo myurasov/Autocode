@@ -75,7 +75,7 @@ bunx biome check --write . >/dev/null 2>&1; true"
     rsync -a -u -e "$ssh_cmd $ssh_opts" \
       --exclude node_modules --exclude .git --exclude '__*' --exclude dist \
       --exclude .angular \
-      --exclude package-lock.json --exclude 'packages/web/*.json' \
+      --exclude package-lock.json --exclude 'web/*.json' \
       --include '*/' --include '*.ts' --include '*.json' --include '*.jsonc' \
       --include '*.css' --exclude '*' \
       "$(at)/" "$here/"

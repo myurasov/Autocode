@@ -7,9 +7,7 @@
  * call.
  */
 
-import guideSource from "../../../autocode.consumer.agent.md" with {
-  type: "text",
-}
+import guideSource from "../../autocode.consumer.agent.md" with { type: "text" }
 
 export const SKILL_ID = "autocode"
 

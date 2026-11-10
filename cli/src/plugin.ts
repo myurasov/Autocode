@@ -31,7 +31,7 @@ function pluginBundle(): string {
   if (!bundle)
     throw new CliError(
       "this autocode has no plugin bundle inside; build it with " +
-        "bun packages/cli/build.ts",
+        "bun cli/build.ts",
     )
   return bundle
 }

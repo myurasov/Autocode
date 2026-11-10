@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { generate } from "../../packages/cli/build.ts"
+import { generate } from "../../cli/build.ts"
 import {
   ack,
   call,
@@ -21,7 +21,7 @@ import {
 } from "../helpers/server.ts"
 
 const root = resolve(import.meta.dir, "../..")
-const main = join(root, "packages/cli/src/main.ts")
+const main = join(root, "cli/src/main.ts")
 let t: TestServer
 let home: string
 let lead: string

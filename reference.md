@@ -857,11 +857,11 @@ Autocode is one TypeScript codebase on [Bun](https://bun.sh). This section is fo
 
 | Path | What |
 |---|---|
-| `packages/shared` | IDs, patterns, durations, triggers, settings, the version |
-| `packages/server` | the server: store, scheduler, delivery, asks, locks, jobs, costs, the API |
-| `packages/plugin` | the OpenCode plugin and the agent tools |
-| `packages/cli` | the CLI, `serve`, `install`, `plugin install`; one binary per platform with the plugin and web UI inside |
-| `packages/web` | the web UI (Angular) |
+| `shared/` | IDs, patterns, durations, triggers, settings, the version |
+| `server/` | the server: store, scheduler, delivery, asks, locks, jobs, costs, the API |
+| `plugin/` | the OpenCode plugin and the agent tools |
+| `cli/` | the CLI, `serve`, `install`, `plugin install`; one binary per platform with the plugin and web UI inside |
+| `web/` | the web UI (Angular) |
 | `autocode.consumer.agent.md` | the agent guide: the `autocode` skill and `autocode_me action=help` |
 | `tests/`, `ci/` | the tests (`unit`, `api`, `plugin`, `e2e`, `restart`, `install`, `web`); the CI runner, Compose files, images, the fake model server, the agents suite |
 

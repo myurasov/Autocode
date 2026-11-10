@@ -10,15 +10,15 @@ import {
   formEvent,
   listOf,
   permissionEvent,
-} from "../../packages/plugin/src/asks.ts"
-import { guideText, helpText, TOPICS } from "../../packages/plugin/src/guide.ts"
+} from "../../plugin/src/asks.ts"
+import { guideText, helpText, TOPICS } from "../../plugin/src/guide.ts"
 import {
   APPROVAL_TOOL,
   MESSAGE_TOOL,
   runApproval,
   runMessage,
   TOOLS,
-} from "../../packages/plugin/src/tools.ts"
+} from "../../plugin/src/tools.ts"
 
 // A form as the question tool of OpenCode 2.2.0 makes it.
 const FORM = {

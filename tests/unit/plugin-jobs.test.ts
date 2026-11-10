@@ -5,9 +5,9 @@
  * found in the session's messages.
  */
 import { describe, expect, test } from "bun:test"
-import { guideText, helpText, TOPICS } from "../../packages/plugin/src/guide.ts"
-import { lastReply, spawnInput } from "../../packages/plugin/src/jobs.ts"
-import { ME_TOOL, runMe } from "../../packages/plugin/src/tools.ts"
+import { guideText, helpText, TOPICS } from "../../plugin/src/guide.ts"
+import { lastReply, spawnInput } from "../../plugin/src/jobs.ts"
+import { ME_TOOL, runMe } from "../../plugin/src/tools.ts"
 
 describe("spawn", () => {
   test("a session in this folder with the job's model, variant and agent", () => {

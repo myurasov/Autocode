@@ -10,8 +10,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { RELEASE, shownVersion, VERSION, versionOf } from "@autocode/shared"
-import { compileCli, generate } from "../../packages/cli/build.ts"
-import { buildPlugin } from "../../packages/plugin/build.ts"
+import { compileCli, generate } from "../../cli/build.ts"
+import { buildPlugin } from "../../plugin/build.ts"
 
 const root = resolve(import.meta.dir, "../..")
 const dirs: string[] = []
@@ -62,7 +62,7 @@ describe("a numbered build", () => {
   })
 
   test("compiles a binary that says its number", async () => {
-    const plugin = resolve(root, "packages/cli/src/generated/plugin.ts")
+    const plugin = resolve(root, "cli/src/generated/plugin.ts")
     if (!existsSync(plugin)) await generate()
     const bin = join(await scratch(), "autocode")
     await compileCli(bin, { build: "43" })

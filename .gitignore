@@ -14,7 +14,7 @@ build/
 *.tsbuildinfo
 .angular/
 coverage/
-packages/cli/src/generated/
+cli/src/generated/
 
 # Local environment and secrets
 .env

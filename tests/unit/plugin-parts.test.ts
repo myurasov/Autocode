@@ -19,14 +19,11 @@ import {
   hostId,
   processOf,
   readClientConfig,
-} from "../../packages/plugin/src/config.ts"
-import {
-  serveApiOf,
-  shellVariables,
-} from "../../packages/plugin/src/localapi.ts"
-import { log, logPath } from "../../packages/plugin/src/log.ts"
-import { SessionTokens } from "../../packages/plugin/src/sessions.ts"
-import { runMe } from "../../packages/plugin/src/tools.ts"
+} from "../../plugin/src/config.ts"
+import { serveApiOf, shellVariables } from "../../plugin/src/localapi.ts"
+import { log, logPath } from "../../plugin/src/log.ts"
+import { SessionTokens } from "../../plugin/src/sessions.ts"
+import { runMe } from "../../plugin/src/tools.ts"
 
 const dirs: string[] = []
 afterEach(() => {
@@ -256,9 +253,7 @@ describe("plugin: session tokens", () => {
 
 describe("plugin: a session that is gone", () => {
   test("only OpenCode's not-found error for a session counts as gone: the published one, and the one 2.2 raises in plugins", async () => {
-    const { sessionIsGone } = await import(
-      "../../packages/plugin/src/errors.ts"
-    )
+    const { sessionIsGone } = await import("../../plugin/src/errors.ts")
     // @opencode/client's published error
     expect(
       sessionIsGone({

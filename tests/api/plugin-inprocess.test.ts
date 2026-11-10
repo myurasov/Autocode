@@ -164,7 +164,7 @@ beforeAll(async () => {
   setEnv("AUTOCODE_HOME", join(root, "home"))
   setEnv("XDG_DATA_HOME", join(root, "data"))
   api = fakeApi()
-  plugin = (await import("../../packages/plugin/src/index.ts")).default
+  plugin = (await import("../../plugin/src/index.ts")).default
 })
 
 afterAll(async () => {

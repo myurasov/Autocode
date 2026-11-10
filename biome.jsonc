@@ -15,8 +15,8 @@
       "!**/*.md",
       "!**/*.html",
       "!**/package-lock.json",
-      "!packages/web/*.json",
-      "!packages/cli/src/generated"
+      "!web/*.json",
+      "!cli/src/generated"
     ]
   },
   "formatter": {
@@ -45,12 +45,12 @@
   },
   "overrides": [
     {
-      "includes": ["packages/web/**", "tests/web/**"],
+      "includes": ["web/**", "tests/web/**"],
       "linter": { "enabled": false },
       "assist": { "enabled": false }
     },
     {
-      "includes": ["packages/web/**"],
+      "includes": ["web/**"],
       "javascript": {
         "formatter": { "quoteStyle": "single", "semicolons": "always" }
       }

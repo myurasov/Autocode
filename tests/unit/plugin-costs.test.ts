@@ -5,9 +5,9 @@
  * the turn, and status says the spend and the cap.
  */
 import { describe, expect, test } from "bun:test"
-import { costEvent, windowOf } from "../../packages/plugin/src/costs.ts"
-import { guideText, helpText, TOPICS } from "../../packages/plugin/src/guide.ts"
-import { ME_TOOL, runMe } from "../../packages/plugin/src/tools.ts"
+import { costEvent, windowOf } from "../../plugin/src/costs.ts"
+import { guideText, helpText, TOPICS } from "../../plugin/src/guide.ts"
+import { ME_TOOL, runMe } from "../../plugin/src/tools.ts"
 
 const STEP = {
   type: "session.step.ended",

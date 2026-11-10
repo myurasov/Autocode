@@ -4,7 +4,7 @@
  * --data), restarts on failure and starts with the user manager.
  */
 import { describe, expect, test } from "bun:test"
-import { serveArgs, unitFile } from "../../packages/cli/src/install.ts"
+import { serveArgs, unitFile } from "../../cli/src/install.ts"
 
 describe("systemd user unit", () => {
   test("runs the installed binary's serve with the given flags, restarts on failure, starts with the user manager", () => {

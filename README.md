@@ -173,9 +173,9 @@ Served by the server; sign in with the admin token. Light and dark.
 
 ## Development
 
-One TypeScript codebase on [Bun](https://bun.sh): `packages/shared` (IDs, patterns, durations, triggers, settings),
-`packages/server`, `packages/plugin`, `packages/cli` (also `serve`, compiled to one binary per platform with the web
-UI inside), `packages/web` (Angular). Tests in `tests/` (`unit`, `api`, `plugin`, `e2e`, `install`, `web`), CI in
+One TypeScript codebase on [Bun](https://bun.sh), one folder per part at the root: `shared/` (IDs, patterns,
+durations, triggers, settings), `server/`, `plugin/`, `cli/` (also `serve`, compiled to one binary per platform with
+the web UI inside), `web/` (Angular). Tests in `tests/` (`unit`, `api`, `plugin`, `e2e`, `install`, `web`), CI in
 `ci/`.
 
 ```sh

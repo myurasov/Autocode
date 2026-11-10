@@ -6,10 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import {
-  Channel,
-  type ChannelOptions,
-} from "../../packages/plugin/src/channel.ts"
+import { Channel, type ChannelOptions } from "../../plugin/src/channel.ts"
 import {
   call,
   PRESET_CONSUMER,

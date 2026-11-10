@@ -15,7 +15,7 @@ import {
   helpText,
   parseGuide,
   TOPICS,
-} from "../../packages/plugin/src/guide.ts"
+} from "../../plugin/src/guide.ts"
 import {
   APPROVAL_TOOL,
   ME_TOOL,
@@ -25,7 +25,7 @@ import {
   runWake,
   TOOLS,
   WAKE_TOOL,
-} from "../../packages/plugin/src/tools.ts"
+} from "../../plugin/src/tools.ts"
 
 const FACTS = {
   serverId: "api-test",

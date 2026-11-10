@@ -22,12 +22,12 @@
     "resolveJsonModule": true
   },
   "include": [
-    "packages/shared/src",
-    "packages/server/src",
-    "packages/plugin/src",
-    "packages/plugin/build.ts",
-    "packages/cli/src",
-    "packages/cli/build.ts",
+    "shared/src",
+    "server/src",
+    "plugin/src",
+    "plugin/build.ts",
+    "cli/src",
+    "cli/build.ts",
     "ci/fake-model",
     "ci/live-check.ts",
     "tests"

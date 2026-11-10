@@ -267,9 +267,9 @@ describe('JobsPage', () => {
       '/agents?agent=team:lead',
     );
     expect(cell(nightly, 'last')).toBe('—');
-    expect(
-      nightly.querySelector('td.by a.id-link')!.getAttribute('href'),
-    ).toBe('/agents?agent=team:lead');
+    expect(nightly.querySelector('td.by a.id-link')!.getAttribute('href')).toBe(
+      '/agents?agent=team:lead',
+    );
   });
 
   // The owner, 2026-11-09 (rc2): a job's row on Costs links here.

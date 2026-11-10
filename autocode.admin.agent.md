@@ -23,7 +23,7 @@ server.
   history) in `~/.autocode/`.
 - **The plugin** runs in each machine's OpenCode and connects it to the server. It gives sessions the `autocode_*`
   tools and the `autocode` skill, whose text is [`autocode.consumer.agent.md`](autocode.consumer.agent.md).
-- **The code:** `packages/` (shared, server, plugin, cli, web), `tests/`, `ci/`. Development: see `reference.md`,
+- **The code:** `shared/`, `server/`, `plugin/`, `cli/`, `web/`, `tests/`, `ci/`. Development: see `reference.md`,
   Development.
 
 ## Rules

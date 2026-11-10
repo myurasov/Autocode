@@ -14,7 +14,7 @@
         "typescript": "7.0.2",
       },
     },
-    "packages/cli": {
+    "cli": {
       "name": "@autocode/cli",
       "version": "1.0.0-rc2",
       "bin": {
@@ -25,7 +25,7 @@
         "@autocode/shared": "workspace:*",
       },
     },
-    "packages/plugin": {
+    "plugin": {
       "name": "@autocode/plugin",
       "version": "1.0.0-rc2",
       "dependencies": {
@@ -33,7 +33,7 @@
         "@opencode/client": "2.2.0",
       },
     },
-    "packages/server": {
+    "server": {
       "name": "@autocode/server",
       "version": "1.0.0-rc2",
       "dependencies": {
@@ -41,19 +41,19 @@
         "@opencode/client": "2.2.0",
       },
     },
-    "packages/shared": {
+    "shared": {
       "name": "@autocode/shared",
       "version": "1.0.0-rc2",
     },
   },
   "packages": {
-    "@autocode/cli": ["@autocode/cli@workspace:packages/cli"],
+    "@autocode/cli": ["@autocode/cli@workspace:cli"],
 
-    "@autocode/plugin": ["@autocode/plugin@workspace:packages/plugin"],
+    "@autocode/plugin": ["@autocode/plugin@workspace:plugin"],
 
-    "@autocode/server": ["@autocode/server@workspace:packages/server"],
+    "@autocode/server": ["@autocode/server@workspace:server"],
 
-    "@autocode/shared": ["@autocode/shared@workspace:packages/shared"],
+    "@autocode/shared": ["@autocode/shared@workspace:shared"],
 
     "@biomejs/biome": ["@biomejs/biome@2.6.3", "", { "optionalDependencies": { "@biomejs/cli-android-arm64": "2.6.3", "@biomejs/cli-android-x64": "2.6.3", "@biomejs/cli-darwin-arm64": "2.6.3", "@biomejs/cli-darwin-x64": "2.6.3", "@biomejs/cli-linux-arm64": "2.6.3", "@biomejs/cli-linux-arm64-musl": "2.6.3", "@biomejs/cli-linux-x64": "2.6.3", "@biomejs/cli-linux-x64-musl": "2.6.3", "@biomejs/cli-win32-arm64": "2.6.3", "@biomejs/cli-win32-x64": "2.6.3" }, "bin": { "biome": "bin/biome" } }, "sha512-va/0xPku7wnfzv+D8Zpdm5uKiGJWiV8neqoEPnRjvNQQwhl4tVXS4fETs4H0CCB2rGeqJ4cu9y4iOZOnOYKAUA=="],
 
