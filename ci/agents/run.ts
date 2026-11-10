@@ -5,7 +5,9 @@
  * job wake them; run a loop spaced from the end of each run; ask the owner and
  * follow the answer; answer another agent's question (tier 0d); ask for an
  * approval and follow it (tier 0d); ask another agent and act on the reply
- * that comes in a prompt after its turn (Phase 1). With the tools, never the
+ * that comes in a prompt after its turn (Phase 1); start a job's run and use
+ * its result, and have a job's runs answer its question, permission and
+ * approval (job:<name>; the owner, 2026-11-09). With the tools, never the
  * CLI (but in a job's own command) or the API, and without reading the
  * plugin's code.
  *
@@ -859,7 +861,288 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
     await idleAfter(ctx, before, "the turn after the approval").catch(() => {})
     return misuse(ctx)
   },
+
+  /*
+   * Jobs (the owner, 2026-11-09: "make sure our ci covers jobs
+   * functionality"): the owner's job on the agent's own folder and model; the
+   * agent lists the jobs and starts a run with autocode_me; the run (a fresh
+   * session of the same model) does the job's work and finishes with
+   * autocode_me finish; its result comes back to the agent, which writes it
+   * down.
+   */
+  async run(ctx) {
+    const host = await hostIn(ctx.dir)
+    const name = jobName(ctx)
+    await ac("PUT", `/v1/jobs/${name}`, {
+      host,
+      description: "Counts the lines of data.csv",
+      model: ctx.m.model,
+      ...(ctx.m.variant ? { variant: ctx.m.variant } : {}),
+      prompt:
+        "Count the lines of data.csv in this folder (with `wc -l`) and " +
+        "finish the run with the count alone as its result.",
+      trigger: "fire-only",
+      timeout: "20m",
+      // kept for the transcripts; removed with the scratch folder
+      delete_session: false,
+    })
+    writeFileSync(file(ctx, "data.csv"), "a\nb\nc\nd\ne\nf\ng\n")
+    try {
+      const before = await idleTime(ctx)
+      await oc("POST", `/api/session/${ctx.session}/prompt`, {
+        text:
+          `${register(ctx)} find the Autocode job that counts the lines of ` +
+          "data.csv and start a run of it. When its result comes back to " +
+          "you, write the count alone into count.txt in this folder.",
+      })
+      let r: any
+      try {
+        r = await until(
+          async () => {
+            const all = (await ac("GET", `/v1/runs?job=${name}`)).runs
+            return all.find((x: any) => x.state !== "running" && x.ended)
+          },
+          turnMs * 2,
+          "the run to end",
+        )
+      } catch {
+        const started = (await ac("GET", `/v1/runs?job=${name}`)).runs
+        await idleAfter(ctx, before, "the turn").catch(() => {})
+        return started.length
+          ? "the run did not finish (autocode_me finish)"
+          : "did not start a run of the job (autocode_me run)"
+      }
+      if (r.by !== ctx.id) return `the run was started by ${r.by}`
+      if (r.state !== "succeeded") return `the run ${r.state}: ${r.reason}`
+      if (!/\b7\b/.test(String(r.result)))
+        return `the run's result was ${JSON.stringify(r.result)}, not 7`
+      try {
+        await until(
+          async () => /^\s*7\s*$/.test(read(ctx, "count.txt") ?? ""),
+          turnMs * 2,
+          "count.txt after the result",
+        )
+      } catch {
+        return "did not act on the run's result (count.txt)"
+      }
+      await idleAfter(ctx, before, "the turn after the result").catch(() => {})
+      return misuse(ctx)
+    } finally {
+      await keepRuns(ctx, name)
+      await ac("DELETE", `/v1/jobs/${name}`).catch(() => {})
+    }
+  },
+
+  /*
+   * Asks answered by a job's run (the owner, 2026-11-09: "including
+   * approving/answering/permitting with jobs"): an asker's question,
+   * permission prompt and approval go to job:<name>; each starts a run of the
+   * same model, whose prompt holds the ask and the job's instructions, and
+   * the run answers it with autocode_message (by its NOTES.md), then
+   * finishes. The asker's turn goes on with each answer.
+   */
+  async jobasks(ctx) {
+    const host = await hostIn(ctx.dir)
+    const name = jobName(ctx)
+    writeFileSync(
+      file(ctx, "NOTES.md"),
+      "Rules for answering other agents:\n" +
+        "- Fold splits: always folds v3 (v2 has a leak).\n" +
+        "- Shell commands that write a word to a file in the asker's " +
+        "folder with echo (like `echo permitted > permitted.txt`): allow " +
+        "once.\n" +
+        "- Deployments: approve, with the option now.\n",
+    )
+    await ac("PUT", `/v1/jobs/${name}`, {
+      host,
+      description: "Answers other agents' asks by NOTES.md",
+      model: ctx.m.model,
+      ...(ctx.m.variant ? { variant: ctx.m.variant } : {}),
+      prompt:
+        "You answer another agent's ask (below) for the owner. Read " +
+        "NOTES.md in this folder and answer by its rules with " +
+        "autocode_message action=answer, then finish the run with " +
+        "autocode_me action=finish and your answer as the result.",
+      trigger: "fire-only",
+      timeout: "20m",
+      // kept for the transcripts; removed with the scratch folder
+      delete_session: false,
+    })
+    await turn(ctx, `${register(ctx)} say ready; nothing else for now.`)
+    await ac("PATCH", "/v1/settings", {
+      agents: {
+        [ctx.id]: {
+          question_mode: `job:${name}`,
+          permission_mode: `job:${name}`,
+          approval_mode: `job:${name}`,
+        },
+      },
+    })
+    // the run of an ask: its answer, and the run's own end
+    const answered = async (kind: string, since: number) => {
+      const item = await until(
+        async () =>
+          (await ac("GET", "/v1/inbox?all=1")).items.find(
+            (i: any) =>
+              i.agent === ctx.id &&
+              i.kind === kind &&
+              Date.parse(i.created_at) >= since,
+          ),
+        turnMs,
+        `a ${kind} of the agent`,
+      ).catch(() => undefined)
+      if (!item) return { error: `did not ask (${kind})` }
+      const done = await until(
+        async () => {
+          const a = (await ac("GET", "/v1/inbox?all=1")).items.find(
+            (i: any) => i.id === item.id,
+          )
+          return a && a.state !== "open" ? a : undefined
+        },
+        turnMs * 2,
+        `the ${kind} answered`,
+      ).catch(() => undefined)
+      if (!done)
+        return {
+          error:
+            `the ${kind} was not answered (sent to ${item.routed}; ` +
+            `runs: ${(await ac("GET", `/v1/runs?job=${name}`)).runs
+              .map((r: any) => `${r.id} ${r.state}`)
+              .join(", ")})`,
+        }
+      if (!String(done.by ?? "").startsWith(`${name}:`))
+        return { error: `the ${kind} was answered by ${done.by}, not a run` }
+      return { item: done }
+    }
+    /*
+     * The next ask goes to a new run only while no run of the job works (else
+     * it is the owner's), and runs start once a minute at most: it waits for
+     * both.
+     */
+    const nextMinute = async () => {
+      await until(
+        async () =>
+          !(await ac("GET", `/v1/runs?job=${name}`)).runs.some(
+            (r: any) => r.state === "running" || r.state === "starting",
+          ),
+        turnMs,
+        "the last run to end",
+      ).catch(() => {})
+      const minute = new Date().toISOString().slice(0, 16)
+      await until(
+        async () => new Date().toISOString().slice(0, 16) !== minute,
+        61_000,
+        "the next minute",
+      )
+    }
+    try {
+      // a question
+      let since = Date.now()
+      let before = await idleTime(ctx)
+      await oc("POST", `/api/session/${ctx.session}/prompt`, {
+        text:
+          "Use your question tool now to ask which fold split to train on, " +
+          "with the options v3 and v2. Write the answer alone into " +
+          "choice.txt in this folder.",
+      })
+      const q = await answered("question", since)
+      if (q.error) return q.error
+      if (!/v3/.test(JSON.stringify(q.item.answer ?? {})))
+        return `the question was answered ${JSON.stringify(q.item.answer)}, not v3`
+      await idleAfter(ctx, before, "the question's turn").catch(() => {})
+      // a permission prompt: shell asks in this session
+      await oc("PATCH", `/api/session/${ctx.session}`, {
+        permissions: [{ action: "shell", resource: "*", effect: "ask" }],
+      })
+      await nextMinute()
+      since = Date.now()
+      before = await idleTime(ctx)
+      await oc("POST", `/api/session/${ctx.session}/prompt`, {
+        text:
+          "Run the shell command `echo permitted > permitted.txt` here, " +
+          "then say done.",
+      })
+      const perm = await answered("permission", since)
+      if (perm.error) return perm.error
+      if (perm.item.answer?.decision !== "once")
+        return `the permission was answered ${JSON.stringify(perm.item.answer)}`
+      try {
+        await until(
+          async () => /permitted/.test(read(ctx, "permitted.txt") ?? ""),
+          turnMs,
+          "permitted.txt after the permission",
+        )
+      } catch {
+        return "the shell did not run after the permission"
+      }
+      await idleAfter(ctx, before, "the permission's turn").catch(() => {})
+      await oc("PATCH", `/api/session/${ctx.session}`, { permissions: [] })
+      // an approval
+      await nextMinute()
+      since = Date.now()
+      before = await idleTime(ctx)
+      await oc("POST", `/api/session/${ctx.session}/prompt`, {
+        text:
+          "Get approval through Autocode before you create a file " +
+          "deploy.txt here with the word deployed (it stands for a " +
+          "production deployment), with the options now and tonight. Do " +
+          "not create it unless it is approved; once you learn the answer, " +
+          "act on it.",
+      })
+      const ap = await answered("approval", since)
+      if (ap.error) return ap.error
+      if (ap.item.answer?.decision !== "approve")
+        return `the approval was answered ${JSON.stringify(ap.item.answer)}`
+      try {
+        await until(
+          async () => /deployed/.test(read(ctx, "deploy.txt") ?? ""),
+          turnMs * 2,
+          "deploy.txt after the approval",
+        )
+      } catch {
+        return "did not act on the approval"
+      }
+      await idleAfter(ctx, before, "the approval's turn").catch(() => {})
+      return misuse(ctx)
+    } finally {
+      await keepRuns(ctx, name)
+      await ac("DELETE", `/v1/jobs/${name}`).catch(() => {})
+      await ac("PATCH", "/v1/settings", { agents: { [ctx.id]: null } }).catch(
+        () => {},
+      )
+    }
+  },
 }
+
+// The host of a folder (the plugin's, for a job there).
+async function hostIn(dir: string): Promise<string> {
+  const h = await until(
+    async () =>
+      (await ac("GET", "/v1/hosts")).hosts.find(
+        (x: any) => x.directory === dir && x.online,
+      ),
+    90_000,
+    `the host of ${dir}`,
+  )
+  return h.id
+}
+
+// The scenario's job's runs as sessions of its own (their transcripts and
+// cost count with the scenario's).
+async function keepRuns(ctx: Ctx, name: string) {
+  const runs = (await ac("GET", `/v1/runs?job=${name}`).catch(() => null))
+    ?.runs as any[] | undefined
+  for (const [i, r] of (runs ?? []).entries())
+    if (r.session)
+      ctx.others = [
+        ...(ctx.others ?? []),
+        { ...ctx, scenario: `${ctx.scenario}-run${i + 1}`, session: r.session },
+      ]
+}
+
+// A job of the scenario's own: one per model and scenario.
+const jobName = (ctx: Ctx) =>
+  `ci-${ctx.m.name}-${ctx.scenario}`.replace(/[^A-Za-z0-9_.-]/g, "-")
 
 // --- running them -----------------------------------------------------------
 

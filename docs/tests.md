@@ -1090,6 +1090,22 @@ in what it read.
   a guide topic `owner` ("Writing to the Owner": only what the owner needs, the point first, a short list, the options
   and the default, plain words, details in a file); one sentence in the line every registered session gets; the
   message tool's text and the approval tool say it where the text is written; howto and Help.
+- **Jobs in CI** (the owner, 2026-11-09: "make sure our ci covers jobs functionality, including
+  approving/answering/permitting with jobs"):
+  - `tests/api/jobs.test.ts` (+6): a job's run answers a question (the answer reaches the asking session), a permission
+    (once or reject; always stays the owner's) and an approval (the asker's wait and notice); it escalates to the owner;
+    the three modes take `job:<name>`; setting a job again changes it.
+  - `tests/e2e/jobs.test.ts` (+3, real OpenCode with the fake model, in `one` and `two`): the owner starts a run that
+    ends with its last reply (the owner's result item); a run past its 1m time limit fails and its session is kept until
+    the owner deletes it; a run of `job:<name>` answers the starter's question, permission and approval with
+    `autocode_message`, and each answer reaches the starter's turn. `tests/e2e/costs.test.ts` turns `compact_at` off
+    for its cap check (the compaction notice now comes into the turn and its step was the context).
+  - The agents suite (real models): `run` (the agent finds the job, starts a run with `autocode_me run`; the run counts
+    `data.csv` and finishes; the agent writes the result down) and `jobasks` (its question, permission prompt and
+    approval go to `job:<name>`; each starts a run of the same model, which answers by its NOTES.md; the agent acts on
+    each answer). Each run's transcript and cost count with the scenario. First tries on sol-6.1, sonnet-5.5 and
+    haiku-5.5: the scenario's own checks were wrong (a run's `ended`; a rule "only print text" that made Sol reject
+    `echo > file`, rightly; "approve tonight" that Sonnet and Haiku rightly took as "wait until tonight"); then 6/6.
 - **Every fold marker is the group headings' chevron** (the owner, 2026-11-09: "make expand/collapse markers and
   animation like they are on group expansion", "fold that into rc1"; tests first: `smoke.spec.ts` "expand/collapse
   markers", red on the browser's own marker, then green): the Send a Message, Set a Wake and Set a Job title lines and
