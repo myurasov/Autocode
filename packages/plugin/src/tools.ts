@@ -42,7 +42,8 @@ export const ME_TOOL = {
     "your wakes, messages waiting, locks, open asks, spend and context), " +
     "discover " +
     "(pattern), help (topic: the exact rules for wakes, checks, delivery, " +
-    "messages, locks, asks, costs, jobs, prompts, scripts), compact " +
+    "messages, writing to the owner, locks, asks, costs, jobs, prompts, " +
+    "scripts), compact " +
     "(compact " +
     "your session after this turn), jobs (the jobs you can run), run (job, " +
     "text: start a run; its result comes to you), finish (result: a run of " +
@@ -91,8 +92,8 @@ export const ME_TOOL = {
         type: "string",
         description:
           "help: overview, delivery, wakes, checks, recipes, messages, " +
-          "locks, asks, costs, jobs, prompts, scripts, trouble, or all (the " +
-          "default)",
+          "owner, locks, asks, costs, jobs, prompts, scripts, trouble, or " +
+          "all (the default)",
       },
     },
     required: ["action"],
@@ -467,8 +468,9 @@ export const MESSAGE_TOOL = {
       text: {
         type: "string",
         description:
-          "send: the message (at most 32,000 characters); answer: the " +
-          "answer; escalate: why you cannot answer",
+          "send: the message (at most 32,000 characters; to the owner: " +
+          "short, the point first, plain words); answer: the answer; " +
+          "escalate: why you cannot answer, in a line or two",
       },
       reply_to: {
         type: "string",
@@ -579,14 +581,16 @@ export const APPROVAL_TOOL = {
     "expires: like 1h, then it counts as rejected), wait (id; seconds: " +
     "hold this call until it is answered, up to max_tool_wait). The answer " +
     'also comes as a notice: [autocode] approval "..." approved or ' +
-    "rejected. Until then your wakes and messages wait.",
+    "rejected. Until then your wakes and messages wait. Write it short and " +
+    "plain: what, why, the options.",
   input: {
     type: "object",
     properties: {
       action: { type: "string", enum: ["ask", "wait"] },
       text: {
         type: "string",
-        description: "ask: what to approve, in a sentence or two",
+        description:
+          "ask: what to approve, the point first, in a sentence or two",
       },
       options: {
         type: "string",

@@ -841,7 +841,8 @@ describe("the plugin in-process, tier 0b", () => {
         "This session is Autocode agent `inproc:guide` on server `api-test`. " +
         "Use the `autocode_*` tools (not the `autocode` CLI); `autocode_me " +
         "action=help` or the `autocode` skill explains exactly how wakes and " +
-        "messages work.",
+        "messages work. Write to the owner briefly: only what they need, " +
+        "the point first, in plain words.",
     }
     await until(async () => (await context("ses_guide")).length === 1, {
       what: "the registration to reach the plugin",

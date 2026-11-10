@@ -1084,6 +1084,12 @@ in what it read.
 - **`--soft` a little darker in light, lighter in dark** (the owner, 2026-11-09; tests first: `smoke.spec.ts` reads the
   variable and a table head's color in both themes, red, then green): `#f5f5f5` to `#efefef`, `#262d34` to `#292f36`
   (kept below `--code` `#2a3138`). Screenshots of the Costs tab in both looked at.
+- **Writing to the owner** (the owner, 2026-11-09: "why messages/questions to owner are so long ... short (no fixed len,
+  but in general contain only necessary) and focused, structured, direct and use plain language"; tests first:
+  `agent-guide.test.ts` 3, `plugin-inprocess.test.ts`, `help-page.spec.ts`, `docs.test.ts` topics, red, then green):
+  a guide topic `owner` ("Writing to the Owner": only what the owner needs, the point first, a short list, the options
+  and the default, plain words, details in a file); one sentence in the line every registered session gets; the
+  message tool's text and the approval tool say it where the text is written; howto and Help.
 - **Every message's text in a fixed-width `<pre>`** (the owner, 2026-11-09: "messages to owner to use <pre> and fixed
   wdth font", then "Every message everywhere"; tests first: `inbox-page.spec.ts`, `messages-page.spec.ts`,
   `smoke.spec.ts` (a `PRE`, `ui-monospace` first, 15 px, no margin), red, then green): the Inbox's message bodies and

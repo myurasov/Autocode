@@ -274,6 +274,8 @@ describe('HelpPage', () => {
       'action=wait',
       'read once',
       'when you answer or close its Inbox item',
+      // the owner, 2026-11-09: how agents write to you
+      'Agents are told to write to you briefly',
     ])
       expect(messages).toContain(part);
     const settings = rows(page.querySelector('table.settings-help'));

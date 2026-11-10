@@ -30,6 +30,7 @@ export const TOPICS = [
   "checks",
   "recipes",
   "messages",
+  "owner",
   "locks",
   "asks",
   "costs",
@@ -264,6 +265,31 @@ function messages(): string[] {
   ]
 }
 
+/*
+ * How to write to the owner (the owner, 2026-11-09: "short (no fixed len,
+ * but in general contain only necessary) and focused, structured, direct and
+ * use plain language").
+ */
+function owner(): string[] {
+  return [
+    "## Writing to the Owner",
+    "",
+    "Everything you send the owner (a message to `owner`, a question, an",
+    "approval, an escalation's reason) is read by a busy person:",
+    "",
+    "- Keep it short: only what the owner needs to know or decide; there",
+    "  is no set length, but no background they did not ask for, no",
+    "  restating, no thanks or sign-offs.",
+    "- Put the point first: the decision or the news in the first line,",
+    "  then the facts it rests on.",
+    "- Structure it: a short list when there are several items, each one",
+    "  line; the options to choose from, and what you do if no answer comes.",
+    "- Be direct and use plain words: say what you did, found or need;",
+    "  give names, paths and numbers, not adjectives.",
+    "- Details the owner may want later go in a file; send its path.",
+  ]
+}
+
 function locks(): string[] {
   return [
     "## Locks",
@@ -469,6 +495,7 @@ function sections(f: GuideFacts): Record<Topic, string[]> {
     checks: checks(f),
     recipes: recipes(),
     messages: messages(),
+    owner: owner(),
     locks: locks(),
     asks: asks(),
     costs: costs(),
@@ -501,6 +528,7 @@ export function agentLine(agent: string, serverId?: string): string {
     (serverId ? ` on server \`${serverId}\`` : "") +
     ". Use the `autocode_*` tools (not the `autocode` CLI); " +
     "`autocode_me action=help` or the `autocode` skill explains exactly " +
-    "how wakes and messages work."
+    "how wakes and messages work. Write to the owner briefly: only what " +
+    "they need, the point first, in plain words."
   )
 }

@@ -81,9 +81,9 @@ The answer is `Registered as team:lead (status idle). How Autocode works: autoco
   description, status (`idle`, `working` during a turn, `error` when your last turn failed (see When a Turn Fails),
   `paused` when the owner paused your injections, or `offline` when your machine cannot reach the server) and
   machine; the server's time and time zone; how Autocode delivers to you (`min_interval`); your wakes (how many, the
-  next one due), how many messages wait for your next prompt, and your spend and context.
+  next one due), how many messages wait for you, and your spend and context.
 - `action=help` returns the guide; `topic=` one part of it: `overview`, `delivery`, `wakes`, `checks`, `recipes`,
-  `messages`, `locks`, `asks`, `costs`, `jobs`, `prompts`, `scripts`, `trouble`.
+  `messages`, `owner`, `locks`, `asks`, `costs`, `jobs`, `prompts`, `scripts`, `trouble`.
 - You are unregistered automatically when your session is deleted, or `expire_after` (14 days) after its last turn.
 
 ## Discover Other Agents
@@ -203,6 +203,26 @@ autocode_message  action=wait  reply_to=m_3f2a...  seconds=180
 - Notices arrive as messages from `autocode`: a lock granted, expired, released by the owner, or you taken out of its
   queue; a question, permission or approval sent to you to answer; your approval's answer; a cost warning; a run's
   result or failure.
+
+## Writing to the Owner
+
+Everything you send the owner (a message to `owner`, a question, an approval, an escalation's reason) is read by a
+busy person (the owner, 2026-11-09):
+
+- Short: only what the owner needs to know or decide; no set length, but no background they did not ask for, no
+  restating, no thanks or sign-offs.
+- The point first: the decision or the news in the first line, then the facts it rests on.
+- Structured: a short list for several items, one line each; the options to choose from, and what you do if no answer
+  comes.
+- Direct, in plain words: what you did, found or need; names, paths and numbers, not adjectives. Details the owner may
+  want later go in a file: send its path.
+
+```
+autocode_message  action=send  to=owner  subject="Decision: fold 3"  text="Spend $5 more on fold 3?
+- fold 2: 0.912 (target 0.91)
+- fold 3: 2 more GPU hours
+If no answer by 18:00: I stop after fold 2."
+```
 
 ## Locks and Semaphores
 

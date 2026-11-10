@@ -14,6 +14,7 @@ import {
   TOPICS,
 } from "../../packages/plugin/src/guide.ts"
 import {
+  APPROVAL_TOOL,
   ME_TOOL,
   MESSAGE_TOOL,
   runMe,
@@ -642,8 +643,40 @@ test("the line for registered sessions points to the tools and the guide", () =>
     "This session is Autocode agent `team:a` on server `api-test`. Use " +
       "the `autocode_*` tools (not the `autocode` CLI); `autocode_me " +
       "action=help` or the `autocode` skill explains exactly how wakes " +
-      "and messages work.",
+      "and messages work. Write to the owner briefly: only what they " +
+      "need, the point first, in plain words.",
   )
+})
+
+// The owner, 2026-11-09: "why messages/questions to owner are so long. i
+// want those to be if possible short (no fixed len, but in general contain
+// only necessary) and focused, structured, direct and use plain language."
+describe("writing to the owner", () => {
+  const flat = (text: string) => text.replace(/\s+/g, " ")
+  test("the guide says how: short, only what is needed, the point first, structured, direct, plain", () => {
+    const guide = flat(guideText(FACTS))
+    for (const part of [
+      "## Writing to the Owner",
+      "only what the owner needs",
+      "no set length",
+      "the point first",
+      "a short list when there are several items",
+      "plain words",
+      "no background they did not ask for",
+    ])
+      expect(guide, part).toContain(part)
+    // in the topics and their help
+    expect(TOPICS as readonly string[]).toContain("owner")
+    expect(flat(helpText(FACTS, "owner"))).toContain("the point first")
+  })
+
+  test("the tools that reach the owner say it where the text is written", () => {
+    const send = (MESSAGE_TOOL.input.properties.text as any).description
+    expect(send).toContain("to the owner: short, the point first")
+    const ask = (APPROVAL_TOOL.input.properties.text as any).description
+    expect(ask).toContain("what to approve, the point first")
+    expect(APPROVAL_TOOL.description).toContain("Write it short and plain")
+  })
 })
 
 // The adversarial review of 0b2 (2026-11-08).
