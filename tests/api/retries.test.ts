@@ -242,6 +242,10 @@ describe("limits and alerts", () => {
   })
 
   test("a failure that would fail again is not retried: the error state and an inbox alert", async () => {
+    // a blocked reply is retried since Phase 2, unless filter_recovery is off
+    await owner("PATCH", "/v1/settings", {
+      server: { filter_recovery: "off" },
+    })
     for (const type of [
       "provider.auth",
       "provider.invalid-request",
@@ -294,6 +298,9 @@ describe("limits and alerts", () => {
    * An agent's error alerts close once a turn of its succeeds.
    */
   test("an agent's error alerts close when it recovers; other alerts stay", async () => {
+    await owner("PATCH", "/v1/settings", {
+      server: { filter_recovery: "off" },
+    })
     await fail("provider.content-filter")
     await owner("PATCH", "/v1/settings", { server: { retry_attempts: 1 } })
     await ended("succeeded")

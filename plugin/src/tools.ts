@@ -235,6 +235,19 @@ function errorLine(a: any, me: any, c: Clock): string {
       `${head} Autocode stopped after ${e.retries} retries (the owner is ` +
       `told); ${wait}`
     )
+  // Phase 2: a blocked reply's next step
+  if (e.recovery === "retry")
+    return (
+      `${head} The provider's content filter blocked your last reply: ` +
+      `Autocode retries once at ${when(e.next_retry, c)}; write it in ` +
+      "other, shorter words, long text in a file. Your wakes and messages " +
+      "come with it."
+    )
+  if (e.recovery === "compact")
+    return (
+      `${head} Blocked again: Autocode compacts this session at ` +
+      `${when(e.next_retry, c)}, then retries; save what you need to files.`
+    )
   const max = Number(me?.settings?.retry_attempts) || 0
   return (
     `${head} Autocode sends a retry prompt every ` +

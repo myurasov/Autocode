@@ -89,6 +89,14 @@ the work where it stopped. A turn that succeeds ends the error state.
 Errors that would fail again (authentication, a bad request) are not
 retried; the owner is told.
 
+A reply the provider's content filter blocked is retried once:
+`[autocode] retry 1 (blocked reply)` asks you to write it again in
+other, shorter words, with long text in a file and only its path in the
+reply. Blocked again, Autocode compacts your session (no notice: save
+what you need to files when the first retry comes), then retries once
+more (`retry 2 (blocked reply, compacted)`); blocked a third time, it
+stops and tells the owner.
+
 <!-- topic: wakes -->
 
 ## Wakes

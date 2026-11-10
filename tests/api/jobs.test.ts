@@ -649,6 +649,47 @@ describe("review of 0f", () => {
     })
   })
 
+  // Phase 2 (the owner, 2026-11-09): a run takes the same steps before it
+  // fails: a retry, a compaction and a retry; then it fails.
+  test("a run whose replies are blocked: a retry, a compaction, a retry; then it fails", async () => {
+    await owner("PUT", "/v1/jobs/mail", JOB)
+    await owner("POST", "/v1/jobs/mail/run")
+    await started()
+    const block = async () => {
+      await report(t, HOST, [{ type: "turn.started", session: "ses_run1" }])
+      await report(t, HOST, [
+        {
+          type: "turn.ended",
+          session: "ses_run1",
+          outcome: "failed",
+          error: "provider.content-filter",
+        },
+      ])
+    }
+    await block()
+    expect((await runs("mail"))[0].state).toBe("running")
+    t.clock.advance(MIN)
+    const retry = (await sent()).find((i) => i.type === "inject")
+    expect(retry.payload.text).toStartWith("[autocode] retry 1 (blocked reply)")
+    await block()
+    expect((await runs("mail"))[0].state).toBe("running")
+    t.clock.advance(MIN)
+    expect((await sent()).map((i) => i.type)).toContain("compact")
+    await report(t, HOST, [{ type: "turn.started", session: "ses_run1" }])
+    await report(t, HOST, [
+      { type: "turn.ended", session: "ses_run1", outcome: "succeeded" },
+    ])
+    const again = (await sent()).find((i) => i.type === "inject")
+    expect(again.payload.text).toStartWith(
+      "[autocode] retry 2 (blocked reply, compacted)",
+    )
+    await block()
+    expect((await runs("mail"))[0]).toMatchObject({
+      state: "failed",
+      reason: "its replies were blocked 3 times",
+    })
+  })
+
   test("a run's cost counts all its days (a run across midnight)", async () => {
     await owner("PUT", "/v1/jobs/mail", { ...JOB, run_usd: 1 })
     await owner("POST", "/v1/jobs/mail/run")

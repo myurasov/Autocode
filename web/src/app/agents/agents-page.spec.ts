@@ -915,6 +915,23 @@ describe('AgentsPage', () => {
       // retry_attempts reached.
       expect(state('error', { next_retry: null })).toBe('retries ran out');
       expect(retryState(AGENTS[0]!, now)).toBe('');
+      // Phase 2: a blocked reply's retry and compaction (the owner,
+      // 2026-11-09)
+      const blocked = { type: 'provider.content-filter', retries: 0 };
+      expect(state('error', { ...blocked, recovery: 'retry' })).toBe(
+        'blocked: retry 1 in 40s',
+      );
+      expect(
+        state('error', { ...blocked, retries: 1, recovery: 'compact' }),
+      ).toBe('blocked: compaction in 40s, then a retry');
+      expect(
+        state('error', {
+          ...blocked,
+          next_retry: null,
+          retryable: false,
+          recovery: null,
+        }),
+      ).toBe('not retried');
     });
 
     it('admin retries it now: the result shows in the toolbar and the list reloads; only an agent in error has Retry', async () => {

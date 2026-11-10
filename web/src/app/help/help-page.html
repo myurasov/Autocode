@@ -1147,6 +1147,23 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
           </td>
         </tr>
         <tr>
+          <td><code>job_mode</code></td>
+          <td>ask</td>
+          <td>
+            jobs an agent sets: you approve them first (<code>ask</code>), set
+            at once (<code>approve</code>), or refused (<code>off</code>)
+          </td>
+        </tr>
+        <tr>
+          <td><code>filter_recovery</code></td>
+          <td>retry compact</td>
+          <td>
+            a reply the content filter blocked: a retry, then a compaction and
+            a retry (<code>retry compact</code>), one retry (<code>retry</code>),
+            or none (<code>off</code>)
+          </td>
+        </tr>
+        <tr>
           <td><code>compact_at</code></td>
           <td>50% max 500000</td>
           <td>
@@ -1256,11 +1273,15 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
             the Agents page (or <code>autocode retry AGENT</code>) retries now.
             Failures that come back the same way are not retried, and the Inbox
             says so: an auth error (<code>provider.auth</code>), an invalid
-            request (<code>provider.invalid-request</code>), the content filter
-            (<code>provider.content-filter</code>), an unknown model
+            request (<code>provider.invalid-request</code>), an unknown model
             (<code>provider.unknown</code>) or an operation it does not support
             (<code>provider.unsupported-operation</code>); fix the cause, then
-            Retry. Such an alert closes by itself once the agent works again.
+            Retry. Such an alert closes by itself once the agent works again. A
+            reply the content filter blocked
+            (<code>provider.content-filter</code>) is retried once, asking for
+            other, shorter words; blocked again, the session is compacted and
+            retried once more; then the Inbox says so
+            (<code>filter_recovery</code>: retry compact, retry or off).
           </td>
         </tr>
         <tr>

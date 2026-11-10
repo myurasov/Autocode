@@ -320,6 +320,21 @@ export class Delivery {
    * fetched within a day (or whose agent moved on), puts its items back.
    */
   private settle() {
+    // Phase 2: a blocked reply's compaction the plugin could not do
+    for (const r of this.db
+      .query(
+        "SELECT id, filter_instruction FROM agents " +
+          "WHERE filter_instruction IS NOT NULL",
+      )
+      .all() as { id: string; filter_instruction: string }[]) {
+      const state = this.hosts.instruction(r.filter_instruction)
+      if (!state) this.retries.compactAnswered(r.id, "lost")
+      else if (state.acked)
+        this.retries.compactAnswered(
+          r.id,
+          state.ok ? null : (state.error ?? "failed"),
+        )
+    }
     const open = this.db
       .query("SELECT * FROM injections WHERE settled_at IS NULL")
       .all() as any[]
@@ -407,6 +422,7 @@ export class Delivery {
       .query(
         `SELECT a.id, a.paused, a.last_injection_at, a.session_id, a.error,
                 a.error_since, a.error_at, a.retries, a.retry_at,
+                a.filter_step, a.filter_compacting,
                 a.compacting, s.busy, s.inject_pending_at, s.turn_started_at,
                 s.deleted_at, s.directory, s.host_id, h.online,
                 h.machine, h.directory AS host_directory, h.process_kind,
@@ -489,6 +505,20 @@ export class Delivery {
     // waits and is ready (wakes whose checks have not run wait until the
     // error clears); min_interval does not apply to them.
     if (row.error) {
+      // Phase 2: a blocked reply's compaction, in place of a retry prompt (no
+      // notice: that turn could be blocked too); the retry follows its turn
+      if (this.retries.compactDue(row)) {
+        const id = this.hosts.enqueue(row.host_id, "compact", {
+          session: row.session_id,
+        })
+        this.retries.compactSent(agent, id)
+        this.db
+          .query(
+            "UPDATE sessions SET busy = 1, inject_pending_at = ? WHERE id = ?",
+          )
+          .run(now, row.session_id)
+        return
+      }
       const tz = String(this.settings.value("timezone")) || "UTC"
       const note = this.retries.note(row, tz)
       if (!note) return

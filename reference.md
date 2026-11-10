@@ -444,9 +444,18 @@ Autocode keeps agents going when a model's provider fails or OpenCode restarts, 
   "Your last turn failed: provider.internal (...). Continue where you left off." `min_interval` does not apply. A turn
   that succeeds ends the error state. With `retry_attempts` set (0: no limit), an Inbox alert says when they ran out.
 - **Not retried:** errors that fail the same way again (`provider.auth`, `provider.invalid-request`,
-  `provider.content-filter`, `provider.unknown`, `provider.unsupported-operation`); an Inbox alert says so. Fix the
-  cause (a key, the model's name), then **Retry** on the Agents page or `autocode retry AGENT`, which also works after
-  the retries ran out.
+  `provider.unknown`, `provider.unsupported-operation`); an Inbox alert says so. Fix the cause (a key, the model's
+  name), then **Retry** on the Agents page or `autocode retry AGENT`, which also works after the retries ran out.
+- **A blocked reply** (`provider.content-filter`): the filter often lets the same content through when it is written
+  again, differently. `filter_recovery` (per agent or pattern) decides:
+  - `retry compact` (the default): one retry, `[autocode] retry 1 (blocked reply)`, which asks for other, shorter
+    wording with long text in a file and warns that another block compacts the session; blocked again, the session is
+    compacted (no compaction notice) and retried once more, `retry 2 (blocked reply, compacted)`; blocked a third
+    time, or the compaction failed: no more retries, and an Inbox alert.
+  - `retry`: the one retry, then the alert. `off`: not retried, as other errors that fail again.
+  - A turn that succeeds starts it over; `retry_attempts` still caps it; a run of a job takes the same steps before it
+    fails. The Agents page says the next step (`blocked: retry 1 in 40s`, `blocked: compaction in 40s, then a retry`),
+    and so does `autocode_me action=status`.
 - **Alerts close by themselves:** both alerts close once the agent works again.
 - **OpenCode restarts:** a turn cut by an OpenCode restart (`turn.cut` in History) is resumed once that OpenCode is
   back, with `[autocode] resume`: "Your last turn was cut off (its OpenCode server restarted). Continue where you left
@@ -760,6 +769,7 @@ its ID (`--match PATTERN`; a new rule goes last); the server-wide value; the bui
 | `permission_mode` | agent | `ask` | permission prompts: to the owner (`ask`), allowed once (`approve`), `agent:<id>` or `job:<name>` |
 | `approval_mode` | agent | `ask` | approvals: to the owner (`ask`), approved at once (`approve`), `agent:<id>` or `job:<name>` |
 | `job_mode` | agent | `ask` | jobs an agent sets: the owner approves first (`ask`), set at once (`approve`), or refused (`off`) |
+| `filter_recovery` | agent | `retry compact` | a reply the content filter blocked: a retry, then a compaction and a retry (`retry compact`), one retry (`retry`), or none (`off`) |
 | `retry_interval` | agent | `1m` | the wait after a failed turn before a retry prompt, and between retries |
 | `retry_attempts` | agent | `0` | the most retries in a row before Autocode stops and tells the owner (0: no limit) |
 | `daily_usd` | agent | `off` | the agent's cost cap per day, in dollars (`12.50` or `$12.50`), or `off` |

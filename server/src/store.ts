@@ -546,6 +546,19 @@ export const MIGRATIONS: string[] = [
   DELETE FROM costs WHERE agent_id IN (SELECT id FROM runs);
   DELETE FROM cost_totals WHERE agent_id IN (SELECT id FROM runs);
   `,
+  /*
+   * 18 (Phase 2; the owner, 2026-11-09): recovery from a blocked reply. How
+   * far an agent's recovery from blocked replies has come: 0 none, 1 retried,
+   * 2 compacted (then retried); a turn that succeeds starts it over.
+   * filter_compacting: its compaction went out, the retry follows its turn;
+   * filter_instruction: that compaction's instruction, until the plugin
+   * answers it (a failed one tells the owner).
+   */
+  `
+  ALTER TABLE agents ADD COLUMN filter_step INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE agents ADD COLUMN filter_compacting INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE agents ADD COLUMN filter_instruction TEXT;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

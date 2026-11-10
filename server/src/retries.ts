@@ -4,7 +4,9 @@
  * its session succeeds. Autocode retries with a prompt every retry_interval,
  * at most retry_attempts times (0: no limit), and tells the owner when it
  * stops; failures that would fail the same way again are not retried. The
- * owner can ask for a retry at once.
+ * owner can ask for a retry at once. Phase 2 (the owner, 2026-11-09): a reply
+ * the content filter blocked is retried once, then the session is compacted
+ * and retried (filter_recovery), then the owner is told.
  */
 import type { Database } from "bun:sqlite"
 import {
@@ -28,6 +30,9 @@ export const NOT_RETRIED = new Set([
 
 export const retryable = (type: string) => !NOT_RETRIED.has(type)
 
+// The content filter's block: recovered from by Phase 2's steps.
+export const FILTER = "provider.content-filter"
+
 export interface ErrorView {
   // OpenCode's error type, or "failed" when it gave none
   type: string
@@ -36,20 +41,39 @@ export interface ErrorView {
   retries: number
   next_retry: string | null
   retryable: boolean
+  // a blocked reply's next step: retry, compact (then a retry), or null
+  recovery: "retry" | "compact" | null
 }
 
 const iso = (ms: number) => new Date(ms).toISOString()
 
+/*
+ * A blocked reply's next step for an agent row (null: none comes). Its
+ * filter_step is the step reached: 1 the retry planned or sent, 2 the
+ * compaction planned, 3 the compaction done and its retry planned or sent,
+ * 4 stopped (the compaction failed); filter_compacting: the compaction runs
+ * (its retry follows).
+ */
+function recoveryOf(row: any): "retry" | "compact" | null {
+  if (row?.error !== FILTER) return null
+  if (row.filter_compacting) return "retry"
+  if (row.retry_at == null) return null
+  if (row.filter_step === 2) return "compact"
+  return row.filter_step === 1 || row.filter_step === 3 ? "retry" : null
+}
+
 // An agent row's error state, for its views; undefined when there is none.
 export function errorView(row: any): ErrorView | undefined {
   if (!row?.error) return undefined
+  const recovery = recoveryOf(row)
   return {
     type: row.error,
     since: iso(row.error_since),
     at: iso(row.error_at),
     retries: row.retries ?? 0,
     next_retry: row.retry_at == null ? null : iso(row.retry_at),
-    retryable: retryable(row.error),
+    retryable: retryable(row.error) || recovery !== null,
+    recovery,
   }
 }
 
@@ -110,19 +134,117 @@ export class Retries {
     return true
   }
 
+  // filter_recovery for an agent: retry compact, retry or off.
+  private recovery(agent: string): string {
+    return String(this.values(agent).filter_recovery ?? "retry compact")
+  }
+
+  /*
+   * Phase 2: a blocked reply's next step, planned an interval from now: the
+   * first block a retry (step 1), the second a compaction then a retry (step
+   * 2, with retry compact); else none (the owner is told). retry_attempts
+   * still caps it.
+   */
+  private planRecovery(agent: string, row: any): boolean {
+    const mode = this.recovery(agent)
+    if (mode === "off") return false
+    const max = this.attempts(agent)
+    if (max && row.retries >= max) return false
+    // 0: the first block; 1: blocked after its retry; 3 (after the
+    // compaction's retry) or 4: no more
+    const step = row.filter_step ?? 0
+    const next = step === 0 ? 1 : step === 1 ? 2 : 0
+    if (!next || (next === 2 && mode !== "retry compact")) return false
+    this.set(agent, {
+      filter_step: next,
+      retry_at: this.now() + this.interval(agent),
+    })
+    this.history.record(next === 1 ? "recovery.retry" : "recovery.compact", {
+      agent,
+      data: { error: FILTER, step: next },
+    })
+    return true
+  }
+
+  /*
+   * A blocked reply's compaction is due (step 2, its time come): the
+   * delivery sends it in place of a retry prompt.
+   */
+  compactDue(row: any): boolean {
+    return (
+      row?.error === FILTER &&
+      row.filter_step === 2 &&
+      !row.filter_compacting &&
+      row.retry_at != null &&
+      this.now() >= row.retry_at
+    )
+  }
+
+  // Its compaction went out: the retry comes once its turn ends.
+  compactSent(agent: string, instruction: string) {
+    this.set(agent, {
+      filter_compacting: 1,
+      retry_at: null,
+      filter_instruction: instruction,
+    })
+    this.history.record("recovery.compacted", {
+      agent,
+      data: { error: FILTER },
+    })
+  }
+
+  // The plugin answered the compaction: done (null), or why it failed.
+  compactAnswered(agent: string, failed: string | null) {
+    this.set(agent, { filter_instruction: null })
+    if (failed) this.compactFailed(agent, failed)
+  }
+
+  // The compaction failed (or never reached the session): the owner is told.
+  compactFailed(agent: string, why: string) {
+    const row = this.row(agent)
+    if (!row || row.error !== FILTER) return
+    this.set(agent, { filter_compacting: 0, retry_at: null, filter_step: 4 })
+    try {
+      this.onGivenUp(agent, `its reply was blocked and its compaction failed`)
+    } catch {}
+    this.history.record("recovery.failed", {
+      agent,
+      data: { error: FILTER, why },
+    })
+    this.inbox.open("alert", {
+      agent,
+      title:
+        `Agent ${agent}: its reply was blocked (${FILTER}) and its ` +
+        "compaction failed; not retried",
+      body:
+        `The compaction said: ${why}. Retry from the Agents page or with ` +
+        `\`autocode retry ${agent}\`.`,
+    })
+  }
+
   // A turn of an agent's session ended: succeeded, failed or interrupted.
   turnEnded(agent: string, outcome: string, error: string | null) {
     const row = this.row(agent)
     if (!row) return
     const now = this.now()
+    // a blocked reply's compaction ended (its own turn): the retry now
+    if (row.filter_compacting && row.error === FILTER) {
+      this.set(agent, { filter_compacting: 0, filter_step: 3, retry_at: now })
+      return
+    }
     if (outcome === "succeeded") {
-      if (!row.error) return
+      if (!row.error) {
+        if (row.filter_step) this.set(agent, { filter_step: 0 })
+        return
+      }
       this.set(agent, {
         error: null,
         error_since: null,
         error_at: null,
         retries: 0,
         retry_at: null,
+        filter_step: 0,
+        filter_compacting: 0,
       })
       this.history.record("agent.recovered", {
         agent,
@@ -149,6 +271,33 @@ export class Retries {
     if (first)
       this.history.record("agent.error", { agent, data: { error: type } })
     const failed = { ...row, error: type }
+    // Phase 2: a blocked reply, recovered from by its steps
+    if (type === FILTER && this.planRecovery(agent, failed)) return
+    if (type === FILTER && (row.filter_step ?? 0) > 0) {
+      this.set(agent, { retry_at: null })
+      // a retry sent (step 1): 2 blocks; after the compaction's (3): 3
+      const blocks = (row.filter_step ?? 0) >= 3 ? 3 : 2
+      try {
+        this.onGivenUp(agent, `its replies were blocked ${blocks} times`)
+      } catch {}
+      this.history.record("recovery.stopped", {
+        agent,
+        data: { error: FILTER, blocks },
+      })
+      this.inbox.open("alert", {
+        agent,
+        title:
+          `Agent ${agent}: its replies were blocked ${blocks} times ` +
+          `(${FILTER}); not retried`,
+        body:
+          (blocks > 2
+            ? "A retry and a compaction did not help. "
+            : "A retry did not help. ") +
+          "Look at its session, then retry from the Agents page or with " +
+          `\`autocode retry ${agent}\`.`,
+      })
+      return
+    }
     if (!retryable(type)) {
       try {
         this.onGivenUp(agent, `its turn failed (${type}); not retried`)
@@ -204,6 +353,10 @@ export class Retries {
     this.set(agent, {
       retry_at: this.now(),
       ...(stopped ? { retries: 0 } : {}),
+      // the owner's retry: a plain one (a blocked reply's steps start over
+      // from the next block)
+      filter_step: 0,
+      filter_compacting: 0,
     })
     this.history.record("retry.requested", { agent, data: { by } })
   }
@@ -233,10 +386,40 @@ export class Retries {
         ? `at ${localTime(row.error_at, tz)}; ` +
           `failing since ${localTime(row.error_since, tz)}`
         : `at ${localTime(row.error_at, tz)}`
+    const count = `retry ${n}${of && n <= of ? ` of ${of}` : ""}`
+    // Phase 2: a blocked reply's retry says why, and what comes next
+    if (row.error === FILTER && row.filter_step >= 1) {
+      const compacted = row.filter_step >= 3
+      const next =
+        !compacted && this.recovery(row.id) === "retry compact"
+          ? "If it is blocked again, Autocode compacts this session (a " +
+            "summary replaces the conversation) and retries once more: " +
+            "save what you need to files now."
+          : "If it is blocked again, Autocode stops retrying and tells the " +
+            "owner."
+      return {
+        n,
+        of,
+        header: `${count} (blocked reply${compacted ? ", compacted" : ""})`,
+        text: [
+          `The provider's content filter blocked your last reply (${when}).`,
+          ...(compacted
+            ? [
+                "Autocode compacted this session: your work so far is in " +
+                  "its summary and your files.",
+              ]
+            : []),
+          "Write it again in other, shorter words: put long text in a file " +
+            "and give only its path in your reply.",
+          next,
+          "Then continue where you left off.",
+        ].join(" "),
+      }
+    }
     return {
       n,
       of,
-      header: `retry ${n}${of && n <= of ? ` of ${of}` : ""}`,
+      header: count,
       text:
         `Your last turn failed: ${row.error} (${when}). ` +
         "Continue where you left off.",
@@ -279,6 +462,9 @@ export class Retries {
       error_at: null,
       retries: 0,
       retry_at: null,
+      filter_step: 0,
+      filter_compacting: 0,
+      filter_instruction: null,
     })
   }
 }

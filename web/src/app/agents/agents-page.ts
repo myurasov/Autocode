@@ -73,9 +73,16 @@ export function retryState(agent: Agent, now: number): string {
   if (!error) return '';
   if (error.next_retry) {
     const wait = Date.parse(error.next_retry) - now;
-    return wait > 0
-      ? `retry ${error.retries + 1} in ${waitText(wait)}`
-      : 'retrying now';
+    // Phase 2: a blocked reply's steps say so
+    if (error.recovery === 'compact')
+      return wait > 0
+        ? `blocked: compaction in ${waitText(wait)}, then a retry`
+        : 'blocked: compacting';
+    const retry =
+      wait > 0
+        ? `retry ${error.retries + 1} in ${waitText(wait)}`
+        : 'retrying now';
+    return error.recovery === 'retry' ? `blocked: ${retry}` : retry;
   }
   if (agent.status === 'working') return 'retrying now';
   return error.retryable ? 'retries ran out' : 'not retried';

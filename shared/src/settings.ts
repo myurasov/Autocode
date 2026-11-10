@@ -79,6 +79,18 @@ export const SETTINGS: Record<string, SettingDef> = {
       "approvals go to the owner (ask), are approved at once (approve), or " +
       "go to agent:<id> or job:<name>",
   },
+  // Phase 2 (the owner, 2026-11-09): a reply the content filter blocked is
+  // retried once, then the session compacted and retried (retry compact), only
+  // retried (retry), or not retried (off).
+  filter_recovery: {
+    kind: "enum",
+    scope: "agent",
+    default: "retry compact",
+    values: ["retry compact", "retry", "off"],
+    help:
+      "a reply the provider's content filter blocked: a retry, then a " +
+      "compaction and a retry (retry compact), one retry (retry), or none (off)",
+  },
   // The owner, 2026-11-09 (rc2): whether an agent may set jobs of its own:
   // ask (an approval of the owner with the whole definition), approve (at
   // once) or off.

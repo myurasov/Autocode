@@ -366,6 +366,30 @@ describe("autocode_me", () => {
       "Autocode stopped after 5 retries (the owner is told); your wakes " +
         "and messages wait until a turn succeeds.",
     )
+    // Phase 2: a blocked reply's next step
+    const blocked = (recovery: string, retries: number) =>
+      runMe(
+        { action: "status" },
+        failing({
+          type: "provider.content-filter",
+          since: at,
+          at,
+          retries,
+          next_retry: "2026-10-28T12:01:00.000Z",
+          retryable: true,
+          recovery,
+        }),
+      )
+    expect(await blocked("retry", 0)).toContain(
+      "The provider's content filter blocked your last reply: Autocode " +
+        "retries once at 2026-10-28 05:01 PDT (in 1m); write it in other, " +
+        "shorter words, long text in a file. Your wakes and messages come " +
+        "with it.",
+    )
+    expect(await blocked("compact", 1)).toContain(
+      "Blocked again: Autocode compacts this session at 2026-10-28 05:01 " +
+        "PDT (in 1m), then retries; save what you need to files.",
+    )
   })
 
   test("help: the whole guide, one topic, or the topics there are", async () => {

@@ -38,6 +38,9 @@ export interface AgentError {
   next_retry: string | null;
   // false for failures that come back the same way: not retried
   retryable: boolean;
+  // a blocked reply's next step (Phase 2): a retry, a compaction (then a
+  // retry), or none
+  recovery?: 'retry' | 'compact' | null;
 }
 
 export interface Agent {

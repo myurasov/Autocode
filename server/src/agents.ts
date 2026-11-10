@@ -30,6 +30,7 @@ import { type Caller, revokeSessionTokens } from "./tokens.ts"
 const SELECT = `
   SELECT a.id, a.description, a.session_id, a.registered_at, a.last_active,
          a.paused, a.error, a.error_since, a.error_at, a.retries, a.retry_at,
+         a.filter_step, a.filter_compacting,
          a.model, s.host_id, s.directory, s.deleted_at, s.busy,
          s.idle_since, s.last_outcome, h.machine, h.online,
          EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id

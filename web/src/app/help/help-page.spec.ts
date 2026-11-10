@@ -294,6 +294,9 @@ describe('HelpPage', () => {
       ],
       ['permission_mode', 'ask'],
       ['approval_mode', 'ask'],
+      // rc2 and rc3 (the owner, 2026-11-09)
+      ['job_mode', 'ask'],
+      ['filter_recovery', 'retry compact'],
       ['compact_at', '50% max 500000'],
       ['daily_usd', 'off'],
       ['cap_warn', '90%'],
