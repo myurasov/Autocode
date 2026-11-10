@@ -360,22 +360,22 @@ tr[app-fold] > th:focus-visible {
 tr[app-fold] .chevron,
 details.panel > summary::before,
 button.days::before {
-  content: '';
+  content: "";
   display: inline-block;
   width: 0.7rem;
   height: 0.7rem;
   margin-right: 0.45rem;
-  vertical-align: -1px;
+  vertical-align: -2px;
   background: var(--chevron) center / contain no-repeat;
   transition: transform 0.12s;
 }
 tr[app-fold].folded .chevron,
 details.panel:not([open]) > summary::before,
-button.days[aria-expanded='false']::before {
+button.days[aria-expanded="false"]::before {
   transform: rotate(-90deg);
 }
 tr[app-fold] .fold-count {
-  margin-left: 0.5rem;
+  margin-left: 12px;
   font-weight: normal;
 }
 /* The "..." row at a table's (or group's) end: 25 more on a click. */
