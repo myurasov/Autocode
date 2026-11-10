@@ -8,7 +8,9 @@
  * (or idle with its last reply), the result goes to the destination (the
  * starter for agents' runs), the session is removed with delete_session; a
  * time limit or run_usd fails it (an alert; the session kept). An ask
- * routed to job:<name> starts a run with the ask in its prompt.
+ * routed to job:<name> starts a run with the ask in its prompt: a question,
+ * a permission (once or reject) or an approval, whose answer goes to the
+ * asker; the run may escalate to the owner.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import {
@@ -107,6 +109,27 @@ describe("jobs", () => {
     ])
     expect((await owner("DELETE", "/v1/jobs/mail")).status).toBe(200)
     expect((await owner("GET", "/v1/jobs")).body.jobs).toEqual([])
+  })
+
+  test("setting a job again changes it; its runs keep their own prompt", async () => {
+    await owner("PUT", "/v1/jobs/mail", JOB)
+    await owner("POST", "/v1/jobs/mail/run")
+    const { prompt } = await started()
+    expect(prompt.payload.text).toContain("five lines")
+    const res = await owner("PUT", "/v1/jobs/mail", {
+      ...JOB,
+      prompt: "Summarize today's mail in three lines.",
+      description: "Three lines",
+    })
+    expect(res.status).toBe(200)
+    const job = (await owner("GET", "/v1/jobs")).body.jobs.find(
+      (j: any) => j.name === "mail",
+    )
+    expect(job).toMatchObject({
+      description: "Three lines",
+      prompt: "Summarize today's mail in three lines.",
+    })
+    expect((await runs("mail")).length).toBe(1)
   })
 
   test("a job is checked: name, host, prompt, trigger, destination, limits", async () => {
@@ -359,6 +382,186 @@ describe("asks answered by a job's run", () => {
     })
     expect(res.status).toBe(200)
     expect(run.ask).toBe(item.id)
+  })
+
+  /*
+   * The owner, 2026-11-09: "make sure our ci covers jobs functionality,
+   * including approving/answering/permitting with jobs". Each kind of ask a
+   * job's run takes: its prompt says how to answer, its answer goes to the
+   * agent that asked (the plugin's answer; an approval's notice), and the run
+   * may escalate to the owner.
+   */
+  const runToken = async (session = "ses_run1") => {
+    const { sessionToken } = await import("../helpers/server.ts")
+    return sessionToken(t, HOST, session)
+  }
+  // the instructions of the next tick, by type
+  const next = async (type: string) =>
+    (await sent()).filter((i) => i.type === type)
+  const inbox = async (kind: string) =>
+    (await owner("GET", "/v1/inbox")).body.items.find(
+      (i: any) => i.kind === kind,
+    )
+
+  test("job:<name> question: the run's answer reaches the asking session", async () => {
+    await owner("PUT", "/v1/jobs/answerer", { ...JOB, prompt: "Answer it." })
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:lead": { question_mode: "job:answerer" } },
+    })
+    await report(t, HOST, [
+      {
+        type: "ask.opened",
+        kind: "question",
+        session: "ses_lead",
+        ref: "frm_9",
+        questions: [
+          {
+            header: "Fold",
+            question: "Which fold?",
+            options: [{ label: "v3" }],
+          },
+        ],
+      },
+    ])
+    const item = await inbox("question")
+    await started("answerer")
+    const res = await as(
+      await runToken(),
+      "POST",
+      `/v1/asks/${item.id}/answer`,
+      {
+        text: "v3",
+      },
+    )
+    expect(res.status).toBe(200)
+    const [answer] = await next("answer")
+    expect(answer.payload).toMatchObject({
+      session: "ses_lead",
+      kind: "question",
+      ref: "frm_9",
+      answer: { q0: "v3" },
+    })
+    const h = (await owner("GET", "/v1/history?kind=ask.answered")).body.history
+    expect(h[0].data.by).toBe("answerer:2026-10-28T12:00")
+    expect((await owner("GET", "/v1/inbox")).body.items).toEqual([])
+  })
+
+  test("job:<name> permission: the run allows once or rejects; always stays the owner's", async () => {
+    await owner("PUT", "/v1/jobs/guard", { ...JOB, prompt: "Decide it." })
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:lead": { permission_mode: "job:guard" } },
+    })
+    const permission = (ref: string) => ({
+      type: "ask.opened",
+      kind: "permission",
+      session: "ses_lead",
+      ref,
+      title: "shell",
+      action: "shell",
+      resources: ["rm -rf build"],
+      save: ["rm *"],
+    })
+    await report(t, HOST, [permission("per_1")])
+    const item = await inbox("permission")
+    expect(item.routed).toBe("agent:guard:2026-10-28T12:00")
+    const { prompt } = await started("guard")
+    expect(prompt.payload.text).toContain("Decide it.")
+    expect(prompt.payload.text).toContain(
+      "Agent team:lead wants to run shell: rm -rf build.",
+    )
+    expect(prompt.payload.text).toContain("text=once or text=reject")
+    const token = await runToken()
+    const always = await as(token, "POST", `/v1/asks/${item.id}/answer`, {
+      text: "always",
+    })
+    expect(always.status).toBe(403)
+    expect(always.body.error.message).toContain("only the owner")
+    const once = await as(token, "POST", `/v1/asks/${item.id}/answer`, {
+      text: "once",
+    })
+    expect(once.status).toBe(200)
+    const [answer] = await next("answer")
+    expect(answer.payload).toMatchObject({
+      session: "ses_lead",
+      kind: "permission",
+      ref: "per_1",
+      decision: "once",
+    })
+  })
+
+  test("job:<name> approval: the run approves or rejects; the asker's wait and notice say so", async () => {
+    await owner("PUT", "/v1/jobs/approver", { ...JOB, prompt: "Review it." })
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:lead": { approval_mode: "job:approver" } },
+    })
+    const asked = await as(lead, "POST", "/v1/me/approvals", {
+      text: "Deploy v2?",
+      options: ["now", "tonight"],
+    })
+    expect(asked.status).toBe(201)
+    const id = asked.body.approval.id
+    expect(asked.body.approval.routed).toBe("agent:approver:2026-10-28T12:00")
+    const waiting = as(lead, "GET", `/v1/me/approvals/${id}?wait=10`)
+    const { prompt } = await started("approver")
+    expect(prompt.payload.text).toContain("Review it.")
+    expect(prompt.payload.text).toContain(
+      "Agent team:lead asks for approval: Deploy v2?",
+    )
+    expect(prompt.payload.text).toContain("Options: now, tonight.")
+    expect(prompt.payload.text).toContain(
+      `autocode_message action=answer id=${id}`,
+    )
+    const res = await as(await runToken(), "POST", `/v1/asks/${id}/answer`, {
+      text: "approve: tonight",
+    })
+    expect(res.status).toBe(200)
+    expect((await waiting).body.approval).toMatchObject({
+      state: "approved",
+      by: "approver:2026-10-28T12:00",
+    })
+    const notice = (await next("inject")).find(
+      (i) => i.payload.session === "ses_lead",
+    )
+    expect(notice.payload.text).toStartWith(
+      '[autocode] approval "Deploy v2?" approved',
+    )
+  })
+
+  test("job:<name>: the run escalates; the reason is on the owner's item, and the owner answers", async () => {
+    await owner("PUT", "/v1/jobs/answerer", JOB)
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:lead": { approval_mode: "job:answerer" } },
+    })
+    const asked = await as(lead, "POST", "/v1/me/approvals", {
+      text: "Pay it?",
+    })
+    const id = asked.body.approval.id
+    await started("answerer")
+    const res = await as(await runToken(), "POST", `/v1/asks/${id}/escalate`, {
+      text: "a payment is the owner's call",
+    })
+    expect(res.status).toBe(200)
+    const item = await inbox("approval")
+    expect(item.notes).toEqual([
+      "answerer:2026-10-28T12:00 cannot answer: a payment is the owner's call",
+    ])
+    await owner("POST", `/v1/asks/${id}/answer`, { text: "reject" })
+    expect(
+      (await as(lead, "GET", `/v1/me/approvals/${id}`)).body.approval,
+    ).toMatchObject({ state: "rejected", by: "owner" })
+  })
+
+  test("question_mode, permission_mode and approval_mode take job:<name>", async () => {
+    for (const mode of ["question_mode", "permission_mode", "approval_mode"]) {
+      const res = await owner("PATCH", "/v1/settings", {
+        agents: { "team:lead": { [mode]: "job:answerer" } },
+      })
+      expect(res.status, mode).toBe(200)
+      const bad = await owner("PATCH", "/v1/settings", {
+        agents: { "team:lead": { [mode]: "job:" } },
+      })
+      expect(bad.status, mode).toBe(400)
+    }
   })
 
   test("an ask while the job's run works goes to the owner alone", async () => {
