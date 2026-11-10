@@ -262,7 +262,7 @@
           @if (j.created_by) {
             <app-agent-link [id]="j.created_by" />
           } @else {
-            owner
+            <span appId="owner"></span>
           }
         </td>
         <td class="actions">
