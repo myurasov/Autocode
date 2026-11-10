@@ -253,7 +253,7 @@ describe('AgentsPage', () => {
       'tbody[data-machine="machine-a"] tr.more-rows',
     )!;
     expect(more.querySelector('td')!.getAttribute('colspan')).toBe('12');
-    (more.querySelector('button') as HTMLElement).click();
+    (more.querySelector('td') as HTMLElement).click();
     await settle(fixture);
     expect(rows().length).toBe(30);
     expect(

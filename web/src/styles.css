@@ -378,13 +378,34 @@ tr[app-fold] .fold-count {
   margin-left: 12px;
   font-weight: normal;
 }
-/* The "..." row at a table's (or group's) end: 25 more on a click. */
+/*
+ * The "..." row at a table's (or group's) end: 25 more on a click anywhere
+ * in it (the owner, 2026-11-09: only the dots, bigger, centered both ways;
+ * not a button).
+ */
 tr.more-rows > td {
   text-align: center;
+  vertical-align: middle;
+  font-size: 1.5rem;
+  line-height: 1;
+  letter-spacing: 0.15em;
+  color: var(--fg-dim);
+  cursor: pointer;
+  user-select: none;
 }
-tr.more-rows button {
-  min-width: 3rem;
-  margin-right: 0.4rem;
+/* periods sit on the baseline: raised to the cell's middle */
+tr.more-rows .dots {
+  position: relative;
+  top: -0.3em;
+}
+tr.more-rows > td:hover,
+tr.more-rows > td:focus-visible {
+  color: var(--link);
+  background: var(--softer);
+}
+tr.more-rows > td:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
 }
 td.from.set {
   color: var(--fg-strong);

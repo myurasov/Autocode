@@ -66,24 +66,33 @@ class Host {
 }
 
 describe('MoreRow', () => {
-  it('is one cell across the table, says how many are left, and asks for 25 more', async () => {
+  // The owner, 2026-11-09: only "...", no count (History's was wrong: it
+  // cannot know what is not loaded yet), and not a button: the row itself,
+  // its dots bigger, centered.
+  it('is one cell across the table, only "...", and a click or Enter asks for more', async () => {
     setup();
     const fixture = TestBed.createComponent(Host);
     await settle(fixture);
     const row = el(fixture).querySelector('tr.more-rows')!;
     const cells = row.querySelectorAll('td');
     expect(cells.length).toBe(1);
-    expect(cells[0]!.getAttribute('colspan')).toBe('7');
-    const button = row.querySelector('button') as HTMLButtonElement;
-    expect(text(button)).toBe('...');
-    expect(button.getAttribute('title')).toBe('Show 25 more (35 left)');
-    expect(text(row)).toBe('... 35 more');
-    button.click();
+    const td = cells[0]!;
+    expect(td.getAttribute('colspan')).toBe('7');
+    expect(row.querySelector('button')).toBeNull();
+    expect(text(row)).toBe('...');
+    expect(td.getAttribute('role')).toBe('button');
+    expect(td.getAttribute('tabindex')).toBe('0');
+    expect(td.getAttribute('aria-label')).toBe('Show more');
+    expect(td.getAttribute('title')).toBe('Show more');
+    (td as HTMLElement).click();
     await settle(fixture);
     expect(fixture.componentInstance.clicks()).toBe(1);
+    td.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await settle(fixture);
+    expect(fixture.componentInstance.clicks()).toBe(2);
+    // the count is gone whatever is left
     fixture.componentInstance.left.set(10);
     await settle(fixture);
-    expect(button.getAttribute('title')).toBe('Show 10 more');
-    expect(text(row)).toBe('... 10 more');
+    expect(text(row)).toBe('...');
   });
 });

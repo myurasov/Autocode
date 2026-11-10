@@ -1576,7 +1576,7 @@ test("History: ... shows 25 more, then loads the next entries past 100", async (
   await signIn(page, admin)
   await openTab(page, "History")
   const rows = page.locator("table.history tr[data-entry]")
-  const more = page.locator("table.history tr.more-rows button")
+  const more = page.locator("table.history tr.more-rows td")
   await expect(rows).toHaveCount(25)
   await expect(page.getByRole("button", { name: "Older" })).toHaveCount(0)
   for (const n of [50, 75, 100]) {
@@ -4081,4 +4081,74 @@ test("expand/collapse markers: the forms and Days have the group headings' chevr
   await expect(days).toHaveAttribute("aria-expanded", "true")
   await settled(days, open.transform)
   expect(await look(days, "::before")).toEqual(open)
+})
+
+// The owner, 2026-11-09: the "..." row is only its dots, bigger, centered in
+// its cell both ways, and the row itself takes the click (no button).
+test("the ... row: only its dots, bigger and centered, the cell its control", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  try {
+    for (let i = 0; i < 14; i++) {
+      await api.put("/v1/me/wakes/dots-check", {
+        headers: bearer(sessionToken),
+        data: { text: `Dots ${i}.`, trigger: "fire-only" },
+      })
+      await api.delete("/v1/me/wakes/dots-check", {
+        headers: bearer(sessionToken),
+      })
+    }
+  } finally {
+    await api.dispose()
+  }
+  await signIn(page, admin)
+  await openTab(page, "History")
+  const td = page.locator("table.history tr.more-rows td")
+  await expect(td).toHaveText("...")
+  await expect(td.locator("button")).toHaveCount(0)
+  const look = await td.evaluate((e) => {
+    const css = getComputedStyle(e)
+    const body = parseFloat(getComputedStyle(document.body).fontSize)
+    return {
+      align: css.textAlign,
+      valign: css.verticalAlign,
+      bigger: parseFloat(css.fontSize) > body,
+      cursor: css.cursor,
+    }
+  })
+  expect(look).toEqual({
+    align: "center",
+    valign: "middle",
+    bigger: true,
+    cursor: "pointer",
+  })
+  // the dots themselves (their ink, not the text's box: periods sit on the
+  // baseline) in the middle of the cell, up and down
+  const gap = await td.evaluate((e) => {
+    const dots = e.querySelector(".dots") as HTMLElement
+    const probe = document.createElement("span")
+    probe.style.cssText =
+      "display:inline-block;width:0;height:0;vertical-align:baseline"
+    dots.appendChild(probe)
+    const baseline = probe.getBoundingClientRect().bottom
+    probe.remove()
+    const css = getComputedStyle(dots)
+    const ctx = document.createElement("canvas").getContext("2d")!
+    ctx.font = `${css.fontWeight} ${css.fontSize} ${css.fontFamily}`
+    const m = ctx.measureText(dots.textContent ?? "")
+    const ink =
+      (baseline -
+        m.actualBoundingBoxAscent +
+        baseline +
+        m.actualBoundingBoxDescent) /
+      2
+    const c = e.getBoundingClientRect()
+    return Math.round((ink - (c.top + c.bottom) / 2) * 10) / 10
+  })
+  expect(Math.abs(gap), `the dots are ${gap} px off the middle`).toBeLessThan(2)
+  const rows = page.locator("table.history tr[data-entry]")
+  const before = await rows.count()
+  await td.press("Enter")
+  await expect.poll(() => rows.count()).toBeGreaterThan(before)
 })

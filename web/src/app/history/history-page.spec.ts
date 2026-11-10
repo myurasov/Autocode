@@ -316,9 +316,7 @@ describe('HistoryPage', () => {
   // The owner, 2026-11-09: "..." in place of Older: 25 rows at a time of
   // what is loaded; past them, the next 100 from the server.
   const moreRow = (page: HTMLElement) =>
-    page.querySelector(
-      'table.history tr.more-rows button',
-    ) as HTMLElement | null;
+    page.querySelector('table.history tr.more-rows td') as HTMLElement | null;
   // "..." until every loaded row shows (100 loaded: 3 clicks after the 25).
   async function showLoaded(page: HTMLElement) {
     while (moreRow(page) && rows(page).length % 100 !== 0) {

@@ -41,24 +41,28 @@ export class Paged {
   }
 }
 
-// The "..." row: one cell across the table's columns.
+/*
+ * The "..." row: one cell across the table's columns, only its dots (the
+ * owner, 2026-11-09: no count, which History could not know; not a button).
+ * The cell takes a click, Enter or Space.
+ */
 @Component({
   selector: 'tr[app-more]',
   host: { class: 'more-rows' },
-  template: `<td [attr.colspan]="columns()">
-    <button
-      type="button"
-      class="small"
-      [title]="
-        left() > step ? 'Show ' + step + ' more (' + left() + ' left)' : 'Show ' + left() + ' more'
-      "
-      (click)="more.emit()"
-    >...</button>&ngsp;<span class="muted">{{ left() }} more</span>
-  </td>`,
+  template: `<td
+    [attr.colspan]="columns()"
+    role="button"
+    tabindex="0"
+    aria-label="Show more"
+    title="Show more"
+    (click)="more.emit()"
+    (keydown.enter)="more.emit()"
+    (keydown.space)="$event.preventDefault(); more.emit()"
+  ><span class="dots">...</span></td>`,
 })
 export class MoreRow {
   readonly columns = input.required<number>();
+  // How many are left: whether there are more (it is not shown).
   readonly left = input.required<number>();
   readonly more = output<void>();
-  protected readonly step = PAGE_ROWS;
 }
