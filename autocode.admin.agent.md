@@ -75,7 +75,7 @@ on Linux (ARM64 or x86-64); the CLI also runs on macOS ARM64. Machines reach the
 
 ## Check That It Works
 
-- `autocode info`: the server's ID and version (`v1.0.0-rc1-build<n>`).
+- `autocode info`: the server's ID and version (`v1.0.0-rc2-build<n>`).
 - `autocode hosts`: one line per machine and OpenCode folder, `online yes`. A folder shows up once OpenCode uses it
   (a TUI opens it, or a prompt runs there).
 - In an OpenCode session: `autocode_me action=status` answers (unregistered at first). Registering:

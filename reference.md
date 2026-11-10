@@ -122,7 +122,7 @@ autocode plugin install --url http://<server>:4848 --consumer-token-file <file> 
 ### Sign In and Check
 
 - Open `http://<server>:4848/` and sign in with the admin token, from `~/.autocode/admin.token` on the server.
-- `autocode info`: the server's ID and version, like `v1.0.0-rc1-build<n>` (the release and a build number that keeps
+- `autocode info`: the server's ID and version, like `v1.0.0-rc2-build<n>` (the release and a build number that keeps
   counting across releases).
 - `systemctl --user status autocode`; the server's log: `journalctl --user -u autocode`.
 - `autocode hosts`: one line per machine and folder, `online yes`. In a session: `autocode_me action=status` answers.
@@ -826,7 +826,7 @@ bun install
 bun run typecheck && bun run lint
 bun test tests/unit tests/api            # fast, no Docker
 ci/run.sh [suite...]                     # the Docker suites in parallel (default: all)
-ci/dist.sh                               # a numbered build with the web UI: dist/autocode (v1.0.0-rc1-build<n>)
+ci/dist.sh                               # a numbered build with the web UI: dist/autocode (v1.0.0-rc2-build<n>)
 AUTOCODE_TARGETS=all ci/dist.sh          # also linux-arm64, linux-x64, darwin-arm64
 ```
 
