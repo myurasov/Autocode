@@ -406,13 +406,22 @@ export class Costs {
    * 2026-11-09: its runs' spend counts toward its cap).
    */
   turnEnded(agent: string, outcome = "succeeded") {
-    const compacting = !!(
-      this.db
-        .query("SELECT compacting FROM agents WHERE id = ?")
-        .get(agent) as any
-    )?.compacting
+    const row = this.db
+      .query("SELECT compacting, compact_instruction FROM agents WHERE id = ?")
+      .get(agent) as any
+    /*
+     * The turn that ended is the compaction's only when OpenCode took the
+     * compaction (its instruction was done); one it could not do, or has not
+     * answered yet, leaves this turn someone else's (the review before
+     * 1.0.0: "compaction done" came after the owner's own turn).
+     */
+    const took = row?.compact_instruction
+      ? this.instruction(row.compact_instruction)
+      : undefined
+    const compacting =
+      !!row?.compacting && (!row.compact_instruction || !!took?.ok)
     // the compaction's turn is over: steps count as the context again
-    this.injected(agent)
+    if (compacting || !row?.compact_instruction) this.injected(agent)
     if (compacting && outcome === "succeeded") this.compactDone(agent)
     const billTo = this.billTo(agent)
     if (billTo) {
@@ -544,13 +553,15 @@ export class Costs {
    * no other compaction comes, and the compaction's own steps (which read the
    * whole old conversation) do not count as the context.
    */
-  compacted(agent: string, due: CompactDue) {
+  compacted(agent: string, due: CompactDue, instruction: string) {
     this.db
       .query(
         "UPDATE agents SET compact_wanted = 0, context_tokens = NULL, " +
-          "compacting = 1, compact_notified = 0 WHERE id = ?",
+          "compacting = 1, compact_notified = 0, compact_instruction = ?, " +
+          "compact_asked = ? WHERE id = ?",
       )
-      .run(agent)
+      // one the agent asked for has no threshold (compactDue)
+      .run(instruction, due.limit === 0 ? 1 : 0, agent)
     this.history.record("session.compacted", {
       agent,
       data: { context: due.context, limit: due.limit },
@@ -578,6 +589,41 @@ export class Costs {
     } catch {}
   }
 
+  /*
+   * The compaction that is out could not be done (OpenCode said so, or its
+   * instruction was lost): nothing was compacted. One that came by the
+   * threshold comes again after the next turn that passes it; an agent that
+   * asked for one is told, so that it can ask again.
+   */
+  compactFailed(agent: string, error: string) {
+    const row = this.db
+      .query("SELECT compact_asked FROM agents WHERE id = ?")
+      .get(agent) as any
+    this.injected(agent)
+    this.history.record("session.compact.failed", { agent, data: { error } })
+    if (!row?.compact_asked) return
+    try {
+      this.notify({
+        agent,
+        subject: "compaction failed",
+        text:
+          `Autocode could not compact this session (${error}). Nothing ` +
+          "changed. Ask again with autocode_me action=compact if you " +
+          "still want it.",
+      })
+    } catch {}
+  }
+
+  // The agents whose compaction is out, with its instruction.
+  compactsOut(): { id: string; instruction: string }[] {
+    return this.db
+      .query(
+        "SELECT id, compact_instruction AS instruction FROM agents " +
+          "WHERE compact_instruction IS NOT NULL",
+      )
+      .all() as { id: string; instruction: string }[]
+  }
+
   // autocode_me compact: after the current turn.
   wantCompact(agent: string) {
     this.db
@@ -591,8 +637,19 @@ export class Costs {
    * after it): the context counts again and compactions may come again.
    */
   injected(agent: string) {
-    this.db.query("UPDATE agents SET compacting = 0 WHERE id = ?").run(agent)
+    this.db
+      .query(
+        "UPDATE agents SET compacting = 0, compact_instruction = NULL, " +
+          "compact_asked = 0 WHERE id = ?",
+      )
+      .run(agent)
   }
+
+  // How the host answered an instruction (set by the server: hosts).
+  instruction: (
+    id: string,
+  ) => { acked: boolean; ok: boolean; error: string | null } | undefined = () =>
+    undefined
 
   /*
    * A turn ended: a cut found at the hello just before was no cut (the

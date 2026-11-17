@@ -183,12 +183,12 @@ export async function startServer(
     const title =
       `Host ${host} runs OpenCode ${shownVersion(version.replace(/^v/, ""))}: ` +
       "too old for Autocode"
+    // once: not again after the owner closed it (the plugin asks again
+    // every 10 minutes, an older one every 30 seconds); the Hosts tab keeps
+    // the mark
     if (
       db
-        .query(
-          "SELECT 1 FROM inbox WHERE kind = 'alert' AND title = ? " +
-            "AND closed_at IS NULL",
-        )
+        .query("SELECT 1 FROM inbox WHERE kind = 'alert' AND title = ?")
         .get(title)
     )
       return
@@ -309,6 +309,7 @@ export async function startServer(
       )?.busy,
   )
   delivery.costs = costs
+  costs.instruction = (id) => hosts.instruction(id)
   hosts.onTurnEnded = (agent, outcome, error, reply, background) => {
     retries.turnEnded(agent, outcome, error)
     costs.uncut(agent)
@@ -726,6 +727,8 @@ export async function startServer(
               "(an agent's: POST /v1/agents/{id}/token/rotate)",
           )
         const made = rotateOwnerToken(db, options.dataDir, kind, now())
+        // polls opened with the old consumer token get nothing more
+        if (kind === "consumer") hosts.dropPolls()
         history.record("token.rotated", { data: { kind } })
         return { kind, ...made }
       },
@@ -1432,7 +1435,14 @@ export async function startServer(
         // the owner, 2026-11-17: "close only ... visible (considering filter
         // if any)": the Inbox tab sends the IDs it shows
         const input = await body()
-        const ids = input?.ids
+        // a list or a text sent by mistake must not mean "all" (the review
+        // before 1.0.0)
+        if (input === null || typeof input !== "object" || Array.isArray(input))
+          throw new AutocodeError(
+            "bad_request",
+            "the body is an object: {} for all, or {ids: [...]}",
+          )
+        const ids = input.ids
         if (
           ids !== undefined &&
           (!Array.isArray(ids) || ids.some((id) => typeof id !== "string"))

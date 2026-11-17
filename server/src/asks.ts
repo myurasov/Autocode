@@ -438,14 +438,19 @@ export class Asks {
   }
 
   /*
-   * A turn of the session ended: its questions and permissions are gone (a
-   * form lives only while its tool call runs); approvals stay.
+   * A turn of the session ended: its own questions and permissions are gone
+   * (a form lives only while its tool call runs); approvals stay. A
+   * Subagent's stay too (form_session: OpenCode 2.3 runs Subagents in the
+   * background, so one may still wait for its answer after its top-level
+   * session's turn ended; the review before 1.0.0): they go when OpenCode
+   * settles them, or at the next hello when it no longer has them.
    */
   turnEnded(session: string) {
     for (const row of this.db
       .query(
         "SELECT * FROM asks WHERE session_id = ? AND state = 'open' " +
-          "AND kind != 'approval'",
+          "AND kind != 'approval' " +
+          "AND (form_session IS NULL OR form_session = session_id)",
       )
       .all(session) as any[]) {
       this.finish(row, "gone", null, null)

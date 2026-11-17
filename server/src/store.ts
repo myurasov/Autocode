@@ -597,10 +597,15 @@ export const MIGRATIONS: string[] = [
   `,
   /*
    * 20 (the owner, 2026-11-17: "add col in agents tab for model effort"):
-   * the variant of an agent's model (high, max...), from its last step.
+   * the variant of an agent's model (high, max...), from its last step. And
+   * the compaction that is out (the review before 1.0.0): its instruction,
+   * and whether the agent asked for it, so that one OpenCode could not do is
+   * known and is not taken for done.
    */
   `
   ALTER TABLE agents ADD COLUMN effort TEXT;
+  ALTER TABLE agents ADD COLUMN compact_instruction TEXT;
+  ALTER TABLE agents ADD COLUMN compact_asked INTEGER NOT NULL DEFAULT 0;
   `,
 ]
 

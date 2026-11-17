@@ -522,19 +522,41 @@ export class Messages {
     const from = filter.from?.trim() ? parsePattern(filter.from) : null
     const to = filter.to?.trim() ? parsePattern(filter.to) : null
     if (from || to) {
-      const out: (MessageView & { preview: string })[] = []
-      for (const r of this.db
-        .query("SELECT * FROM messages ORDER BY created_at DESC, rowid DESC")
-        .all() as any[]) {
+      /*
+       * The senders and recipients are matched first, a row at a time and
+       * without the texts; only the matching messages are read whole (the
+       * review before 1.0.0: a filter read every text, which held the server
+       * up on a large table). ?agent= applies too.
+       */
+      const ids: number[] = []
+      const scan = filter.agent
+        ? this.db
+            .query(
+              "SELECT rowid AS n, from_id, to_id FROM messages " +
+                "WHERE from_id = ? OR to_id = ? " +
+                "ORDER BY created_at DESC, rowid DESC",
+            )
+            .iterate(filter.agent, filter.agent)
+        : this.db
+            .query(
+              "SELECT rowid AS n, from_id, to_id FROM messages " +
+                "ORDER BY created_at DESC, rowid DESC",
+            )
+            .iterate()
+      for (const r of scan as Iterable<any>) {
         if (from && !matchesPattern(from, r.from_id)) continue
         if (to && !matchesPattern(to, r.to_id)) continue
-        out.push({
+        ids.push(r.n)
+        if (ids.length >= limit) break
+      }
+      const one = this.db.query("SELECT * FROM messages WHERE rowid = ?")
+      return ids.map((n) => {
+        const r = one.get(n) as any
+        return {
           ...messageView(r),
           preview: String(r.body).slice(0, PREVIEW),
-        })
-        if (out.length >= limit) break
-      }
-      return out
+        }
+      })
     }
     const rows = filter.agent
       ? this.db

@@ -125,7 +125,10 @@ export function ensureOwnerTokens(
 /*
  * Replaces the admin or the consumer token (a leaked one): the new token's
  * file is saved first (0600), then the old one is revoked and the new one's
- * hash stored, in one step. The old token stops working at once.
+ * hash stored, in one step. The old token stops working at once. With the
+ * consumer token go the session tokens (the review before 1.0.0: whoever held
+ * it could get a token of any session, which would have gone on working);
+ * plugins get new ones with the new consumer token.
  */
 export function rotateOwnerToken(
   db: Database,
@@ -140,6 +143,11 @@ export function rotateOwnerToken(
     db.query(
       "UPDATE tokens SET revoked_at = ? WHERE kind = ? AND revoked_at IS NULL",
     ).run(now, kind)
+    if (kind === "consumer")
+      db.query(
+        "UPDATE tokens SET revoked_at = ? " +
+          "WHERE kind = 'session' AND revoked_at IS NULL",
+      ).run(now)
     db.query(
       "INSERT INTO tokens (hash, kind, created_at) VALUES (?, ?, ?)",
     ).run(hashToken(token), kind, now)

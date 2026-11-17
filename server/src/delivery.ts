@@ -22,6 +22,7 @@ import {
   formatDuration,
   formatTrigger,
   localTime,
+  opencodeTooOld,
   parseDuration,
   resolveSettings,
   type Trigger,
@@ -88,7 +89,10 @@ export class Delivery {
    */
   costs?: {
     compactDue(agent: string): CompactDue | null
-    compacted(agent: string, due: CompactDue): void
+    compacted(agent: string, due: CompactDue, instruction: string): void
+    // compactions that are out, and one that could not be done
+    compactsOut(): { id: string; instruction: string }[]
+    compactFailed(agent: string, error: string): void
     compactNotice(due: CompactDue): { header: string; text: string }
     compactNoticed(agent: string, due: CompactDue, steer?: boolean): void
     injected(agent: string): void
@@ -335,6 +339,13 @@ export class Delivery {
           state.ok ? null : (state.error ?? "failed"),
         )
     }
+    // a compaction OpenCode could not do, or whose instruction was lost
+    for (const r of this.costs?.compactsOut() ?? []) {
+      const state = this.hosts.instruction(r.instruction)
+      if (!state) this.costs!.compactFailed(r.id, "its instruction was lost")
+      else if (state.acked && !state.ok)
+        this.costs!.compactFailed(r.id, state.error ?? "failed")
+    }
     const open = this.db
       .query("SELECT * FROM injections WHERE settled_at IS NULL")
       .all() as any[]
@@ -426,14 +437,22 @@ export class Delivery {
                 a.compacting, s.busy, s.inject_pending_at, s.turn_started_at,
                 s.deleted_at, s.directory, s.host_id, h.online,
                 h.machine, h.directory AS host_directory, h.process_kind,
+                h.opencode_version,
                 EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
                         AND k.state = 'open' AND k.job_def IS NULL) AS asking
          FROM agents a JOIN sessions s ON s.id = a.session_id
          JOIN hosts h ON h.id = s.host_id WHERE a.id = ?`,
       )
       .get(agent) as any
-    // an unloaded folder of this machine's background service is loaded again
-    if (row && !row.online && !row.deleted_at && !row.paused)
+    // an unloaded folder of this machine's background service is loaded
+    // again; not one whose OpenCode is too old (it is refused, not lost)
+    if (
+      row &&
+      !row.online &&
+      !row.deleted_at &&
+      !row.paused &&
+      !opencodeTooOld(row.opencode_version ?? "")
+    )
       this.loader?.load({
         id: row.host_id,
         machine: row.machine,
@@ -479,8 +498,10 @@ export class Delivery {
       return
     }
     if (due) {
-      this.hosts.enqueue(row.host_id, "compact", { session: row.session_id })
-      this.costs!.compacted(agent, due)
+      const id = this.hosts.enqueue(row.host_id, "compact", {
+        session: row.session_id,
+      })
+      this.costs!.compacted(agent, due, id)
       this.db
         .query(
           "UPDATE sessions SET busy = 1, inject_pending_at = ? WHERE id = ?",

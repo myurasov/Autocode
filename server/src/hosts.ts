@@ -72,6 +72,9 @@ function processOf(value: any): { kind: string; pid: number | null } {
 }
 
 export class Hosts {
+  // Raised when the consumer token is replaced: polls opened with the old one
+  // end (the review before 1.0.0).
+  private epoch = 0
   private readonly polling = new Map<string, number>()
   // Real time of each host's last poll end (not the server clock, which tests
   // may fake).
@@ -249,6 +252,16 @@ export class Hosts {
             now,
           )
         if (before?.online) this.history.record("host.offline", { host: id })
+        // its sessions' tokens go too: an older plugin, or a script that
+        // holds one, is not served either (the review before 1.0.0); after
+        // the update the plugin gets new ones
+        this.db
+          .query(
+            `UPDATE tokens SET revoked_at = ?
+             WHERE kind = 'session' AND revoked_at IS NULL AND session_id IN
+               (SELECT id FROM sessions WHERE host_id = ?)`,
+          )
+          .run(now, id)
         this.onTooOld(id, machine, opencode)
       }
       throw new AutocodeError(
@@ -511,10 +524,18 @@ export class Hosts {
       )
     this.polling.set(id, (this.polling.get(id) ?? 0) + 1)
     this.markOnline(id, !!host.online)
+    const epoch = this.epoch
     try {
       const deadline =
         Date.now() + Math.max(0, Math.min(waitSeconds, 120)) * 1000
       for (;;) {
+        // the consumer token it came with was replaced meanwhile
+        if (epoch !== this.epoch)
+          throw new AutocodeError(
+            "unauthorized",
+            "the consumer token was replaced",
+            401,
+          )
         if (this.row(id)?.instance !== instance)
           throw new AutocodeError(
             "superseded",
@@ -763,6 +784,12 @@ export class Hosts {
       first_seen: new Date(h.first_seen).toISOString(),
       last_seen: new Date(h.last_seen).toISOString(),
     }))
+  }
+
+  // The consumer token was replaced: every open poll ends, unserved.
+  dropPolls() {
+    this.epoch++
+    for (const id of this.waiters.keys()) this.wake(id)
   }
 
   // Wakes every long poll so the process can stop.
