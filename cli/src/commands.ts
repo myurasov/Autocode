@@ -5,7 +5,7 @@
 
 import { apiCall, MIN_OPENCODE, shownVersion } from "@autocode/shared"
 import { CliError, type Parsed } from "./args.ts"
-import { connect } from "./connect.ts"
+import { connect, readClientConfig, writeClientConfig } from "./connect.ts"
 
 // Owner commands (and the agent commands scripts use), each a thin wrapper over
 // the API. --json prints the API's own data; otherwise a plain table.
@@ -185,11 +185,47 @@ export async function hosts(args: Parsed): Promise<number> {
 
 export async function token(args: Parsed): Promise<number> {
   const [sub, id] = args.words
-  if (sub !== "rotate" || !id)
-    throw new CliError("usage: autocode token rotate <agent>", 2)
+  const flag = (name: string) =>
+    args.switches.has(name) || args.flags[name] !== undefined
+  const kinds = (["admin", "consumer"] as const).filter(flag)
+  if (sub !== "rotate" || kinds.length > 1 || (!id && !kinds.length))
+    throw new CliError(
+      "usage: autocode token rotate AGENT | --admin | --consumer",
+      2,
+    )
+  /*
+   * The owner's own tokens (a leaked one): the server makes a new one and
+   * keeps it in its data folder; it is never printed. This machine's client
+   * config, when it holds that token, gets the new one.
+   */
+  const kind = kinds[0]
+  if (kind) {
+    const res = await connect(args).call("POST", `/v1/tokens/${kind}/rotate`)
+    const key = `${kind}_token` as const
+    const config = readClientConfig()
+    const here =
+      config[key] && typeof res.token === "string"
+        ? writeClientConfig({ [key]: res.token })
+        : undefined
+    print(args, { kind: res.kind, file: res.file }, () =>
+      [
+        `new ${kind} token: saved on the server in ${res.file} ` +
+          "(mode 0600); the old one no longer works",
+        ...(here ? [`updated ${here} on this machine`] : []),
+        kind === "consumer"
+          ? "next: on every other machine run autocode plugin install " +
+            "again with the new token, then restart OpenCode on each " +
+            "machine; until then its hosts are offline"
+          : "next: sign in to the web UI again; on other machines whose " +
+            "client config holds the admin token, run autocode plugin " +
+            "install again with --admin-token-file",
+      ].join("\n"),
+    )
+    return 0
+  }
   const res = await connect(args).call(
     "POST",
-    `/v1/agents/${encodeURIComponent(id)}/token/rotate`,
+    `/v1/agents/${encodeURIComponent(id ?? "")}/token/rotate`,
   )
   print(
     args,

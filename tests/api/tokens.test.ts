@@ -4,9 +4,16 @@
  * answers; and the session tokens the plugin gets for its sessions.
  */
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import {
   call,
   hello,
@@ -218,6 +225,164 @@ describe("owner tokens", () => {
         log: () => {},
       }),
     ).rejects.toThrow(/admin token/)
+  })
+})
+
+/*
+ * Replacing a leaked owner token (the documentation pass for 1.0.0: an
+ * operator could not replace the admin or the consumer token; the consumer
+ * token can act for any session): POST /v1/tokens/{admin|consumer}/rotate and
+ * `autocode token rotate --admin | --consumer`.
+ */
+describe("replacing an owner token", () => {
+  test("rotate makes a new consumer token: the old one stops at once, the new one is in the server's file", async () => {
+    const dir = freshDir()
+    const t = await start({ dataDir: dir, presets: false })
+    const admin = t.server.firstStartTokens?.admin ?? ""
+    const old = t.server.firstStartTokens?.consumer ?? ""
+    const res = await call(t.url, admin, "POST", "/v1/tokens/consumer/rotate")
+    expect(res.status).toBe(200)
+    const file = join(dir, "consumer.token")
+    expect(res.body).toEqual({
+      kind: "consumer",
+      file,
+      token: expect.stringMatching(TOKEN),
+    })
+    const fresh = readFileSync(file, "utf8").trim()
+    expect(fresh).toBe(res.body.token)
+    expect(fresh).not.toBe(old)
+    expect(fresh.startsWith("acc_")).toBe(true)
+    expect(statSync(file).mode & 0o777).toBe(0o600)
+    expect((await call(t.url, old, "GET", "/v1/whoami")).status).toBe(401)
+    expect((await call(t.url, fresh, "GET", "/v1/whoami")).body).toEqual({
+      kind: "consumer",
+    })
+    // the admin token is as it was
+    expect((await call(t.url, admin, "GET", "/v1/whoami")).status).toBe(200)
+    // the history says so, without the token
+    const entry = (
+      await call(t.url, admin, "GET", "/v1/history?kind=token.rotated")
+    ).body.history[0]
+    expect(entry.data).toEqual({ kind: "consumer" })
+    // a later start makes nothing new: the rotated one stays
+    await t.stop()
+    running.splice(running.indexOf(t), 1)
+    const again = await start({ dataDir: dir, presets: false })
+    expect(again.server.firstStartTokens).toBeUndefined()
+    expect((await call(again.url, fresh, "GET", "/v1/whoami")).status).toBe(200)
+    expect(readFileSync(file, "utf8").trim()).toBe(fresh)
+  })
+
+  test("rotate makes a new admin token; only the owner may, and only these two kinds", async () => {
+    const dir = freshDir()
+    const t = await start({ dataDir: dir, presets: false })
+    const admin = t.server.firstStartTokens?.admin ?? ""
+    const consumer = t.server.firstStartTokens?.consumer ?? ""
+    expect(
+      (await call(t.url, consumer, "POST", "/v1/tokens/admin/rotate")).status,
+    ).toBe(403)
+    expect(
+      (await call(t.url, undefined, "POST", "/v1/tokens/admin/rotate")).status,
+    ).toBe(401)
+    const bad = await call(t.url, admin, "POST", "/v1/tokens/session/rotate")
+    expect(bad.status).toBe(400)
+    expect(bad.body.error.code).toBe("bad_request")
+    const res = await call(t.url, admin, "POST", "/v1/tokens/admin/rotate")
+    expect(res.status).toBe(200)
+    const fresh = readFileSync(join(dir, "admin.token"), "utf8").trim()
+    expect(res.body).toEqual({
+      kind: "admin",
+      file: join(dir, "admin.token"),
+      token: fresh,
+    })
+    expect(fresh.startsWith("aca_")).toBe(true)
+    expect((await call(t.url, admin, "GET", "/v1/agents")).status).toBe(401)
+    expect((await call(t.url, fresh, "GET", "/v1/agents")).status).toBe(200)
+    expect((await call(t.url, consumer, "GET", "/v1/whoami")).status).toBe(200)
+  })
+})
+
+describe("autocode token rotate --admin | --consumer", () => {
+  const main = join(resolve(import.meta.dir, "../.."), "cli/src/main.ts")
+  async function cli(args: string[], home: string) {
+    const proc = Bun.spawn(["bun", main, ...args], {
+      env: {
+        PATH: process.env.PATH ?? "",
+        HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const timer = setTimeout(() => proc.kill(), 20_000)
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    clearTimeout(timer)
+    return { stdout, stderr, code }
+  }
+
+  test("says where the new token is, never the token; this machine's client config follows", async () => {
+    const dir = freshDir()
+    const t = await start({ dataDir: dir, presets: false })
+    const admin = t.server.firstStartTokens?.admin ?? ""
+    const consumer = t.server.firstStartTokens?.consumer ?? ""
+    // another machine, connected with both tokens in its client config
+    const home = mkdtempSync(join(tmpdir(), "autocode-rotate-"))
+    dirs.push(home)
+    mkdirSync(join(home, ".autocode"), { mode: 0o700 })
+    const config = join(home, ".autocode", "client.json")
+    writeFileSync(
+      config,
+      JSON.stringify({
+        url: t.url,
+        consumer_token: consumer,
+        admin_token: admin,
+      }),
+      { mode: 0o600 },
+    )
+    const read = () => JSON.parse(readFileSync(config, "utf8"))
+
+    const usage = await cli(["token", "rotate"], home)
+    expect(usage.code).toBe(2)
+    expect(usage.stderr).toContain(
+      "usage: autocode token rotate AGENT | --admin | --consumer",
+    )
+    expect(
+      (await cli(["token", "rotate", "--admin", "--consumer"], home)).code,
+    ).toBe(2)
+
+    const c = await cli(["token", "rotate", "--consumer"], home)
+    expect(c.code, c.stderr).toBe(0)
+    const fresh = readFileSync(join(dir, "consumer.token"), "utf8").trim()
+    expect(fresh).not.toBe(consumer)
+    expect(c.stdout).toContain(
+      `new consumer token: saved on the server in ${join(dir, "consumer.token")}`,
+    )
+    expect(c.stdout).toContain("the old one no longer works")
+    expect(c.stdout).toContain("autocode plugin install")
+    expect(c.stdout).not.toContain(fresh)
+    expect(c.stdout).toContain(`updated ${config}`)
+    expect(read()).toMatchObject({ consumer_token: fresh, admin_token: admin })
+    expect(statSync(config).mode & 0o777).toBe(0o600)
+
+    const a = await cli(["token", "rotate", "--admin", "--json"], home)
+    expect(a.code, a.stderr).toBe(0)
+    const newAdmin = readFileSync(join(dir, "admin.token"), "utf8").trim()
+    expect(JSON.parse(a.stdout)).toEqual({
+      kind: "admin",
+      file: join(dir, "admin.token"),
+    })
+    expect(a.stdout).not.toContain(newAdmin)
+    expect(read().admin_token).toBe(newAdmin)
+    // the CLI goes on working with the new one
+    expect((await cli(["agents"], home)).code).toBe(0)
+    // an agent's session token: as before
+    const bad = await cli(["token", "rotate", "nobody:here"], home)
+    expect(bad.code).not.toBe(0)
+    expect(bad.stderr).toContain("nobody:here")
   })
 })
 

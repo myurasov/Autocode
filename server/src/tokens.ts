@@ -122,6 +122,31 @@ export function ensureOwnerTokens(
   return made
 }
 
+/*
+ * Replaces the admin or the consumer token (a leaked one): the new token's
+ * file is saved first (0600), then the old one is revoked and the new one's
+ * hash stored, in one step. The old token stops working at once.
+ */
+export function rotateOwnerToken(
+  db: Database,
+  dataDir: string,
+  kind: "admin" | "consumer",
+  now: number,
+): { file: string; token: string } {
+  const token = newToken(kind)
+  const file = join(dataDir, `${kind}.token`)
+  saveTokenFile(file, token)
+  db.transaction(() => {
+    db.query(
+      "UPDATE tokens SET revoked_at = ? WHERE kind = ? AND revoked_at IS NULL",
+    ).run(now, kind)
+    db.query(
+      "INSERT INTO tokens (hash, kind, created_at) VALUES (?, ?, ?)",
+    ).run(hashToken(token), kind, now)
+  })()
+  return { file, token }
+}
+
 // A revoked token is deleted a day after it was revoked.
 export const SESSION_TOKEN_IDLE_MS = 30 * 86_400_000
 

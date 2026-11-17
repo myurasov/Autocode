@@ -50,6 +50,7 @@ import {
   ensureOwnerTokens,
   issueSessionToken,
   pruneTokens,
+  rotateOwnerToken,
   touchToken,
 } from "./tokens.ts"
 import { notRegistered, Wakes } from "./wakes.ts"
@@ -708,6 +709,26 @@ export async function startServer(
       summary: "unregister an agent",
       handler: ({ params }) =>
         agents.unregister(checkId(params.id, "agent ID"), "owner"),
+    },
+    {
+      method: "POST",
+      path: "/v1/tokens/:kind/rotate",
+      access: ["admin"],
+      summary:
+        "replace the admin or the consumer token (a leaked one): the old " +
+        "one stops at once; the new one is saved in the server's data folder",
+      handler: ({ params }) => {
+        const kind = params.kind
+        if (kind !== "admin" && kind !== "consumer")
+          throw new AutocodeError(
+            "bad_request",
+            "the token to replace is admin or consumer " +
+              "(an agent's: POST /v1/agents/{id}/token/rotate)",
+          )
+        const made = rotateOwnerToken(db, options.dataDir, kind, now())
+        history.record("token.rotated", { data: { kind } })
+        return { kind, ...made }
+      },
     },
     {
       method: "POST",
