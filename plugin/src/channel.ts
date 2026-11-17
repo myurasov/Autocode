@@ -52,6 +52,8 @@ export interface ChannelOptions {
   // The consumer token the client config holds now: read again when the
   // server refuses this one (it was replaced: autocode token rotate).
   reloadToken?: () => string | undefined
+  // The new one is in use: every session token got with the old one is dead.
+  onTokenReplaced?: () => void
 }
 
 // Events sent in one request, and how many may wait while the server is
@@ -407,6 +409,7 @@ export class Channel {
           if (fresh && fresh !== this.token) {
             this.token = fresh
             this.log("the client config has a new consumer token: using it")
+            this.options.onTokenReplaced?.()
             backoff = min
             continue
           }

@@ -2,8 +2,34 @@
  * Session tokens: one per top-level session. A Subagent acts for its top-level
  * session, found by walking parentID. Each token is kept in OpenCode's plugin
  * storage too, so a reload of the plugin (an update, a deploy) uses it again
- * instead of asking the server for another (the owner, 2026-11-05).
+ * instead of asking the server for another (the owner, 2026-11-05). A kept
+ * token carries a mark of the consumer token it was got with: a replaced
+ * consumer token ends every session token (autocode token rotate
+ * --consumer), so one kept from before is not used again, and the ones held
+ * are forgotten.
  */
+import { createHash } from "node:crypto"
+
+// A consumer token's mark: which one a kept session token belongs to, and
+// nothing of the token itself.
+export function consumerMark(consumer: string): string {
+  return createHash("sha256").update(consumer).digest("hex").slice(0, 12)
+}
+
+// What is kept for a session: the mark, then its token.
+export function tokenToKeep(token: string, consumer: string): string {
+  return `${consumerMark(consumer)} ${token}`
+}
+
+// The token of a kept value, if it was got with this consumer token.
+export function keptToken(
+  value: unknown,
+  consumer: string,
+): string | undefined {
+  if (typeof value !== "string") return undefined
+  const [mark, token] = value.split(" ")
+  return token && mark === consumerMark(consumer) ? token : undefined
+}
 
 // Where tokens are kept across reloads (OpenCode's ctx.storage).
 export interface TokenStore {
@@ -70,5 +96,15 @@ export class SessionTokens {
   async drop(root: string) {
     this.tokens.delete(root)
     await this.deps.store?.remove(root).catch(() => {})
+  }
+
+  // The consumer token was replaced: every token held is dead. Forgotten
+  // here and in storage; the sessions that had one.
+  async forgetAll(): Promise<string[]> {
+    const roots = [...this.tokens.keys()]
+    this.tokens.clear()
+    for (const root of roots)
+      await this.deps.store?.remove(root).catch(() => {})
+    return roots
   }
 }

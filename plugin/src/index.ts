@@ -46,7 +46,7 @@ import {
   shellVariables,
 } from "./localapi.ts"
 import { log } from "./log.ts"
-import { SessionTokens } from "./sessions.ts"
+import { keptToken, SessionTokens, tokenToKeep } from "./sessions.ts"
 import {
   APPROVAL_TOOL,
   type ApprovalInput,
@@ -108,6 +108,9 @@ export default {
     // sessions spawned for runs of jobs (their turns report their reply)
     const runs = new Set<string>()
     const registered = new Map<string, string>()
+    // the consumer token was replaced: after the next hello, the sessions'
+    // shells get new tokens
+    let renewAll = false
 
     const channel: Channel = new Channel({
       config,
@@ -119,6 +122,12 @@ export default {
       // a replaced consumer token (autocode token rotate --consumer) is read
       // again from the client config
       reloadToken: () => readClientConfig()?.consumer_token,
+      // every session token ended with the old one: forgotten, and after
+      // the next hello the sessions' shells get new ones
+      onTokenReplaced: () => {
+        renewAll = true
+        void tokens.forgetAll()
+      },
       process: processOf(),
       shellValues: api !== undefined,
       log,
@@ -165,20 +174,33 @@ export default {
           if (typeof session === "string") runs.add(session)
         // questions and permissions already pending (tier 0d)
         void reportPending([...registered.keys()])
+        // after a replaced consumer token: new tokens for the shells of the
+        // sessions that had the old ones, without waiting for a tool call
+        if (renewAll) {
+          renewAll = false
+          for (const root of new Set([...shellSet.values()].map((s) => s.root)))
+            void renewShellValues(root).catch(() => {})
+        }
       },
     })
 
-    // Tokens kept in OpenCode's plugin storage, per server URL and session.
+    // Tokens kept in OpenCode's plugin storage, per server URL and session,
+    // each with the mark of the consumer token in use (see sessions.ts).
     const tokenKey = (session: string) =>
       `token/${encodeURIComponent(config.url)}/${session}`
-    const tokens = new SessionTokens({
+    const tokens: SessionTokens = new SessionTokens({
       store: ctx.storage
         ? {
-            get: async (session) => {
-              const v = await ctx.storage.get(tokenKey(session))
-              return typeof v === "string" ? v : undefined
-            },
-            set: (session, token) => ctx.storage.set(tokenKey(session), token),
+            get: async (session) =>
+              keptToken(
+                await ctx.storage.get(tokenKey(session)),
+                channel.consumerToken,
+              ),
+            set: (session, token) =>
+              ctx.storage.set(
+                tokenKey(session),
+                tokenToKeep(token, channel.consumerToken),
+              ),
             remove: (session) => ctx.storage.remove(tokenKey(session)),
           }
         : undefined,

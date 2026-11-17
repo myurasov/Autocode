@@ -400,7 +400,13 @@ describe("plugin channel against the server", () => {
   test("a replaced consumer token is picked up from the client config, without a restart", async () => {
     const t = await start({ pollWait: 1 })
     let onDisk = PRESET_CONSUMER
-    const c = channel(t.url, { reloadToken: () => onDisk })
+    // told once, when it takes the new token: every session token is dead
+    // with the old one, so the plugin forgets them
+    let replaced = 0
+    const c = channel(t.url, {
+      reloadToken: () => onDisk,
+      onTokenReplaced: () => replaced++,
+    })
     expect(await c.whenConnected(5000)).toBe(true)
     const rot = await call(t.url, t.admin, "POST", "/v1/tokens/consumer/rotate")
     expect(rot.status).toBe(200)
@@ -411,8 +417,10 @@ describe("plugin channel against the server", () => {
     // `autocode plugin install` (or the rotation itself, on this machine)
     // wrote the new token to the client config
     onDisk = rot.body.token
+    expect(replaced).toBe(0)
     expect(await c.whenConnected(5000)).toBe(true)
     expect(c.consumerToken).toBe(rot.body.token)
+    expect(replaced).toBe(1)
     const hosts = (await call(t.url, t.admin, "GET", "/v1/hosts")).body.hosts
     expect(hosts[0]).toMatchObject({ id: "m:work:00000001", online: true })
   })

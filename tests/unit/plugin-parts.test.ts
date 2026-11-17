@@ -26,7 +26,12 @@ import {
   shellVariables,
 } from "../../plugin/src/localapi.ts"
 import { log, logPath } from "../../plugin/src/log.ts"
-import { SessionTokens } from "../../plugin/src/sessions.ts"
+import {
+  consumerMark,
+  keptToken,
+  SessionTokens,
+  tokenToKeep,
+} from "../../plugin/src/sessions.ts"
 import { runMe } from "../../plugin/src/tools.ts"
 
 const dirs: string[] = []
@@ -259,6 +264,48 @@ describe("plugin: session tokens", () => {
     expect(await tokens.token("ses_a")).toBe("rotated")
     tokens.drop("ses_a")
     expect(await tokens.token("ses_a")).toBe("tok-ses_a-2")
+  })
+
+  /*
+   * The documentation's fact check before 1.0.0: `autocode token rotate
+   * --consumer` ends every session token, but the plugin went on handing
+   * the ones it held to its sessions' new shells until a tool call of each
+   * session was refused: `autocode fire me` in such a shell got a 401.
+   */
+  test("a replaced consumer token: every session token held is forgotten, the kept ones too", async () => {
+    const kept = new Map<string, string>([["ses_b", "old-b"]])
+    let n = 0
+    const tokens = new SessionTokens({
+      parentOf: async () => undefined,
+      requestToken: async (s) => `tok-${s}-${++n}`,
+      store: {
+        get: async (s) => kept.get(s),
+        set: async (s, t) => void kept.set(s, t),
+        remove: async (s) => void kept.delete(s),
+      },
+    })
+    expect(await tokens.token("ses_a")).toBe("tok-ses_a-1")
+    expect(await tokens.token("ses_b")).toBe("old-b")
+    expect((await tokens.forgetAll()).sort()).toEqual(["ses_a", "ses_b"])
+    expect([...kept.keys()]).toEqual([])
+    expect(await tokens.token("ses_a")).toBe("tok-ses_a-2")
+    expect(await tokens.token("ses_b")).toBe("tok-ses_b-3")
+  })
+
+  test("a kept token carries a mark of its consumer token; one of another consumer token, or without a mark, is not used", () => {
+    const now = consumerMark("acc_new")
+    expect(now).toMatch(/^[0-9a-f]{12}$/)
+    expect(consumerMark("acc_new")).toBe(now)
+    expect(consumerMark("acc_old")).not.toBe(now)
+    // the mark says nothing of the token
+    expect("acc_new").not.toContain(now)
+    const value = tokenToKeep("acs_session", "acc_new")
+    expect(keptToken(value, "acc_new")).toBe("acs_session")
+    expect(keptToken(value, "acc_old")).toBeUndefined()
+    // kept by an older plugin: the token alone
+    expect(keptToken("acs_session", "acc_new")).toBeUndefined()
+    expect(keptToken(undefined, "acc_new")).toBeUndefined()
+    expect(keptToken(7, "acc_new")).toBeUndefined()
   })
 
   test("a failed request is not cached", async () => {
