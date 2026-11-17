@@ -21,6 +21,7 @@ const probe =
   'echo "url=$AUTOCODE_URL server=$AUTOCODE_SERVER_ID ' +
   'session=$AUTOCODE_SESSION own=[$FAKE_MODEL_URL]"; ' +
   // where `autocode plugin install` put the binary, first on the PATH
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: the shell's own
   'echo "path=${PATH%%:*} bin=$(test -x "$HOME/.autocode/bin/autocode" ' +
   '&& echo yes) found=$(command -v autocode)"; ' +
   'curl -s --max-time 5 -H "Authorization: Bearer $AUTOCODE_TOKEN" ' +

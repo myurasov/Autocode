@@ -22,6 +22,7 @@ import {
 import { IdParts, TimeText } from '../breaks';
 import { AgentLink } from '../links';
 import { contains } from '../filter';
+import { Latest } from '../latest';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -105,18 +106,23 @@ export class LocksPage {
     });
   }
 
+  private readonly latest = new Latest();
+
   protected async refresh(): Promise<void> {
     const match = this.match();
+    // the filter's own answer, and not one older than the list on show
+    const sent = this.latest.next();
+    const mine = () => match === this.match() && this.latest.take(sent);
     this.inFlight++;
     try {
       // what was typed matches anywhere (the owner, 2026-11-17)
       const locks = await this.api.locks(contains(match));
-      if (match !== this.match()) return;
+      if (!mine()) return;
       this.locks.set(locks);
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {
-      if (match === this.match()) this.error.set(errorText(err));
+      if (mine()) this.error.set(errorText(err));
     } finally {
       this.inFlight--;
       this.loaded.set(true);

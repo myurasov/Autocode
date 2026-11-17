@@ -752,13 +752,14 @@ export class Api {
     );
   }
 
-  // Every message, newest first.
   // Every message, newest first; from and to: ID patterns of the sender and
-  // the recipient (the owner, 2026-11-17).
-  async messages(from = '', to = ''): Promise<Message[]> {
+  // the recipient (the owner, 2026-11-17); processed: those too.
+  async messages(from = '', to = '', processed = true): Promise<Message[]> {
     let params = new HttpParams();
     if (from.trim()) params = params.set('from', from.trim());
     if (to.trim()) params = params.set('to', to.trim());
+    // without the processed ones: the server leaves them out
+    if (!processed) params = params.set('processed', '0');
     return (
       await this.call(
         this.http.get<{ messages: Message[] }>('/v1/messages', { params }),

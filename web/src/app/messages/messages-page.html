@@ -36,7 +36,7 @@
       id="show-processed"
       type="checkbox"
       [checked]="showProcessed()"
-      (change)="showProcessed.set($any($event.target).checked)"
+      (change)="setShowProcessed($any($event.target).checked)"
     />
     Processed
   </label>
@@ -159,13 +159,7 @@
       <tr>
         <td class="muted" colspan="8">
           {{
-            !loaded()
-              ? 'Loading...'
-              : messages().length
-                ? 'No message waits: every one is processed (the Processed box shows them).'
-                : from() || toMatch()
-                  ? 'No message matches the From and To filters.'
-                  : 'No messages yet.'
+            !loaded() ? 'Loading...' : emptyText()
           }}
         </td>
       </tr>

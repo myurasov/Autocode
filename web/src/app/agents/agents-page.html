@@ -122,7 +122,13 @@
             (keydown.enter)="startEdit(a, $event)"
           >
             @if (editing() === a.id) {
-              <div class="inline-edit">
+              <!-- what happens in the editor stays in it: Cancel's click
+                   must not reach the cell, which would edit again -->
+              <div
+                class="inline-edit"
+                (click)="$event.stopPropagation()"
+                (keydown.enter)="$event.stopPropagation()"
+              >
                 <input
                   type="text"
                   aria-label="Description"

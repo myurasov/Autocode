@@ -2703,6 +2703,58 @@ test("Inbox: the Agent filter by agent, the agent an ask went to, and the addres
 })
 
 /*
+ * The owner, 2026-11-17: "instead of edit button on agents tab, edit on click
+ * to description cell". The review before 1.0.0: Cancel's click reached the
+ * cell and opened the editor again; nothing pressed Cancel in a browser.
+ */
+test("Agents: a click on a description edits it; Cancel and Escape go back, Save saves", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const id = "edit:agent"
+  try {
+    await ownAgent(api, id)
+    await signIn(page, admin)
+    // its row alone, wherever the table's order would put it
+    await page.locator("#match").fill(id)
+    await page.locator("#match").press("Enter")
+    const row = page.locator(`table.agents tr[data-agent="${id}"]`)
+    const cell = row.locator("td.desc")
+    const field = row.getByLabel("Description")
+    await expect(cell).toHaveText("an agent of one test")
+    await cell.click()
+    await expect(field).toBeFocused()
+    await field.fill("changed")
+    await row.getByRole("button", { name: "Cancel" }).click()
+    await expect(field).toHaveCount(0)
+    await expect(cell).toHaveText("an agent of one test")
+    // the cell has the focus again: Enter edits, Escape goes back
+    await expect(cell).toBeFocused()
+    await page.keyboard.press("Enter")
+    await expect(field).toBeFocused()
+    await page.keyboard.press("Escape")
+    await expect(field).toHaveCount(0)
+    // Enter on Cancel cancels too
+    await cell.click()
+    await row.getByRole("button", { name: "Cancel" }).press("Enter")
+    await expect(field).toHaveCount(0)
+    await cell.click()
+    await field.fill("edited in the browser")
+    await row.getByRole("button", { name: "Save" }).click()
+    await expect(field).toHaveCount(0)
+    await expect(cell).toHaveText("edited in the browser")
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      `Saved the description of ${id}.`,
+    )
+  } finally {
+    await api.delete(`/v1/agents/${encodeURIComponent(id)}`, {
+      headers: bearer(admin),
+    })
+    await api.dispose()
+  }
+})
+
+/*
  * The owner, 2026-11-17: "make table header cell hilight entirely when hover
  * (showing it can sort)": on the Agents tab the heading row is two lines tall
  * ("Last Active" wraps), so a one-line button lit only the middle of a cell.
@@ -4325,6 +4377,13 @@ test("Messages: the From and To filters, matched anywhere, kept in the address",
   await expect(to).toHaveValue("own")
   await to.fill("nobody-at-all")
   await to.press("Enter")
+  // the reload put the Processed box off again: only what waits is asked
+  // for, and the table says so (the review before 1.0.0)
+  await expect(page.locator("table.messages tbody")).toHaveText(
+    "No message that waits matches the From and To filters " +
+      "(the Processed box shows the processed ones).",
+  )
+  await page.locator("#show-processed").check()
   await expect(page.locator("table.messages tbody")).toHaveText(
     "No message matches the From and To filters.",
   )
@@ -4590,6 +4649,11 @@ test("Hosts: a machine whose OpenCode is older than the minimum is marked, and a
     await expect(
       page.locator("table.hosts tr[data-host] .too-old"),
     ).toHaveCount(1)
+    // it shows with the Offline box off too, where the server lists it (the
+    // review before 1.0.0: the default view hid the mark)
+    await page.getByRole("checkbox", { name: "Offline" }).uncheck()
+    await expect(mark).toBeVisible()
+    await page.getByRole("checkbox", { name: "Offline" }).check()
     await openTab(page, "Inbox")
     await expect(
       page.locator("table.inbox tr[data-item]").filter({ hasText: title }),

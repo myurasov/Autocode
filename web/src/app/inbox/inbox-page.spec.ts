@@ -194,6 +194,26 @@ describe('InboxPage', () => {
     );
   });
 
+  // The review before 1.0.0: a refresh sent before an action answered after
+  // the refresh that followed it, and put the closed item back.
+  it('an older answer does not replace a newer list', async () => {
+    const page = await open();
+    button(page, 'Refresh')!.click();
+    const slow = http.expectOne((r) => r.url === '/v1/inbox');
+    button(row(page, 'ib_2'), 'Close')!.click();
+    http.expectOne('/v1/inbox/ib_2/close').flush({
+      item: { ...ITEMS[1]!, closed_at: '2026-10-28T12:00:00.000Z' },
+    });
+    await settle(fixture);
+    load([ITEMS[0]!]);
+    await settle(fixture);
+    // the answer from before the close
+    slow.flush({ items: ITEMS });
+    await settle(fixture);
+    expect(page.querySelector('tr[data-item="ib_2"]')).toBeNull();
+    expect(page.querySelector('tr[data-item="ib_1"]')).not.toBeNull();
+  });
+
   // The owner, 2026-11-17: "on inbox i want close all button".
   describe('Close All', () => {
     const ASK: InboxItem = {
@@ -244,6 +264,39 @@ describe('InboxPage', () => {
         (only.querySelector('.toolbar button.close-all') as HTMLButtonElement)
           .disabled,
       ).toBe(true);
+    });
+
+    // The review before 1.0.0: while a new filter's list was on its way,
+    // the confirmation named the new filter and counted the old one's rows.
+    it('is off until the list of the filter in the address shows', async () => {
+      const page = await open();
+      const all = () =>
+        page.querySelector('.toolbar button.close-all') as HTMLButtonElement;
+      expect(all().disabled).toBe(false);
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      await TestBed.inject(Router).navigateByUrl('/?match=worker');
+      await settle(fixture);
+      expect(all().disabled).toBe(true);
+      // and it closes nothing if it is reached all the same
+      await (
+        fixture.componentInstance as unknown as { closeAll(): Promise<void> }
+      ).closeAll();
+      expect(confirm).not.toHaveBeenCalled();
+      http.expectNone((r) => r.url === '/v1/inbox/close-all');
+      load([ITEMS[1]!], false, 'worker');
+      await settle(fixture);
+      expect(all().disabled).toBe(false);
+      all().click();
+      expect(confirm).toHaveBeenCalledWith(
+        'Close 1 alert of worker?\n\n' +
+          'Questions, permissions and approvals stay open.',
+      );
+      http
+        .expectOne((r) => r.url === '/v1/inbox/close-all')
+        .flush({ closed: 1 });
+      await settle(fixture);
+      load([], false, 'worker');
+      confirm.mockRestore();
     });
 
     it("keeps to the Agent filter's agents", async () => {

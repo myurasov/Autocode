@@ -8,7 +8,8 @@
  * filter that would hide it cleared, or a line that says it is not there.
  * An agent in the error state (its turns fail) shows its error type and how
  * its retries go. The owner can edit an agent's description (a click on its
- * cell: the owner, 2026-11-17), pause or resume
+ * cell: the owner, 2026-11-17; the rows keep their order meanwhile), pause or
+ * resume
  * its injections, retry one in error now, give it a new token or unregister it
  * (the last two ask for a confirmation first), and stop all agents (after a
  * confirmation) or resume the ones Stop All paused; each action's result shows
@@ -40,6 +41,7 @@ import {
 import { HostLink, highlightParam, scrollToHighlight } from '../links';
 import { FoldRow, Folds } from '../fold';
 import { contains } from '../filter';
+import { Latest } from '../latest';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -159,11 +161,36 @@ export class AgentsPage {
     },
     by: 'active',
   });
+  /*
+   * The rows' order while a description is edited: the one they had when
+   * the edit began, so a refresh that would move the row (it worked since)
+   * does not take the focus out of its field (the review before 1.0.0).
+   * Another heading clicked sorts again.
+   */
+  private readonly held = signal<{
+    key: string;
+    dir: string;
+    ids: string[];
+  } | null>(null);
+  private readonly ordered = computed(() => {
+    const sorted = this.sorting.sort(this.agents());
+    const held = this.held();
+    if (
+      !held ||
+      held.key !== this.sorting.key() ||
+      held.dir !== this.sorting.dir()
+    )
+      return sorted;
+    const place = new Map(held.ids.map((id, i) => [id, i]));
+    // agents that came since go last, in the table's order
+    const at = (a: Agent) => place.get(a.id) ?? held.ids.length;
+    return [...sorted].sort((a, b) => at(a) - at(b));
+  });
   // The agents by machine: machines in alphabetical order, agents in the
   // table's order within each.
   protected readonly machines = computed(() => {
     const by = new Map<string, Agent[]>();
-    for (const a of this.sorting.sort(this.agents())) {
+    for (const a of this.ordered()) {
       const machine = a.machine ?? '';
       by.set(machine, [...(by.get(machine) ?? []), a]);
     }
@@ -223,6 +250,8 @@ export class AgentsPage {
   });
 
   private inFlight = 0;
+  // an older answer never takes a newer one's place
+  private readonly latest = new Latest();
   private typing?: ReturnType<typeof setTimeout>;
 
   constructor() {
@@ -271,17 +300,23 @@ export class AgentsPage {
   protected async refresh(): Promise<void> {
     const match = this.applied();
     const gone = this.showGone();
+    // the filter's own answer, and not one older than the list on show
+    const sent = this.latest.next();
+    const mine = () =>
+      match === this.applied() &&
+      gone === this.showGone() &&
+      this.latest.take(sent);
     this.inFlight++;
     try {
       // what was typed matches anywhere (the owner, 2026-11-17)
       const agents = await this.api.agents(contains(match), gone);
-      if (match !== this.applied() || gone !== this.showGone()) return;
+      if (!mine()) return;
       this.agents.set(agents);
       this.listedFor.set(match);
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {
-      if (match === this.applied()) this.error.set(errorText(err));
+      if (mine()) this.error.set(errorText(err));
     } finally {
       this.inFlight--;
       this.loaded.set(true);
@@ -313,6 +348,12 @@ export class AgentsPage {
   protected startEdit(agent: Agent, event?: Event): void {
     if (agent.registered === false || this.editing() === agent.id) return;
     event?.preventDefault();
+    // the rows stay where they are until the edit ends
+    this.held.set({
+      key: this.sorting.key(),
+      dir: this.sorting.dir(),
+      ids: this.ordered().map((a) => a.id),
+    });
     this.editing.set(agent.id);
     this.draft.set(agent.description);
     setTimeout(() => {
@@ -324,8 +365,24 @@ export class AgentsPage {
     });
   }
 
-  protected cancelEdit(): void {
+  // The edit ends: the table's order again, and the focus back on the cell,
+  // so the keyboard goes on from there.
+  private endEdit(): void {
+    const id = this.editing();
     this.editing.set(null);
+    this.held.set(null);
+    if (!id) return;
+    setTimeout(() => {
+      document
+        .querySelector<HTMLElement>(
+          `tr[data-agent="${CSS.escape(id)}"] td.desc`,
+        )
+        ?.focus();
+    });
+  }
+
+  protected cancelEdit(): void {
+    this.endEdit();
   }
 
   protected async saveDescription(agent: Agent): Promise<void> {
@@ -334,7 +391,7 @@ export class AgentsPage {
       this.agents.update((list) =>
         list.map((a) => (a.id === changed.id ? changed : a)),
       );
-      this.editing.set(null);
+      this.endEdit();
       return `Saved the description of ${agent.id}.`;
     });
   }
@@ -361,7 +418,7 @@ export class AgentsPage {
     await this.act(async () => {
       await this.api.unregister(agent.id);
       this.agents.update((list) => list.filter((a) => a.id !== agent.id));
-      if (this.editing() === agent.id) this.editing.set(null);
+      if (this.editing() === agent.id) this.endEdit();
       return `Unregistered ${agent.id}.`;
     });
   }

@@ -24,6 +24,7 @@ import { type AskAnswer, Api, errorText, type InboxItem } from '../api';
 import { IdParts, TimeText } from '../breaks';
 import { localTime } from '../format';
 import { AgentLink } from '../links';
+import { Latest } from '../latest';
 import { leftText } from '../locks/locks-page';
 import { Markdown } from '../markdown';
 import { contains } from '../filter';
@@ -142,6 +143,9 @@ export class InboxPage {
   protected readonly isAsk = isAsk;
   protected readonly askAnswerText = askAnswerText;
   private inFlight = 0;
+  private readonly latest = new Latest();
+  // The Agent filter the list on show was loaded with (null: none yet).
+  private readonly listedFor = signal<string | null>(null);
   private typing?: ReturnType<typeof setTimeout>;
 
   constructor() {
@@ -165,13 +169,19 @@ export class InboxPage {
   protected async refresh(): Promise<void> {
     const all = this.showClosed();
     const match = this.match();
-    const current = () => all === this.showClosed() && match === this.match();
+    // the filters' own answer, and not one older than the list on show
+    const sent = this.latest.next();
+    const current = () =>
+      all === this.showClosed() &&
+      match === this.match() &&
+      this.latest.take(sent);
     this.inFlight++;
     try {
       // what was typed matches anywhere (the owner, 2026-11-17)
       const items = await this.api.inbox(all, contains(match));
       if (!current()) return;
       this.items.set(items);
+      this.listedFor.set(match);
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {
@@ -400,10 +410,17 @@ export class InboxPage {
     if (done) await this.refresh();
   }
 
-  // The open messages and alerts shown: what Close All closes (the owner,
-  // 2026-11-17: "only ... visible (considering filter if any)").
+  /*
+   * The open messages and alerts shown: what Close All closes (the owner,
+   * 2026-11-17: "only ... visible (considering filter if any)"). None while
+   * a new filter's list is on its way: the rows on show are the last
+   * filter's, and the confirmation would count them under the new one's
+   * name (the review before 1.0.0).
+   */
   protected readonly closable = computed(() =>
-    this.page().rows.filter((i) => !i.closed_at && !isAsk(i)),
+    this.listedFor() === this.match()
+      ? this.page().rows.filter((i) => !i.closed_at && !isAsk(i))
+      : [],
   );
 
   protected async closeAll(): Promise<void> {

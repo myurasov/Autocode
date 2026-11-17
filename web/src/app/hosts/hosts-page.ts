@@ -3,7 +3,9 @@
  * connects from, by machine, with the OpenCode process it runs in (marked when
  * its shells get no Autocode values), refreshed every 10 s (one refresh at a
  * time); offline ones only with the Offline box (off by default; the owner,
- * 2026-11-08); the host a link led to (?host=) highlighted and scrolled into
+ * 2026-11-08), but one whose OpenCode is too old always, as the server lists
+ * it offline and its mark must show; the host a link led to (?host=)
+ * highlighted and scrolled into
  * view (the box goes on when it is offline), or a line that says it is not
  * there. The table sorts by a click on a heading, within each machine, by
  * Last Seen (newest first) by default (the owner, 2026-11-17).
@@ -73,11 +75,11 @@ export class HostsPage {
   });
   // The hosts by machine, as on the Agents page: machines in alphabetical
   // order, hosts in the table's order within each; offline ones only when
-  // asked for.
+  // asked for, a too-old one always (the review before 1.0.0).
   protected readonly machines = computed(() => {
     const by = new Map<string, Host[]>();
     for (const h of this.sorting.sort(this.hosts()))
-      if (h.online || this.showOffline())
+      if (h.online || this.showOffline() || h.opencode_supported === false)
         by.set(h.machine, [...(by.get(h.machine) ?? []), h]);
     return [...by]
       .sort(([a], [b]) => a.localeCompare(b))

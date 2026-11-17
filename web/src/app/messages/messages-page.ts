@@ -2,9 +2,11 @@
  * The Messages page: every message, newest first, with its ID, sender and
  * recipient (an agent's a link to the Agents page), subject, text (every
  * message is text), size and state (read, with how and when in the tooltip:
- * the owner, 2026-11-09; processed ones only with the Processed box, off by default),
- * refreshed every 10 s (one refresh at a
- * time); a long text shows its first 200 characters until a click anywhere in
+ * the owner, 2026-11-09; processed ones only with the Processed box, off by
+ * default: the server leaves them out, so a message that waits shows however
+ * many came after it), refreshed every 10 s (one refresh at a time; an older
+ * answer never takes a newer one's place); a long text shows its first 200
+ * characters until a click anywhere in
  * its cell (or Enter) opens it, read whole once, and the next folds it; and a
  * form, collapsed until opened, to send a text as the owner, to an agent ID,
  * a pattern or a list. The From and To fields filter by the sender and the
@@ -22,6 +24,7 @@ import { FOLD_CHARS, localTime } from '../format';
 import { AgentLink } from '../links';
 import { Markdown } from '../markdown';
 import { contains } from '../filter';
+import { Latest } from '../latest';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -123,6 +126,29 @@ export class MessagesPage {
   protected readonly error = signal('');
   protected readonly updatedAt = signal<number | null>(null);
   private inFlight = 0;
+  private readonly latest = new Latest();
+
+  // What the table says when it has no row: nothing waits, or (with the
+  // Processed box, every message) there is none.
+  protected emptyText(): string {
+    const filtered = !!(this.from() || this.toMatch());
+    if (this.showProcessed())
+      return filtered
+        ? 'No message matches the From and To filters.'
+        : 'No messages yet.';
+    return (
+      (filtered
+        ? 'No message that waits matches the From and To filters '
+        : 'No message waits ') + '(the Processed box shows the processed ones).'
+    );
+  }
+
+  // The Processed box: the list is read again, with or without them.
+  protected setShowProcessed(on: boolean): void {
+    if (on === this.showProcessed()) return;
+    this.showProcessed.set(on);
+    void this.refresh();
+  }
 
   // The long texts opened, and what each shows.
   protected readonly opened = signal<ReadonlySet<string>>(new Set());
@@ -161,11 +187,24 @@ export class MessagesPage {
   protected async refresh(): Promise<void> {
     const from = this.from();
     const to = this.toMatch();
-    const current = () => from === this.from() && to === this.toMatch();
+    const processed = this.showProcessed();
+    // the filters' own answer, and not one older than the list on show
+    const sent = this.latest.next();
+    const current = () =>
+      from === this.from() &&
+      to === this.toMatch() &&
+      processed === this.showProcessed() &&
+      this.latest.take(sent);
     this.inFlight++;
     try {
-      // what was typed matches anywhere (the owner, 2026-11-17)
-      const list = await this.api.messages(contains(from), contains(to));
+      // what was typed matches anywhere (the owner, 2026-11-17); with the
+      // Processed box off the server leaves the processed ones out, so a
+      // message that waits shows however many came after it
+      const list = await this.api.messages(
+        contains(from),
+        contains(to),
+        processed,
+      );
       if (!current()) return;
       this.messages.set(list);
       this.error.set('');

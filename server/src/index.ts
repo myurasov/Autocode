@@ -1279,13 +1279,15 @@ export async function startServer(
       access: ["admin"],
       summary:
         "every message, newest first (?agent=, ?limit=; ?from= and ?to= " +
-        "patterns of the sender and the recipient)",
+        "patterns of the sender and the recipient; ?processed=0 without " +
+        "the processed ones)",
       handler: ({ url }) => ({
         messages: messages.all({
           agent: url.searchParams.get("agent") ?? undefined,
           limit: Number(url.searchParams.get("limit")) || undefined,
           from: url.searchParams.get("from") ?? undefined,
           to: url.searchParams.get("to") ?? undefined,
+          processed: url.searchParams.get("processed") !== "0",
         }),
       }),
     },

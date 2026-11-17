@@ -12,7 +12,15 @@
 import type { HttpTestingController } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { el, settle, setup, signedIn, text, type } from '../../testing/helpers';
+import {
+  button,
+  el,
+  settle,
+  setup,
+  signedIn,
+  text,
+  type,
+} from '../../testing/helpers';
 import { FILTER_DELAY_MS } from '../agents/agents-page';
 import type { AgentCost, CostsView } from '../api';
 import { contains } from '../filter';
@@ -574,6 +582,21 @@ describe('CostsPage', () => {
       fixture.destroy();
       vi.useRealTimers();
     }
+  });
+
+  // The review before 1.0.0.
+  it('an older answer does not replace a newer view', async () => {
+    const page = await open();
+    button(page, 'Refresh')!.click();
+    button(page, 'Refresh')!.click();
+    const [slow, fast] = http.match((r) => r.url === '/v1/costs');
+    fast!.flush({ ...view(), agents: [] });
+    await settle(fixture);
+    slow!.flush(view());
+    await settle(fixture);
+    expect(text(page.querySelector('table.costs tbody'))).toBe(
+      'No agent has spent anything or is registered.',
+    );
   });
 
   it('says when there are no agents', async () => {

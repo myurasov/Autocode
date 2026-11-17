@@ -33,6 +33,7 @@ import { IdParts } from '../breaks';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { contains } from '../filter';
+import { Latest } from '../latest';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -228,20 +229,25 @@ export class CostsPage {
     });
   }
 
+  private readonly latest = new Latest();
+
   protected async refresh(): Promise<void> {
     const match = this.match();
     const days = this.days();
+    // the filters' own answer, and not one older than the view on show
+    const sent = this.latest.next();
+    const mine = () =>
+      match === this.match() && days === this.days() && this.latest.take(sent);
     this.inFlight++;
     try {
       // what was typed matches anywhere (the owner, 2026-11-17)
       const view = await this.api.costs(contains(match), days);
-      if (match !== this.match() || days !== this.days()) return;
+      if (!mine()) return;
       this.view.set(view);
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {
-      if (match === this.match() && days === this.days())
-        this.error.set(errorText(err));
+      if (mine()) this.error.set(errorText(err));
     } finally {
       this.inFlight--;
       this.loaded = true;

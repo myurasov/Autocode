@@ -513,14 +513,24 @@ export class Messages {
    * The owner's view: every message, newest first, without bodies; a text
    * message carries its first PREVIEW characters. from and to: ID patterns of
    * the sender and the recipient (the owner, 2026-11-17: the Messages tab's
-   * From and To fields; owner and autocode match their names).
+   * From and To fields; owner and autocode match their names). processed
+   * false: without the processed ones, left out before the limit counts, so
+   * a message that waits is listed however many came after it (the Messages
+   * tab's default view; the review before 1.0.0).
    */
   all(
-    filter: { agent?: string; limit?: number; from?: string; to?: string } = {},
+    filter: {
+      agent?: string
+      limit?: number
+      from?: string
+      to?: string
+      processed?: boolean
+    } = {},
   ): (MessageView & { preview: string })[] {
     const limit = Math.min(Math.max(1, filter.limit ?? 200), 1000)
     const from = filter.from?.trim() ? parsePattern(filter.from) : null
     const to = filter.to?.trim() ? parsePattern(filter.to) : null
+    const open = filter.processed === false ? "state != 'processed'" : "1"
     if (from || to) {
       /*
        * The senders and recipients are matched first, a row at a time and
@@ -533,14 +543,14 @@ export class Messages {
         ? this.db
             .query(
               "SELECT rowid AS n, from_id, to_id FROM messages " +
-                "WHERE from_id = ? OR to_id = ? " +
+                `WHERE (from_id = ? OR to_id = ?) AND ${open} ` +
                 "ORDER BY created_at DESC, rowid DESC",
             )
             .iterate(filter.agent, filter.agent)
         : this.db
             .query(
               "SELECT rowid AS n, from_id, to_id FROM messages " +
-                "ORDER BY created_at DESC, rowid DESC",
+                `WHERE ${open} ORDER BY created_at DESC, rowid DESC`,
             )
             .iterate()
       for (const r of scan as Iterable<any>) {
@@ -561,14 +571,15 @@ export class Messages {
     const rows = filter.agent
       ? this.db
           .query(
-            "SELECT * FROM messages WHERE from_id = ? OR to_id = ? " +
+            "SELECT * FROM messages " +
+              `WHERE (from_id = ? OR to_id = ?) AND ${open} ` +
               "ORDER BY created_at DESC, rowid DESC LIMIT ?",
           )
           .all(filter.agent, filter.agent, limit)
       : this.db
           .query(
-            "SELECT * FROM messages ORDER BY created_at DESC, rowid DESC " +
-              "LIMIT ?",
+            `SELECT * FROM messages WHERE ${open} ` +
+              "ORDER BY created_at DESC, rowid DESC LIMIT ?",
           )
           .all(limit)
     return (rows as any[]).map((r) => ({

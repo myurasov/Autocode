@@ -683,6 +683,105 @@ describe('AgentsPage', () => {
     http.expectNone('/v1/agents/kaggle%3Aworker');
   });
 
+  // The review before 1.0.0: Cancel's click reached the cell, which opened
+  // the editor again.
+  it('Cancel goes back unchanged, by a click and by Enter on it; a save leaves the editor', async () => {
+    const page = await open();
+    const lead = page.querySelector('tr[data-agent="kaggle:lead"]')!;
+    const cell = lead.querySelector('td.desc') as HTMLElement;
+    const field = () => lead.querySelector('input[aria-label="Description"]');
+    cell.click();
+    await settle(fixture);
+    type(field(), 'changed');
+    button(lead, 'Cancel')!.click();
+    await settle(fixture);
+    expect(field()).toBeNull();
+    expect(text(cell)).toBe('leads the team');
+    // the cell has the focus again, so Enter edits once more
+    expect(document.activeElement).toBe(cell);
+    // Enter on Cancel: the key starts no edit, and its click cancels
+    cell.click();
+    await settle(fixture);
+    const cancel = button(lead, 'Cancel')!;
+    cancel.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    cancel.click();
+    await settle(fixture);
+    expect(field()).toBeNull();
+    // Save's click does not start over either
+    cell.click();
+    await settle(fixture);
+    type(field(), 'changed');
+    button(lead, 'Save')!.click();
+    http
+      .expectOne('/v1/agents/kaggle%3Alead')
+      .flush({ agent: { ...AGENTS[0], description: 'changed' } });
+    await settle(fixture);
+    expect(field()).toBeNull();
+    expect(text(cell)).toBe('changed');
+    expect(document.activeElement).toBe(cell);
+  });
+
+  // The review before 1.0.0: a refresh that moved the edited row took the
+  // focus out of its field, without a word.
+  it('keeps the rows where they are while a description is edited; the order applies after', async () => {
+    const one = {
+      ...AGENTS[0]!,
+      id: 'a:one',
+      last_active: '2026-10-28T11:00:00.000Z',
+    };
+    const two = {
+      ...AGENTS[0]!,
+      id: 'a:two',
+      last_active: '2026-10-28T10:00:00.000Z',
+    };
+    const page = await open([one, two]);
+    const order = () =>
+      [...page.querySelectorAll('tr[data-agent]')].map((r) =>
+        r.getAttribute('data-agent'),
+      );
+    expect(order()).toEqual(['a:one', 'a:two']);
+    const row = page.querySelector('tr[data-agent="a:two"]')!;
+    (row.querySelector('td.desc') as HTMLElement).click();
+    await settle(fixture);
+    const field = row.querySelector(
+      'input[aria-label="Description"]',
+    ) as HTMLInputElement;
+    type(field, 'half typed');
+    // a:two worked since: by Last Active it is now the first
+    button(page, 'Refresh')!.click();
+    load([one, { ...two, last_active: '2026-10-28T12:00:00.000Z' }]);
+    await settle(fixture);
+    expect(order()).toEqual(['a:one', 'a:two']);
+    expect(document.activeElement).toBe(field);
+    expect(field.value).toBe('half typed');
+    // Escape: the table's order again
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await settle(fixture);
+    expect(order()).toEqual(['a:two', 'a:one']);
+  });
+
+  // The review before 1.0.0: a refresh sent before an action answered after
+  // the refresh that followed it, and put the old list back.
+  it('an older answer does not replace a newer list', async () => {
+    const page = await open();
+    const lead = () => page.querySelector('tr[data-agent="kaggle:lead"]')!;
+    button(page, 'Refresh')!.click();
+    const slow = http.expectOne((r) => r.url === '/v1/agents');
+    button(lead(), 'Pause')!.click();
+    const paused = { ...AGENTS[0]!, status: 'paused', paused: 'owner' };
+    http.expectOne('/v1/agents/kaggle%3Alead/pause').flush({ agent: paused });
+    await settle(fixture);
+    load([paused, AGENTS[1]!]);
+    await settle(fixture);
+    expect(text(lead().querySelector('td.status'))).toBe('paused');
+    // the answer from before the pause
+    slow.flush({ agents: AGENTS });
+    await settle(fixture);
+    expect(text(lead().querySelector('td.status'))).toBe('paused');
+  });
+
   it("an unregistered agent's description does not edit", async () => {
     const page = await open([{ ...AGENTS[0]!, registered: false }]);
     const cell = page.querySelector(

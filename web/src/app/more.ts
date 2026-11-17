@@ -31,8 +31,9 @@ export class Paged {
     return this.counts()[key] ?? PAGE_ROWS;
   }
 
-  more(key: string): void {
-    this.counts.update((c) => ({ ...c, [key]: this.count(key) + PAGE_ROWS }));
+  // 25 more, or as many as asked for.
+  more(key: string, by = PAGE_ROWS): void {
+    this.counts.update((c) => ({ ...c, [key]: this.count(key) + by }));
   }
 
   // A new list: back to the first 25.

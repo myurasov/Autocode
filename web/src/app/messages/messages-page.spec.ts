@@ -111,6 +111,12 @@ describe('MessagesPage', () => {
     // the From and To fields, matched anywhere (the owner, 2026-11-17)
     expect(req.request.params.get('from')).toBe(from ? contains(from) : null);
     expect(req.request.params.get('to')).toBe(to ? contains(to) : null);
+    // with the Processed box off the server leaves the processed ones out,
+    // so one that waits shows however old it is (the review before 1.0.0)
+    const box = fixture
+      ? (el(fixture).querySelector('#show-processed') as HTMLInputElement)
+      : null;
+    expect(req.request.params.get('processed')).toBe(box?.checked ? null : '0');
     req.flush({ messages });
   }
 
@@ -125,6 +131,8 @@ describe('MessagesPage', () => {
     ) as HTMLInputElement;
     if (read && box && !box.checked) {
       box.click();
+      // the box asks the server again, for every message
+      load(messages);
       await settle(fixture);
     }
     return el(fixture);
@@ -291,8 +299,49 @@ describe('MessagesPage', () => {
     // msg_1 is processed: hidden
     expect(ids()).toEqual(['msg_2']);
     box.click();
+    load();
     await settle(fixture);
     expect(ids()).toEqual(['msg_2', 'msg_1']);
+    // off again: the server is asked for the ones not processed
+    box.click();
+    load([MESSAGES[0]!]);
+    await settle(fixture);
+    expect(ids()).toEqual(['msg_2']);
+  });
+
+  // The review before 1.0.0: the page read the newest 200 and hid the
+  // processed ones itself, so "every one is processed" could be false.
+  it('with the Processed box off, says that no message waits; with a filter, that none matches', async () => {
+    const page = await open([], false);
+    const body = () => text(page.querySelector('table.messages tbody'));
+    expect(body()).toBe(
+      'No message waits (the Processed box shows the processed ones).',
+    );
+    await TestBed.inject(Router).navigateByUrl('/?from=lead');
+    await settle(fixture);
+    load([], 'lead');
+    await settle(fixture);
+    expect(body()).toBe(
+      'No message that waits matches the From and To filters ' +
+        '(the Processed box shows the processed ones).',
+    );
+  });
+
+  // The review before 1.0.0.
+  it('an older answer does not replace a newer list', async () => {
+    const page = await open();
+    button(page, 'Refresh')!.click();
+    button(page, 'Refresh')!.click();
+    const [slow, fast] = http.match((r) => r.url === '/v1/messages');
+    fast!.flush({ messages: [MESSAGES[0]!] });
+    await settle(fixture);
+    slow!.flush({ messages: MESSAGES });
+    await settle(fixture);
+    expect(
+      [...page.querySelectorAll('table.messages tr[data-message]')].map((r) =>
+        r.getAttribute('data-message'),
+      ),
+    ).toEqual(['msg_2']);
   });
 
   // The owner, 2026-11-09: a text as markdown, in the page's own font; a

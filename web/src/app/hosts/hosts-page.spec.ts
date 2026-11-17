@@ -124,6 +124,35 @@ describe('HostsPage', () => {
     );
   });
 
+  // The review before 1.0.0: the server lists a too-old host offline, and
+  // the Offline box is off by default, so its mark never showed.
+  it('shows a too-old host with the Offline box off; other offline hosts stay hidden', async () => {
+    signedIn();
+    fixture = TestBed.createComponent(HostsPage);
+    load([
+      { ...HOSTS[1]!, id: 'laptop:gone:1' },
+      {
+        ...HOSTS[1]!,
+        opencode_version: '2.2.0',
+        opencode_supported: false,
+        opencode_needs: '2.3.0',
+      },
+    ]);
+    await settle(fixture);
+    const page = el(fixture);
+    expect(
+      (page.querySelector('#show-offline') as HTMLInputElement).checked,
+    ).toBe(false);
+    expect(
+      [...page.querySelectorAll('tr[data-host]')].map((r) =>
+        r.getAttribute('data-host'),
+      ),
+    ).toEqual(['laptop:project:6f3d676f']);
+    expect(text(page.querySelector('tr[data-host] .too-old'))).toBe(
+      'too old: needs v2.3.0 or later',
+    );
+  });
+
   it('lists hosts by machine with folder, status, process, versions and last seen (ISO in the tooltip)', async () => {
     const page = await open();
     expect(page.querySelector('h2')).toBeNull();

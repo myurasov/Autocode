@@ -77,7 +77,8 @@ export class Sorting<T> implements SortControl {
       if (
         v &&
         typeof v.key === 'string' &&
-        v.key in spec.columns &&
+        // its own column: not a member every object has, like toString
+        Object.hasOwn(spec.columns, v.key) &&
         (v.dir === 'asc' || v.dir === 'desc')
       )
         start = { key: v.key, dir: v.dir };
@@ -96,7 +97,7 @@ export class Sorting<T> implements SortControl {
 
   // A heading clicked: its column, or the other way if it is the sorted one.
   click(key: string): void {
-    if (!(key in this.spec.columns)) return;
+    if (!Object.hasOwn(this.spec.columns, key)) return;
     const now = this.state();
     const next =
       now.key === key

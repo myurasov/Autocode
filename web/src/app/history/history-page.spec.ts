@@ -377,6 +377,50 @@ describe('HistoryPage', () => {
     expect(moreRow(page)).toBeNull();
   });
 
+  // The review before 1.0.0: oldest first, the 100 older entries sort above
+  // the rows on show, and 75 of those went behind "...".
+  it('"..." past what is loaded keeps the rows on show when the older ones sort above them', async () => {
+    const page = await open(run(200, PAGE));
+    // Time, oldest first
+    (page.querySelector('table.history thead th') as HTMLElement).click();
+    await settle(fixture);
+    await showLoaded(page);
+    const ends = () => [ids(page)[0], ids(page).at(-1), rows(page).length];
+    expect(ends()).toEqual([101, 200, 100]);
+    moreRow(page)!.click();
+    await settle(fixture);
+    load(run(100, PAGE), { before: 101 });
+    await settle(fixture);
+    expect(ends()).toEqual([1, 200, 200]);
+  });
+
+  // The review before 1.0.0: an older answer merged after a newer one left
+  // the newest entry last, and "..." then asked for the wrong page.
+  it('an older answer does not replace a newer one', async () => {
+    const page = await open(run(100, PAGE));
+    button(page, 'Refresh')!.click();
+    button(page, 'Refresh')!.click();
+    await settle(fixture);
+    const [slow, fast] = http.match((r) => r.url === '/v1/history');
+    for (const kinds of http.match('/v1/history/kinds'))
+      kinds.flush({ kinds: KINDS });
+    fast!.flush({ history: run(101, PAGE) });
+    await settle(fixture);
+    slow!.flush({ history: run(100, PAGE) });
+    await settle(fixture);
+    expect(ids(page)[0]).toBe(101);
+    // the 101 loaded entries, then "..." once more
+    await showLoaded(page);
+    moreRow(page)!.click();
+    await settle(fixture);
+    expect(rows(page).length).toBe(101);
+    moreRow(page)!.click();
+    await settle(fixture);
+    // the page before the oldest entry loaded
+    load([], { before: 1 });
+    await settle(fixture);
+  });
+
   it('the refresh merges the newest page at the top and keeps what was loaded before', async () => {
     const page = await open(run(300, PAGE));
     await showLoaded(page);

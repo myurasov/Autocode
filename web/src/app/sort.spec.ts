@@ -120,6 +120,21 @@ describe('Sorting', () => {
     expect([sorting().key(), sorting().dir()]).toEqual(['at', 'desc']);
   });
 
+  // The review before 1.0.0: "toString" passed as a column, and sort threw.
+  it('a stored choice that names an Object member is the default; a click on one does nothing', () => {
+    for (const key of ['toString', 'constructor', '__proto__']) {
+      localStorage.setItem(
+        'autocode.sort.test',
+        JSON.stringify({ key, dir: 'asc' }),
+      );
+      const s = sorting();
+      expect(s.key()).toBe('at');
+      s.click(key);
+      expect(s.key()).toBe('at');
+      expect(() => s.sort(ROWS)).not.toThrow();
+    }
+  });
+
   it('ties keep their order', () => {
     const s = new Sorting<{ id: string; g: string }>('ties', {
       columns: { g: { text: (r) => r.g } },

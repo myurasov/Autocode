@@ -5,8 +5,9 @@
  * whose OpenCode is too old loses its session tokens, raises one alert only
  * and none of the loader's; Close All refuses a body that is not an object;
  * a Subagent's ask outlives its session's turn (OpenCode 2.3 runs Subagents
- * in the background); ?agent= applies with ?from= and ?to=; "compaction
- * done" comes only after a compaction.
+ * in the background); ?agent= applies with ?from= and ?to=; ?processed=0
+ * leaves the processed messages out (the Messages tab's default view);
+ * "compaction done" comes only after a compaction.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import {
@@ -254,6 +255,37 @@ describe("GET /v1/messages", () => {
       "team:a>team:b",
       "team:b>owner",
     ])
+  })
+})
+
+describe("GET /v1/messages?processed=0", () => {
+  // The web reviewer: the Messages tab read the newest 200 and hid the
+  // processed ones itself, so an old message that still waits never showed.
+  test("leaves the processed ones out before the limit applies", async () => {
+    const a = await registered(t, HOST, "ses_a", "team:a")
+    const b = await registered(t, HOST, "ses_b", "team:b")
+    await owner("POST", "/v1/agents/team:b/pause")
+    await as(a, "POST", "/v1/messages", { to: "team:b", text: "waits" })
+    for (const text of ["one", "two", "three"])
+      await as(b, "POST", "/v1/messages", { to: "team:a", text })
+    await as(a, "POST", "/v1/me/messages/read", {})
+    const list = async (query: string) =>
+      (await owner("GET", `/v1/messages?${query}`)).body.messages.map(
+        (m: any) => `${m.to} ${m.state}`,
+      )
+    expect(await list("limit=2")).toEqual([
+      "team:a processed",
+      "team:a processed",
+    ])
+    expect(await list("limit=2&processed=0")).toEqual(["team:b queued"])
+    expect(await list("processed=0&from=team:a")).toEqual(["team:b queued"])
+    expect(await list("processed=0&from=team:b")).toEqual([])
+    expect(await list("processed=0&agent=team:a")).toEqual(["team:b queued"])
+    expect(await list("processed=0&agent=team:a&to=*:b")).toEqual([
+      "team:b queued",
+    ])
+    // any other value: every message, as without it
+    expect((await list("processed=1")).length).toBe(4)
   })
 })
 

@@ -18,6 +18,7 @@ import { IdParts, TimeText } from '../breaks';
 import { folded } from '../format';
 import { AgentLink, HostLink } from '../links';
 import { contains } from '../filter';
+import { Latest } from '../latest';
 import { MoreRow, PAGE_ROWS, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -107,10 +108,24 @@ export class HistoryPage {
     paged(this.sorting.sort(this.entries()), this.paging.count('history')),
   );
 
-  // "...": 25 more of what is loaded; past it, the next 100 from the server.
+  /*
+   * "...": 25 more of what is loaded; past it, the next 100 from the server,
+   * and as many more rows as keep the ones on show on show (oldest first,
+   * the older entries sort above them; the review before 1.0.0).
+   */
   protected async showMore(): Promise<void> {
-    if (!this.page().left && this.more()) await this.older();
-    this.paging.more('history');
+    let by = PAGE_ROWS;
+    if (!this.page().left && this.more()) {
+      const shown = new Set(this.page().rows.map((e) => e.id));
+      await this.older();
+      const rows = this.sorting.sort(this.entries());
+      let last = -1;
+      rows.forEach((e, i) => {
+        if (shown.has(e.id)) last = i;
+      });
+      by = Math.max(by, last + 1 - this.paging.count('history'));
+    }
+    this.paging.more('history', by);
   }
   protected readonly loaded = signal(false);
   protected readonly loadingOlder = signal(false);
@@ -120,6 +135,8 @@ export class HistoryPage {
   protected readonly opened = signal<ReadonlySet<number>>(new Set());
 
   private inFlight = 0;
+  // an older answer never takes a newer one's place
+  private readonly latest = new Latest();
   private typing?: ReturnType<typeof setTimeout>;
 
   constructor() {
@@ -155,6 +172,7 @@ export class HistoryPage {
    */
   protected async refresh(reset = false): Promise<void> {
     const filters = this.filters();
+    const sent = this.latest.next();
     this.inFlight++;
     const kinds = this.api.historyKinds().then(
       (list) => this.kinds.set(list),
@@ -167,7 +185,7 @@ export class HistoryPage {
         kind: this.kind(),
         limit: PAGE,
       });
-      if (filters !== this.filters()) return;
+      if (filters !== this.filters() || !this.latest.take(sent)) return;
       const merged = reset
         ? { entries: page, replaced: true }
         : mergeNewest(this.entries(), page);
@@ -180,7 +198,7 @@ export class HistoryPage {
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {
-      if (filters !== this.filters()) return;
+      if (filters !== this.filters() || !this.latest.take(sent)) return;
       this.error.set(errorText(err));
       if (reset) {
         this.entries.set([]);

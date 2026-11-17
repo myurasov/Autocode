@@ -442,6 +442,19 @@ describe('LocksPage', () => {
     }
   });
 
+  // The review before 1.0.0.
+  it('an older answer does not replace a newer list', async () => {
+    const page = await open();
+    button(page, 'Refresh')!.click();
+    button(page, 'Refresh')!.click();
+    const [slow, fast] = http.match((r) => r.url === '/v1/locks');
+    fast!.flush({ locks: [locks()[0]!] });
+    await settle(fixture);
+    slow!.flush({ locks: locks() });
+    await settle(fixture);
+    expect(names(page)).toEqual([locks()[0]!.name]);
+  });
+
   it('says when there are no locks, and when none matches the filter', async () => {
     const page = await open([]);
     const empty = page.querySelector('table.locks tbody td')!;
