@@ -77,6 +77,7 @@ owner:
                                          over the last X days
   inbox [--all] [--match P] | inbox close ID
                                          the owner's inbox (P: agents)
+  inbox close --all [--match P]          close its messages and alerts
   answer ID TEXT...                      answer a message, question, permission
                                          (once|always|reject) or approval
   pause AGENT | resume AGENT             pause or resume an agent's injections

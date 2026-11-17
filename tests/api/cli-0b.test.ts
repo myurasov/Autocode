@@ -274,6 +274,20 @@ describe("owner commands", () => {
     expect((await cli(["inbox"], asAdmin())).stdout).toContain(
       "the inbox is empty",
     )
+    // Close All (the owner, 2026-11-17), of the agents that match too
+    await cli(["send", "owner", "one"], asWorker())
+    await cli(["send", "owner", "two"], asLead())
+    const some = await cli(
+      ["inbox", "close", "--all", "--match", "kaggle:w*"],
+      asAdmin(),
+    )
+    expect(some.code, some.stderr).toBe(0)
+    expect(some.stdout).toContain("closed 1 inbox item; asks stay open")
+    const rest = await cli(["inbox", "close", "--all"], asAdmin())
+    expect(rest.stdout).toContain("closed 1 inbox item; asks stay open")
+    expect((await cli(["inbox"], asAdmin())).stdout).toContain(
+      "the inbox is empty",
+    )
     const reply = (await cli(["messages", "--json"], asAdmin())).stdout
     expect(
       JSON.parse(reply).some(

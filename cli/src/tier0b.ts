@@ -197,16 +197,32 @@ export async function messages(args: Parsed): Promise<number> {
 export async function inbox(args: Parsed): Promise<number> {
   const [sub, id] = args.words
   const c = connect(args)
+  const all = args.switches.has("all") || args.flags.all !== undefined
+  // an agent pattern, as on the Inbox tab (the owner, 2026-11-17)
+  const match = typeof args.flags.match === "string" ? args.flags.match : ""
+  if (sub === "close" && all && !id) {
+    // Close All (the owner, 2026-11-17): messages and alerts; asks stay
+    const q = match.trim() ? `?match=${enc(match.trim())}` : ""
+    const res = await c.call("POST", `/v1/inbox/close-all${q}`)
+    const n = Number(res.closed)
+    print(
+      args,
+      res,
+      () => `closed ${n} inbox item${n === 1 ? "" : "s"}; asks stay open`,
+    )
+    return 0
+  }
   if (sub === "close") {
-    if (!id) usage("inbox close ID")
+    if (!id) usage("inbox close ID | inbox close --all [--match PATTERN]")
     const res = await c.call("POST", `/v1/inbox/${enc(id)}/close`)
     print(args, res, () => `closed ${id}`)
     return 0
   }
-  if (sub) usage("inbox [--all] [--match PATTERN] | inbox close ID")
-  const all = args.switches.has("all") || args.flags.all !== undefined
-  // an agent pattern, as on the Inbox tab (the owner, 2026-11-17)
-  const match = typeof args.flags.match === "string" ? args.flags.match : ""
+  if (sub)
+    usage(
+      "inbox [--all] [--match PATTERN] | inbox close ID | " +
+        "inbox close --all [--match PATTERN]",
+    )
   const query = new URLSearchParams()
   if (all) query.set("all", "1")
   if (match.trim()) query.set("match", match.trim())

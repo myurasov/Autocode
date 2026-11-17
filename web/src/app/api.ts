@@ -805,6 +805,23 @@ export class Api {
     ).ask;
   }
 
+  // Close All (the owner, 2026-11-17): the open messages and alerts, of the
+  // agents that match; asks stay open. How many closed.
+  async closeAll(match = ''): Promise<number> {
+    const params = match.trim()
+      ? new HttpParams().set('match', match.trim())
+      : undefined;
+    return (
+      await this.call(
+        this.http.post<{ closed: number }>(
+          '/v1/inbox/close-all',
+          {},
+          { params },
+        ),
+      )
+    ).closed;
+  }
+
   async closeItem(id: string): Promise<InboxItem> {
     return (
       await this.call(

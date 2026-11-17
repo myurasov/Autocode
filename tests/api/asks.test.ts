@@ -588,6 +588,42 @@ describe("the owner's inbox lists every kind", () => {
     expect(bad.body.error.code).toBe("bad_pattern")
   })
 
+  // The owner, 2026-11-17: "on inbox i want close all button". It closes the
+  // open messages and alerts (of the agents that match, with ?match=); asks
+  // stay open: an agent's turn waits for their answer.
+  test("close-all closes the open messages and alerts (of matching agents); asks stay open", async () => {
+    await as(a, "POST", "/v1/messages", { to: "owner", text: "one" })
+    await as(a, "POST", "/v1/messages", { to: "owner", text: "two" })
+    await as(b, "POST", "/v1/messages", { to: "owner", text: "lead's" })
+    await as(a, "POST", "/v1/me/approvals", { text: "Go?" })
+    const kinds = async (q = "") =>
+      (await owner("GET", `/v1/inbox${q}`)).body.items.map(
+        (i: any) => `${i.kind}:${i.agent}`,
+      )
+    // with a pattern: only the worker's
+    const some = await owner("POST", "/v1/inbox/close-all?match=team:w*")
+    expect(some.status).toBe(200)
+    expect(some.body.closed).toBe(2)
+    expect(await kinds()).toEqual(["message:team:lead", "approval:team:worker"])
+    // the messages count as processed, as with Close
+    const worker = (
+      await owner("GET", "/v1/messages?agent=team:worker")
+    ).body.messages.filter((m: any) => m.to === "owner")
+    expect(worker.map((m: any) => m.state)).toEqual(["processed", "processed"])
+    // all of them; the ask stays
+    const rest = await owner("POST", "/v1/inbox/close-all")
+    expect(rest.body.closed).toBe(1)
+    expect(await kinds()).toEqual(["approval:team:worker"])
+    expect((await owner("POST", "/v1/inbox/close-all")).body.closed).toBe(0)
+    const closed = (await owner("GET", "/v1/history?kind=inbox.closed")).body
+      .history
+    expect(closed.length).toBe(3)
+    // a bad pattern is the API's own error; the owner's only
+    const bad = await owner("POST", "/v1/inbox/close-all?match=a%20b")
+    expect(bad.body.error.code).toBe("bad_pattern")
+    expect((await as(a, "POST", "/v1/inbox/close-all")).status).toBe(403)
+  })
+
   // The agents CI (2026-11-08): the owner answers what the inbox lists by
   // its ID, an ask too (models ask approval for "ask the owner").
   test("an ask is answered and closed through the inbox's own routes too", async () => {

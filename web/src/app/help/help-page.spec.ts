@@ -229,6 +229,7 @@ describe('HelpPage', () => {
       'autocode agents [PATTERN]',
       'autocode hosts',
       'autocode inbox [--all] [--match PATTERN]',
+      'autocode inbox close --all [--match PATTERN]',
       'autocode answer ITEM TEXT...',
       'autocode pause AGENT / resume AGENT',
       'autocode stop-all / resume-all',
@@ -399,6 +400,11 @@ describe('HelpPage', () => {
     expect(inbox).toContain(
       'Agent filters by an ID pattern: the agent of an item, or the agent an ask was sent to',
     );
+    // Close All (the owner, 2026-11-17)
+    expect(inbox).toContain(
+      'Close All closes the open messages and alerts listed (of the Agent filter',
+    );
+    expect(inbox).toContain('questions, permissions and approvals stay open');
     for (const part of [
       'questions',
       'permission prompts',

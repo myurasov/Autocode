@@ -10,7 +10,8 @@
  * first; Closed with the answers given; the empty inbox; a failed
  * answer; "Updated" in the footer; and the 10 s refresh (one at a time); the
  * Agent filter (the owner, 2026-11-17), in the address, a second after the
- * last key.
+ * last key; Close All (the owner, 2026-11-17): the open messages and alerts
+ * listed, after a confirmation, the filter's agents only.
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -184,6 +185,86 @@ describe('InboxPage', () => {
     expect(text(page.querySelector('.toolbar .notice'))).toBe(
       'Closed the alert about kaggle:worker.',
     );
+  });
+
+  // The owner, 2026-11-17: "on inbox i want close all button".
+  describe('Close All', () => {
+    const ASK: InboxItem = {
+      ...ITEMS[0]!,
+      id: 'ask_1',
+      kind: 'approval',
+      title: 'Approval',
+      text: 'Go?',
+      routed: 'owner',
+    };
+
+    it('closes the open messages and alerts after a confirmation; asks stay', async () => {
+      const page = await open([...ITEMS, ASK]);
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const all = page.querySelector('.toolbar button.close-all');
+      expect(text(all)).toBe('Close All');
+      (all as HTMLButtonElement).click();
+      expect(confirm).toHaveBeenCalledWith(
+        'Close 1 message and 1 alert?\n\n' +
+          'Questions, permissions and approvals stay open.',
+      );
+      const req = http.expectOne((r) => r.url === '/v1/inbox/close-all');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.params.get('match')).toBeNull();
+      req.flush({ closed: 2 });
+      await settle(fixture);
+      load([ASK]);
+      await settle(fixture);
+      expect(text(page.querySelector('.toolbar .notice'))).toBe(
+        'Closed 2 items.',
+      );
+      confirm.mockRestore();
+    });
+
+    it('asks nothing and does nothing when cancelled; off when none is open', async () => {
+      const page = await open([...ITEMS, ASK]);
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      (
+        page.querySelector('.toolbar button.close-all') as HTMLButtonElement
+      ).click();
+      http.expectNone((r) => r.url === '/v1/inbox/close-all');
+      confirm.mockRestore();
+      fixture.destroy();
+      const only = await open([ASK]);
+      expect(
+        (only.querySelector('.toolbar button.close-all') as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+
+    it("keeps to the Agent filter's agents", async () => {
+      signedIn();
+      await TestBed.inject(Router).navigateByUrl('/?match=kaggle:w*');
+      fixture = TestBed.createComponent(InboxPage);
+      await settle(fixture);
+      load([ITEMS[1]!], false, 'kaggle:w*');
+      await settle(fixture);
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      (
+        el(fixture).querySelector(
+          '.toolbar button.close-all',
+        ) as HTMLButtonElement
+      ).click();
+      expect(confirm).toHaveBeenCalledWith(
+        'Close 1 alert of kaggle:w*?\n\n' +
+          'Questions, permissions and approvals stay open.',
+      );
+      const req = http.expectOne((r) => r.url === '/v1/inbox/close-all');
+      expect(req.request.params.get('match')).toBe('kaggle:w*');
+      req.flush({ closed: 1 });
+      await settle(fixture);
+      load([], false, 'kaggle:w*');
+      await settle(fixture);
+      expect(text(el(fixture).querySelector('.toolbar .notice'))).toBe(
+        'Closed 1 item.',
+      );
+      confirm.mockRestore();
+    });
   });
 
   // The box is "Closed" (the owner, 2026-11-09).

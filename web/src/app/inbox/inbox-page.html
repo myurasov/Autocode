@@ -7,7 +7,8 @@
   question's options, a permission's Allow Once, Allow Always and Reject, an
   approval's options, Approve and Reject; its text once, under a title that
   names the agent); and when the list last loaded. The Agent field filters by
-  an agent pattern (the owner, 2026-11-17).
+  an agent pattern (the owner, 2026-11-17); Close All closes the open messages
+  and alerts listed (the owner, 2026-11-17).
 -->
 
 <div class="toolbar">
@@ -29,6 +30,15 @@
     (input)="typed($any($event.target).value)"
     (keydown.enter)="applyMatch()"
   />
+  <button
+    type="button"
+    class="close-all"
+    [disabled]="busy() || !closable().length"
+    title="Close the open messages and alerts listed; asks stay open"
+    (click)="closeAll()"
+  >
+    Close All
+  </button>
   <label class="check" for="show-closed">
     <input
       id="show-closed"

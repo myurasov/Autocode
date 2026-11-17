@@ -2668,6 +2668,60 @@ test("Inbox: the Agent filter by agent, the agent an ask went to, and the addres
 })
 
 /*
+ * The owner, 2026-11-17: "on inbox i want close all button". Close All, with
+ * the Agent filter on the long agent: its messages and alerts close after the
+ * confirmation, its ask stays, and the other agents' items are not touched.
+ */
+test("Inbox: Close All closes the listed messages and alerts; asks and other agents' items stay", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const header = `CloseAll ${Date.now()}`
+  try {
+    for (const subject of [`${header} a`, `${header} b`]) {
+      const sent = await api.post("/v1/messages", {
+        headers: bearer(longToken),
+        data: { to: "owner", subject, text: "Close me." },
+      })
+      expect(sent.status(), await sent.text()).toBe(201)
+    }
+    const asked = await api.post("/v1/me/approvals", {
+      headers: bearer(longToken),
+      data: { text: `${header}: may I?` },
+    })
+    expect(asked.ok(), await asked.text()).toBe(true)
+    await signIn(page, admin)
+    await page.goto(`/inbox?match=${encodeURIComponent(LONG.agent)}`)
+    const rows = page.locator("table.inbox tbody tr[data-item]")
+    await expect(rows.filter({ hasText: header })).toHaveCount(3)
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toContain(`of ${LONG.agent}?`)
+      expect(dialog.message()).toContain(
+        "Questions, permissions and approvals stay open.",
+      )
+      await dialog.accept()
+    })
+    await page.locator(".toolbar button.close-all").click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      /^Closed \d+ items?\.$/,
+    )
+    // only the approval of this test is left of its items
+    await expect(rows.filter({ hasText: header })).toHaveCount(1)
+    await expect(
+      rows.filter({ hasText: header }).locator("td.kind"),
+    ).toHaveText("Approval")
+    // the other agents' items are still there
+    const others = (
+      await (await api.get("/v1/inbox", { headers: bearer(admin) })).json()
+    ).items.filter((i: any) => i.agent === "smoke:agent")
+    expect(others.length).toBeGreaterThan(0)
+  } finally {
+    await answerAsks(api)
+    await api.dispose()
+  }
+})
+
+/*
  * The Inbox with a question, a permission and an approval open: it fits 1280
  * px (at 1024 px it may scroll inside the frame, never the window); its
  * buttons are in Title Case (an option is the agent's words) and their text

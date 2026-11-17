@@ -309,6 +309,23 @@ export async function startServer(
       asks.of(agent).length > 0
     jobs.turnEnded(agent, outcome === "succeeded" ? reply : null, pending)
   }
+  /*
+   * The Inbox's agent filter (the owner, 2026-11-17), ?match= an agent
+   * pattern: an item's agent, or the agent an ask was sent to.
+   */
+  const inboxMatch = (url: URL) => {
+    const match = url.searchParams.get("match")?.trim() || null
+    const pattern = match ? parsePattern(match) : null
+    const routedTo = (x: any) =>
+      typeof x.routed === "string" && x.routed.startsWith("agent:")
+        ? x.routed.slice("agent:".length)
+        : null
+    return (x: any) =>
+      !pattern ||
+      [x.agent, routedTo(x)].some(
+        (id) => typeof id === "string" && matchesPattern(pattern, id),
+      )
+  }
   // an answer's instruction, followed to its ack (the review of 0d)
   const answerAck = (instructionId: string) => hosts.instruction(instructionId)
   const answerAlert = (agent: string, title: string, body: string) =>
@@ -1234,18 +1251,7 @@ export async function startServer(
         "an agent pattern: the item's agent, or the agent an ask was sent to)",
       handler: ({ url }) => {
         const all = url.searchParams.get("all") === "1"
-        // the owner, 2026-11-17: filtered by agent, as the other tabs are
-        const match = url.searchParams.get("match")?.trim() || null
-        const pattern = match ? parsePattern(match) : null
-        const routedTo = (x: any) =>
-          typeof x.routed === "string" && x.routed.startsWith("agent:")
-            ? x.routed.slice("agent:".length)
-            : null
-        const matches = (x: any) =>
-          !pattern ||
-          [x.agent, routedTo(x)].some(
-            (id) => typeof id === "string" && matchesPattern(pattern, id),
-          )
+        const matches = inboxMatch(url)
         // messages, alerts and asks in one list, oldest first
         const items: any[] = [
           ...inbox.list(all),
@@ -1352,6 +1358,28 @@ export async function startServer(
             ? asks.answer(id, "owner", await body())
             : inbox.answer(id, await body()),
         }
+      },
+    },
+    /*
+     * The owner, 2026-11-17: "on inbox i want close all button": the open
+     * messages and alerts (of the agents that match); asks stay open, as an
+     * agent's turn waits for their answer.
+     */
+    {
+      method: "POST",
+      path: "/v1/inbox/close-all",
+      access: ["admin"],
+      summary:
+        "close every open message and alert (?match= an agent pattern); " +
+        "asks stay open; returns how many closed",
+      handler: ({ url }) => {
+        const matches = inboxMatch(url)
+        let closed = 0
+        for (const item of inbox.list(false).filter(matches)) {
+          inbox.close(item.id)
+          closed++
+        }
+        return { closed }
       },
     },
     {

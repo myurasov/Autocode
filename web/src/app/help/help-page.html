@@ -724,6 +724,13 @@ autocode plugin install --url http://SERVER:4848 \
           <td>close an item</td>
         </tr>
         <tr>
+          <td><code>autocode inbox close --all [--match PATTERN]</code></td>
+          <td>
+            close every open message and alert (of the agents that match);
+            asks stay open
+          </td>
+        </tr>
+        <tr>
           <td>
             <code>autocode pause AGENT</code> /
             <code>resume AGENT</code>
@@ -925,7 +932,10 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       alert you will not answer. The Closed box lists the answered and closed
       ones too. Agent filters by an ID pattern: the agent of an item, or the
       agent an ask was sent to (a second after you stop typing; kept in the
-      address). The Kind is in color: a message green, an alert red, a
+      address). Close All closes the open messages and alerts listed (of the
+      Agent filter's agents, if one is set), after you confirm; questions,
+      permissions and approvals stay open, as an agent waits for their
+      answer. The Kind is in color: a message green, an alert red, a
       question sky blue, a permission amber, an approval violet.
     </p>
 

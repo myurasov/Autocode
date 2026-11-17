@@ -9,7 +9,8 @@
  * confirmation) or not, an approval with an option and a note. The result
  * shows in the toolbar, and the list refreshes after each. The Agent field
  * filters by an agent pattern (the owner, 2026-11-17), kept in the address,
- * as on the other tabs.
+ * as on the other tabs. Close All (the owner, 2026-11-17) closes the open
+ * messages and alerts listed, after a confirmation; asks stay open.
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
@@ -39,6 +40,16 @@ function itemText(item: InboxItem): string {
   if (!item.agent) return `the ${item.kind}`;
   const about = item.kind === 'message' ? 'from' : 'about';
   return `the ${item.kind} ${about} ${item.agent}`;
+}
+
+// "1 message and 2 alerts": what Close All closes.
+export function closableText(items: readonly InboxItem[]): string {
+  const n = (kind: string) => items.filter((i) => i.kind === kind).length;
+  const part = (count: number, word: string) =>
+    count ? `${count} ${word}${count === 1 ? '' : 's'}` : '';
+  return [part(n('message'), 'message'), part(n('alert'), 'alert')]
+    .filter(Boolean)
+    .join(' and ');
 }
 
 // Whether an item is an ask: what an agent's turn waits for.
@@ -365,6 +376,30 @@ export class InboxPage {
         return rest;
       });
       return `Sent the answer to ${item.agent}.`;
+    });
+    if (done) await this.refresh();
+  }
+
+  // The open messages and alerts listed: what Close All closes.
+  protected readonly closable = computed(() =>
+    this.items().filter((i) => !i.closed_at && !isAsk(i)),
+  );
+
+  protected async closeAll(): Promise<void> {
+    const items = this.closable();
+    if (!items.length) return;
+    const match = this.match();
+    const of = match ? ` of ${match}` : '';
+    if (
+      !confirm(
+        `Close ${closableText(items)}${of}?\n\n` +
+          'Questions, permissions and approvals stay open.',
+      )
+    )
+      return;
+    const done = await this.act(async () => {
+      const n = await this.api.closeAll(match);
+      return `Closed ${n} item${n === 1 ? '' : 's'}.`;
     });
     if (done) await this.refresh();
   }
