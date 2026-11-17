@@ -5,7 +5,12 @@
 
 import { apiCall, MIN_OPENCODE, shownVersion } from "@autocode/shared"
 import { CliError, type Parsed } from "./args.ts"
-import { connect, readClientConfig, writeClientConfig } from "./connect.ts"
+import {
+  clientConfigPath,
+  connect,
+  readClientConfig,
+  writeClientConfig,
+} from "./connect.ts"
 
 // Owner commands (and the agent commands scripts use), each a thin wrapper over
 // the API. --json prints the API's own data; otherwise a plain table.
@@ -165,7 +170,9 @@ export async function hosts(args: Parsed): Promise<number> {
         shownVersion(h.opencode_version ?? "") +
           // older than the minimum (the owner, 2026-11-17)
           (h.opencode_supported === false
-            ? ` (too old: needs ${shownVersion(MIN_OPENCODE)} or later)`
+            ? ` (too old: needs ${shownVersion(
+                h.opencode_needs ?? MIN_OPENCODE,
+              )} or later)`
             : ""),
         // the plugin's version, beside OpenCode's
         shownVersion(h.plugin_version ?? ""),
@@ -189,10 +196,17 @@ export async function hosts(args: Parsed): Promise<number> {
 
 export async function token(args: Parsed): Promise<number> {
   const [sub, id] = args.words
-  const flag = (name: string) =>
-    args.switches.has(name) || args.flags[name] !== undefined
-  const kinds = (["admin", "consumer"] as const).filter(flag)
-  if (sub !== "rotate" || kinds.length > 1 || (!id && !kinds.length))
+  const kinds = (["admin", "consumer"] as const).filter((name) =>
+    args.switches.has(name),
+  )
+  // one thing at a time: an agent, or one of the owner's two tokens (not
+  // both, and no --admin=value: the review before 1.0.0)
+  if (
+    sub !== "rotate" ||
+    kinds.length + (id ? 1 : 0) !== 1 ||
+    args.flags.admin !== undefined ||
+    args.flags.consumer !== undefined
+  )
     throw new CliError(
       "usage: autocode token rotate AGENT | --admin | --consumer",
       2,
@@ -204,27 +218,53 @@ export async function token(args: Parsed): Promise<number> {
    */
   const kind = kinds[0]
   if (kind) {
-    const res = await connect(args).call("POST", `/v1/tokens/${kind}/rotate`)
+    const c = connect(args)
+    const res = await c.call("POST", `/v1/tokens/${kind}/rotate`)
     const key = `${kind}_token` as const
     const config = readClientConfig()
-    const here =
-      config[key] && typeof res.token === "string"
-        ? writeClientConfig({ [key]: res.token })
-        : undefined
-    print(args, { kind: res.kind, file: res.file }, () =>
-      [
-        `new ${kind} token: saved on the server in ${res.file} ` +
-          "(mode 0600); the old one no longer works",
-        ...(here ? [`updated ${here} on this machine`] : []),
-        kind === "consumer"
-          ? "next: on every other machine run autocode plugin install " +
-            "again with the new token, then restart OpenCode on each " +
-            "machine; until then its hosts are offline"
-          : "next: sign in to the web UI again; on other machines whose " +
+    /*
+     * This machine's client config gets the new token only when it holds
+     * that kind of token for this very server (the review before 1.0.0: with
+     * --url it took another server's token, and this machine's hosts were
+     * refused from then on).
+     */
+    const same =
+      (config.url ?? "").replace(/\/+$/, "") === c.url.replace(/\/+$/, "")
+    const lines = [
+      `new ${kind} token: saved on the server in ${res.file} ` +
+        "(mode 0600); the old one no longer works",
+    ]
+    let failed: string | undefined
+    if (config[key] && typeof res.token === "string") {
+      if (!same)
+        lines.push(
+          `${clientConfigPath()} on this machine is for another server: ` +
+            "left as it is",
+        )
+      else
+        try {
+          lines.push(
+            `updated ${writeClientConfig({ [key]: res.token })} ` +
+              "on this machine",
+          )
+        } catch (err) {
+          failed =
+            `could not update ${clientConfigPath()}: ` +
+            `${(err as Error).message}; it still holds the old ${kind} ` +
+            "token: run autocode plugin install again on this machine"
+        }
+    }
+    lines.push(
+      kind === "consumer"
+        ? "next: on every other machine run autocode plugin install again " +
+            "with the new token; a running OpenCode picks the new token up " +
+            "from its client config within a minute"
+        : "next: sign in to the web UI again; on other machines whose " +
             "client config holds the admin token, run autocode plugin " +
             "install again with --admin-token-file",
-      ].join("\n"),
     )
+    print(args, { kind: res.kind, file: res.file }, () => lines.join("\n"))
+    if (failed) throw new CliError(failed, 1)
     return 0
   }
   const res = await connect(args).call(

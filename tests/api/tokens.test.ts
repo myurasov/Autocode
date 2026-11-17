@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -383,6 +384,74 @@ describe("autocode token rotate --admin | --consumer", () => {
     const bad = await cli(["token", "rotate", "nobody:here"], home)
     expect(bad.code).not.toBe(0)
     expect(bad.stderr).toContain("nobody:here")
+  })
+
+  /*
+   * The adversarial review before 1.0.0: the command wrote the new token
+   * into this machine's client config whatever server that config was for;
+   * it took an agent together with --admin; and when the config could not be
+   * written it left only a stack trace.
+   */
+  test("another server's token never goes into this machine's client config; an agent with --admin is refused; a config that cannot be written is said", async () => {
+    const mine = await start({ dataDir: freshDir(), presets: false })
+    const other = await start({ dataDir: freshDir(), presets: false })
+    const home = mkdtempSync(join(tmpdir(), "autocode-rotate-"))
+    dirs.push(home)
+    mkdirSync(join(home, ".autocode"), { mode: 0o700 })
+    const config = join(home, ".autocode", "client.json")
+    const before = {
+      url: mine.url,
+      consumer_token: mine.server.firstStartTokens?.consumer,
+      admin_token: mine.server.firstStartTokens?.admin,
+    }
+    writeFileSync(config, JSON.stringify(before), { mode: 0o600 })
+    const read = () => JSON.parse(readFileSync(config, "utf8"))
+    // the other server's consumer token, with --url and --token
+    const res = await cli(
+      [
+        "token",
+        "rotate",
+        "--consumer",
+        "--url",
+        other.url,
+        "--token",
+        other.server.firstStartTokens?.admin ?? "",
+      ],
+      home,
+    )
+    expect(res.code, res.stderr).toBe(0)
+    expect(read()).toEqual(before)
+    expect(res.stdout).toContain(
+      `${config} on this machine is for another server: left as it is`,
+    )
+    // an agent and a kind together: which one is meant?
+    for (const args of [
+      ["token", "rotate", "some:agent", "--admin"],
+      ["token", "rotate", "--admin=no"],
+    ]) {
+      const bad = await cli(args, home)
+      expect(bad.code, args.join(" ")).toBe(2)
+      expect(bad.stderr).toContain(
+        "usage: autocode token rotate AGENT | --admin | --consumer",
+      )
+    }
+    expect(read()).toEqual(before)
+    expect((await cli(["agents"], home)).code).toBe(0)
+    // the config cannot be written: the server rotated all the same, and
+    // the command says where the new token is and what was not done
+    chmodSync(config, 0o400)
+    chmodSync(join(home, ".autocode"), 0o500)
+    try {
+      const stuck = await cli(["token", "rotate", "--consumer"], home)
+      expect(stuck.code).toBe(1)
+      expect(stuck.stdout).toContain("new consumer token: saved on the server")
+      expect(stuck.stderr).toContain(`could not update ${config}`)
+      expect(stuck.stderr).not.toContain("    at ")
+      expect(stuck.stderr + stuck.stdout).not.toContain("acc_")
+    } finally {
+      chmodSync(join(home, ".autocode"), 0o700)
+      chmodSync(config, 0o600)
+    }
   })
 })
 

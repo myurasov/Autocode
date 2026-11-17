@@ -210,6 +210,7 @@ describe("autocode CLI", () => {
     // a machine whose OpenCode is older than the minimum is marked (the
     // owner, 2026-11-17)
     await hello(t, "mac:old", { opencode: { version: "2.2.0" } })
+    // what the server says it needs, not what this CLI was built with
     const marked = await cli(["hosts"], asAdmin())
     expect(marked.stdout).toMatch(
       /mac:old\s+mac\s+\/work\s+no\s+v2\.2\.0 \(too old: needs v2\.3\.0 or later\)\s/,

@@ -210,6 +210,10 @@ export async function inbox(args: Parsed): Promise<number> {
   // an agent pattern, as on the Inbox tab (the owner, 2026-11-17)
   const match = typeof args.flags.match === "string" ? args.flags.match : ""
   if (sub === "close" && all && !id) {
+    // an empty pattern (an unset variable in a script) is not "all" (the
+    // review before 1.0.0)
+    if (args.flags.match !== undefined && !match.trim())
+      throw new CliError("--match needs a pattern, like kaggle:*", 2)
     // Close All (the owner, 2026-11-17): messages and alerts; asks stay
     const q = match.trim() ? `?match=${enc(match.trim())}` : ""
     const res = await c.call("POST", `/v1/inbox/close-all${q}`)

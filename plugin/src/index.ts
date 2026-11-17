@@ -25,7 +25,13 @@ import {
   SKILL_DESCRIPTION,
   SKILL_ID,
 } from "./guide.ts"
-import { agentTitle, lastReply, spawnInput } from "./jobs.ts"
+import {
+  agentTitle,
+  Background,
+  backgroundCount,
+  lastReply,
+  spawnInput,
+} from "./jobs.ts"
 import {
   activeSessions,
   binDir,
@@ -108,6 +114,9 @@ export default {
       machine: machineName(),
       directory,
       opencodeVersion: String(ctx.app?.version ?? ""),
+      // a replaced consumer token (autocode token rotate --consumer) is read
+      // again from the client config
+      reloadToken: () => readClientConfig()?.consumer_token,
       process: processOf(),
       shellValues: api !== undefined,
       log,
@@ -192,7 +201,8 @@ export default {
           )
         const res = await request(
           config.url,
-          config.consumer_token,
+          // the token in use: a replaced one is read again from the config
+          channel.consumerToken,
           "POST",
           `/v1/hosts/${encodeURIComponent(host)}` +
             `/sessions/${encodeURIComponent(session)}/token`,
@@ -213,6 +223,10 @@ export default {
       timeoutMs = 10_000,
       signal?: AbortSignal,
     ) => {
+      // an OpenCode the server refused (older than the minimum) serves no
+      // session, also one whose token is stored (the review before 1.0.0)
+      if (channel.state === "unsupported" && channel.refused)
+        throw new Error(channel.refused)
       const root = await tokens.root(sessionID)
       for (let attempt = 0; ; attempt++) {
         const token = await tokens.token(root)
@@ -261,7 +275,8 @@ export default {
     const shellSet = new Map<string, { root: string; token: string }>()
     const shellPending = new Map<string, Promise<void>>()
     const putShellValues = async (session: string, root: string) => {
-      if (!api) return
+      // none in an OpenCode the server refused
+      if (!api || channel.state === "unsupported") return
       const values = await valuesFor(root)
       // with the installed binary's folder on the PATH: scripts call
       // `autocode` by name
@@ -667,9 +682,25 @@ export default {
       if (typeof raw !== "string" || !ours(event, raw)) return
       const session = await askSession(raw)
       if (!registered.has(session)) return
-      const info = await ctx.session
-        .get({ sessionID: raw })
-        .catch(() => undefined)
+      /*
+       * A session that cannot be read just now says nothing of its model:
+       * the step's cost and context go out alone, and the server keeps the
+       * last model, window and effort (the review before 1.0.0: it was taken
+       * for OpenCode's default model, whose smaller window then started a
+       * compaction).
+       */
+      let read = true
+      const info = await ctx.session.get({ sessionID: raw }).catch(() => {
+        read = false
+        return undefined
+      })
+      if (!read) {
+        const bare = costEvent(session, data, {})
+        if (!bare) return
+        if (session !== raw) bare.context = undefined as any
+        channel.report(bare)
+        return
+      }
       // a session without a model of its own runs OpenCode's default one
       let ref = info?.model
       // its effort: the session's model variant, "" when it has none (the
@@ -708,15 +739,14 @@ export default {
      * how many Subagents do, so a job's run does not end with them at work.
      * Background shells do not count: starting one is the session's choice.
      */
-    const working = new Map<string, number>()
+    const working = new Background()
     try {
       await ctx.session.hook("experimental.idle", (event: any) => {
-        if (typeof event?.sessionID !== "string") return
-        const list = Array.isArray(event.background) ? event.background : []
-        working.set(
-          event.sessionID,
-          list.filter((b: any) => b?.kind === "subagent").length,
-        )
+        const session = event?.sessionID
+        // this folder's top-level sessions only (a Subagent's own idle, or
+        // another folder's session, is nobody's turn here)
+        if (typeof session !== "string" || !mine.has(session)) return
+        working.note(session, Date.now(), backgroundCount(event.background))
       })
     } catch (err) {
       log(`no idle hook: ${(err as Error).message}`)
@@ -796,6 +826,7 @@ export default {
             if (typeof data?.sessionID !== "string") continue
             const session = data.sessionID as string
             if (event.type === "session.deleted") {
+              working.forget(session)
               channel.report({ type: "session.deleted", session })
               // its token is dead: no need to keep it
               void tokens.drop(session)
@@ -817,9 +848,9 @@ export default {
               const at = Number(event.created) || Date.now()
               // its Subagents still at work (said by this turn's idle hook,
               // which runs before the turn's end is published)
-              const background =
-                outcome === "succeeded" ? (working.get(session) ?? 0) : 0
-              if (outcome !== "started") working.delete(session)
+              const noted =
+                outcome === "started" ? 0 : working.take(session, at)
+              const background = outcome === "succeeded" ? noted : 0
               // a run of a job ends with its last reply (tier 0f)
               const reply =
                 outcome === "succeeded" && runs.has(session)

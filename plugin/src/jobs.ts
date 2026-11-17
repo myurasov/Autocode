@@ -16,6 +16,55 @@ export function agentTitle(agent: string | null, run: boolean): string | null {
   return agent && !run ? `@${agent}` : null
 }
 
+/*
+ * What still works in the background when a session's model work is done
+ * (OpenCode 2.3's idle hook lists it): Subagents and images being made count,
+ * as their results come to the session later, in turns of their own; a
+ * background shell does not (starting one is the session's choice).
+ */
+export function backgroundCount(list: unknown): number {
+  if (!Array.isArray(list)) return 0
+  return list.filter((b) => b?.kind === "subagent" || b?.kind === "image")
+    .length
+}
+
+/*
+ * The counts the idle hook noted, by session and time. A turn's end takes
+ * the newest one not after it (the hook runs just before the turn's end is
+ * published), so a turn handled late never takes the next turn's count (the
+ * review before 1.0.0). A few are kept per session, for sessions whose turn
+ * ends are never seen.
+ */
+export class Background {
+  private readonly noted = new Map<string, { at: number; count: number }[]>()
+
+  note(session: string, at: number, count: number) {
+    const list = this.noted.get(session) ?? []
+    list.push({ at, count })
+    this.noted.set(session, list.slice(-20))
+  }
+
+  take(session: string, at: number): number {
+    const list = this.noted.get(session)
+    if (!list) return 0
+    const before = list.filter((n) => n.at <= at)
+    const rest = list.filter((n) => n.at > at)
+    if (rest.length) this.noted.set(session, rest)
+    else this.noted.delete(session)
+    return before.at(-1)?.count ?? 0
+  }
+
+  forget(session: string) {
+    this.noted.delete(session)
+  }
+
+  get size(): number {
+    let n = 0
+    for (const list of this.noted.values()) n += list.length
+    return n
+  }
+}
+
 // What ctx.session.create is given for a spawn.
 export function spawnInput(directory: string, p: any) {
   const model = String(p?.model ?? "")

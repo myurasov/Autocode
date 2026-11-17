@@ -7,7 +7,13 @@
  */
 import { describe, expect, test } from "bun:test"
 import { guideText, helpText, TOPICS } from "../../plugin/src/guide.ts"
-import { agentTitle, lastReply, spawnInput } from "../../plugin/src/jobs.ts"
+import {
+  agentTitle,
+  Background,
+  backgroundCount,
+  lastReply,
+  spawnInput,
+} from "../../plugin/src/jobs.ts"
 import { ME_TOOL, runMe } from "../../plugin/src/tools.ts"
 
 describe("a registered session's title", () => {
@@ -18,6 +24,63 @@ describe("a registered session's title", () => {
     // a run's session keeps its run's title
     expect(agentTitle("mail:2026-10-28T12:00", true)).toBeNull()
     expect(agentTitle(null, false)).toBeNull()
+  })
+})
+
+/*
+ * OpenCode 2.3 runs Subagents (and makes images) in the background: its idle
+ * hook lists what still works when a session's model work is done. The
+ * adversarial review before 1.0.0: an image counts like a Subagent (it comes
+ * back later too; a background shell is the session's own choice), and a
+ * turn's count is the one of its own idle hook, also when the events are
+ * handled a turn late.
+ */
+describe("background work when a turn ends", () => {
+  const sub = { kind: "subagent", childSessionID: "ses_c" }
+  test("Subagents and images count; shells do not", () => {
+    expect(
+      backgroundCount([
+        sub,
+        sub,
+        { kind: "image", path: "/x.png" },
+        { kind: "shell", shellID: "sh_1" },
+      ]),
+    ).toBe(3)
+    expect(backgroundCount([{ kind: "shell" }])).toBe(0)
+    expect(backgroundCount(undefined)).toBe(0)
+    expect(backgroundCount("x")).toBe(0)
+  })
+
+  test("each turn's end takes the count of its own idle hook, by time", () => {
+    const b = new Background()
+    // turn 1 ends with one Subagent; before its end is handled, turn 2 has
+    // run and ended with none
+    b.note("ses_a", 1000, 1)
+    b.note("ses_a", 2000, 0)
+    expect(b.take("ses_a", 1005)).toBe(1)
+    expect(b.take("ses_a", 2001)).toBe(0)
+    // nothing noted for a turn (its idle hook did not run): none
+    expect(b.take("ses_a", 3000)).toBe(0)
+    // the newest of several not after the turn's end; older ones go with it
+    b.note("ses_a", 4000, 2)
+    b.note("ses_a", 4100, 3)
+    b.note("ses_a", 9000, 7)
+    expect(b.take("ses_a", 4200)).toBe(3)
+    expect(b.take("ses_a", 4300)).toBe(0)
+    expect(b.take("ses_a", 9000)).toBe(7)
+    // another session's are its own; a session that is gone is forgotten
+    b.note("ses_b", 100, 4)
+    expect(b.take("ses_a", 200)).toBe(0)
+    b.forget("ses_b")
+    expect(b.take("ses_b", 200)).toBe(0)
+    expect(b.size).toBe(0)
+  })
+
+  test("only the newest few are kept for a session whose turn ends are never seen", () => {
+    const b = new Background()
+    for (let i = 0; i < 1000; i++) b.note("ses_a", i, 1)
+    expect(b.size).toBeLessThanOrEqual(50)
+    expect(b.take("ses_a", 999)).toBe(1)
   })
 })
 

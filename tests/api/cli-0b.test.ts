@@ -283,6 +283,14 @@ describe("owner commands", () => {
     )
     expect(some.code, some.stderr).toBe(0)
     expect(some.stdout).toContain("closed 1 inbox item; asks stay open")
+    // an empty pattern (an unset variable in a script) is not "all" (the
+    // review before 1.0.0)
+    const empty = await cli(
+      ["inbox", "close", "--all", "--match", ""],
+      asAdmin(),
+    )
+    expect(empty.code).toBe(2)
+    expect(empty.stderr).toContain("--match needs a pattern")
     const rest = await cli(["inbox", "close", "--all"], asAdmin())
     expect(rest.stdout).toContain("closed 1 inbox item; asks stay open")
     expect((await cli(["inbox"], asAdmin())).stdout).toContain(

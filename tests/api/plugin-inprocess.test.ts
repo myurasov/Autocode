@@ -183,7 +183,16 @@ interface Session {
   id: string
   parentID?: string
   directory: string
+  // its own model (else OpenCode's default one)
+  model?: { providerID: string; id: string; variant?: string }
 }
+
+// OpenCode's models, the second its default; and sessions whose read fails.
+const MODELS = [
+  { providerID: "big", id: "one", limit: { context: 1_000_000 } },
+  { providerID: "small", id: "default", limit: { context: 128_000 } },
+]
+const unreadable = new Set<string>()
 
 interface Fake {
   tools: any[]
@@ -236,8 +245,14 @@ async function startPlugin(
           .map(([key, value]) => ({ key, value })),
       }),
     },
+    // OpenCode's models: the default one, and the one a session may have
+    model: {
+      list: async () => MODELS,
+      default: async () => MODELS[1],
+    },
     session: {
       get: async ({ sessionID }: { sessionID: string }) => {
+        if (unreadable.has(sessionID)) throw new Error("busy")
         const s = sessions.find((x) => x.id === sessionID)
         // core's error for a missing session (in-process), not the HTTP API's
         if (!s)
@@ -249,6 +264,7 @@ async function startPlugin(
           id: s.id,
           parentID: s.parentID,
           location: { directory: s.directory },
+          ...(s.model ? { model: s.model } : {}),
         }
       },
       list: async (input: {
@@ -672,6 +688,107 @@ describe("the plugin in an OpenCode older than the minimum", () => {
   })
 })
 
+/*
+ * The adversarial review before 1.0.0, the plugin's side.
+ */
+describe("the review before 1.0.0", () => {
+  const agentOf = async (id: string) =>
+    (await call(t.url, t.admin, "GET", `/v1/agents/${id}`)).body.agent
+
+  // A session registered before the upgrade has its token in the plugin's
+  // storage: in a refused OpenCode it must not go on working with it.
+  test("in an OpenCode older than the minimum a session with a stored token is not served either", async () => {
+    const dir = join(root, "work-old-stored")
+    const sessions: Session[] = [{ id: "ses_stored", directory: dir }]
+    const first = await connected(() => startPlugin(dir, sessions))
+    const out = await me(first).execute(
+      { action: "register", id: "inproc:stored" },
+      { sessionID: "ses_stored" },
+    )
+    expect(out.content).toStartWith("Registered as inproc:stored")
+    // the same folder and storage, now in an older OpenCode
+    const refusals = logCount("Autocode needs v2.3.0 or later")
+    const old = await startPlugin(dir, sessions, "serve", "2.2.9")
+    await until(() => logCount("Autocode needs v2.3.0 or later") > refusals, {
+      timeoutMs: 15_000,
+      what: "the plugin to be refused",
+    })
+    const reason =
+      "error: this OpenCode is v2.2.9; Autocode needs v2.3.0 or later. " +
+      "Update OpenCode on this machine, then start it again."
+    for (const [name, input] of [
+      ["autocode_me", { action: "status" }],
+      ["autocode_wake", { action: "list" }],
+      ["autocode_message", { action: "send", to: "owner", text: "hi" }],
+    ] as const) {
+      const res = await old.tools
+        .find((x) => x.name === name)!
+        .execute(input, { sessionID: "ses_stored" })
+      expect(res.content, name).toBe(reason)
+    }
+    // and its shells get no Autocode values
+    const before = environments("ses_stored").length
+    await toolCall(old, "shell", "ses_stored", "old_1")
+    expect(environments("ses_stored").length).toBe(before)
+  })
+
+  // A step whose session could not be read was taken for OpenCode's default
+  // model: its window replaced the agent's, and compaction followed it.
+  test("a step whose session cannot be read keeps the agent's model, window and effort", async () => {
+    const dir = join(root, "work-unreadable")
+    const sessions: Session[] = [
+      {
+        id: "ses_unr",
+        directory: dir,
+        model: { providerID: "big", id: "one", variant: "max" },
+      },
+    ]
+    const fake = await connected(() => startPlugin(dir, sessions))
+    await me(fake).execute(
+      { action: "register", id: "inproc:unreadable" },
+      { sessionID: "ses_unr" },
+    )
+    // the plugin learns of the registration by an instruction
+    await until(
+      async () => {
+        const system: any[] = []
+        await fake.hooks["session.context"]!({ sessionID: "ses_unr", system })
+        return system.length > 0
+      },
+      { what: "the registration to reach the plugin" },
+    )
+    const step = (n: number) => ({
+      type: "session.step.ended",
+      location: { directory: dir },
+      data: {
+        sessionID: "ses_unr",
+        cost: 0.01,
+        tokens: { input: 300_000 + n },
+        assistantMessageID: `msg_unr${n}`,
+      },
+    })
+    const view = async () => {
+      const a = await agentOf("inproc:unreadable")
+      return [a.model, a.effort, a.cost?.context_limit, a.cost?.context]
+    }
+    fake.emit(step(1))
+    await until(async () => (await view())[3] === 300_001, {
+      what: "the first step",
+    })
+    expect(await view()).toEqual(["big/one", "max", 1_000_000, 300_001])
+    unreadable.add("ses_unr")
+    try {
+      fake.emit(step(2))
+      await until(async () => (await view())[3] === 300_002, {
+        what: "the second step",
+      })
+      expect(await view()).toEqual(["big/one", "max", 1_000_000, 300_002])
+    } finally {
+      unreadable.delete("ses_unr")
+    }
+  })
+})
+
 describe("the plugin in-process, tier 0b", () => {
   const tool = (fake: Fake, name: string) =>
     fake.tools.find((x) => x.name === name)
@@ -905,18 +1022,32 @@ describe("the plugin in-process, tier 0b", () => {
       outcome: "succeeded",
       background: 2,
     })
+    // an image being made counts like a Subagent (the review before 1.0.0)
+    fake.emit(event("session.execution.started"))
+    await idle({
+      sessionID: "ses_bg",
+      background: [{ kind: "image", sessionID: "ses_bg", path: "/a.png" }],
+    })
+    fake.emit(event("session.execution.succeeded"))
+    await until(async () => (await ended()).length === 2, {
+      what: "the image turn's end",
+    })
+    expect((await ended())[0].data).toEqual({
+      outcome: "succeeded",
+      background: 1,
+    })
     // the next turn: nothing in the background (the last one's count is gone)
     fake.emit(event("session.execution.started"))
     await idle({ sessionID: "ses_bg", background: [] })
     fake.emit(event("session.execution.succeeded"))
-    await until(async () => (await ended()).length === 2, {
+    await until(async () => (await ended()).length === 3, {
       what: "the second turn's end",
     })
     expect((await ended())[0].data).toEqual({ outcome: "succeeded" })
     // a turn whose idle hook did not run (a failure): none said
     fake.emit(event("session.execution.started"))
     fake.emit(event("session.execution.succeeded"))
-    await until(async () => (await ended()).length === 3, {
+    await until(async () => (await ended()).length === 4, {
       what: "the third turn's end",
     })
     expect((await ended())[0].data).toEqual({ outcome: "succeeded" })
