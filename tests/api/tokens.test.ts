@@ -438,7 +438,9 @@ describe("autocode token rotate --admin | --consumer", () => {
     expect(read()).toEqual(before)
     expect((await cli(["agents"], home)).code).toBe(0)
     // the config cannot be written: the server rotated all the same, and
-    // the command says where the new token is and what was not done
+    // the command says where the new token is and what was not done. Not
+    // as root (the CI's containers), who writes whatever the mode says.
+    if (process.getuid?.() === 0) return
     chmodSync(config, 0o400)
     chmodSync(join(home, ".autocode"), 0o500)
     try {
