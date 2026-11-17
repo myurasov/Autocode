@@ -57,9 +57,9 @@
 <table class="inbox">
   <thead>
     <tr>
-      <th>Time</th>
-      <th>Kind</th>
-      <th>Agent</th>
+      <th appSort="time" [sorting]="sorting">Time</th>
+      <th appSort="kind" [sorting]="sorting">Kind</th>
+      <th appSort="agent" [sorting]="sorting">Agent</th>
       <th>Sent To</th>
       <th>Item</th>
       <th></th>

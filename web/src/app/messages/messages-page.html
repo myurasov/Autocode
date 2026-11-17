@@ -75,14 +75,14 @@
 <table class="messages">
   <thead>
     <tr>
-      <th>ID</th>
-      <th>Time</th>
-      <th>From</th>
-      <th>To</th>
-      <th>Subject</th>
+      <th appSort="id" [sorting]="sorting">ID</th>
+      <th appSort="time" [sorting]="sorting">Time</th>
+      <th appSort="from" [sorting]="sorting">From</th>
+      <th appSort="to" [sorting]="sorting">To</th>
+      <th appSort="subject" [sorting]="sorting">Subject</th>
       <th>Text</th>
-      <th>Size</th>
-      <th>State</th>
+      <th class="num" appSort="size" [sorting]="sorting">Size</th>
+      <th appSort="state" [sorting]="sorting">State</th>
     </tr>
   </thead>
   <tbody>

@@ -372,6 +372,24 @@ describe('MessagesPage', () => {
     expect(wholeLines(page, 'msg_3')).toEqual(LONG_TEXT.split('\n'));
   });
 
+  // The owner, 2026-11-17: sorting by a heading; newest first by date.
+  it('sorts by Time, newest first, by default; by From, To, Subject, Size and State too; Text does not sort', async () => {
+    const page = await open([MESSAGES[1]!, MESSAGES[0]!]);
+    const order = () =>
+      [...page.querySelectorAll('table.messages tr[data-message]')].map((r) =>
+        r.getAttribute('data-message'),
+      );
+    expect(order()).toEqual(['msg_2', 'msg_1']);
+    const heads = [...page.querySelectorAll('table.messages thead th')];
+    expect(
+      heads.filter((h) => !h.querySelector('button.sort')).map((h) => text(h)),
+    ).toEqual(['Text']);
+    const size = heads.find((h) => text(h) === 'Size')!;
+    (size.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(order()).toEqual(['msg_1', 'msg_2']);
+  });
+
   it('says when there are no messages yet', async () => {
     const page = await open([]);
     expect(text(page.querySelector('table.messages tbody'))).toBe(

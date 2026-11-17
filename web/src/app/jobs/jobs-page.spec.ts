@@ -298,11 +298,16 @@ describe('JobsPage', () => {
       'Reason',
       '',
     ]);
+    // by Started, newest first (the owner, 2026-11-17)
     expect(
       [...page.querySelectorAll('table.runs tr[data-run]')].map((r) =>
         r.getAttribute('data-run'),
       ),
-    ).toEqual(RUNS.map((r) => r.id));
+    ).toEqual([
+      'mail:2026-11-08T09:00',
+      'mail:2026-11-08T08:00:skipped',
+      'team:nightly:2026-11-08T02:00',
+    ]);
     const done = run(page, 'mail:2026-11-08T09:00');
     expect(parts(done.querySelector('td.id code'))).toEqual([
       'mail:',
@@ -329,6 +334,54 @@ describe('JobsPage', () => {
     expect(cell(skipped, 'state')).toBe('Skipped');
     expect(cell(skipped, 'reason')).toBe('mail:2026-11-08T07:00 still works');
     expect(button(skipped, 'Delete Session')).toBeUndefined();
+  });
+
+  // The owner, 2026-11-17: sorting by a heading; newest first by date where
+  // a table has one (Runs), else by name (Jobs).
+  it('sorts the jobs (by Name) and the runs (by Started, newest first) by their headings', async () => {
+    const page = await open();
+    const heads = (table: string) => [
+      ...page.querySelectorAll(`table.${table} thead th`),
+    ];
+    const sortable = (table: string) =>
+      heads(table)
+        .filter((h) => h.querySelector('button.sort'))
+        .map((h) => text(h));
+    expect(sortable('jobs')).toEqual([
+      'Name',
+      'Where',
+      'Model',
+      'Trigger',
+      'Next',
+      'To',
+      'Last Run',
+      'Set By',
+    ]);
+    expect(sortable('runs')).toEqual([
+      'Run',
+      'Started By',
+      'State',
+      'Started',
+      'Ended',
+      'Cost',
+    ]);
+    const jobs = () =>
+      [...page.querySelectorAll('table.jobs tr[data-job]')].map((r) =>
+        r.getAttribute('data-job'),
+      );
+    expect(jobs()).toEqual(['mail', 'team:nightly']);
+    const byName = heads('jobs').find((h) => text(h) === 'Name')!;
+    (byName.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(jobs()).toEqual(['team:nightly', 'mail']);
+    const runs = () =>
+      [...page.querySelectorAll('table.runs tr[data-run]')].map((r) =>
+        r.getAttribute('data-run'),
+      );
+    const byCost = heads('runs').find((h) => text(h) === 'Cost')!;
+    (byCost.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(runs()[0]).toBe('team:nightly:2026-11-08T02:00');
   });
 
   it('says a state in Title Case and a cost in dollars', () => {

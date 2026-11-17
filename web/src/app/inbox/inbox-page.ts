@@ -10,7 +10,9 @@
  * shows in the toolbar, and the list refreshes after each. The Agent field
  * filters by an agent pattern (the owner, 2026-11-17), kept in the address,
  * as on the other tabs. Close All (the owner, 2026-11-17) closes the open
- * messages and alerts listed, after a confirmation; asks stay open.
+ * messages and alerts listed, after a confirmation; asks stay open. Newest
+ * first by default, sorted by a click on a heading; with Closed on, the open
+ * items show past the 25 rows (the owner, 2026-11-17).
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
@@ -24,6 +26,7 @@ import { AgentLink } from '../links';
 import { leftText } from '../locks/locks-page';
 import { Markdown } from '../markdown';
 import { MoreRow, Paged, paged } from '../more';
+import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
 
 // What each kind of item is called on the page.
@@ -86,7 +89,7 @@ export function askAnswerText(item: InboxItem): string {
 
 @Component({
   selector: 'app-inbox-page',
-  imports: [AgentLink, IdParts, Markdown, MoreRow, TimeText, Updated],
+  imports: [AgentLink, IdParts, Markdown, MoreRow, SortHead, TimeText, Updated],
   templateUrl: './inbox-page.html',
 })
 export class InboxPage {
@@ -107,10 +110,24 @@ export class InboxPage {
   // The agent filter in the address, and as typed.
   protected readonly match = signal('');
   protected readonly pattern = signal('');
-  // at most 25 rows, then "..." (the owner, 2026-11-09)
+  // by a heading, newest first by default (the owner, 2026-11-17)
+  protected readonly sorting = new Sorting<InboxItem>('inbox', {
+    columns: {
+      time: { time: (i) => i.created_at },
+      kind: { text: (i) => KINDS[i.kind] ?? i.kind },
+      agent: { text: (i) => i.agent },
+    },
+    by: 'time',
+  });
+  // at most 25 rows, then "..." (the owner, 2026-11-09); the open items
+  // always show, so the Closed box never hides them (2026-11-17)
   protected readonly paging = new Paged();
   protected readonly page = computed(() =>
-    paged(this.items(), this.paging.count('inbox')),
+    paged(
+      this.sorting.sort(this.items()),
+      this.paging.count('inbox'),
+      (i) => !i.closed_at,
+    ),
   );
   // The answers as typed, by item ID; they stay through refreshes.
   protected readonly drafts = signal<Record<string, string>>({});

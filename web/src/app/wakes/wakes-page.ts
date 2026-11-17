@@ -5,7 +5,8 @@
  * opens it (it stays open across refreshes). The owner fires a wake now or
  * cancels it (after a confirmation; the result shows in the toolbar), and sets
  * a wake for any agent in a form that opens from its title; the list refreshes
- * after each.
+ * after each. The table sorts by a click on a heading, within each agent, by
+ * Last Set (newest first) by default (the owner, 2026-11-17).
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
@@ -16,6 +17,7 @@ import { FOLD_CHARS, folded, localTime } from '../format';
 import { AgentLink } from '../links';
 import { FoldRow, Folds } from '../fold';
 import { MoreRow, Paged, paged } from '../more';
+import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
 
 // The parts of a wake that fold when long.
@@ -32,18 +34,40 @@ export function triggerText(trigger: string): string {
 
 @Component({
   selector: 'app-wakes-page',
-  imports: [AgentLink, Breaks, FoldRow, IdParts, MoreRow, TimeText, Updated],
+  imports: [
+    AgentLink,
+    Breaks,
+    FoldRow,
+    IdParts,
+    MoreRow,
+    SortHead,
+    TimeText,
+    Updated,
+  ],
   templateUrl: './wakes-page.html',
 })
 export class WakesPage {
   private readonly api = inject(Api);
 
   protected readonly wakes = signal<Wake[]>([]);
-  // The wakes by agent: agents in alphabetical order, wakes in the server's
+  // by a heading, within each agent; Last Set, newest first, by default (the
+  // owner, 2026-11-17); Next starts soonest first
+  protected readonly sorting = new Sorting<Wake>('wakes', {
+    columns: {
+      name: { text: (w) => w.name },
+      trigger: { text: (w) => w.trigger },
+      next: { time: (w) => w.next ?? w.due, first: 'asc' },
+      by: { text: (w) => w.set_by },
+      set: { time: (w) => w.updated_at },
+      fired: { time: (w) => w.last_fired_at },
+    },
+    by: 'set',
+  });
+  // The wakes by agent: agents in alphabetical order, wakes in the table's
   // order within each.
   protected readonly agents = computed(() => {
     const by = new Map<string, Wake[]>();
-    for (const w of this.wakes())
+    for (const w of this.sorting.sort(this.wakes()))
       by.set(w.agent, [...(by.get(w.agent) ?? []), w]);
     return [...by]
       .sort(([a], [b]) => a.localeCompare(b))

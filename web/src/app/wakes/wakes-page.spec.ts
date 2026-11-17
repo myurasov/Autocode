@@ -320,6 +320,30 @@ describe('WakesPage', () => {
     expect(triggerText('idle 30m repeat')).toBe('idle 30m repeat');
   });
 
+  // The owner, 2026-11-17: sorting by a heading; newest first by date.
+  it('sorts within each agent, by Last Set (newest first) by default; Name, Trigger, Next, Set By and the times sort', async () => {
+    const at = (h: number) => new Date(Date.UTC(2026, 10, 1, h)).toISOString();
+    const page = await open([
+      { ...WAKES[0]!, name: 'b', updated_at: at(1), next: at(30) },
+      { ...WAKES[0]!, name: 'a', updated_at: at(9), next: at(10) },
+      { ...WAKES[0]!, name: 'c', updated_at: at(5), next: null },
+    ]);
+    const order = () =>
+      [...page.querySelectorAll('table.wakes tr[data-wake]')].map((r) =>
+        r.getAttribute('data-wake'),
+      );
+    expect(order()).toEqual(['a', 'c', 'b']);
+    const heads = [...page.querySelectorAll('table.wakes thead th')];
+    expect(
+      heads.filter((h) => h.querySelector('button.sort')).map((h) => text(h)),
+    ).toEqual(['Name', 'Trigger', 'Next', 'Set By', 'Last Set', 'Last Fired']);
+    const next = heads.find((h) => text(h) === 'Next')!;
+    // the soonest first is what one wants of Next: a click puts it so
+    (next.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(order()).toEqual(['a', 'b', 'c']);
+  });
+
   it('says when there are no wakes yet', async () => {
     const page = await open([]);
     expect(text(page.querySelector('table.wakes tbody'))).toBe('No wakes yet.');

@@ -49,11 +49,11 @@
 <table class="history">
   <thead>
     <tr>
-      <th>Time</th>
-      <th>Kind</th>
-      <th>Agent</th>
-      <th>Host</th>
-      <th>Session</th>
+      <th appSort="time" [sorting]="sorting">Time</th>
+      <th appSort="kind" [sorting]="sorting">Kind</th>
+      <th appSort="agent" [sorting]="sorting">Agent</th>
+      <th appSort="host" [sorting]="sorting">Host</th>
+      <th appSort="session" [sorting]="sorting">Session</th>
       <th>Data</th>
     </tr>
   </thead>

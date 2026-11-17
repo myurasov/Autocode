@@ -4,7 +4,7 @@
   page; each one's model, spend today and in total, and its context with a bar
   of the compaction threshold's share, linking to the Costs page; an agent in
   error shows its error type and
-  retries; Retry, Edit, Pause
+  retries; a click on its description edits it; Retry, Pause
   or Resume, New Token, Unregister), the agent a link led to
   highlighted (or a line that says it is not there), and when the list last
   loaded.
@@ -70,17 +70,17 @@
 <table class="agents">
   <thead>
     <tr>
-      <th>ID</th>
-      <th>Description</th>
-      <th>Status</th>
-      <th>Model</th>
-      <th>Spend</th>
-      <th>Context</th>
-      <th>Host</th>
-      <th>Folder</th>
-      <th>Session</th>
-      <th>Registered</th>
-      <th>Last Active</th>
+      <th appSort="id" [sorting]="sorting">ID</th>
+      <th appSort="desc" [sorting]="sorting">Description</th>
+      <th appSort="status" [sorting]="sorting">Status</th>
+      <th appSort="model" [sorting]="sorting">Model</th>
+      <th appSort="spend" [sorting]="sorting">Spend</th>
+      <th appSort="context" [sorting]="sorting">Context</th>
+      <th appSort="host" [sorting]="sorting">Host</th>
+      <th appSort="folder" [sorting]="sorting">Folder</th>
+      <th appSort="session" [sorting]="sorting">Session</th>
+      <th appSort="registered" [sorting]="sorting">Registered</th>
+      <th appSort="active" [sorting]="sorting">Last Active</th>
       <th></th>
     </tr>
   </thead>
@@ -105,7 +105,21 @@
           [attr.aria-current]="a.id === target() ? 'true' : null"
         >
           <td class="id id-like"><code [appId]="a.id"></code></td>
-          <td class="desc">
+          <!-- a click (or Enter) edits it (the owner, 2026-11-17) -->
+          <td
+            class="desc"
+            [class.editable]="a.registered !== false && editing() !== a.id"
+            [attr.tabindex]="
+              a.registered !== false && editing() !== a.id ? 0 : null
+            "
+            [attr.title]="
+              a.registered !== false && editing() !== a.id
+                ? 'Click to edit the description'
+                : null
+            "
+            (click)="startEdit(a)"
+            (keydown.enter)="startEdit(a, $event)"
+          >
             @if (editing() === a.id) {
               <div class="inline-edit">
                 <input
@@ -228,13 +242,6 @@
                   Retry
                 </button>
               }
-              <button
-                type="button"
-                [disabled]="busy() || editing() === a.id"
-                (click)="startEdit(a)"
-              >
-                Edit
-              </button>
               @if (a.paused) {
                 <button
                   type="button"

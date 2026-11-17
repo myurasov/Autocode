@@ -158,6 +158,32 @@ describe('HistoryPage', () => {
     expect(button(page, 'Older')).toBeUndefined();
   });
 
+  // The owner, 2026-11-17: sorting by a heading; newest first by date. What is
+  // loaded sorts; the server pages it newest first.
+  it('sorts what is loaded by Time (newest first) by default, and by Kind, Agent, Host and Session; Data does not sort', async () => {
+    const page = await open();
+    const heads = [...page.querySelectorAll('table.history thead th')];
+    expect(
+      heads.filter((h) => !h.querySelector('button.sort')).map((h) => text(h)),
+    ).toEqual(['Data']);
+    const order = () =>
+      [...page.querySelectorAll('table.history tr[data-entry]')].map((r) =>
+        Number(r.getAttribute('data-entry')),
+      );
+    const newest = [...ENTRIES].sort((a, b) => b.id - a.id).map((e) => e.id);
+    expect(order()).toEqual(newest);
+    const time = heads.find((h) => text(h) === 'Time')!;
+    (time.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(order()).toEqual([...newest].reverse());
+    const kind = heads.find((h) => text(h) === 'Kind')!;
+    (kind.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(
+      text(page.querySelector('table.history tr[data-entry] td.kind')),
+    ).toBe('agent.registered');
+  });
+
   it('sums up the data in one line: key: value, joined', () => {
     expect(dataSummary({ name: 'standup', by: 'owner' })).toBe(
       'name: standup, by: owner',

@@ -33,13 +33,13 @@
 <table class="hosts">
   <thead>
     <tr>
-      <th>ID</th>
-      <th>Folder</th>
-      <th>Status</th>
-      <th>Process</th>
-      <th>OpenCode</th>
-      <th>Plugin</th>
-      <th>Last Seen</th>
+      <th appSort="id" [sorting]="sorting">ID</th>
+      <th appSort="folder" [sorting]="sorting">Folder</th>
+      <th appSort="status" [sorting]="sorting">Status</th>
+      <th appSort="process" [sorting]="sorting">Process</th>
+      <th appSort="opencode" [sorting]="sorting">OpenCode</th>
+      <th appSort="plugin" [sorting]="sorting">Plugin</th>
+      <th appSort="seen" [sorting]="sorting">Last Seen</th>
     </tr>
   </thead>
   @for (m of machines(); track m.machine) {

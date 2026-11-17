@@ -284,6 +284,54 @@ th {
   color: var(--fg-dim);
   font-weight: var(--bold);
 }
+/*
+ * A sortable column's heading (the owner, 2026-11-17): the whole cell is its
+ * button, in the heading's own look; an arrow after the text says the
+ * direction of the sorted column, a faint one shows on hover.
+ */
+th.sortable > button.sort {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  /* the cell keeps its padding; the button covers it */
+  width: calc(100% + 1rem);
+  margin: -0.5rem;
+  padding: 0.5rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+}
+th.num.sortable > button.sort {
+  justify-content: flex-end;
+}
+th.sortable > button.sort:hover {
+  background: var(--softer);
+  color: var(--fg-strong);
+}
+th.sortable > button.sort:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+th.sortable .arrow {
+  display: inline-block;
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  background: var(--chevron) center / contain no-repeat;
+  opacity: 0;
+}
+th.sortable > button.sort:hover .arrow {
+  opacity: 0.35;
+}
+th.sorted .arrow,
+th.sorted > button.sort:hover .arrow {
+  opacity: 1;
+}
+th.sorted.asc .arrow {
+  transform: rotate(180deg);
+}
 td.status,
 td.num,
 td.from,
@@ -968,6 +1016,29 @@ tr.highlight {
 }
 .row > input {
   flex: 1;
+}
+/*
+ * An agent's description edits on a click on its cell (the owner,
+ * 2026-11-17): the cell says so as the pointer goes over it.
+ */
+table.agents td.desc.editable {
+  cursor: text;
+}
+table.agents td.desc.editable:hover {
+  background: var(--softer);
+}
+table.agents td.desc.editable:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+/* While it edits, Save and Cancel go under the field: the column keeps its
+   width, so the table still fits 1280 px. */
+table.agents td.desc .inline-edit {
+  flex-wrap: wrap;
+}
+table.agents td.desc .inline-edit > input[type="text"] {
+  flex-basis: 100%;
+  min-width: 8rem;
 }
 .inline-edit {
   display: flex;

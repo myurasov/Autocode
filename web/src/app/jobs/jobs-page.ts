@@ -8,6 +8,8 @@
  * job or one: who started each, its state, times, cost, result and reason; a
  * failed run's kept session can be deleted (after a confirmation). Refreshed
  * every 10 s (one refresh at a time); each action's result in the toolbar.
+ * Both tables sort by a click on a heading: the jobs by Name, the runs by
+ * Started, newest first, by default (the owner, 2026-11-17).
  */
 
 import {
@@ -34,6 +36,7 @@ import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { leftText } from '../locks/locks-page';
 import { TRIGGER_HINT } from '../wakes/wakes-page';
 import { MoreRow, Paged, paged } from '../more';
+import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
 
 // A run's state as the page says it: Starting, Running, Succeeded...
@@ -60,7 +63,16 @@ const STARTERS = ['owner', 'schedule', 'ask'];
 
 @Component({
   selector: 'app-jobs-page',
-  imports: [AgentLink, Breaks, IdParts, MoreRow, RouterLink, TimeText, Updated],
+  imports: [
+    AgentLink,
+    Breaks,
+    IdParts,
+    MoreRow,
+    RouterLink,
+    SortHead,
+    TimeText,
+    Updated,
+  ],
   templateUrl: './jobs-page.html',
 })
 export class JobsPage {
@@ -72,16 +84,42 @@ export class JobsPage {
   // at most 25 rows each, then "..."; a run a link points at always shows
   // (the owner, 2026-11-09)
   protected readonly paging = new Paged();
+  // by a heading (the owner, 2026-11-17): jobs by Name (they have no date),
+  // runs by Started, newest first; a time to come starts soonest first
+  protected readonly jobSorting = new Sorting<Job>('jobs', {
+    columns: {
+      name: { text: (j) => j.name },
+      where: { text: (j) => `${j.machine ?? j.host} ${j.directory ?? ''}` },
+      model: { text: (j) => j.model },
+      trigger: { text: (j) => j.trigger },
+      next: { time: (j) => j.next, first: 'asc' },
+      to: { text: (j) => j.to },
+      last: { time: (j) => j.last_run?.started },
+      by: { text: (j) => j.created_by ?? 'owner' },
+    },
+    by: 'name',
+  });
+  protected readonly runSorting = new Sorting<Run>('runs', {
+    columns: {
+      run: { text: (r) => r.id },
+      by: { text: (r) => r.by },
+      state: { text: (r) => stateText(r.state) },
+      started: { time: (r) => r.started },
+      ended: { time: (r) => r.ended },
+      cost: { number: (r) => r.cost },
+    },
+    by: 'started',
+  });
   protected readonly jobPage = computed(() =>
     paged(
-      this.jobs(),
+      this.jobSorting.sort(this.jobs()),
       this.paging.count('jobs'),
       (j) => j.name === this.jobTarget(),
     ),
   );
   protected readonly runPage = computed(() =>
     paged(
-      this.runs(),
+      this.runSorting.sort(this.runs()),
       this.paging.count('runs'),
       (r) => r.id === this.target(),
     ),

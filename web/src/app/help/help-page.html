@@ -863,7 +863,12 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       server's). A table shows 25 rows at first; the "..." row at its end
       shows 25 more (on History, past what is loaded, the next 100 from the
       server). Agents, Hosts and Wakes are in groups, 25 rows each: a click on
-      a group's heading folds or opens it, and the page remembers it.
+      a group's heading folds or opens it, and the page remembers it. A click
+      on a column heading sorts the table by it, and a second click reverses
+      it; the page remembers it. At first a table is newest first, by its
+      date (Agents by Last Active, Hosts by Last Seen, Wakes by Last Set);
+      Jobs, Locks and Costs, with no date, by name. A grouped table sorts
+      within each group. History sorts what is loaded.
     </p>
 
     <h3 id="web-hosts">
@@ -906,7 +911,8 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       a filter that would hide it goes. The filter takes an ID pattern and
       applies a second after you stop typing; the Unregistered box (off by
       default) adds the agents that unregistered, dimmed, with their spend.
-      Edit a description, Pause or
+      A click on a description edits it (Enter or Save keeps it, Escape or
+      Cancel does not). Pause or
       Resume an agent's injections, give it a New Token, or Unregister it.
       Stop All pauses every agent and interrupts every running turn, after you
       confirm; Resume All resumes what Stop All paused.
@@ -930,7 +936,8 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       Reject; one that may expire says when. Answer a message, and the answer
       goes to the agent as a message from the owner; Close a message or an
       alert you will not answer. The Closed box lists the answered and closed
-      ones too. Agent filters by an ID pattern: the agent of an item, or the
+      ones too; the open ones always show, however many closed ones there
+      are. Agent filters by an ID pattern: the agent of an item, or the
       agent an ask was sent to (a second after you stop typing; kept in the
       address). Close All closes the open messages and alerts listed (of the
       Agent filter's agents, if one is set), after you confirm; questions,

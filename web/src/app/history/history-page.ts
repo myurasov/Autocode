@@ -18,6 +18,7 @@ import { IdParts, TimeText } from '../breaks';
 import { folded } from '../format';
 import { AgentLink, HostLink } from '../links';
 import { MoreRow, PAGE_ROWS, Paged, paged } from '../more';
+import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
 
 // How many entries a page has.
@@ -62,7 +63,7 @@ export function mergeNewest(
 
 @Component({
   selector: 'app-history-page',
-  imports: [AgentLink, HostLink, IdParts, MoreRow, TimeText, Updated],
+  imports: [AgentLink, HostLink, IdParts, MoreRow, SortHead, TimeText, Updated],
   templateUrl: './history-page.html',
 })
 export class HistoryPage {
@@ -89,8 +90,20 @@ export class HistoryPage {
   // 25 rows at a time of what is loaded (the owner, 2026-11-09).
   protected readonly paging = new Paged();
   protected readonly pageSize = PAGE_ROWS;
+  // by a heading, what is loaded; newest first by default (the owner,
+  // 2026-11-17); the server pages newest first
+  protected readonly sorting = new Sorting<HistoryEntry>('history', {
+    columns: {
+      time: { time: (e) => e.at },
+      kind: { text: (e) => e.kind },
+      agent: { text: (e) => e.agent },
+      host: { text: (e) => e.host },
+      session: { text: (e) => e.session },
+    },
+    by: 'time',
+  });
   protected readonly page = computed(() =>
-    paged(this.entries(), this.paging.count('history')),
+    paged(this.sorting.sort(this.entries()), this.paging.count('history')),
   );
 
   // "...": 25 more of what is loaded; past it, the next 100 from the server.

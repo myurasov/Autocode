@@ -5,7 +5,8 @@
  * time); offline ones only with the Offline box (off by default; the owner,
  * 2026-11-08); the host a link led to (?host=) highlighted and scrolled into
  * view (the box goes on when it is offline), or a line that says it is not
- * there.
+ * there. The table sorts by a click on a heading, within each machine, by
+ * Last Seen (newest first) by default (the owner, 2026-11-17).
  */
 
 import {
@@ -24,6 +25,7 @@ import { versionText } from '../format';
 import { highlightParam, scrollToHighlight } from '../links';
 import { FoldRow, Folds } from '../fold';
 import { MoreRow, Paged, paged } from '../more';
+import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
 
 // What each kind of OpenCode process is called on the page.
@@ -46,7 +48,7 @@ export const NO_SHELL_VALUES =
 
 @Component({
   selector: 'app-hosts-page',
-  imports: [Breaks, FoldRow, IdParts, MoreRow, TimeText, Updated],
+  imports: [Breaks, FoldRow, IdParts, MoreRow, SortHead, TimeText, Updated],
   templateUrl: './hosts-page.html',
 })
 export class HostsPage {
@@ -55,12 +57,26 @@ export class HostsPage {
   protected readonly hosts = signal<Host[]>([]);
   // Offline hosts too (the owner, 2026-11-08: off by default).
   protected readonly showOffline = signal(false);
+  // by a heading, within each machine; Last Seen, newest first, by default
+  // (the owner, 2026-11-17)
+  protected readonly sorting = new Sorting<Host>('hosts', {
+    columns: {
+      id: { text: (h) => h.id },
+      folder: { text: (h) => h.directory },
+      status: { text: (h) => (h.online ? 'online' : 'offline') },
+      process: { text: (h) => processText(h) },
+      opencode: { text: (h) => h.opencode_version },
+      plugin: { text: (h) => h.plugin_version },
+      seen: { time: (h) => h.last_seen },
+    },
+    by: 'seen',
+  });
   // The hosts by machine, as on the Agents page: machines in alphabetical
-  // order, hosts in the server's order within each; offline ones only when
+  // order, hosts in the table's order within each; offline ones only when
   // asked for.
   protected readonly machines = computed(() => {
     const by = new Map<string, Host[]>();
-    for (const h of this.hosts())
+    for (const h of this.sorting.sort(this.hosts()))
       if (h.online || this.showOffline())
         by.set(h.machine, [...(by.get(h.machine) ?? []), h]);
     return [...by]

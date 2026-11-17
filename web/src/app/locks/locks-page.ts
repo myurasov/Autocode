@@ -22,6 +22,7 @@ import {
 import { IdParts, TimeText } from '../breaks';
 import { AgentLink } from '../links';
 import { MoreRow, Paged, paged } from '../more';
+import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
 
 // A lock's type, by its capacity: a mutex (1), or so many places.
@@ -47,7 +48,7 @@ export function leftText(ms: number): string {
 
 @Component({
   selector: 'app-locks-page',
-  imports: [AgentLink, IdParts, MoreRow, TimeText, Updated],
+  imports: [AgentLink, IdParts, MoreRow, SortHead, TimeText, Updated],
   templateUrl: './locks-page.html',
 })
 export class LocksPage {
@@ -56,10 +57,18 @@ export class LocksPage {
   private readonly route = inject(ActivatedRoute);
 
   protected readonly locks = signal<Lock[]>([]);
+  // by a heading: a lock has no date, so by its name (the owner, 2026-11-17)
+  protected readonly sorting = new Sorting<Lock>('locks', {
+    columns: {
+      name: { text: (l) => l.name },
+      type: { number: (l) => l.max },
+    },
+    by: 'name',
+  });
   // at most 25 rows, then "..." (the owner, 2026-11-09)
   protected readonly paging = new Paged();
   protected readonly page = computed(() =>
-    paged(this.locks(), this.paging.count('locks')),
+    paged(this.sorting.sort(this.locks()), this.paging.count('locks')),
   );
   // The filter in the address, and as typed.
   protected readonly match = signal('');

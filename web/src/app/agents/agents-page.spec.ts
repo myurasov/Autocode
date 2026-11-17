@@ -602,10 +602,24 @@ describe('AgentsPage', () => {
     }
   });
 
-  it('admin edits a description', async () => {
+  // The owner, 2026-11-17: "instead of edit button on agents tab, edit on
+  // click to description cell".
+  it('admin edits a description by a click on its cell; there is no Edit button', async () => {
     const page = await open();
     const lead = page.querySelector('tr[data-agent="kaggle:lead"]')!;
-    button(lead, 'Edit')!.click();
+    expect(button(lead, 'Edit')).toBeUndefined();
+    const cell = lead.querySelector('td.desc') as HTMLElement;
+    expect(cell.getAttribute('title')).toBe('Click to edit the description');
+    expect(cell.getAttribute('tabindex')).toBe('0');
+    cell.click();
+    await settle(fixture);
+    const input = lead.querySelector(
+      'input[aria-label="Description"]',
+    ) as HTMLInputElement;
+    expect(input.value).toBe('leads the team');
+    expect(document.activeElement).toBe(input);
+    // a click in the field does not start over
+    input.click();
     await settle(fixture);
     type(
       lead.querySelector('input[aria-label="Description"]'),
@@ -623,6 +637,81 @@ describe('AgentsPage', () => {
     expect(text(page.querySelector('.toolbar .notice'))).toBe(
       'Saved the description of kaggle:lead.',
     );
+  });
+
+  it('an empty description edits too, by Enter on its cell; Escape goes back unchanged', async () => {
+    const page = await open();
+    const worker = page.querySelector('tr[data-agent="kaggle:worker"]')!;
+    const cell = worker.querySelector('td.desc') as HTMLElement;
+    cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await settle(fixture);
+    const input = worker.querySelector(
+      'input[aria-label="Description"]',
+    ) as HTMLInputElement;
+    type(input, 'changed');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await settle(fixture);
+    expect(worker.querySelector('input[aria-label="Description"]')).toBeNull();
+    expect(text(worker.querySelector('td.desc'))).toBe('');
+    http.expectNone('/v1/agents/kaggle%3Aworker');
+  });
+
+  it("an unregistered agent's description does not edit", async () => {
+    const page = await open([{ ...AGENTS[0]!, registered: false }]);
+    const cell = page.querySelector(
+      'tr[data-agent="kaggle:lead"] td.desc',
+    ) as HTMLElement;
+    expect(cell.getAttribute('tabindex')).toBeNull();
+    cell.click();
+    await settle(fixture);
+    expect(cell.querySelector('input')).toBeNull();
+  });
+
+  // The owner, 2026-11-17: sorting by a heading; newest first by date.
+  it('sorts within each machine, by Last Active by default; machines stay in name order', async () => {
+    const at = (h: number) => new Date(Date.UTC(2026, 10, 1, h)).toISOString();
+    const list: Agent[] = [
+      { ...AGENTS[0]!, id: 'm:old', machine: 'm', last_active: at(1) },
+      { ...AGENTS[0]!, id: 'm:new', machine: 'm', last_active: at(9) },
+      { ...AGENTS[0]!, id: 'm:mid', machine: 'm', last_active: at(5) },
+      { ...AGENTS[1]!, id: 'a:one', machine: 'a', last_active: at(2) },
+    ];
+    const page = await open(list);
+    const order = () =>
+      [...page.querySelectorAll('table.agents tbody')].map((g) => [
+        g.getAttribute('data-machine'),
+        ...[...g.querySelectorAll('tr[data-agent]')].map((r) =>
+          r.getAttribute('data-agent'),
+        ),
+      ]);
+    expect(order()).toEqual([
+      ['a', 'a:one'],
+      ['m', 'm:new', 'm:mid', 'm:old'],
+    ]);
+    const heads = [...page.querySelectorAll('table.agents thead th')];
+    const sortable = heads
+      .filter((h) => h.querySelector('button.sort'))
+      .map((h) => text(h));
+    expect(sortable).toEqual([
+      'ID',
+      'Description',
+      'Status',
+      'Model',
+      'Spend',
+      'Context',
+      'Host',
+      'Folder',
+      'Session',
+      'Registered',
+      'Last Active',
+    ]);
+    const byId = heads.find((h) => text(h) === 'ID')!;
+    (byId.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(order()).toEqual([
+      ['a', 'a:one'],
+      ['m', 'm:mid', 'm:new', 'm:old'],
+    ]);
   });
 
   it('admin rotates a token and unregisters, each after a confirmation', async () => {

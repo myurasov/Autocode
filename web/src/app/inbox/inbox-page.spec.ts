@@ -11,7 +11,9 @@
  * answer; "Updated" in the footer; and the 10 s refresh (one at a time); the
  * Agent filter (the owner, 2026-11-17), in the address, a second after the
  * last key; Close All (the owner, 2026-11-17): the open messages and alerts
- * listed, after a confirmation, the filter's agents only.
+ * listed, after a confirmation, the filter's agents only; newest first by
+ * default, sorted by a click on a heading, and with Closed on the open items
+ * always shown past the 25 rows (the owner, 2026-11-17).
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -103,10 +105,11 @@ describe('InboxPage', () => {
     expect(
       [...page.querySelectorAll('table.inbox thead th')].map((th) => text(th)),
     ).toEqual(['Time', 'Kind', 'Agent', 'Sent To', 'Item', '']);
+    // newest first (the owner, 2026-11-17)
     const rows = [...page.querySelectorAll('table.inbox tr[data-item]')];
     expect(rows.map((r) => r.getAttribute('data-item'))).toEqual([
-      'ib_1',
       'ib_2',
+      'ib_1',
     ]);
     const message = row(page, 'ib_1');
     const time = message.querySelector('td.time')!;
@@ -296,6 +299,79 @@ describe('InboxPage', () => {
     expect(page.querySelector('tr[data-item="ib_1"]')).toBeNull();
   });
 
+  // The owner, 2026-11-17: sorting by a heading; newest first by default; and
+  // "closed checkbox should not hide active messages".
+  describe('order', () => {
+    const ids = (page: HTMLElement) =>
+      [...page.querySelectorAll('table.inbox tbody tr[data-item]')].map((r) =>
+        r.getAttribute('data-item'),
+      );
+    const sortBy = async (page: HTMLElement, label: string) => {
+      const th = [...page.querySelectorAll('table.inbox thead th')].find(
+        (h) => text(h) === label,
+      )!;
+      (th.querySelector('button.sort') as HTMLButtonElement).click();
+      await settle(fixture);
+      return th;
+    };
+
+    it('sorts by Time (newest first), Kind and Agent; Sent To, Item and the last column do not sort', async () => {
+      const page = await open();
+      const heads = [...page.querySelectorAll('table.inbox thead th')];
+      expect(heads.map((h) => !!h.querySelector('button.sort'))).toEqual([
+        true,
+        true,
+        true,
+        false,
+        false,
+        false,
+      ]);
+      expect(heads[0]!.getAttribute('aria-sort')).toBe('descending');
+      const time = await sortBy(page, 'Time');
+      expect(time.getAttribute('aria-sort')).toBe('ascending');
+      expect(ids(page)).toEqual(['ib_1', 'ib_2']);
+      await sortBy(page, 'Kind');
+      // Alert before Message, as they read
+      expect(ids(page)).toEqual(['ib_2', 'ib_1']);
+      await sortBy(page, 'Agent');
+      expect(ids(page)).toEqual(['ib_1', 'ib_2']);
+      expect(JSON.parse(localStorage.getItem('autocode.sort.inbox')!)).toEqual({
+        key: 'agent',
+        dir: 'asc',
+      });
+    });
+
+    it('with Closed on, the open items show past the 25 rows, at their place in the order', async () => {
+      const closed = (n: number): InboxItem => ({
+        ...ITEMS[0]!,
+        id: `ib_c${n}`,
+        created_at: new Date(Date.UTC(2026, 9, 29, 0, n)).toISOString(),
+        closed_at: '2026-10-30T00:00:00.000Z',
+      });
+      const page = await open([]);
+      const toggle = page.querySelector('#show-closed') as HTMLInputElement;
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change'));
+      // 30 closed items, newer than the two open ones (oldest first, as the
+      // server lists them)
+      load(
+        [...ITEMS, ...Array.from({ length: 30 }, (_, n) => closed(n))],
+        true,
+      );
+      await settle(fixture);
+      const shown = ids(page);
+      expect(shown).toContain('ib_1');
+      expect(shown).toContain('ib_2');
+      expect(shown.length).toBe(27);
+      // the 25 newest, then the open ones after them; then "..."
+      expect(shown.slice(0, 25)).toEqual(
+        Array.from({ length: 25 }, (_, n) => `ib_c${29 - n}`),
+      );
+      expect(shown.slice(25)).toEqual(['ib_2', 'ib_1']);
+      expect(page.querySelector('tr.more-rows')).not.toBeNull();
+    });
+  });
+
   it('says when the inbox is empty', async () => {
     const page = await open([]);
     expect(text(page.querySelector('table.inbox tbody'))).toBe(
@@ -340,7 +416,7 @@ describe('InboxPage', () => {
       load();
       await settle(fixture);
       expect(input.value).toBe('');
-      expect(ids(page)).toEqual(['ib_1', 'ib_2']);
+      expect(ids(page)).toEqual(['ib_2', 'ib_1']);
     });
 
     it('applies the typed pattern a second after the last key', async () => {
@@ -557,12 +633,13 @@ describe('InboxPage', () => {
           text(r.querySelector('td.kind')),
         ),
       ).toEqual([
-        'Message',
-        'Alert',
+        // newest first; the asks came at one time, in their order
         'Question',
         'Question',
         'Permission',
         'Approval',
+        'Alert',
+        'Message',
       ]);
       // each kind its color (the owner, 2026-11-09)
       expect(
@@ -570,12 +647,12 @@ describe('InboxPage', () => {
           (td) => td.className,
         ),
       ).toEqual([
-        'kind kind-message',
-        'kind kind-alert',
         'kind kind-question',
         'kind kind-question',
         'kind kind-permission',
         'kind kind-approval',
+        'kind kind-alert',
+        'kind kind-message',
       ]);
       const q1 = row(page, 'ask_q1');
       expect(text(q1.querySelector('.title'))).toBe(
@@ -864,8 +941,8 @@ describe('InboxPage', () => {
       expect(text(row(page, 'ask_a2').querySelector('td.actions'))).toBe(
         'expired',
       );
-      expect(page.querySelectorAll('table.inbox button').length).toBe(0);
-      expect(page.querySelectorAll('table.inbox input').length).toBe(0);
+      expect(page.querySelectorAll('table.inbox tbody button').length).toBe(0);
+      expect(page.querySelectorAll('table.inbox tbody input').length).toBe(0);
     });
   });
 });

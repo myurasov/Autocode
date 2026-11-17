@@ -31,8 +31,8 @@
 <table class="locks">
   <thead>
     <tr>
-      <th>Lock</th>
-      <th>Type</th>
+      <th appSort="name" [sorting]="sorting">Lock</th>
+      <th appSort="type" [sorting]="sorting">Type</th>
       <th>Holders</th>
       <th>Queue</th>
     </tr>

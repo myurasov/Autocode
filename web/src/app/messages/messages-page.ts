@@ -18,6 +18,7 @@ import { FOLD_CHARS, localTime } from '../format';
 import { AgentLink } from '../links';
 import { Markdown } from '../markdown';
 import { MoreRow, Paged, paged } from '../more';
+import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
 
 // How a copy was read, for its state's tooltip.
@@ -67,7 +68,7 @@ export function recipients(to: string): string | string[] {
 
 @Component({
   selector: 'app-messages-page',
-  imports: [AgentLink, IdParts, Markdown, MoreRow, TimeText, Updated],
+  imports: [AgentLink, IdParts, Markdown, MoreRow, SortHead, TimeText, Updated],
   templateUrl: './messages-page.html',
 })
 export class MessagesPage {
@@ -84,10 +85,26 @@ export class MessagesPage {
       ? this.messages()
       : this.messages().filter((m) => m.state !== 'processed'),
   );
+  // by a heading, newest first by default (the owner, 2026-11-17)
+  protected readonly sorting = new Sorting<Message>('messages', {
+    columns: {
+      id: { text: (m) => m.id },
+      time: { time: (m) => m.created_at },
+      from: { text: (m) => m.from },
+      to: { text: (m) => m.to },
+      subject: { text: (m) => m.subject },
+      size: { number: (m) => m.size },
+      state: { text: (m) => stateText(m) },
+    },
+    by: 'time',
+  });
   // at most 25 rows, then "..." (the owner, 2026-11-09)
   protected readonly paging = new Paged();
   protected readonly page = computed(() =>
-    paged(this.shownMessages(), this.paging.count('messages')),
+    paged(
+      this.sorting.sort(this.shownMessages()),
+      this.paging.count('messages'),
+    ),
   );
   protected readonly loaded = signal(false);
   protected readonly error = signal('');

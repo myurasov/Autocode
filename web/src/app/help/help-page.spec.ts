@@ -524,6 +524,17 @@ describe('HelpPage', () => {
     for (const part of ['model', 'Spend', 'Context', 'the Unregistered box'])
       expect(agents).toContain(part);
     expect(section(page, 'web-hosts')).toContain('the Offline box');
+    // the owner, 2026-11-17: a click on its description edits it; no Edit
+    expect(agents).toContain('A click on a description edits it');
+    expect(agents).not.toContain('Edit a description');
+    // sorting, newest first by default; the Closed box keeps open items
+    const web = text(page.querySelector('#web + p'));
+    expect(web).toContain('A click on a column heading sorts the table by it');
+    expect(web).toContain('newest first');
+    expect(web).toContain('History sorts what is loaded');
+    expect(section(page, 'web-inbox')).toContain(
+      'the open ones always show, however many closed ones there are',
+    );
     expect(costs).toContain("a click on an agent's Spend there leads here");
     expect(agents).toContain('854K/777K/1M');
     // a bar under the context (the owner, 2026-11-09)

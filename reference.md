@@ -703,6 +703,10 @@ The web UI shows the owner every agent, wake, message, lock, job and cost, with 
 - Every table shows 25 rows at first; the "..." row at its end shows 25 more. Agents, Hosts and Wakes are grouped (by
   machine, by agent), 25 rows a group: a click on a group's heading folds or opens it, the browser remembers it, and a
   link to a row opens its group.
+- A click on a column heading sorts by it, a second click reverses it; the browser remembers it per table. At first
+  each table is newest first by its date (Inbox and Messages by Time, Runs by Started, History by Time, Agents by Last
+  Active, Hosts by Last Seen, Wakes by Last Set, Costs' days by Day); Jobs, Locks and Costs by name. Grouped tables
+  sort within each group. History sorts what is loaded.
 - Pattern filters apply a second after you stop typing (Enter at once); History, Costs and Locks keep theirs in the
   address.
 
@@ -718,17 +722,17 @@ The web UI shows the owner every agent, wake, message, lock, job and cost, with 
   now/threshold/window (`854K/777K/1M`; exact tokens in its tooltip) with a bar of the threshold's share (amber from
   75%, red from 100%; the window's share without a threshold), host, folder, session, times. A paused agent's
   tooltip says who paused it; an agent in error shows its error and retries (`retry 3 in 40s`, `retrying now`,
-  `not retried`, `retries ran out`). Edit a description, **Pause**, **Resume**, **Retry**, **New Token**,
+  `not retried`, `retries ran out`). A click on a description edits it; **Pause**, **Resume**, **Retry**, **New Token**,
   **Unregister**; **Stop All** (after you confirm) and **Resume All**. A pattern filter and an **Unregistered** box
   (off by default: gone agents too, dimmed, with spend).
 - **Inbox:** messages to you, alerts, and asks (questions, permission prompts and approvals a turn waits for), each
   answered here. **Sent To** says whom an ask went to; an agent that escalates adds a note. A question: click an
   option, or write your words and **Answer**. A permission: **Allow Once**, **Allow Always** (OpenCode saves the rule
   for the project) or **Reject**, with a reason. An approval: an option, a note, **Approve** or **Reject**; one that
-  may expire says when. **Answer** a message, or **Close** a message or an alert. **Closed** adds the closed ones. An
-  **Agent** filter (an ID pattern) shows the items of matching agents and the asks sent to them. **Close All** closes
-  the open messages and alerts listed, after a confirmation; asks stay open. The Kind is colored: message green, alert
-  red, question sky blue, permission amber, approval violet.
+  may expire says when. **Answer** a message, or **Close** a message or an alert. **Closed** adds the closed ones (the
+  open ones always show). An **Agent** filter (an ID pattern) shows the items of matching agents and the asks sent to
+  them. **Close All** closes the open messages and alerts listed, after a confirmation; asks stay open. The Kind is
+  colored: message green, alert red, question sky blue, permission amber, approval violet.
 - **Messages:** every message not processed yet (the **Processed** box adds the processed ones), newest first: ID,
   sender, recipient, subject, the first 200 characters (a click shows it whole, as markdown) and its state (queued;
   processed, with how: prompt, steer, read, wait or inbox; dropped). Viewing leaves the state. **Send a Message**

@@ -93,14 +93,14 @@
 <table class="wakes">
   <thead>
     <tr>
-      <th>Name</th>
-      <th>Trigger</th>
-      <th>Next</th>
+      <th appSort="name" [sorting]="sorting">Name</th>
+      <th appSort="trigger" [sorting]="sorting">Trigger</th>
+      <th appSort="next" [sorting]="sorting">Next</th>
       <th>Text</th>
       <th>Check</th>
-      <th>Set By</th>
-      <th>Last Set</th>
-      <th>Last Fired</th>
+      <th appSort="by" [sorting]="sorting">Set By</th>
+      <th appSort="set" [sorting]="sorting">Last Set</th>
+      <th appSort="fired" [sorting]="sorting">Last Fired</th>
       <th></th>
     </tr>
   </thead>

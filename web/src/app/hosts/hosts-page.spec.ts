@@ -153,6 +153,30 @@ describe('HostsPage', () => {
     expect(text(off.querySelector('td.process'))).toBe('');
   });
 
+  // The owner, 2026-11-17: sorting by a heading; newest first by date.
+  it('sorts within each machine, by Last Seen by default; every heading sorts', async () => {
+    const at = (h: number) => new Date(Date.UTC(2026, 10, 1, h)).toISOString();
+    signedIn();
+    fixture = TestBed.createComponent(HostsPage);
+    load([
+      { ...HOSTS[0]!, id: 'm:b', machine: 'm', last_seen: at(1) },
+      { ...HOSTS[0]!, id: 'm:a', machine: 'm', last_seen: at(9) },
+      { ...HOSTS[0]!, id: 'm:c', machine: 'm', last_seen: at(5) },
+    ]);
+    await settle(fixture);
+    const page = el(fixture);
+    const order = () =>
+      [...page.querySelectorAll('table.hosts tr[data-host]')].map((r) =>
+        r.getAttribute('data-host'),
+      );
+    expect(order()).toEqual(['m:a', 'm:c', 'm:b']);
+    const heads = [...page.querySelectorAll('table.hosts thead th')];
+    expect(heads.every((h) => h.querySelector('button.sort'))).toBe(true);
+    (heads[0]!.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(order()).toEqual(['m:a', 'm:b', 'm:c']);
+  });
+
   it('names each kind of OpenCode process', async () => {
     const kinds: [string, string][] = [
       ['service', 'bg service (7)'],

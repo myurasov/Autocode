@@ -7,11 +7,13 @@
  * the agent a link led to (?agent=) highlighted and scrolled into view, a
  * filter that would hide it cleared, or a line that says it is not there.
  * An agent in the error state (its turns fail) shows its error type and how
- * its retries go. The owner can edit an agent's description, pause or resume
+ * its retries go. The owner can edit an agent's description (a click on its
+ * cell: the owner, 2026-11-17), pause or resume
  * its injections, retry one in error now, give it a new token or unregister it
  * (the last two ask for a confirmation first), and stop all agents (after a
  * confirmation) or resume the ones Stop All paused; each action's result shows
- * in the toolbar.
+ * in the toolbar. The table sorts by a click on a heading, within each
+ * machine, by Last Active (newest first) by default (the owner, 2026-11-17).
  */
 
 import {
@@ -38,6 +40,7 @@ import {
 import { HostLink, highlightParam, scrollToHighlight } from '../links';
 import { FoldRow, Folds } from '../fold';
 import { MoreRow, Paged, paged } from '../more';
+import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
 
 export const REFRESH_MS = 10_000;
@@ -126,6 +129,7 @@ function count(n: number, thing: string): string {
     IdParts,
     MoreRow,
     RouterLink,
+    SortHead,
     TimeText,
     Updated,
   ],
@@ -135,11 +139,29 @@ export class AgentsPage {
   private readonly api = inject(Api);
 
   protected readonly agents = signal<Agent[]>([]);
+  // by a heading, within each machine; Last Active, newest first, by default
+  // (the owner, 2026-11-17)
+  protected readonly sorting = new Sorting<Agent>('agents', {
+    columns: {
+      id: { text: (a) => a.id },
+      desc: { text: (a) => a.description },
+      status: { text: (a) => a.status },
+      model: { text: (a) => a.model },
+      spend: { number: (a) => a.cost?.today_usd },
+      context: { number: (a) => a.cost?.context },
+      host: { text: (a) => a.host },
+      folder: { text: (a) => a.directory },
+      session: { text: (a) => a.session },
+      registered: { time: (a) => a.registered_at },
+      active: { time: (a) => a.last_active },
+    },
+    by: 'active',
+  });
   // The agents by machine: machines in alphabetical order, agents in the
-  // server's order within each.
+  // table's order within each.
   protected readonly machines = computed(() => {
     const by = new Map<string, Agent[]>();
-    for (const a of this.agents()) {
+    for (const a of this.sorting.sort(this.agents())) {
       const machine = a.machine ?? '';
       by.set(machine, [...(by.get(machine) ?? []), a]);
     }
@@ -282,9 +304,20 @@ export class AgentsPage {
     this.applyFilter();
   }
 
-  protected startEdit(agent: Agent): void {
+  // A click (or Enter) on a description's cell edits it (the owner,
+  // 2026-11-17); a click inside the field while it edits does nothing more.
+  protected startEdit(agent: Agent, event?: Event): void {
+    if (agent.registered === false || this.editing() === agent.id) return;
+    event?.preventDefault();
     this.editing.set(agent.id);
     this.draft.set(agent.description);
+    setTimeout(() => {
+      const field = document.querySelector<HTMLInputElement>(
+        `tr[data-agent="${CSS.escape(agent.id)}"] td.desc input`,
+      );
+      field?.focus();
+      field?.select();
+    });
   }
 
   protected cancelEdit(): void {

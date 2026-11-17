@@ -186,14 +186,14 @@
 <table class="jobs">
   <thead>
     <tr>
-      <th>Name</th>
-      <th>Where</th>
-      <th>Model</th>
-      <th>Trigger</th>
-      <th>Next</th>
-      <th>To</th>
-      <th>Last Run</th>
-      <th>Set By</th>
+      <th appSort="name" [sorting]="jobSorting">Name</th>
+      <th appSort="where" [sorting]="jobSorting">Where</th>
+      <th appSort="model" [sorting]="jobSorting">Model</th>
+      <th appSort="trigger" [sorting]="jobSorting">Trigger</th>
+      <th appSort="next" [sorting]="jobSorting">Next</th>
+      <th appSort="to" [sorting]="jobSorting">To</th>
+      <th appSort="last" [sorting]="jobSorting">Last Run</th>
+      <th appSort="by" [sorting]="jobSorting">Set By</th>
       <th></th>
     </tr>
   </thead>
@@ -324,12 +324,12 @@
 <table class="runs">
   <thead>
     <tr>
-      <th>Run</th>
-      <th>Started By</th>
-      <th>State</th>
-      <th>Started</th>
-      <th>Ended</th>
-      <th>Cost</th>
+      <th appSort="run" [sorting]="runSorting">Run</th>
+      <th appSort="by" [sorting]="runSorting">Started By</th>
+      <th appSort="state" [sorting]="runSorting">State</th>
+      <th appSort="started" [sorting]="runSorting">Started</th>
+      <th appSort="ended" [sorting]="runSorting">Ended</th>
+      <th class="num" appSort="cost" [sorting]="runSorting">Cost</th>
       <th>Result</th>
       <th>Reason</th>
       <th></th>

@@ -535,8 +535,9 @@ test("admin: sends a message from the Messages page", async ({ page }) => {
   ).toBeLessThanOrEqual(2)
   const first = page.locator("table.messages tr[data-message]").first()
   await expect(first.locator("td.recipient")).toHaveText("smoke:agent")
+  // "processed", not "read" (the owner, 2026-11-10; migration 19)
   await expect(first.locator("td.state")).toHaveText(
-    /^(queued|read \((prompt|steer|read|wait)\))$/,
+    /^(queued|processed \((prompt|steer|read|wait)\))$/,
   )
   await page.getByLabel("To", { exact: true }).fill("nobody:here")
   await page.getByLabel("Text", { exact: true }).fill("Anyone?")
@@ -2394,6 +2395,37 @@ async function openAsks(api: APIRequestContext) {
 
 // Every open ask answered (rejected where it can be), so smoke:agent is no
 // longer waiting.
+/*
+ * An agent of a test's own, on a host of its own, so what the test closes or
+ * changes leaves the fixture's agents as they were; its session token.
+ */
+async function ownAgent(api: APIRequestContext, id: string): Promise<string> {
+  const host = `${id}:host:1`
+  const session = `ses_${id.replace(/[^a-z0-9]/gi, "")}`
+  const hello = await api.post(`/v1/hosts/${host}/hello`, {
+    headers: bearer(consumer),
+    data: {
+      instance: "i1",
+      machine: "smoke",
+      directory: `/work/${id}`,
+      sessions: [session],
+    },
+  })
+  expect(hello.ok(), await hello.text()).toBe(true)
+  const issued = await api.post(`/v1/hosts/${host}/sessions/${session}/token`, {
+    headers: bearer(consumer),
+    data: {},
+  })
+  expect(issued.ok(), await issued.text()).toBe(true)
+  const token = (await issued.json()).token
+  const made = await api.post("/v1/agents", {
+    headers: bearer(token),
+    data: { id, description: "an agent of one test" },
+  })
+  expect([200, 201], await made.text()).toContain(made.status())
+  return token
+}
+
 async function answerAsks(api: APIRequestContext) {
   for (const ask of await openAsks(api))
     await api.post(`/v1/asks/${ask.id}/answer`, {
@@ -2668,34 +2700,90 @@ test("Inbox: the Agent filter by agent, the agent an ask went to, and the addres
 })
 
 /*
+ * The owner, 2026-11-17: "closed checkbox should not hide active messages".
+ * With more than 25 closed items, newer than an open one, Closed on still
+ * lists the open item (it was behind the "..." row); newest first.
+ */
+test("Inbox: with Closed on, an open item shows past 25 newer closed ones", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const header = `Open among closed ${Date.now()}`
+  const token = await ownAgent(api, "smoke:closed-box")
+  try {
+    const open = await api.post("/v1/messages", {
+      headers: bearer(token),
+      data: { to: "owner", subject: header, text: "Still open." },
+    })
+    expect(open.status(), await open.text()).toBe(201)
+    for (let n = 0; n < 27; n++) {
+      const sent = await api.post("/v1/messages", {
+        headers: bearer(token),
+        data: { to: "owner", subject: `Closed ${n} ${header}`, text: "x" },
+      })
+      expect(sent.status(), await sent.text()).toBe(201)
+    }
+    const items = (
+      await (await api.get("/v1/inbox", { headers: bearer(admin) })).json()
+    ).items.filter(
+      (i: any) => i.title.includes(`Closed `) && i.title.includes(header),
+    )
+    for (const i of items)
+      await api.post(`/v1/inbox/${i.id}/close`, { headers: bearer(admin) })
+    await signIn(page, admin)
+    await openTab(page, "Inbox")
+    await page.locator("#show-closed").check()
+    const rows = page.locator("table.inbox tbody tr[data-item]")
+    await expect(rows.filter({ hasText: `Closed 26 ${header}` })).toHaveCount(1)
+    // newest first: the last closed one heads the list
+    await expect(rows.first()).toContainText(`Closed 26 ${header}`)
+    // the open one shows too, though 27 newer closed ones came after it
+    const still = rows.filter({ hasText: `"${header}"` })
+    await expect(still).toHaveCount(1)
+    await expect(still).not.toHaveClass(/closed/)
+    await expect(page.locator("table.inbox tr.more-rows")).toHaveCount(1)
+  } finally {
+    await api.post("/v1/inbox/close-all", {
+      headers: bearer(admin),
+      params: { match: "smoke:closed-box" },
+    })
+    await api.delete("/v1/agents/smoke:closed-box", { headers: bearer(admin) })
+    await api.dispose()
+  }
+})
+
+/*
  * The owner, 2026-11-17: "on inbox i want close all button". Close All, with
- * the Agent filter on the long agent: its messages and alerts close after the
- * confirmation, its ask stays, and the other agents' items are not touched.
+ * the Agent filter on an agent of the test's own: its messages and alerts
+ * close after the confirmation, its ask stays, and the other agents' items
+ * are not touched.
  */
 test("Inbox: Close All closes the listed messages and alerts; asks and other agents' items stay", async ({
   page,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
   const header = `CloseAll ${Date.now()}`
+  const own = "smoke:close-all"
+  const token = await ownAgent(api, own)
   try {
     for (const subject of [`${header} a`, `${header} b`]) {
       const sent = await api.post("/v1/messages", {
-        headers: bearer(longToken),
+        headers: bearer(token),
         data: { to: "owner", subject, text: "Close me." },
       })
       expect(sent.status(), await sent.text()).toBe(201)
     }
     const asked = await api.post("/v1/me/approvals", {
-      headers: bearer(longToken),
+      headers: bearer(token),
       data: { text: `${header}: may I?` },
     })
     expect(asked.ok(), await asked.text()).toBe(true)
     await signIn(page, admin)
-    await page.goto(`/inbox?match=${encodeURIComponent(LONG.agent)}`)
+    await page.goto(`/inbox?match=${encodeURIComponent(own)}`)
     const rows = page.locator("table.inbox tbody tr[data-item]")
     await expect(rows.filter({ hasText: header })).toHaveCount(3)
     page.once("dialog", async (dialog) => {
-      expect(dialog.message()).toContain(`of ${LONG.agent}?`)
+      expect(dialog.message()).toContain(`of ${own}?`)
       expect(dialog.message()).toContain(
         "Questions, permissions and approvals stay open.",
       )
@@ -2715,8 +2803,13 @@ test("Inbox: Close All closes the listed messages and alerts; asks and other age
       await (await api.get("/v1/inbox", { headers: bearer(admin) })).json()
     ).items.filter((i: any) => i.agent === "smoke:agent")
     expect(others.length).toBeGreaterThan(0)
+    const long = (
+      await (await api.get("/v1/inbox", { headers: bearer(admin) })).json()
+    ).items.filter((i: any) => i.agent === LONG.agent)
+    expect(long.length).toBeGreaterThan(0)
   } finally {
     await answerAsks(api)
+    await api.delete(`/v1/agents/${own}`, { headers: bearer(admin) })
     await api.dispose()
   }
 })
@@ -2756,13 +2849,15 @@ test("Inbox: the layout with a question, a permission and an approval at 1280 an
             size: getComputedStyle(b).fontSize,
           })),
         )
+      // newest first (the owner, 2026-11-17): the approval, the
+      // permission, then the question
       expect(buttons.map((b) => b.text)).toEqual([
-        "Answer",
+        "Approve",
+        "Reject",
         "Allow Once",
         "Allow Always",
         "Reject",
-        "Approve",
-        "Reject",
+        "Answer",
       ])
       for (const b of buttons) {
         expect(titleCase(b.text), b.text).toBe(true)
@@ -3102,7 +3197,8 @@ test("layout: wrapped action buttons have space between their lines", async ({
   const buttons = page.locator(
     `table.agents tr[data-agent="${LONG.agent}"] td.actions button`,
   )
-  await expect(buttons).toHaveCount(4)
+  // Pause, New Token, Unregister (no Edit: the owner, 2026-11-17)
+  await expect(buttons).toHaveCount(3)
   const boxes = await buttons.evaluateAll((all) =>
     all.map((b) => b.getBoundingClientRect()),
   )

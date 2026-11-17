@@ -33,6 +33,7 @@ import { IdParts } from '../breaks';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { MoreRow, Paged, paged } from '../more';
+import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
 
 // The page follows each model step: a refresh every 5 s.
@@ -73,7 +74,15 @@ export function weekTotals(weeks: CostDay[][]): CostDay[] {
 
 @Component({
   selector: 'app-costs-page',
-  imports: [AgentLink, IdParts, MoreRow, NgTemplateOutlet, RouterLink, Updated],
+  imports: [
+    AgentLink,
+    IdParts,
+    MoreRow,
+    NgTemplateOutlet,
+    RouterLink,
+    SortHead,
+    Updated,
+  ],
   templateUrl: './costs-page.html',
 })
 export class CostsPage {
@@ -108,15 +117,41 @@ export class CostsPage {
   // at most 25 rows, then "..."; the agent a link led to always shows (the
   // owner, 2026-11-09)
   protected readonly paging = new Paged();
+  // by a heading (the owner, 2026-11-17): agents have no date, so by Agent;
+  // an agent's days by Day, newest first
+  protected readonly sorting = new Sorting<AgentCost>('costs', {
+    columns: {
+      agent: { text: (a) => a.agent },
+      status: { text: (a) => a.status },
+      today: { number: (a) => a.today_usd },
+      cap: { number: (a) => (a.daily_usd === 'off' ? null : a.daily_usd) },
+      total: { number: (a) => a.total_usd },
+    },
+    by: 'agent',
+  });
+  protected readonly daySorting = new Sorting<{
+    day: string;
+    usd: number;
+    steps: number;
+  }>('cost-days', {
+    columns: {
+      day: { text: (d) => d.day, first: 'desc' },
+      usd: { number: (d) => d.usd },
+      steps: { number: (d) => d.steps },
+    },
+    by: 'day',
+  });
   protected readonly page = computed(() =>
     paged(
-      this.rows(),
+      this.sorting.sort(this.rows()),
       this.paging.count('costs'),
       (a) => a.agent === this.target(),
     ),
   );
-  protected dayRows<T>(days: readonly T[]) {
-    return paged(days, this.paging.count('days'));
+  protected dayRows(
+    days: readonly { day: string; usd: number; steps: number }[],
+  ) {
+    return paged(this.daySorting.sort(days), this.paging.count('days'));
   }
   protected readonly totals = computed(() => {
     const rows = this.rows();

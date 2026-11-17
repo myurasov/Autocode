@@ -168,6 +168,28 @@ describe('LocksPage', () => {
     expect(text(pool.querySelector('td.queue'))).toBe('—');
   });
 
+  // The owner, 2026-11-17: sorting by a heading; a lock has no date, so by
+  // its name.
+  it('sorts by Lock (A to Z) by default, and by Type; Holders and Queue do not sort', async () => {
+    const page = await open();
+    const order = () =>
+      [...page.querySelectorAll('table.locks tr[data-lock]')].map((r) =>
+        r.getAttribute('data-lock'),
+      );
+    expect(order()).toEqual(['gpu-0', 'gpu-pool']);
+    const heads = [...page.querySelectorAll('table.locks thead th')];
+    expect(heads.map((h) => !!h.querySelector('button.sort'))).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    expect(heads[0]!.getAttribute('aria-sort')).toBe('ascending');
+    (heads[0]!.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(order()).toEqual(['gpu-pool', 'gpu-0']);
+  });
+
   it("says a lock's type by its capacity: a mutex, or so many places", () => {
     expect(capacityText(1)).toBe('Mutex');
     expect(capacityText(2)).toBe('2 places');

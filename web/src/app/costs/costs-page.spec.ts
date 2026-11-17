@@ -209,6 +209,51 @@ describe('CostsPage', () => {
     expect(days()).toBeNull();
   });
 
+  // The owner, 2026-11-17: sorting by a heading. Agents have no date: by
+  // Agent; an agent's days by Day, newest first.
+  it('sorts the agents by Agent by default, by Status, Today, Daily Cap and Total too; the days by Day, Spend and Steps', async () => {
+    const page = await open();
+    const order = () =>
+      [...page.querySelectorAll('table.costs > tbody > tr[data-agent]')]
+        .filter((r) => !r.classList.contains('days'))
+        .map((r) => r.getAttribute('data-agent'));
+    expect(order()).toEqual(['kaggle:lead', 'kaggle:worker', 'old:one']);
+    const heads = [...page.querySelectorAll('table.costs > thead th')];
+    expect(
+      heads.filter((h) => h.querySelector('button.sort')).map((h) => text(h)),
+    ).toEqual(['Agent', 'Status', 'Today', 'Daily Cap', 'Total']);
+    const total = heads.find((h) => text(h) === 'Total')!;
+    (total.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(order()).toEqual(['kaggle:lead', 'old:one', 'kaggle:worker']);
+    (
+      row(page, 'kaggle:lead').querySelector('button.days') as HTMLElement
+    ).click();
+    http.expectOne('/v1/costs/kaggle%3Alead').flush({
+      agent: 'kaggle:lead',
+      registered: true,
+      day: '2026-11-08',
+      timezone: 'America/Los_Angeles',
+      cost: view().agents[0],
+      days: [
+        { day: '2026-11-07', usd: 10.8456, steps: 210 },
+        { day: '2026-11-08', usd: 1.5, steps: 30 },
+      ],
+    });
+    await settle(fixture);
+    const days = () =>
+      [...page.querySelectorAll('table.cost-days tbody tr')].map((tr) =>
+        text(tr.querySelector('td')),
+      );
+    expect(days()).toEqual(['08-Nov-26', '07-Nov-26']);
+    const spend = [...page.querySelectorAll('table.cost-days thead th')].find(
+      (h) => text(h) === 'Spend',
+    )!;
+    (spend.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(days()).toEqual(['07-Nov-26', '08-Nov-26']);
+  });
+
   // The owner, 2026-11-08: the status with its dot, as on the other tabs.
   it("shows each agent's status with its dot, as the Agents tab does", async () => {
     const statuses = [
