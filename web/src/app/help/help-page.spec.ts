@@ -402,7 +402,7 @@ describe('HelpPage', () => {
     );
     // Close All (the owner, 2026-11-17)
     expect(inbox).toContain(
-      'Close All closes the open messages and alerts listed (of the Agent filter',
+      'Close All closes the open messages and alerts shown on the page (of the Agent filter',
     );
     expect(inbox).toContain('questions, permissions and approvals stay open');
     for (const part of [

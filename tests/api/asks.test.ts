@@ -624,6 +624,38 @@ describe("the owner's inbox lists every kind", () => {
     expect((await as(a, "POST", "/v1/inbox/close-all")).status).toBe(403)
   })
 
+  // The owner, 2026-11-17: "close all button should close only sessions
+  // visible (considering filter if any)": the page sends the items it shows;
+  // only those close, and only the open messages and alerts among them.
+  test("close-all with ids closes only those, of the open messages and alerts; others stay", async () => {
+    for (const text of ["one", "two", "three"])
+      await as(a, "POST", "/v1/messages", { to: "owner", text })
+    await as(a, "POST", "/v1/me/approvals", { text: "Go?" })
+    const items = (await owner("GET", "/v1/inbox")).body.items
+    const byText = (t: string) => items.find((i: any) => i.body === t)
+    const ask = items.find((i: any) => i.kind === "approval")
+    const res = await owner("POST", "/v1/inbox/close-all", {
+      ids: [byText("one").id, byText("two").id, ask.id, "ib_nope"],
+    })
+    expect(res.status).toBe(200)
+    // the ask and an unknown ID are skipped, not errors
+    expect(res.body.closed).toBe(2)
+    const open = (await owner("GET", "/v1/inbox")).body.items
+    expect(open.map((i: any) => i.body ?? i.kind).sort()).toEqual([
+      "approval",
+      "three",
+    ])
+    // closed already: skipped; ?match= still applies
+    const again = await owner("POST", "/v1/inbox/close-all?match=other:*", {
+      ids: [byText("one").id, byText("three").id],
+    })
+    expect(again.body.closed).toBe(0)
+    // not a list of IDs
+    const bad = await owner("POST", "/v1/inbox/close-all", { ids: "x" })
+    expect(bad.status).toBe(400)
+    expect(bad.body.error.code).toBe("bad_request")
+  })
+
   // The agents CI (2026-11-08): the owner answers what the inbox lists by
   // its ID, an ask too (models ask approval for "ask the owner").
   test("an ask is answered and closed through the inbox's own routes too", async () => {

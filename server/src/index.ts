@@ -1374,12 +1374,24 @@ export async function startServer(
       path: "/v1/inbox/close-all",
       access: ["admin"],
       summary:
-        "close every open message and alert (?match= an agent pattern); " +
-        "asks stay open; returns how many closed",
-      handler: ({ url }) => {
+        "close every open message and alert (?match= an agent pattern; " +
+        "{ids}: only those, the items a page shows); asks stay open; " +
+        "returns how many closed",
+      handler: async ({ url, body }) => {
         const matches = inboxMatch(url)
+        // the owner, 2026-11-17: "close only ... visible (considering filter
+        // if any)": the Inbox tab sends the IDs it shows
+        const input = await body()
+        const ids = input?.ids
+        if (
+          ids !== undefined &&
+          (!Array.isArray(ids) || ids.some((id) => typeof id !== "string"))
+        )
+          throw new AutocodeError("bad_request", "ids must be a list of IDs")
+        const only = ids ? new Set<string>(ids) : null
         let closed = 0
         for (const item of inbox.list(false).filter(matches)) {
+          if (only && !only.has(item.id)) continue
           inbox.close(item.id)
           closed++
         }

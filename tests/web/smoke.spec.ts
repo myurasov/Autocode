@@ -2701,6 +2701,56 @@ test("Inbox: the Agent filter by agent, the agent an ask went to, and the addres
 })
 
 /*
+ * The owner, 2026-11-17: "close all button should close only sessions visible
+ * (considering filter if any)": a message that came after the page last
+ * loaded is not shown yet, so Close All leaves it open. The page's clock is
+ * paused, so its 10 s refresh cannot show it first.
+ */
+test("Inbox: Close All leaves open what the page does not show yet", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const own = "smoke:close-shown"
+  const token = await ownAgent(api, own)
+  const send = (subject: string) =>
+    api.post("/v1/messages", {
+      headers: bearer(token),
+      data: { to: "owner", subject, text: "x" },
+    })
+  try {
+    expect((await send("Shown one")).status()).toBe(201)
+    expect((await send("Shown two")).status()).toBe(201)
+    await page.clock.install()
+    await signIn(page, admin)
+    await page.goto(`/inbox?match=${encodeURIComponent(own)}`)
+    const rows = page.locator("table.inbox tbody tr[data-item]")
+    await expect(rows.filter({ hasText: "Shown" })).toHaveCount(2)
+    // no refresh from now on
+    await page.clock.pauseAt(new Date(Date.now() + 1000))
+    expect((await send("Came later")).status()).toBe(201)
+    page.once("dialog", (dialog) => dialog.accept())
+    const closed = page.waitForResponse((r) =>
+      r.url().includes("/v1/inbox/close-all"),
+    )
+    await page.locator(".toolbar button.close-all").click()
+    expect((await (await closed).json()).closed).toBe(2)
+    const open = (
+      await (await api.get("/v1/inbox", { headers: bearer(admin) })).json()
+    ).items.filter((i: any) => i.agent === own)
+    expect(open.map((i: any) => i.title)).toEqual([
+      `Message from ${own}: "Came later"`,
+    ])
+  } finally {
+    await api.post("/v1/inbox/close-all", {
+      headers: bearer(admin),
+      params: { match: own },
+    })
+    await api.delete(`/v1/agents/${own}`, { headers: bearer(admin) })
+    await api.dispose()
+  }
+})
+
+/*
  * The owner, 2026-11-17: "closed checkbox should not hide active messages".
  * With more than 25 closed items, newer than an open one, Closed on still
  * lists the open item (it was behind the "..." row); newest first.

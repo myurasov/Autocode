@@ -8,7 +8,7 @@
   approval's options, Approve and Reject; its text once, under a title that
   names the agent); and when the list last loaded. The Agent field filters by
   an agent pattern (the owner, 2026-11-17); Close All closes the open messages
-  and alerts listed (the owner, 2026-11-17).
+  and alerts shown (the owner, 2026-11-17).
 -->
 
 <div class="toolbar">
@@ -34,7 +34,7 @@
     type="button"
     class="close-all"
     [disabled]="busy() || !closable().length"
-    title="Close the open messages and alerts listed; asks stay open"
+    title="Close the open messages and alerts shown; asks stay open"
     (click)="closeAll()"
   >
     Close All

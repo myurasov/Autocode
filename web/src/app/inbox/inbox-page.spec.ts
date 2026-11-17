@@ -218,6 +218,8 @@ describe('InboxPage', () => {
       const req = http.expectOne((r) => r.url === '/v1/inbox/close-all');
       expect(req.request.method).toBe('POST');
       expect(req.request.params.get('match')).toBeNull();
+      // the items shown (the owner, 2026-11-17), newest first
+      expect(req.request.body).toEqual({ ids: ['ib_2', 'ib_1'] });
       req.flush({ closed: 2 });
       await settle(fixture);
       load([ASK]);
@@ -263,6 +265,7 @@ describe('InboxPage', () => {
       );
       const req = http.expectOne((r) => r.url === '/v1/inbox/close-all');
       expect(req.request.params.get('match')).toBe('*kaggle:w*');
+      expect(req.request.body).toEqual({ ids: ['ib_2'] });
       req.flush({ closed: 1 });
       await settle(fixture);
       load([], false, 'kaggle:w*');
@@ -272,6 +275,52 @@ describe('InboxPage', () => {
       );
       confirm.mockRestore();
     });
+  });
+
+  // The owner, 2026-11-17: "close all button should close only sessions
+  // visible (considering filter if any)": the page sends the IDs it shows.
+  it('Close All sends the open messages and alerts shown; with Closed on, not the closed ones or the asks', async () => {
+    const ASK: InboxItem = {
+      ...ITEMS[0]!,
+      id: 'ask_9',
+      kind: 'approval',
+      title: 'Approval',
+      text: 'Go?',
+      routed: 'owner',
+    };
+    const closed = (n: number): InboxItem => ({
+      ...ITEMS[0]!,
+      id: `ib_c${n}`,
+      created_at: new Date(Date.UTC(2026, 9, 29, 0, n)).toISOString(),
+      closed_at: '2026-10-30T00:00:00.000Z',
+    });
+    const page = await open([]);
+    const toggle = page.querySelector('#show-closed') as HTMLInputElement;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    load(
+      [...ITEMS, ASK, ...Array.from({ length: 30 }, (_, n) => closed(n))],
+      true,
+    );
+    await settle(fixture);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    (
+      page.querySelector('.toolbar button.close-all') as HTMLButtonElement
+    ).click();
+    // closed items are behind "...", but every open one shows (the Closed
+    // box never hides them): no "only the items shown"
+    expect(page.querySelector('tr.more-rows')).not.toBeNull();
+    expect(confirm).toHaveBeenCalledWith(
+      'Close 1 message and 1 alert?\n\n' +
+        'Questions, permissions and approvals stay open.',
+    );
+    const req = http.expectOne((r) => r.url === '/v1/inbox/close-all');
+    expect(req.request.body).toEqual({ ids: ['ib_2', 'ib_1'] });
+    req.flush({ closed: 2 });
+    await settle(fixture);
+    load([ASK], true);
+    await settle(fixture);
+    confirm.mockRestore();
   });
 
   // The box is "Closed" (the owner, 2026-11-09).

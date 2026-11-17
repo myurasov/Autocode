@@ -812,9 +812,10 @@ export class Api {
     ).ask;
   }
 
-  // Close All (the owner, 2026-11-17): the open messages and alerts, of the
-  // agents that match; asks stay open. How many closed.
-  async closeAll(match = ''): Promise<number> {
+  // Close All (the owner, 2026-11-17): the open messages and alerts among
+  // the items given (the ones a page shows), of the agents that match; asks
+  // stay open. How many closed.
+  async closeAll(ids: readonly string[], match = ''): Promise<number> {
     const params = match.trim()
       ? new HttpParams().set('match', match.trim())
       : undefined;
@@ -822,7 +823,7 @@ export class Api {
       await this.call(
         this.http.post<{ closed: number }>(
           '/v1/inbox/close-all',
-          {},
+          { ids },
           { params },
         ),
       )

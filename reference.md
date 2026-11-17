@@ -666,7 +666,7 @@ machine itself, `~/.autocode/admin.token` with `http://127.0.0.1:4848`. With an 
 | `autocode inbox [--all] [--match PATTERN]` | open Inbox items (`--all`: closed ones too; `--match`: of matching agents, and asks sent to them); TO says whom an ask went to |
 | `autocode answer ID TEXT...` | answer a message, a question, a permission (`once`, `always`, `reject: why`) or an approval (`approve` or `reject`, an option, a note) |
 | `autocode inbox close ID` | close an alert, or a message you will not answer |
-| `autocode inbox close --all [--match PATTERN]` | close every open message and alert (of matching agents); asks stay open |
+| `autocode inbox close --all [--match PATTERN]` | close every open message and alert (of matching agents); asks stay open (the Inbox tab's Close All sends the items it shows: `{ids}`) |
 | `autocode pause AGENT` / `resume AGENT` | stop or restart an agent's injections (wakes and messages keep waiting) |
 | `autocode retry AGENT` | retry an agent in the error state now |
 | `autocode stop-all` / `resume-all` | pause every agent and interrupt every turn; resume what stop-all paused (your own pauses stay) |
@@ -734,7 +734,7 @@ The web UI shows the owner every agent, wake, message, lock, job and cost, with 
   for the project) or **Reject**, with a reason. An approval: an option, a note, **Approve** or **Reject**; one that
   may expire says when. **Answer** a message, or **Close** a message or an alert. **Closed** adds the closed ones (the
   open ones always show). An **Agent** filter (an ID pattern) shows the items of matching agents and the asks sent to
-  them. **Close All** closes the open messages and alerts listed, after a confirmation; asks stay open. The Kind is
+  them. **Close All** closes the open messages and alerts shown, after a confirmation; asks stay open. The Kind is
   colored: message green, alert red, question sky blue, permission amber, approval violet.
 - **Messages:** every message not processed yet (the **Processed** box adds the processed ones), newest first, with
   **From** and **To** filters (the sender, the recipient): ID,

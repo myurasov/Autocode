@@ -10,7 +10,8 @@
  * shows in the toolbar, and the list refreshes after each. The Agent field
  * filters by an agent pattern (the owner, 2026-11-17), kept in the address,
  * as on the other tabs. Close All (the owner, 2026-11-17) closes the open
- * messages and alerts listed, after a confirmation; asks stay open. Newest
+ * messages and alerts shown (not those behind "..."), after a confirmation;
+ * asks stay open. Newest
  * first by default, sorted by a click on a heading; with Closed on, the open
  * items show past the 25 rows (the owner, 2026-11-17).
  */
@@ -399,9 +400,10 @@ export class InboxPage {
     if (done) await this.refresh();
   }
 
-  // The open messages and alerts listed: what Close All closes.
+  // The open messages and alerts shown: what Close All closes (the owner,
+  // 2026-11-17: "only ... visible (considering filter if any)").
   protected readonly closable = computed(() =>
-    this.items().filter((i) => !i.closed_at && !isAsk(i)),
+    this.page().rows.filter((i) => !i.closed_at && !isAsk(i)),
   );
 
   protected async closeAll(): Promise<void> {
@@ -417,7 +419,10 @@ export class InboxPage {
     )
       return;
     const done = await this.act(async () => {
-      const n = await this.api.closeAll(contains(match));
+      const n = await this.api.closeAll(
+        items.map((i) => i.id),
+        contains(match),
+      );
       return `Closed ${n} item${n === 1 ? '' : 's'}.`;
     });
     if (done) await this.refresh();
