@@ -4,6 +4,7 @@
  * config.
  */
 
+import { parseDuration } from "@autocode/shared"
 import { carryOut, formEvent, listOf, permissionEvent } from "./asks.ts"
 import { Channel, type Instruction } from "./channel.ts"
 import { runCheck } from "./checks.ts"
@@ -66,6 +67,7 @@ import {
   WAKE_TOOL,
   type WakeInput,
 } from "./tools.ts"
+import { waitInCalls } from "./waits.ts"
 
 type Ctx = any
 
@@ -276,6 +278,13 @@ export default {
           throw err
         }
       }
+    }
+
+    // The agent's max_tool_wait in seconds (its status has it): the longest
+    // a tool of the session waits inside a turn.
+    const maxToolWait = async (sessionID: string) => {
+      const me = await callAs(sessionID, "GET", "/v1/me", undefined, 5000)
+      return parseDuration(String(me?.settings?.max_tool_wait)) / 1000
     }
 
     // The values a session's shells (and its checks) carry.
@@ -533,34 +542,23 @@ export default {
       )
       tools.add(
         asTool(MESSAGE_TOOL, (input: MessageInput, call, sessionID, signal) =>
-          runMessage(input, call, async (body) => {
-            /*
-             * The server answers within 240 s (or max_tool_wait); wait
-             * again until the end, but not when it answered early with
-             * nothing: max_tool_wait cut the wait.
-             */
-            const seconds = Number(body.wait)
-            const end = Date.now() + seconds * 1000
-            for (;;) {
-              const left = Math.ceil((end - Date.now()) / 1000)
-              const chunk = Math.max(1, Math.min(left, 240))
-              const asked = Date.now()
-              const res = await callAs(
-                sessionID,
-                "POST",
-                "/v1/me/messages/read",
-                { ...body, wait: chunk },
-                (chunk + 15) * 1000,
-                signal,
-              )
-              if (
-                res.messages?.length ||
-                Date.now() >= end - 1000 ||
-                Date.now() - asked < (chunk - 2) * 1000
-              )
-                return res
-            }
-          }),
+          runMessage(input, call, (body) =>
+            // at most the agent's max_tool_wait (see waits.ts)
+            waitInCalls({
+              seconds: Number(body.wait),
+              most: () => maxToolWait(sessionID),
+              ask: (seconds) =>
+                callAs(
+                  sessionID,
+                  "POST",
+                  "/v1/me/messages/read",
+                  { ...body, wait: seconds },
+                  (seconds + 15) * 1000,
+                  signal,
+                ),
+              done: (res: any) => !!res.messages?.length,
+            }),
+          ),
         ),
       )
       tools.add(
@@ -568,33 +566,23 @@ export default {
       )
       tools.add(
         asTool(APPROVAL_TOOL, (input: ApprovalInput, call, sessionID, signal) =>
-          runApproval(input, call, async (id, seconds) => {
-            /*
-             * The server answers within 240 s (or max_tool_wait); wait again
-             * until the end, but not when it answered early while still
-             * open: max_tool_wait cut the wait.
-             */
-            const end = Date.now() + seconds * 1000
-            for (;;) {
-              const left = Math.ceil((end - Date.now()) / 1000)
-              const chunk = Math.max(1, Math.min(left, 240))
-              const asked = Date.now()
-              const res = await callAs(
-                sessionID,
-                "GET",
-                `/v1/me/approvals/${encodeURIComponent(id)}?wait=${chunk}`,
-                undefined,
-                (chunk + 15) * 1000,
-                signal,
-              )
-              if (
-                res.approval?.state !== "open" ||
-                Date.now() >= end - 1000 ||
-                Date.now() - asked < (chunk - 2) * 1000
-              )
-                return res
-            }
-          }),
+          runApproval(input, call, (id, seconds) =>
+            // at most the agent's max_tool_wait (see waits.ts)
+            waitInCalls({
+              seconds,
+              most: () => maxToolWait(sessionID),
+              ask: (call) =>
+                callAs(
+                  sessionID,
+                  "GET",
+                  `/v1/me/approvals/${encodeURIComponent(id)}?wait=${call}`,
+                  undefined,
+                  (call + 15) * 1000,
+                  signal,
+                ),
+              done: (res: any) => res.approval?.state !== "open",
+            }),
+          ),
         ),
       )
     })
