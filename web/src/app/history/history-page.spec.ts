@@ -26,6 +26,7 @@ import {
 } from '../../testing/helpers';
 import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
 import type { HistoryEntry, HistoryKind } from '../api';
+import { contains } from '../filter';
 import { localTime } from '../format';
 import { dataSummary, HistoryPage, PAGE } from './history-page';
 
@@ -87,7 +88,10 @@ describe('HistoryPage', () => {
   ): void {
     const req = http.expectOne((r) => r.url === '/v1/history');
     const params = req.request.params;
-    expect(params.get('match')).toBe(query.match ?? null);
+    // what was typed, matched anywhere (the owner, 2026-11-17)
+    expect(params.get('match')).toBe(
+      query.match ? contains(query.match) : null,
+    );
     expect(params.get('kind')).toBe(query.kind ?? null);
     expect(params.get('before')).toBe(
       query.before === undefined ? null : String(query.before),

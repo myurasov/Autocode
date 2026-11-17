@@ -7,16 +7,21 @@
  * time); a long text shows its first 200 characters until a click anywhere in
  * its cell (or Enter) opens it, read whole once, and the next folds it; and a
  * form, collapsed until opened, to send a text as the owner, to an agent ID,
- * a pattern or a list.
+ * a pattern or a list. The From and To fields filter by the sender and the
+ * recipient (the owner, 2026-11-17), kept in the address, a second after the
+ * last key; what is typed matches anywhere.
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
-import { REFRESH_MS } from '../agents/agents-page';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
+import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Message } from '../api';
 import { IdParts, TimeText } from '../breaks';
 import { FOLD_CHARS, localTime } from '../format';
 import { AgentLink } from '../links';
 import { Markdown } from '../markdown';
+import { contains } from '../filter';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -73,6 +78,14 @@ export function recipients(to: string): string | string[] {
 })
 export class MessagesPage {
   private readonly api = inject(Api);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  // The From and To filters in the address, and as typed.
+  protected readonly from = signal('');
+  protected readonly toMatch = signal('');
+  protected readonly fromTyped = signal('');
+  protected readonly toTyped = signal('');
+  private typing?: ReturnType<typeof setTimeout>;
   protected readonly stateText = stateText;
   protected readonly stateTitle = stateTitle;
 
@@ -124,25 +137,69 @@ export class MessagesPage {
   protected readonly sendError = signal('');
 
   constructor() {
-    void this.refresh();
+    // The address sets the filters (a link, Back, or the toolbar's own).
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const from = params.get('from') ?? '';
+      const to = params.get('to') ?? '';
+      this.fromTyped.set(from);
+      this.toTyped.set(to);
+      if (this.loaded() && from === this.from() && to === this.toMatch())
+        return;
+      this.from.set(from);
+      this.toMatch.set(to);
+      void this.refresh();
+    });
     const timer = setInterval(() => {
       if (this.inFlight === 0) void this.refresh();
     }, REFRESH_MS);
-    inject(DestroyRef).onDestroy(() => clearInterval(timer));
+    inject(DestroyRef).onDestroy(() => {
+      clearInterval(timer);
+      clearTimeout(this.typing);
+    });
   }
 
   protected async refresh(): Promise<void> {
+    const from = this.from();
+    const to = this.toMatch();
+    const current = () => from === this.from() && to === this.toMatch();
     this.inFlight++;
     try {
-      this.messages.set(await this.api.messages());
+      // what was typed matches anywhere (the owner, 2026-11-17)
+      const list = await this.api.messages(contains(from), contains(to));
+      if (!current()) return;
+      this.messages.set(list);
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {
-      this.error.set(errorText(err));
+      if (current()) this.error.set(errorText(err));
     } finally {
       this.inFlight--;
       this.loaded.set(true);
     }
+  }
+
+  // A filter as typed applies a second after the last key.
+  protected typed(field: 'from' | 'to', value: string): void {
+    (field === 'from' ? this.fromTyped : this.toTyped).set(value);
+    clearTimeout(this.typing);
+    this.typing = setTimeout(() => this.applyFilters(), FILTER_DELAY_MS);
+  }
+
+  // The filters go into the address, which sets them (and keeps them for
+  // Back); the same ones again reload the list.
+  protected applyFilters(): void {
+    clearTimeout(this.typing);
+    const from = this.fromTyped().trim();
+    const to = this.toTyped().trim();
+    if (from === this.from() && to === this.toMatch()) {
+      void this.refresh();
+      return;
+    }
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { from: from || null, to: to || null },
+      queryParamsHandling: 'merge',
+    });
   }
 
   protected isOpen(id: string): boolean {

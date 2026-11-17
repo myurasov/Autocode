@@ -1224,11 +1224,15 @@ export async function startServer(
       method: "GET",
       path: "/v1/messages",
       access: ["admin"],
-      summary: "every message, newest first (?agent=, ?limit=)",
+      summary:
+        "every message, newest first (?agent=, ?limit=; ?from= and ?to= " +
+        "patterns of the sender and the recipient)",
       handler: ({ url }) => ({
         messages: messages.all({
           agent: url.searchParams.get("agent") ?? undefined,
           limit: Number(url.searchParams.get("limit")) || undefined,
+          from: url.searchParams.get("from") ?? undefined,
+          to: url.searchParams.get("to") ?? undefined,
         }),
       }),
     },

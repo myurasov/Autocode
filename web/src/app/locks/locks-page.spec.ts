@@ -25,6 +25,7 @@ import {
 } from '../../testing/helpers';
 import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
 import type { Lock } from '../api';
+import { contains } from '../filter';
 import { localTime } from '../format';
 import { capacityText, leftText, LocksPage } from './locks-page';
 
@@ -86,7 +87,10 @@ describe('LocksPage', () => {
   function load(list: Lock[] = locks(), match?: string): void {
     const req = http.expectOne((r) => r.url === '/v1/locks');
     expect(req.request.method).toBe('GET');
-    expect(req.request.params.get('match')).toBe(match ?? null);
+    // what was typed, matched anywhere (the owner, 2026-11-17)
+    expect(req.request.params.get('match')).toBe(
+      match ? contains(match) : null,
+    );
     req.flush({ locks: list });
   }
 

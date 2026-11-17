@@ -170,8 +170,15 @@ export async function messages(args: Parsed): Promise<number> {
     )
     return 0
   }
-  if (sub) usage("messages | messages read ID")
-  const res = await c.call("GET", "/v1/messages")
+  if (sub) usage("messages [--from P] [--to P] | messages read ID")
+  // by sender and recipient: ID patterns (the owner, 2026-11-17)
+  const query = new URLSearchParams()
+  for (const key of ["from", "to"] as const) {
+    const v = args.flags[key]
+    if (typeof v === "string" && v.trim()) query.set(key, v.trim())
+  }
+  const q = query.toString()
+  const res = await c.call("GET", `/v1/messages${q ? `?${q}` : ""}`)
   print(args, res.messages, () =>
     res.messages.length
       ? table(
@@ -189,7 +196,9 @@ export async function messages(args: Parsed): Promise<number> {
           ]),
           ["ID", "FROM", "TO", "SUBJECT", "SIZE", "STATE", "CREATED"],
         )
-      : "no messages",
+      : q
+        ? "no message matches"
+        : "no messages",
   )
   return 0
 }

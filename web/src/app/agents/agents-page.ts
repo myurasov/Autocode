@@ -39,6 +39,7 @@ import {
 } from '../format';
 import { HostLink, highlightParam, scrollToHighlight } from '../links';
 import { FoldRow, Folds } from '../fold';
+import { contains } from '../filter';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -217,7 +218,7 @@ export class AgentsPage {
     const applied = this.applied();
     if (!id || this.listedFor() !== applied) return null;
     if (this.agents().some((a) => a.id === id)) return null;
-    return applied && !matchesPattern(applied, id) ? null : id;
+    return applied && !matchesPattern(contains(applied), id) ? null : id;
   });
 
   private inFlight = 0;
@@ -254,7 +255,8 @@ export class AgentsPage {
       const id = this.target();
       untracked(() => {
         const applied = this.applied();
-        if (id && applied && !matchesPattern(applied, id)) this.clearFilter();
+        if (id && applied && !matchesPattern(contains(applied), id))
+          this.clearFilter();
       });
     });
   }
@@ -270,7 +272,8 @@ export class AgentsPage {
     const gone = this.showGone();
     this.inFlight++;
     try {
-      const agents = await this.api.agents(match, gone);
+      // what was typed matches anywhere (the owner, 2026-11-17)
+      const agents = await this.api.agents(contains(match), gone);
       if (match !== this.applied() || gone !== this.showGone()) return;
       this.agents.set(agents);
       this.listedFor.set(match);

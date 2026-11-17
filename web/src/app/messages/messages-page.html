@@ -7,8 +7,29 @@
 -->
 
 <div class="toolbar">
-  <button type="button" (click)="refresh()">Refresh</button>
+  <button type="button" (click)="applyFilters()">Refresh</button>
   <span class="result"></span>
+  <!-- by sender and recipient (the owner, 2026-11-17) -->
+  <label for="message-from">From</label>
+  <input
+    id="message-from"
+    type="text"
+    spellcheck="false"
+    placeholder="for example lead or kaggle:*"
+    [value]="fromTyped()"
+    (input)="typed('from', $any($event.target).value)"
+    (keydown.enter)="applyFilters()"
+  />
+  <label for="message-to">To</label>
+  <input
+    id="message-to"
+    type="text"
+    spellcheck="false"
+    placeholder="for example owner"
+    [value]="toTyped()"
+    (input)="typed('to', $any($event.target).value)"
+    (keydown.enter)="applyFilters()"
+  />
   <!-- processed messages too: off by default (the owner, 2026-11-09, -10) -->
   <label class="check" for="show-processed">
     <input
@@ -142,7 +163,9 @@
               ? 'Loading...'
               : messages().length
                 ? 'No message waits: every one is processed (the Processed box shows them).'
-                : 'No messages yet.'
+                : from() || toMatch()
+                  ? 'No message matches the From and To filters.'
+                  : 'No messages yet.'
           }}
         </td>
       </tr>

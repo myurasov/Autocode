@@ -301,6 +301,16 @@ describe("owner commands", () => {
     expect(all.stdout).toMatch(/ID\s+FROM\s+TO\s+SUBJECT\s+SIZE\s+STATE/)
     // the owner's answer to kaggle:lead, earlier in this file
     expect(all.stdout).toMatch(/\bowner\s+kaggle:lead\b/)
+    // by sender and recipient: ID patterns (the owner, 2026-11-17)
+    const some = await cli(
+      ["messages", "--from", "owner", "--to", "kaggle:*"],
+      asAdmin(),
+    )
+    expect(some.code, some.stderr).toBe(0)
+    expect(some.stdout).toMatch(/\bowner\s+kaggle:lead\b/)
+    expect(some.stdout).not.toMatch(/\bkaggle:\w+\s+owner\b/)
+    const none = await cli(["messages", "--from", "nobody:*"], asAdmin())
+    expect(none.stdout).toContain("no message matches")
   })
 
   test("pause, resume, stop-all and resume-all", async () => {

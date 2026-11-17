@@ -33,6 +33,7 @@ import {
 } from '../../testing/helpers';
 import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
 import type { InboxItem } from '../api';
+import { contains } from '../filter';
 import { localTime } from '../format';
 import { InboxPage } from './inbox-page';
 
@@ -80,7 +81,10 @@ describe('InboxPage', () => {
   function load(items = ITEMS, all = false, match?: string): void {
     const req = http.expectOne((r) => r.url === '/v1/inbox');
     expect(req.request.params.get('all')).toBe(all ? '1' : null);
-    expect(req.request.params.get('match')).toBe(match ?? null);
+    // what was typed, matched anywhere (the owner, 2026-11-17)
+    expect(req.request.params.get('match')).toBe(
+      match ? contains(match) : null,
+    );
     req.flush({ items });
   }
 
@@ -258,7 +262,7 @@ describe('InboxPage', () => {
           'Questions, permissions and approvals stay open.',
       );
       const req = http.expectOne((r) => r.url === '/v1/inbox/close-all');
-      expect(req.request.params.get('match')).toBe('kaggle:w*');
+      expect(req.request.params.get('match')).toBe('*kaggle:w*');
       req.flush({ closed: 1 });
       await settle(fixture);
       load([], false, 'kaggle:w*');

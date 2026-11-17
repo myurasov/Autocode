@@ -25,6 +25,7 @@ import { localTime } from '../format';
 import { AgentLink } from '../links';
 import { leftText } from '../locks/locks-page';
 import { Markdown } from '../markdown';
+import { contains } from '../filter';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -166,7 +167,8 @@ export class InboxPage {
     const current = () => all === this.showClosed() && match === this.match();
     this.inFlight++;
     try {
-      const items = await this.api.inbox(all, match);
+      // what was typed matches anywhere (the owner, 2026-11-17)
+      const items = await this.api.inbox(all, contains(match));
       if (!current()) return;
       this.items.set(items);
       this.error.set('');
@@ -415,7 +417,7 @@ export class InboxPage {
     )
       return;
     const done = await this.act(async () => {
-      const n = await this.api.closeAll(match);
+      const n = await this.api.closeAll(contains(match));
       return `Closed ${n} item${n === 1 ? '' : 's'}.`;
     });
     if (done) await this.refresh();

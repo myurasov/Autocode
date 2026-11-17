@@ -17,6 +17,7 @@ import { Api, errorText, type HistoryEntry, type HistoryKind } from '../api';
 import { IdParts, TimeText } from '../breaks';
 import { folded } from '../format';
 import { AgentLink, HostLink } from '../links';
+import { contains } from '../filter';
 import { MoreRow, PAGE_ROWS, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -160,8 +161,9 @@ export class HistoryPage {
       () => undefined,
     );
     try {
+      // what was typed matches anywhere (the owner, 2026-11-17)
       const page = await this.api.history({
-        match: this.match(),
+        match: contains(this.match()),
         kind: this.kind(),
         limit: PAGE,
       });
@@ -199,7 +201,7 @@ export class HistoryPage {
     this.loadingOlder.set(true);
     try {
       const page = await this.api.history({
-        match: this.match(),
+        match: contains(this.match()),
         kind: this.kind(),
         before: last.id,
         limit: PAGE,

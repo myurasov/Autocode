@@ -517,8 +517,9 @@ test("admin: sends a message from the Messages page", async ({ page }) => {
   await openTab(page, "Messages")
   const form = page.locator("details.panel")
   await form.locator("summary", { hasText: "Send a Message" }).click()
-  await page.getByLabel("To", { exact: true }).fill("smoke:*")
-  await page.getByLabel("Text", { exact: true }).fill("Hello from the owner.")
+  // the form's To (the toolbar has a To filter too: the owner, 2026-11-17)
+  await form.getByLabel("To", { exact: true }).fill("smoke:*")
+  await form.getByLabel("Text", { exact: true }).fill("Hello from the owner.")
   await expect(form).not.toContainText("Sent as the owner.")
   const sendButton = form.getByRole("button", { name: "Send", exact: true })
   await sendButton.click()
@@ -539,8 +540,8 @@ test("admin: sends a message from the Messages page", async ({ page }) => {
   await expect(first.locator("td.state")).toHaveText(
     /^(queued|processed \((prompt|steer|read|wait)\))$/,
   )
-  await page.getByLabel("To", { exact: true }).fill("nobody:here")
-  await page.getByLabel("Text", { exact: true }).fill("Anyone?")
+  await form.getByLabel("To", { exact: true }).fill("nobody:here")
+  await form.getByLabel("Text", { exact: true }).fill("Anyone?")
   await form.getByRole("button", { name: "Send", exact: true }).click()
   await expect(form.locator(".errmsg")).toHaveText(
     "no agent nobody:here is registered",
@@ -4176,6 +4177,47 @@ test("the Inbox's Kind is colored by kind, in both themes", async ({
 
 // The owner, 2026-11-09: the Messages tab's Processed box (2026-11-10: not Read), off by default, right
 // of Refresh like the other tabs' boxes; off, no read message shows.
+/*
+ * The owner, 2026-11-17: "add from/to filter fieldfs to messages tab", and
+ * "treat filters as if * is added before and after what is typed": From and
+ * To filter the real server's messages; a part of an ID finds it; the
+ * address keeps them.
+ */
+test("Messages: the From and To filters, matched anywhere, kept in the address", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  await openTab(page, "Messages")
+  await page.locator("#show-processed").check()
+  const rows = page.locator("table.messages tbody tr[data-message]")
+  await expect(rows.first()).toBeVisible()
+  const from = page.locator(".toolbar #message-from")
+  const to = page.locator(".toolbar #message-to")
+  // a part of the long agent's ID
+  await from.fill("laptop:glm")
+  await from.press("Enter")
+  await expect(page).toHaveURL(/[?&]from=laptop/)
+  await expect(rows.first()).toBeVisible()
+  for (const sender of await rows.locator("td.sender").allInnerTexts())
+    expect(sender.trim()).toBe(LONG.agent)
+  await to.fill("own")
+  await expect(page).toHaveURL(/[?&]to=own/, { timeout: 5000 })
+  for (const recipient of await rows.locator("td.recipient").allInnerTexts())
+    expect(recipient.trim()).toBe("owner")
+  await page.reload()
+  await expect(from).toHaveValue("laptop:glm")
+  await expect(to).toHaveValue("own")
+  await to.fill("nobody-at-all")
+  await to.press("Enter")
+  await expect(page.locator("table.messages tbody")).toHaveText(
+    "No message matches the From and To filters.",
+  )
+  await from.fill("")
+  await to.fill("")
+  await to.press("Enter")
+  await expect(page).not.toHaveURL(/from=|to=/)
+})
+
 test("Messages: the Processed box is off by default and hides processed messages", async ({
   page,
 }) => {

@@ -747,9 +747,16 @@ export class Api {
   }
 
   // Every message, newest first.
-  async messages(): Promise<Message[]> {
+  // Every message, newest first; from and to: ID patterns of the sender and
+  // the recipient (the owner, 2026-11-17).
+  async messages(from = '', to = ''): Promise<Message[]> {
+    let params = new HttpParams();
+    if (from.trim()) params = params.set('from', from.trim());
+    if (to.trim()) params = params.set('to', to.trim());
     return (
-      await this.call(this.http.get<{ messages: Message[] }>('/v1/messages'))
+      await this.call(
+        this.http.get<{ messages: Message[] }>('/v1/messages', { params }),
+      )
     ).messages;
   }
 

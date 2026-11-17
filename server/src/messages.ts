@@ -509,10 +509,33 @@ export class Messages {
     return messageView(row, true)
   }
 
-  // The owner's view: every message, newest first, without bodies; a text
-  // message carries its first PREVIEW characters.
-  all(filter: { agent?: string; limit?: number } = {}): MessageView[] {
+  /*
+   * The owner's view: every message, newest first, without bodies; a text
+   * message carries its first PREVIEW characters. from and to: ID patterns of
+   * the sender and the recipient (the owner, 2026-11-17: the Messages tab's
+   * From and To fields; owner and autocode match their names).
+   */
+  all(
+    filter: { agent?: string; limit?: number; from?: string; to?: string } = {},
+  ): (MessageView & { preview: string })[] {
     const limit = Math.min(Math.max(1, filter.limit ?? 200), 1000)
+    const from = filter.from?.trim() ? parsePattern(filter.from) : null
+    const to = filter.to?.trim() ? parsePattern(filter.to) : null
+    if (from || to) {
+      const out: (MessageView & { preview: string })[] = []
+      for (const r of this.db
+        .query("SELECT * FROM messages ORDER BY created_at DESC, rowid DESC")
+        .all() as any[]) {
+        if (from && !matchesPattern(from, r.from_id)) continue
+        if (to && !matchesPattern(to, r.to_id)) continue
+        out.push({
+          ...messageView(r),
+          preview: String(r.body).slice(0, PREVIEW),
+        })
+        if (out.length >= limit) break
+      }
+      return out
+    }
     const rows = filter.agent
       ? this.db
           .query(

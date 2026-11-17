@@ -21,6 +21,7 @@ import {
 } from '../api';
 import { IdParts, TimeText } from '../breaks';
 import { AgentLink } from '../links';
+import { contains } from '../filter';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -108,7 +109,8 @@ export class LocksPage {
     const match = this.match();
     this.inFlight++;
     try {
-      const locks = await this.api.locks(match);
+      // what was typed matches anywhere (the owner, 2026-11-17)
+      const locks = await this.api.locks(contains(match));
       if (match !== this.match()) return;
       this.locks.set(locks);
       this.error.set('');

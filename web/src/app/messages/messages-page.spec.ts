@@ -17,14 +17,17 @@ import {
   button,
   el,
   parts,
+  press,
   settle,
   setup,
   signedIn,
   text,
   type,
 } from '../../testing/helpers';
-import { REFRESH_MS } from '../agents/agents-page';
+import { Router } from '@angular/router';
+import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
 import type { Message } from '../api';
+import { contains } from '../filter';
 import { localTime } from '../format';
 import { MessagesPage, recipients } from './messages-page';
 
@@ -102,9 +105,12 @@ describe('MessagesPage', () => {
 
   afterEach(() => http.verify());
 
-  function load(messages = MESSAGES): void {
+  function load(messages = MESSAGES, from?: string, to?: string): void {
     const req = http.expectOne((r) => r.url === '/v1/messages');
     expect(req.request.method).toBe('GET');
+    // the From and To fields, matched anywhere (the owner, 2026-11-17)
+    expect(req.request.params.get('from')).toBe(from ? contains(from) : null);
+    expect(req.request.params.get('to')).toBe(to ? contains(to) : null);
     req.flush({ messages });
   }
 
@@ -388,6 +394,88 @@ describe('MessagesPage', () => {
     (size.querySelector('button.sort') as HTMLButtonElement).click();
     await settle(fixture);
     expect(order()).toEqual(['msg_1', 'msg_2']);
+  });
+
+  // The owner, 2026-11-17: "add from/to filter fieldfs to messages tab".
+  describe('the From and To filters', () => {
+    const ids = (page: HTMLElement) =>
+      [...page.querySelectorAll('table.messages tr[data-message]')].map((r) =>
+        r.getAttribute('data-message'),
+      );
+
+    it('filter by sender and recipient, in the address; the address sets them', async () => {
+      const page = await open();
+      const router = TestBed.inject(Router);
+      const from = page.querySelector('#message-from') as HTMLInputElement;
+      const to = page.querySelector('#message-to') as HTMLInputElement;
+      expect(text(page.querySelector('label[for="message-from"]'))).toBe(
+        'From',
+      );
+      expect(text(page.querySelector('label[for="message-to"]'))).toBe('To');
+      type(from, 'lead');
+      press(from, 'Enter');
+      await settle(fixture);
+      expect(router.url).toBe('/?from=lead');
+      load([MESSAGES[1]!], 'lead');
+      await settle(fixture);
+      expect(ids(page)).toEqual(['msg_1']);
+      type(to, 'owner');
+      press(to, 'Enter');
+      await settle(fixture);
+      expect(router.url).toBe('/?from=lead&to=owner');
+      load([MESSAGES[1]!], 'lead', 'owner');
+      await settle(fixture);
+      // a link or Back: the fields follow the address
+      await router.navigateByUrl('/?to=kaggle:*');
+      await settle(fixture);
+      load([], undefined, 'kaggle:*');
+      await settle(fixture);
+      expect(from.value).toBe('');
+      expect(to.value).toBe('kaggle:*');
+      expect(text(page.querySelector('table.messages tbody'))).toBe(
+        'No message matches the From and To filters.',
+      );
+    });
+
+    it('apply a second after the last key', async () => {
+      vi.useFakeTimers();
+      try {
+        signedIn();
+        fixture = TestBed.createComponent(MessagesPage);
+        await vi.advanceTimersByTimeAsync(0);
+        load();
+        await vi.advanceTimersByTimeAsync(0);
+        fixture.detectChanges();
+        type(el(fixture).querySelector('#message-to'), 'work');
+        await vi.advanceTimersByTimeAsync(FILTER_DELAY_MS - 1);
+        http.expectNone((r) => r.url === '/v1/messages');
+        await vi.advanceTimersByTimeAsync(1);
+        load(MESSAGES, undefined, 'work');
+        await vi.advanceTimersByTimeAsync(0);
+        expect(TestBed.inject(Router).url).toBe('/?to=work');
+      } finally {
+        fixture.destroy();
+        vi.useRealTimers();
+      }
+    });
+
+    it("show a bad pattern's error", async () => {
+      const page = await open();
+      const from = page.querySelector('#message-from');
+      type(from, 'a b');
+      press(from, 'Enter');
+      await settle(fixture);
+      apiError(
+        http.expectOne((r) => r.url === '/v1/messages'),
+        400,
+        'bad_pattern',
+        'a pattern is one or more IDs with * wildcards',
+      );
+      await settle(fixture);
+      expect(text(page.querySelector('p.errmsg'))).toBe(
+        'a pattern is one or more IDs with * wildcards',
+      );
+    });
   });
 
   it('says when there are no messages yet', async () => {

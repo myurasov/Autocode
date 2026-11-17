@@ -27,6 +27,7 @@ import {
   type,
 } from '../../testing/helpers';
 import type { Agent, AgentError, CostNumbers } from '../api';
+import { contains } from '../filter';
 import { contextBar, contextShort, localTime, tokensShort } from '../format';
 import {
   AgentsPage,
@@ -84,7 +85,10 @@ describe('AgentsPage', () => {
 
   function load(agents = AGENTS, match?: string, unregistered = false): void {
     const req = http.expectOne((r) => r.url === '/v1/agents');
-    expect(req.request.params.get('match')).toBe(match ?? null);
+    // what was typed, matched anywhere (the owner, 2026-11-17)
+    expect(req.request.params.get('match')).toBe(
+      match ? contains(match) : null,
+    );
     expect(req.request.params.get('unregistered')).toBe(
       unregistered ? '1' : null,
     );
@@ -522,6 +526,23 @@ describe('AgentsPage', () => {
     ).toEqual([date, clock, zone]);
   });
 
+  // The owner, 2026-11-17: "treat filters as if * is added before and after
+  // what is typed".
+  it('matches what is typed anywhere in an ID; the field and the address keep it as typed', async () => {
+    const page = await open();
+    const input = page.querySelector('#match') as HTMLInputElement;
+    type(input, 'lead');
+    press(input, 'Enter');
+    load([AGENTS[0]!], 'lead');
+    await settle(fixture);
+    expect(input.value).toBe('lead');
+    expect(
+      [...page.querySelectorAll('table.agents tr[data-agent]')].map((r) =>
+        r.getAttribute('data-agent'),
+      ),
+    ).toEqual(['kaggle:lead']);
+  });
+
   it('filters by pattern on Enter and on Refresh, and shows a bad pattern error', async () => {
     const page = await open();
     const input = page.querySelector('#match');
@@ -536,7 +557,7 @@ describe('AgentsPage', () => {
     type(input, 'a b');
     button(page, 'Refresh')!.click();
     const req = http.expectOne((r) => r.url === '/v1/agents');
-    expect(req.request.params.get('match')).toBe('a b');
+    expect(req.request.params.get('match')).toBe('*a b*');
     apiError(
       req,
       400,

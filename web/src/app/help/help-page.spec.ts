@@ -236,7 +236,7 @@ describe('HelpPage', () => {
       'autocode wakes [AGENT]',
       'autocode fire AGENT WAKE [--text TEXT]',
       'autocode send TO TEXT...',
-      'autocode messages',
+      'autocode messages [--from PATTERN] [--to PATTERN]',
       'autocode locks [PATTERN]',
       'autocode locks release NAME AGENT',
     ])
@@ -532,6 +532,13 @@ describe('HelpPage', () => {
     expect(web).toContain('A click on a column heading sorts the table by it');
     expect(web).toContain('newest first');
     expect(web).toContain('History sorts what is loaded');
+    // filters match anywhere; Messages has From and To (the owner, 2026-11-17)
+    expect(web).toContain(
+      'A filter field matches what you type anywhere in an ID',
+    );
+    expect(section(page, 'web-messages')).toContain(
+      'From and To filter by the sender and the recipient',
+    );
     expect(section(page, 'web-inbox')).toContain(
       'the open ones always show, however many closed ones there are',
     );

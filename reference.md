@@ -672,7 +672,7 @@ machine itself, `~/.autocode/admin.token` with `http://127.0.0.1:4848`. With an 
 | `autocode wake set AGENT NAME --trigger T --text TEXT [--check CMD]` / `wake cancel AGENT NAME` | set or replace a wake; cancel one |
 | `autocode fire AGENT WAKE [--text TEXT]` | deliver a wake now (it skips its check); the prompt says the owner fired it |
 | `autocode send TO TEXT... [--subject S] [--reply-to ID]` | send as the owner to an ID, a pattern or a list |
-| `autocode messages` / `messages read ID` | every message, newest first, with its state; one whole (no state changes) |
+| `autocode messages [--from PATTERN] [--to PATTERN]` / `messages read ID` | every message, newest first, with its state (of matching senders and recipients); one whole (no state changes) |
 | `autocode locks [PATTERN]` / `locks release NAME AGENT` | every lock: capacity, holders and expiry, the queue; free a hold or a queue place |
 | `autocode job set NAME --host H --model M --prompt P --trigger T [...]` | define or replace a job ([Jobs and Runs](#jobs-and-runs)) |
 | `autocode job list` / `job run NAME [--text T]` / `job runs [NAME]` | the jobs with next and last runs; start a run; the runs (by, state, start, cost, result) |
@@ -707,8 +707,9 @@ The web UI shows the owner every agent, wake, message, lock, job and cost, with 
   each table is newest first by its date (Inbox and Messages by Time, Runs by Started, History by Time, Agents by Last
   Active, Hosts by Last Seen, Wakes by Last Set, Costs' days by Day); Jobs, Locks and Costs by name. Grouped tables
   sort within each group. History sorts what is loaded.
-- Pattern filters apply a second after you stop typing (Enter at once); History, Costs and Locks keep theirs in the
-  address.
+- Pattern filters apply a second after you stop typing (Enter at once); History, Costs, Locks, Inbox and Messages
+  keep theirs in the address. A filter field matches what is typed anywhere in an ID, as if `*` stood before and
+  after each comma-separated part (`lead` finds `kaggle:lead`); the API and the CLI take exact patterns.
 
 ### Pages
 
@@ -733,7 +734,8 @@ The web UI shows the owner every agent, wake, message, lock, job and cost, with 
   open ones always show). An **Agent** filter (an ID pattern) shows the items of matching agents and the asks sent to
   them. **Close All** closes the open messages and alerts listed, after a confirmation; asks stay open. The Kind is
   colored: message green, alert red, question sky blue, permission amber, approval violet.
-- **Messages:** every message not processed yet (the **Processed** box adds the processed ones), newest first: ID,
+- **Messages:** every message not processed yet (the **Processed** box adds the processed ones), newest first, with
+  **From** and **To** filters (the sender, the recipient): ID,
   sender, recipient, subject, the first 200 characters (a click shows it whole, as markdown) and its state (queued;
   processed, with how: prompt, steer, read, wait or inbox; dropped). Viewing leaves the state. **Send a Message**
   sends as the owner.

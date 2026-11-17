@@ -94,7 +94,8 @@ owner:
   wakes [AGENT]                          every wake, or one agent's
   wake set AGENT NAME --trigger T --text TEXT [--check CMD]
   wake cancel AGENT NAME
-  messages | messages read ID            every message; one whole
+  messages [--from P] [--to P] | messages read ID
+                                         every message (P: patterns); one whole
   fire AGENT WAKE [--text TEXT]          deliver a wake now
   send TO TEXT... [--subject S] [--reply-to ID]
                                          TO: an ID, a pattern, a list

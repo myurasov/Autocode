@@ -15,6 +15,7 @@ import { Router } from '@angular/router';
 import { el, settle, setup, signedIn, text, type } from '../../testing/helpers';
 import { FILTER_DELAY_MS } from '../agents/agents-page';
 import type { AgentCost, CostsView } from '../api';
+import { contains } from '../filter';
 import {
   COSTS_REFRESH_MS,
   CostsPage,
@@ -107,7 +108,10 @@ describe('CostsPage', () => {
 
   function load(start = view(), match?: string, days?: string): void {
     const req = http.expectOne((r) => r.url === '/v1/costs');
-    expect(req.request.params.get('match')).toBe(match ?? null);
+    // what was typed, matched anywhere (the owner, 2026-11-17)
+    expect(req.request.params.get('match')).toBe(
+      match ? contains(match) : null,
+    );
     expect(req.request.params.get('days')).toBe(days ?? null);
     req.flush(start);
   }

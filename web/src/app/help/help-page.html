@@ -775,8 +775,11 @@ autocode plugin install --url http://SERVER:4848 \
           <td>send a text as the owner to an ID, a pattern or a list</td>
         </tr>
         <tr>
-          <td><code>autocode messages</code></td>
-          <td>every message, newest first, with its state</td>
+          <td><code>autocode messages [--from PATTERN] [--to PATTERN]</code></td>
+          <td>
+            every message, newest first, with its state (of the senders and
+            recipients that match)
+          </td>
         </tr>
         <tr>
           <td><code>autocode locks [PATTERN]</code></td>
@@ -868,7 +871,9 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       it; the page remembers it. At first a table is newest first, by its
       date (Agents by Last Active, Hosts by Last Seen, Wakes by Last Set);
       Jobs, Locks and Costs, with no date, by name. A grouped table sorts
-      within each group. History sorts what is loaded.
+      within each group. History sorts what is loaded. A filter field matches
+      what you type anywhere in an ID, as if a * stood before and after each
+      part: lead finds kaggle:lead.
     </p>
 
     <h3 id="web-hosts">
@@ -952,7 +957,8 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
     </h3>
     <p>
       Every message not processed yet (the Processed box, off by default, adds
-      the processed ones), newest first, its text shown as markdown (in the
+      the processed ones), newest first; From and To filter by the sender and
+      the recipient (a second after you stop typing; kept in the address), its text shown as markdown (in the
       Inbox too), with its state: queued, processed (how: prompt,
       steer, read, wait or inbox; when, in its tooltip) or dropped (its agent
       unregistered first).

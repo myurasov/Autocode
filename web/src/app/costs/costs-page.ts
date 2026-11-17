@@ -32,6 +32,7 @@ import { clockText, dayText, dotClass } from '../format';
 import { IdParts } from '../breaks';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
+import { contains } from '../filter';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -232,7 +233,8 @@ export class CostsPage {
     const days = this.days();
     this.inFlight++;
     try {
-      const view = await this.api.costs(match, days);
+      // what was typed matches anywhere (the owner, 2026-11-17)
+      const view = await this.api.costs(contains(match), days);
       if (match !== this.match() || days !== this.days()) return;
       this.view.set(view);
       this.error.set('');

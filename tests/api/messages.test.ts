@@ -264,6 +264,28 @@ describe("the owner", () => {
 })
 
 describe("the owner's list", () => {
+  // The owner, 2026-11-17: "add from/to filter fieldfs to messages tab".
+  test("?from= and ?to= filter by an ID pattern (owner and autocode match their names); both together", async () => {
+    await as(a, "POST", "/v1/messages", { to: "team:b", text: "a to b" })
+    await as(b, "POST", "/v1/messages", { to: "other:c", text: "b to c" })
+    await as(c, "POST", "/v1/messages", { to: "owner", text: "c to owner" })
+    await owner("POST", "/v1/messages", { to: "team:a", text: "owner to a" })
+    const texts = async (q: string) =>
+      (await owner("GET", `/v1/messages?${q}`)).body.messages
+        .map((m: any) => m.preview)
+        .sort()
+    expect(await texts("from=team:*")).toEqual(["a to b", "b to c"])
+    expect(await texts("to=team:*")).toEqual(["a to b", "owner to a"])
+    expect(await texts("from=team:*&to=other:*")).toEqual(["b to c"])
+    expect(await texts("from=owner")).toEqual(["owner to a"])
+    expect(await texts("to=owner")).toEqual(["c to owner"])
+    expect(await texts("from=team:a,other:c")).toEqual(["a to b", "c to owner"])
+    expect(await texts("from=nobody:*")).toEqual([])
+    const bad = await owner("GET", "/v1/messages?to=a%20b")
+    expect(bad.status).toBe(400)
+    expect(bad.body.error.code).toBe("bad_pattern")
+  })
+
   test("messages carry a 200-character preview", async () => {
     const long = `${"x".repeat(199)}yz${"!".repeat(50)}`
     await as(a, "POST", "/v1/messages", { to: "team:b", text: long })
