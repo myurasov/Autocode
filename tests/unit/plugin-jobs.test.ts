@@ -12,7 +12,9 @@ import {
   Background,
   backgroundCount,
   lastReply,
+  Stopping,
   spawnInput,
+  subagentSessions,
 } from "../../plugin/src/jobs.ts"
 import { ME_TOOL, runMe } from "../../plugin/src/tools.ts"
 
@@ -81,6 +83,74 @@ describe("background work when a turn ends", () => {
     for (let i = 0; i < 1000; i++) b.note("ses_a", i, 1)
     expect(b.size).toBeLessThanOrEqual(50)
     expect(b.take("ses_a", 999)).toBe(1)
+  })
+})
+
+/*
+ * The review before 1.0.0, proven on OpenCode 2.3.0 (tests/e2e/stop-all):
+ * an interrupt of a session leaves its Subagents at work, and their result
+ * then starts a turn in it. Stop All interrupts them too: the sessions under
+ * it, deepest first.
+ */
+describe("the Subagent sessions under a session", () => {
+  const tree: Record<string, string[]> = {
+    ses_a: ["ses_b", "ses_c"],
+    ses_b: ["ses_d"],
+    ses_d: ["ses_e"],
+  }
+  const list = async (parent: string) => tree[parent] ?? []
+
+  test("its children and theirs, each after the ones under it; not itself", async () => {
+    expect(await subagentSessions(list, "ses_a")).toEqual([
+      "ses_e",
+      "ses_d",
+      "ses_b",
+      "ses_c",
+    ])
+    expect(await subagentSessions(list, "ses_c")).toEqual([])
+  })
+
+  test("a loop, a list that fails and a very deep tree end", async () => {
+    const loop = async (parent: string) =>
+      parent === "ses_a" ? ["ses_b"] : ["ses_a", "ses_b"]
+    expect(await subagentSessions(loop, "ses_a")).toEqual(["ses_b"])
+    const broken = async (parent: string) => {
+      if (parent === "ses_b") throw new Error("gone")
+      return tree[parent] ?? []
+    }
+    // what could be read is still stopped
+    expect(await subagentSessions(broken, "ses_a")).toEqual(["ses_b", "ses_c"])
+    const deep = async (parent: string) => [`${parent}x`]
+    expect((await subagentSessions(deep, "s")).length).toBe(5)
+    const wide = async (parent: string) =>
+      parent === "s" ? Array.from({ length: 500 }, (_, i) => `c${i}`) : []
+    expect((await subagentSessions(wide, "s")).length).toBe(100)
+  })
+})
+
+/*
+ * Proven on OpenCode 2.3.0: a Subagent that is interrupted tells its
+ * session, and that notice starts a turn there, in an agent Stop All just
+ * stopped. For a short while after the interrupt such a turn is stopped too.
+ */
+describe("a session stopped together with its Subagents", () => {
+  test("a turn that starts there soon after is one to stop; later ones are not", () => {
+    const s = new Stopping(10_000)
+    expect(s.stops("ses_a", 1000)).toBe(false)
+    s.mark("ses_a", 1000)
+    expect(s.stops("ses_a", 1020)).toBe(true)
+    // each Subagent's notice may start one
+    expect(s.stops("ses_a", 9000)).toBe(true)
+    expect(s.stops("ses_b", 1020)).toBe(false)
+    expect(s.stops("ses_a", 11_001)).toBe(false)
+    expect(s.size).toBe(0)
+  })
+
+  test("what Autocode types after it (the agent was resumed) is not stopped", () => {
+    const s = new Stopping(10_000)
+    s.mark("ses_a", 1000)
+    s.forget("ses_a")
+    expect(s.stops("ses_a", 1020)).toBe(false)
   })
 })
 

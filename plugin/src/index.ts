@@ -30,7 +30,9 @@ import {
   Background,
   backgroundCount,
   lastReply,
+  Stopping,
   spawnInput,
+  subagentSessions,
 } from "./jobs.ts"
 import {
   activeSessions,
@@ -314,6 +316,8 @@ export default {
       )
     }
 
+    // Sessions Stop All stopped together with Subagents (see Stopping).
+    const stopping = new Stopping()
     // The server's instructions for this host's sessions.
     const handle = async (instruction: Instruction): Promise<unknown> => {
       const p = instruction.payload ?? {}
@@ -332,6 +336,8 @@ export default {
            * steer (messages into a running turn, the owner 2026-11-09): at
            * its next step
            */
+          // what Autocode types is never the turn a Stop All stops
+          stopping.forget(session)
           await ctx.session.prompt({
             sessionID: session,
             id: String(p.prompt_id),
@@ -377,11 +383,42 @@ export default {
             sessionID: session,
             delivery: "queue",
           })
-        case "interrupt":
+        case "interrupt": {
+          /*
+           * Stop All. The session's Subagents first (OpenCode 2.3 runs
+           * them in the background, also after its turn ended): left at
+           * work they go on spending, and their result starts a turn in
+           * the stopped session (the review before 1.0.0, proven in
+           * tests/e2e/stop-all). Then the session itself.
+           */
+          const under = await subagentSessions(async (parent) => {
+            const page = await ctx.session.list({ parentID: parent, limit: 50 })
+            return (Array.isArray(page?.data) ? page.data : [])
+              .map((s: any) => s?.id)
+              .filter((id: unknown): id is string => typeof id === "string")
+          }, session)
+          let cut = 0
+          for (const sub of under)
+            try {
+              const done = await ctx.session.interrupt({
+                sessionID: sub,
+                resume: false,
+              })
+              if (done?.interrupted) cut++
+            } catch (err) {
+              log(`interrupt ${sub}: ${(err as Error).message}`)
+            }
+          // a stopped Subagent tells its session, which starts a turn
+          // there: that turn is stopped as it starts (the events below)
+          if (cut) {
+            stopping.mark(session, Date.now())
+            log(`interrupt ${session}: and ${cut} of its Subagents`)
+          }
           return await ctx.session.interrupt({
             sessionID: session,
             resume: false,
           })
+        }
         case "check": {
           // always the session's shell: the CLI there never uses the owner's
           // token, even when the session's values could not be had
@@ -846,6 +883,17 @@ export default {
               if (outcome !== "started") await steps.get(session)
               // OpenCode's own time of the event orders them at the server
               const at = Number(event.created) || Date.now()
+              // the turn a stopped Subagent's notice starts in a session
+              // Stop All stopped: stopped too
+              if (
+                outcome === "started" &&
+                stopping.stops(session, Date.now())
+              ) {
+                log(`interrupt ${session}: the turn its Subagent's end began`)
+                void ctx.session
+                  .interrupt({ sessionID: session, resume: false })
+                  .catch(() => {})
+              }
               // its Subagents still at work (said by this turn's idle hook,
               // which runs before the turn's end is published)
               const noted =

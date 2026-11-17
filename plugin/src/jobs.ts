@@ -29,6 +29,71 @@ export function backgroundCount(list: unknown): number {
 }
 
 /*
+ * The Subagent sessions under a session, theirs included, each after the
+ * ones under it: what an interrupt of the session must stop too. OpenCode
+ * 2.3 runs Subagents in the background, also after their session's turn
+ * ended; interrupting the session alone leaves them at work, and their
+ * result then starts a turn in it (the review before 1.0.0). `children`
+ * lists a session's own; a list that fails counts as empty. At most five
+ * levels and a hundred sessions.
+ */
+export async function subagentSessions(
+  children: (parent: string) => Promise<string[]>,
+  session: string,
+): Promise<string[]> {
+  const out: string[] = []
+  const seen = new Set([session])
+  const under = async (parent: string, level: number) => {
+    if (level > 5) return
+    let list: string[] = []
+    try {
+      list = await children(parent)
+    } catch {}
+    for (const child of list) {
+      if (seen.has(child) || seen.size > 100) continue
+      seen.add(child)
+      await under(child, level + 1)
+      out.push(child)
+    }
+  }
+  await under(session, 1)
+  return out
+}
+
+/*
+ * The sessions an interrupt stopped together with Subagents. OpenCode tells
+ * a session that its Subagent was stopped, and that notice starts a turn in
+ * it: for a short while after the interrupt (ms) a turn that starts there is
+ * one to stop too (proven on OpenCode 2.3.0, tests/e2e/stop-all). What
+ * Autocode itself types there later (the agent was resumed) forgets it.
+ */
+export class Stopping {
+  private readonly until = new Map<string, number>()
+
+  constructor(private readonly ms = 10_000) {}
+
+  mark(session: string, now: number) {
+    this.until.set(session, now + this.ms)
+  }
+
+  stops(session: string, now: number): boolean {
+    const until = this.until.get(session)
+    if (until === undefined) return false
+    if (now <= until) return true
+    this.until.delete(session)
+    return false
+  }
+
+  forget(session: string) {
+    this.until.delete(session)
+  }
+
+  get size(): number {
+    return this.until.size
+  }
+}
+
+/*
  * The counts the idle hook noted, by session and time. A turn's end takes
  * the newest one not after it (the hook runs just before the turn's end is
  * published), so a turn handled late never takes the next turn's count (the

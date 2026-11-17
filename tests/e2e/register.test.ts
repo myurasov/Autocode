@@ -10,6 +10,7 @@ import {
   readySession,
 } from "../helpers/autocode.ts"
 import { nodes } from "../helpers/env.ts"
+import { FakeModel } from "../helpers/fake.ts"
 import { OpenCode } from "../helpers/opencode.ts"
 import { until } from "../helpers/wait.ts"
 
@@ -50,6 +51,54 @@ describe("registration through autocode_me", () => {
       )
     },
   )
+
+  /*
+   * The review before 1.0.0: OpenCode names a session itself after its first
+   * prompt (a side request to the model). That name does not take the place
+   * of "@<agent ID>", also when it comes back after the registration, and
+   * not after a later turn either.
+   */
+  test("OpenCode's own title for the session does not replace @<agent ID>", async () => {
+    const node = nodes[0]!
+    const oc = new OpenCode(node)
+    const fake = new FakeModel(node)
+    const s = await readySession(oc)
+    const id = `e2e:${run}:titled`
+    try {
+      // the session's title request answers late: after it registered
+      await fake.script(
+        [
+          {
+            kind: "title",
+            session: s.id,
+            delay_ms: 4000,
+            reply: "A late title",
+          },
+        ],
+        true,
+      )
+      await callTool(oc, s.id, "autocode_me", { action: "register", id })
+      const title = async () => (await oc.getSession(s.id))?.title
+      await until(async () => (await title()) === `@${id}`, {
+        timeoutMs: 30_000,
+        what: "the session's title @<agent ID>",
+      })
+      // OpenCode asked for its title, and got the late answer
+      const asked = (await fake.requests()).find(
+        (r) => r.session === s.id && r.kind === "title",
+      )
+      expect(typeof asked?.step).toBe("number")
+      await Bun.sleep(6000)
+      expect(await title()).toBe(`@${id}`)
+      await callTool(oc, s.id, "autocode_me", { action: "status" })
+      await Bun.sleep(2000)
+      expect(await title()).toBe(`@${id}`)
+    } finally {
+      await admin("DELETE", `/v1/agents/${encodeURIComponent(id)}`).catch(
+        () => {},
+      )
+    }
+  }, 120_000)
 
   test("every agent discovers the agents of every machine", async () => {
     for (const node of nodes) {
