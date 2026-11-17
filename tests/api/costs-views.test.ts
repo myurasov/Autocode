@@ -196,6 +196,41 @@ describe("an agent's model", () => {
   })
 })
 
+// The owner, 2026-11-17: "add col in agents tab for model effort": the
+// variant of the agent's model, from its last step.
+describe("an agent's model effort", () => {
+  const effort = async () =>
+    (await owner("GET", "/v1/agents/team:a")).body.agent.effort
+
+  test("the last step's effort is the agent's, on its view and /v1/me; \"\" forgets it", async () => {
+    expect(await effort()).toBe(null)
+    await report(t, HOST, [{ ...step(0.1), effort: "high" }])
+    expect(await effort()).toBe("high")
+    expect((await owner("GET", "/v1/agents")).body.agents[0].effort).toBe(
+      "high",
+    )
+    expect((await as(a, "GET", "/v1/me")).body.agent.effort).toBe("high")
+    await report(t, HOST, [{ ...step(0.1), effort: " max " }])
+    expect(await effort()).toBe("max")
+    // the model runs with no variant now
+    await report(t, HOST, [{ ...step(0.1), effort: "" }])
+    expect(await effort()).toBe(null)
+  })
+
+  test("a step that does not say it, a Subagent's, or a bad one keeps the agent's effort", async () => {
+    await report(t, HOST, [{ ...step(0.1), effort: "high" }])
+    // an older plugin, or the default model: nothing said
+    await report(t, HOST, [step(0.1)])
+    expect(await effort()).toBe("high")
+    // a Subagent's step carries no context: its effort is not the agent's
+    await report(t, HOST, [{ ...step(0.1), context: undefined, effort: "low" }])
+    expect(await effort()).toBe("high")
+    await report(t, HOST, [{ ...step(0.1), effort: "x".repeat(101) }])
+    await report(t, HOST, [{ ...step(0.1), effort: 5 }])
+    expect(await effort()).toBe("high")
+  })
+})
+
 // The owner, 2026-11-08: unregistered agents on Agents too (a box), and
 // Costs' Total over the last X days.
 describe("unregistered agents and days", () => {

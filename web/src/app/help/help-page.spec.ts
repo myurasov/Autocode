@@ -523,6 +523,10 @@ describe('HelpPage', () => {
     const agents = section(page, 'web-agents');
     for (const part of ['model', 'Spend', 'Context', 'the Unregistered box'])
       expect(agents).toContain(part);
+    // the owner, 2026-11-17: "add col in agents tab for model effort"
+    expect(agents).toContain(
+      "Effort (the model's variant, like high or max, when it runs with one)",
+    );
     expect(section(page, 'web-hosts')).toContain('the Offline box');
     // the owner, 2026-11-17: a registered session's title is its ID
     expect(section(page, 'register')).toContain(

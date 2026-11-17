@@ -43,6 +43,22 @@ describe("cost events", () => {
     })
   })
 
+  // The owner, 2026-11-17: "add col in agents tab for model effort": the
+  // session's model variant, as OpenCode names it (high, max...).
+  test('a step says its model\'s effort: the variant, none (""), or not known', () => {
+    expect(
+      costEvent("ses_a", STEP.data, { model: "fake/main", effort: "high" }),
+    ).toMatchObject({ model: "fake/main", effort: "high" })
+    // the session's model has no variant: said, so the server forgets one
+    expect(
+      costEvent("ses_a", STEP.data, { model: "fake/main", effort: "" }),
+    ).toMatchObject({ effort: "" })
+    // not known (the model is OpenCode's default one): nothing said
+    expect(
+      "effort" in costEvent("ses_a", STEP.data, { model: "fake/main" })!,
+    ).toBe(false)
+  })
+
   test("a step without a cost or tokens is none", () => {
     expect(costEvent("ses_a", { ...STEP.data, cost: "x" }, {})).toBeUndefined()
     expect(

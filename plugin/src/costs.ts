@@ -2,13 +2,15 @@
  * Costs and context for the server (tier 0e): each model step of a session
  * (OpenCode's session.step.ended event, published) becomes a cost event with
  * its cost, its context (input plus cache reads and writes: what the next
- * step re-reads) and the model with its window (OpenCode's model list).
+ * step re-reads) and the model with its window (OpenCode's model list) and
+ * its effort (the session's model variant: high, max...; "" when it has
+ * none; left out when the model is OpenCode's default one).
  */
 
 export function costEvent(
   session: string,
   data: any,
-  model: { model?: string; limit?: number },
+  model: { model?: string; limit?: number; effort?: string },
 ) {
   const usd = Number(data?.cost)
   if (typeof data?.cost !== "number" || !Number.isFinite(usd) || usd < 0)
@@ -29,6 +31,7 @@ export function costEvent(
     context,
     ...(model.model ? { model: model.model } : {}),
     ...(model.limit ? { limit: model.limit } : {}),
+    ...(typeof model.effort === "string" ? { effort: model.effort } : {}),
   }
 }
 

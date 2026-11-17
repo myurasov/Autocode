@@ -721,7 +721,8 @@ The web UI shows the owner every agent, wake, message, lock, job and cost, with 
   Autocode values ([Troubleshooting](#troubleshooting)). Offline hosts only with the **Offline** box (a link to an
   offline host turns it on). A TUI attaches to the background service by default, so its folders stay online after it
   exits.
-- **Agents:** by machine: status, model, spend today and in total (a click shows it on Costs), context as
+- **Agents:** by machine: status, model, effort (the model's variant, like `high` or `max`, when it runs with one),
+  spend today and in total (a click shows it on Costs), context as
   now/threshold/window (`854K/777K/1M`; exact tokens in its tooltip) with a bar of the threshold's share (amber from
   75%, red from 100%; the window's share without a threshold), host, folder, session, times. A paused agent's
   tooltip says who paused it; an agent in error shows its error and retries (`retry 3 in 40s`, `retrying now`,

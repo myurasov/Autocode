@@ -355,6 +355,15 @@ export class Costs {
       this.db
         .query("UPDATE agents SET model = ? WHERE id = ?")
         .run(model, agent)
+    // and its effort, the model's variant (the owner, 2026-11-17): "" says
+    // the model runs with none; a step that does not say it keeps the last
+    if (typeof event.effort === "string" && Number.isInteger(context)) {
+      const effort = event.effort.trim()
+      if (effort.length <= 100)
+        this.db
+          .query("UPDATE agents SET effort = ? WHERE id = ?")
+          .run(effort || null, agent)
+    }
     this.warn(payer)
   }
 

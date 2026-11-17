@@ -595,6 +595,13 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX messages_to ON messages (to_id, state, created_at);
   CREATE INDEX messages_at ON messages (created_at);
   `,
+  /*
+   * 20 (the owner, 2026-11-17: "add col in agents tab for model effort"):
+   * the variant of an agent's model (high, max...), from its last step.
+   */
+  `
+  ALTER TABLE agents ADD COLUMN effort TEXT;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

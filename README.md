@@ -156,9 +156,9 @@ Every table sorts by a click on a column heading; at first newest first by its d
 matches what is typed anywhere in an ID (`lead` finds `kaggle:lead`).
 
 - **Hosts:** every connected OpenCode folder, by machine; offline ones with the Offline box.
-- **Agents:** status (`idle`, `working`, `waiting`, `error`, `paused`, `offline`), model, spend (today / total),
-  context (now / its compaction threshold / the model's window, like `854K/777K/1M`, a bar of the threshold's share
-  under it), host, folder, session; a click on a description edits it;
+- **Agents:** status (`idle`, `working`, `waiting`, `error`, `paused`, `offline`), model and effort, spend (today /
+  total), context (now / its compaction threshold / the model's window, like `854K/777K/1M`, a bar of the
+  threshold's share under it), host, folder, session; a click on a description edits it;
   Pause, Resume, Retry, New Token, Unregister; Stop All and Resume All; a pattern filter; an Unregistered box (the
   gone agents too, with their spend).
 - **Inbox:** messages to you, alerts and asks; answer or close, or Close All; an agent filter.

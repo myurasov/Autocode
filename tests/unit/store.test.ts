@@ -344,6 +344,31 @@ describe("store", () => {
     db.close()
   })
 
+  // The owner, 2026-11-17: "add col in agents tab for model effort".
+  test("migration 20: an agent gets its model's effort, none yet", () => {
+    const path = tempDb()
+    const old = openStore(path, MIGRATIONS.slice(0, 19))
+    old.run(
+      "INSERT INTO hosts (id, machine, directory, instance, first_seen, " +
+        "last_seen) VALUES ('m:1', 'm', '/w', 'i', 1, 1)",
+    )
+    old.run(
+      "INSERT INTO sessions (id, host_id, created_at, last_seen) " +
+        "VALUES ('ses_1', 'm:1', 1, 1)",
+    )
+    old.run(
+      "INSERT INTO agents (id, session_id, registered_at, last_active, " +
+        "model) VALUES ('a:b', 'ses_1', 1, 1, 'fake/main')",
+    )
+    old.close()
+    const db = openStore(path)
+    expect(schemaVersion(db)).toBeGreaterThanOrEqual(20)
+    expect(db.query("SELECT id, model, effort FROM agents").all()).toEqual([
+      { id: "a:b", model: "fake/main", effort: null },
+    ])
+    db.close()
+  })
+
   test("a failing migration leaves the database at the version before it", () => {
     const path = tempDb()
     openStore(path, ["CREATE TABLE t (a TEXT)"]).close()

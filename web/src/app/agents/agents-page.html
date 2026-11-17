@@ -74,6 +74,7 @@
       <th appSort="desc" [sorting]="sorting">Description</th>
       <th appSort="status" [sorting]="sorting">Status</th>
       <th appSort="model" [sorting]="sorting">Model</th>
+      <th appSort="effort" [sorting]="sorting">Effort</th>
       <th appSort="spend" [sorting]="sorting">Spend</th>
       <th appSort="context" [sorting]="sorting">Context</th>
       <th appSort="host" [sorting]="sorting">Host</th>
@@ -90,7 +91,7 @@
            (the owner, 2026-11-09) -->
       <tr
         app-fold
-        [columns]="12"
+        [columns]="13"
         [folded]="folds.folded(m.machine)"
         [count]="m.agents.length"
         (toggle)="folds.toggle(m.machine)"
@@ -170,6 +171,14 @@
                 [appBreaks]="modelParts(a.model)[1]"
                 breakAfter="-"
               ></code>
+            } @else {
+              <span class="muted">—</span>
+            }
+          </td>
+          <!-- Its effort: the model's variant (the owner, 2026-11-17). -->
+          <td class="effort">
+            @if (a.effort) {
+              {{ a.effort }}
             } @else {
               <span class="muted">—</span>
             }
@@ -284,7 +293,7 @@
       @if (groupRows(m.machine, m.agents).left; as left) {
         <tr
           app-more
-          [columns]="12"
+          [columns]="13"
           [left]="left"
           (more)="paging.more(m.machine)"
         ></tr>
@@ -293,7 +302,7 @@
   } @empty {
     <tbody>
       <tr>
-        <td class="muted" colspan="12">
+        <td class="muted" colspan="13">
           @if (!loaded()) {
             Loading...
           } @else if (applied()) {

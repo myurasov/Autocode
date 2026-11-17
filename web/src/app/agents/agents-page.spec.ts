@@ -49,6 +49,7 @@ const AGENTS: Agent[] = [
     registered_at: '2026-10-28T10:00:00.000Z',
     last_active: '2026-10-28T11:30:00.000Z',
     model: 'prov/claude-opus-5-5',
+    effort: 'high',
     cost: {
       today_usd: 1.5,
       total_usd: 12.3456,
@@ -146,6 +147,9 @@ describe('AgentsPage', () => {
     const model = row.querySelector('td.model')!;
     expect(text(model)).toBe('claude-opus-5-5');
     expect(model.getAttribute('title')).toBe('prov/claude-opus-5-5');
+    // its effort, the model's variant (the owner, 2026-11-17: "add col in
+    // agents tab for model effort")
+    expect(text(row.querySelector('td.model + td.effort'))).toBe('high');
     // a click on Spend opens the Costs tab with this agent's row highlighted
     const spend = row.querySelector('td.spend')!;
     expect(text(spend)).toBe('$1.50 today / $12.35 total');
@@ -173,6 +177,7 @@ describe('AgentsPage', () => {
     expect(text(worker.querySelector('td.context'))).toBe('—');
     expect(worker.querySelector('td.context .bar')).toBeNull();
     expect(text(worker.querySelector('td.model'))).toBe('—');
+    expect(text(worker.querySelector('td.effort'))).toBe('—');
   });
 
   // The owner, 2026-11-09: "add bar under the context numbers on agents tab".
@@ -256,7 +261,7 @@ describe('AgentsPage', () => {
     const more = page.querySelector(
       'tbody[data-machine="machine-a"] tr.more-rows',
     )!;
-    expect(more.querySelector('td')!.getAttribute('colspan')).toBe('12');
+    expect(more.querySelector('td')!.getAttribute('colspan')).toBe('13');
     (more.querySelector('td') as HTMLElement).click();
     await settle(fixture);
     expect(rows().length).toBe(30);
@@ -373,6 +378,7 @@ describe('AgentsPage', () => {
       'Description',
       'Status',
       'Model',
+      'Effort',
       'Spend',
       'Context',
       'Host',
@@ -385,7 +391,7 @@ describe('AgentsPage', () => {
     const lead = page.querySelector('tr[data-agent="kaggle:lead"]')!;
     expect(
       lead.querySelector(
-        'td.status + td.model + td.spend + td.context + td.host',
+        'td.status + td.model + td.effort + td.spend + td.context + td.host',
       ),
     ).not.toBeNull();
     const link = lead.querySelector('td.host a.id-link')!;
@@ -398,7 +404,7 @@ describe('AgentsPage', () => {
     expect(worker.querySelector('td.host a')).toBeNull();
     expect(
       page.querySelector('table.agents tr.group th')!.getAttribute('colspan'),
-    ).toBe('12');
+    ).toBe('13');
   });
 
   /*
@@ -718,6 +724,7 @@ describe('AgentsPage', () => {
       'Description',
       'Status',
       'Model',
+      'Effort',
       'Spend',
       'Context',
       'Host',

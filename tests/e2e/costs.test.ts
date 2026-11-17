@@ -165,6 +165,41 @@ describe("a Subagent's cost", () => {
   }, 180_000)
 })
 
+/*
+ * The owner, 2026-11-17: "add col in agents tab for model effort": an agent's
+ * effort is its session's model variant, as OpenCode keeps it; an agent
+ * whose session has none shows none.
+ */
+describe("an agent's model effort", () => {
+  test("a session's model variant is its agent's effort; none without one", async () => {
+    await oc.loadLocation()
+    const own = await oc.createSession({
+      model: { providerID: "fake", id: "main", variant: "high" },
+    })
+    const withEffort = `e2e:${run}:effort`
+    try {
+      // the turn that registers it ends with a step: it says the effort
+      await callTool(oc, own.id, "autocode_me", {
+        action: "register",
+        id: withEffort,
+      })
+      const seen = await until(
+        async () => {
+          const a = (await admin("GET", `/v1/agents/${enc(withEffort)}`)).agent
+          return a.model ? a : undefined
+        },
+        { timeoutMs: 30_000, what: "the agent's model and effort" },
+      )
+      expect(seen.model).toBe("fake/main")
+      expect(seen.effort).toBe("high")
+      // the suite's agent: OpenCode's default model, no variant
+      expect((await agent()).effort).toBe(null)
+    } finally {
+      await admin("DELETE", `/v1/agents/${enc(withEffort)}`).catch(() => {})
+    }
+  })
+})
+
 describe("costs and compaction", () => {
   test("steps' costs add up; the cap pauses after the turn that passes it", async () => {
     // no compaction notice into this turn (past compact_at, it would come at

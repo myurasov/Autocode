@@ -2291,11 +2291,13 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
       "title",
       "fake/main",
     )
-    // the ID column keeps room for the ID's parts (not two letters a line)
+    // the ID column keeps room for the ID's parts (not two letters a line):
+    // 6rem since the Effort column (the owner, 2026-11-17; it was 7rem), so
+    // the thirteen columns fit 1280 px
     const id = await page
       .locator('tr[data-agent="smoke:agent"] td.id')
       .boundingBox()
-    expect(id!.width).toBeGreaterThanOrEqual(112)
+    expect(id!.width).toBeGreaterThanOrEqual(96)
   } finally {
     await api.dispose()
   }
@@ -4203,7 +4205,11 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
               context: 501_000,
               limit: 1_000_000,
               model: "nvidia-ih/aws/anthropic/bedrock-claude-opus-5-5",
+              // the Effort column (the owner, 2026-11-17), a long one
+              effort: "medium",
             },
+            // and the widest status, working: its turn runs
+            { type: "turn.started", session: sessions[i] },
           ],
         },
       })
@@ -4217,6 +4223,8 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
       await expect(row.locator("td.model")).toHaveText(
         "bedrock-claude-opus-5-5",
       )
+      await expect(row.locator("td.model + td.effort")).toHaveText("medium")
+      await expect(row.locator("td.status")).toContainText("working")
       await expect(row.locator("td.spend")).toContainText(" today / $")
       expect(await overflow(page), `Agents at ${width}`).toEqual({
         frame: 0,

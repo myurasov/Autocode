@@ -148,6 +148,7 @@ export class AgentsPage {
       desc: { text: (a) => a.description },
       status: { text: (a) => a.status },
       model: { text: (a) => a.model },
+      effort: { text: (a) => a.effort },
       spend: { number: (a) => a.cost?.today_usd },
       context: { number: (a) => a.cost?.context },
       host: { text: (a) => a.host },

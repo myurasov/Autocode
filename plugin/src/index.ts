@@ -653,6 +653,13 @@ export default {
         .catch(() => undefined)
       // a session without a model of its own runs OpenCode's default one
       let ref = info?.model
+      // its effort: the session's model variant, "" when it has none (the
+      // owner, 2026-11-17); not known for the default model
+      const effort = ref?.id
+        ? typeof ref.variant === "string"
+          ? ref.variant
+          : ""
+        : undefined
       let limit = ref ? await windowFor(ref) : undefined
       if (!ref) {
         const def = await ctx.model.default({}).catch(() => undefined)
@@ -667,6 +674,7 @@ export default {
       const report = costEvent(session, data, {
         ...(ref?.id ? { model: `${ref.providerID}/${ref.id}` } : {}),
         ...(limit ? { limit } : {}),
+        ...(effort === undefined ? {} : { effort }),
       })
       if (!report) return
       // a Subagent's context is not its parent's

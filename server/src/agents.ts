@@ -31,7 +31,7 @@ const SELECT = `
   SELECT a.id, a.description, a.session_id, a.registered_at, a.last_active,
          a.paused, a.error, a.error_since, a.error_at, a.retries, a.retry_at,
          a.filter_step, a.filter_compacting,
-         a.model, s.host_id, s.directory, s.deleted_at, s.busy,
+         a.model, a.effort, s.host_id, s.directory, s.deleted_at, s.busy,
          s.idle_since, s.last_outcome, h.machine, h.online,
          EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
                  AND k.state = 'open' AND k.job_def IS NULL) AS asking
@@ -53,6 +53,8 @@ export interface AgentView {
   idle_since?: string | null
   last_outcome?: string | null
   model?: string | null
+  // its model's variant (high, max...), when it runs with one
+  effort?: string | null
   // its last turn failed (tier 0b3)
   error?: ErrorView
 }
@@ -106,6 +108,8 @@ export class Agents {
       last_outcome: row.last_outcome ?? null,
       // its last step's provider/model (the owner, 2026-11-08)
       model: row.model ?? null,
+      // and its effort, the model's variant (the owner, 2026-11-17)
+      effort: row.effort ?? null,
       ...(row.error ? { error: errorView(row) } : {}),
       ...this.extra(row.id),
     }

@@ -289,10 +289,13 @@ th {
  * and lights up under the pointer, however tall its row is ("make table
  * header cell hilight entirely when hover"); its text is a button in the
  * heading's own look, for the keyboard, whose focus ring goes around the
- * cell. An arrow after the text says the direction of the sorted column; a
- * faint one shows on hover.
+ * cell. An arrow at the cell's right edge says the direction of the sorted
+ * column; a faint one shows on hover. The arrow sits in the cell's padding
+ * and takes no width of its own, so a heading is as narrow as its text (the
+ * Agents table, thirteen columns since Effort, still fits 1280 px).
  */
 th.sortable {
+  position: relative;
   cursor: pointer;
   /* a second click reverses the order: it does not select the text */
   user-select: none;
@@ -302,9 +305,7 @@ th.sortable:hover {
   color: var(--fg-strong);
 }
 th.sortable > button.sort {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
+  display: block;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -314,9 +315,6 @@ th.sortable > button.sort {
   font: inherit;
   text-align: inherit;
 }
-th.num.sortable > button.sort {
-  justify-content: flex-end;
-}
 th.sortable > button.sort:focus-visible {
   outline: none;
 }
@@ -325,10 +323,12 @@ th.sortable:has(> button.sort:focus-visible) {
   outline-offset: -2px;
 }
 th.sortable .arrow {
-  display: inline-block;
-  flex: none;
-  width: 0.6rem;
-  height: 0.6rem;
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: -0.25rem;
   background: var(--chevron) center / contain no-repeat;
   opacity: 0;
 }
@@ -375,10 +375,12 @@ td.session.id-like {
 /*
  * The Agents table's ID column keeps room for an ID's parts (tier 0g: with
  * the Spend · Context column it was squeezed to two letters a line at
- * 1024 px; there the page scrolls inside the frame instead).
+ * 1024 px; there the page scrolls inside the frame instead). 6rem since
+ * the Effort column (the owner, 2026-11-17; it was 7rem), so the thirteen
+ * columns fit 1280 px.
  */
 table.agents td.id {
-  min-width: 7rem;
+  min-width: 6rem;
 }
 /*
  * A description may hold a long path with no place to break: it breaks
@@ -795,7 +797,8 @@ table.agents td.context a:hover {
  * slash, Context only after its "of".
  */
 table.agents td.spend .part,
-table.agents td.context .part {
+table.agents td.context .part,
+table.agents td.effort {
   white-space: nowrap;
 }
 /*

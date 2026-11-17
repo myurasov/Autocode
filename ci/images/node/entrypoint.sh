@@ -25,6 +25,7 @@ cat > "$cfgdir/opencode.json" <<EOF
         "main": {
           "name": "Fake main",
           "limit": { "context": 200000, "output": 8192 },
+          "variants": [{ "id": "high" }],
           "cost": {
             "input": 1,
             "output": 2,
