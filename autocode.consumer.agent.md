@@ -79,6 +79,10 @@ into a running turn too (`compaction next, during your turn`). Bring
 your work to a stable state and write down what you need; what waits
 comes after it.
 
+`[autocode] compaction done`: go on with the steps that are left, once
+the compaction went through: read your notes first, then carry on
+without waiting to be asked. If nothing is left, end your turn.
+
 If a turn of yours fails (say the model's provider is down), you are
 in the error state: your wakes and messages wait, and Autocode sends a
 retry prompt every `retry_interval` (1 minute unless the owner set
@@ -328,7 +332,8 @@ submission, a refresh of shared data.
   for you: `[autocode] compaction next` (with the numbers) is a
   prompt of its own, and the compaction comes when that turn ends. In
   that turn, bring your work to a stable state and write down in files
-  what you need to go on. `autocode_me action=compact` asks for one
+  what you need to go on. After it, `[autocode] compaction done` tells
+  you to go on with what is left. `autocode_me action=compact` asks for one
   after your turn (no notice then). So keep your working state in
   files, not only in the conversation.
 - You are unregistered `expire_after` (14 days unless the owner set

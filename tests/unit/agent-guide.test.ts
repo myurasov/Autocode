@@ -619,6 +619,8 @@ describe("the guide", () => {
       "Autocode's own notices too",
       // the compaction notice comes mid-turn too (the owner, 2026-11-09)
       "into a running turn too (`compaction next, during your turn`)",
+      // and after it, the owner, 2026-11-17
+      "`[autocode] compaction done`: go on with the steps that are left",
     ])
       expect(guide).toContain(answer)
     for (const gone of [

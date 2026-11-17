@@ -286,7 +286,7 @@ export async function startServer(
   hosts.onTurnEnded = (agent, outcome, error, reply) => {
     retries.turnEnded(agent, outcome, error)
     costs.uncut(agent)
-    costs.turnEnded(agent)
+    costs.turnEnded(agent, outcome)
     /*
      * A run of a job: past run_usd it fails; idle with its reply it ends,
      * unless something of its own is pending (spec: no queued injection, no

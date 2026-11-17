@@ -593,6 +593,7 @@ autocode plugin install --url http://SERVER:4848 \
 [autocode] retry 3
 [autocode] lock "gpu-0" granted
 [autocode] compaction next
+[autocode] compaction done
 [autocode] 1 message, during your turn</pre
     >
     <p>
@@ -604,7 +605,10 @@ autocode plugin install --url http://SERVER:4848 \
       <code>compact_at</code>; it comes as soon as that happens, into a
       running turn too, and also when nothing else waits for it,
       say after your own turns in the TUI), so the agent brings its work to a
-      stable state and writes down what it needs first. What others wrote, and a check's
+      stable state and writes down what it needs first;
+      <code>[autocode] compaction done</code> comes once the compaction went
+      through, so the agent reads its notes and goes on with the steps that
+      are left (or ends its turn when nothing is). What others wrote, and a check's
       output, is quoted: each such line starts with <code>&gt; </code>, so it
       cannot pass for Autocode's own words. A last line says that the prompt
       comes from Autocode, not from you, and how the agent lists its wakes and

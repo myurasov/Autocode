@@ -6,7 +6,9 @@
  * daily_usd the agent gets one notice a day; past the cap, once its turn
  * ends, it is paused ("cap") and the owner alerted, until the next day, a
  * higher cap or a resume. A session whose last context passed compact_at
- * (or that asked) is compacted before its next injection. A turn that was
+ * (or that asked) is compacted before its next injection; once that
+ * compaction's turn succeeds, "compaction done" tells it to go on (the owner,
+ * 2026-11-17: a session stopped after it with work left). A turn that was
  * running when its OpenCode went away is "cut" and gets a resume prompt.
  * An agent expire_after its last turn is unregistered. Tier 0g: what the
  * owner and the agent see of it (view, list, days): today, the total (kept
@@ -394,9 +396,15 @@ export class Costs {
    * agent it counts for is paused once no turn of its own runs (the owner,
    * 2026-11-09: its runs' spend counts toward its cap).
    */
-  turnEnded(agent: string) {
+  turnEnded(agent: string, outcome = "succeeded") {
+    const compacting = !!(
+      this.db
+        .query("SELECT compacting FROM agents WHERE id = ?")
+        .get(agent) as any
+    )?.compacting
     // the compaction's turn is over: steps count as the context again
     this.injected(agent)
+    if (compacting && outcome === "succeeded") this.compactDone(agent)
     const billTo = this.billTo(agent)
     if (billTo) {
       if (!billTo.startsWith("job:") && !this.busy(billTo))
@@ -502,7 +510,8 @@ export class Costs {
         "stable state (finish or pause the step you are in; nothing half " +
         "done) and write down in files what you need to go on: the task, " +
         "where you are, decisions, open points and where your notes are. " +
-        "What waits for you comes after the compaction.",
+        'After the compaction, "compaction done" tells you to go on, and ' +
+        "what waits for you comes with it.",
     }
   }
 
@@ -537,6 +546,27 @@ export class Costs {
       agent,
       data: { context: due.context, limit: due.limit },
     })
+  }
+
+  /*
+   * The owner, 2026-11-17: "after compaction, we will be sending 'compaction
+   * done, complete planned steps if any' so sessions dont stop if there are
+   * things to do": a notice of Autocode's, so it goes first, with what waits.
+   */
+  private compactDone(agent: string) {
+    this.history.record("session.compact.done", { agent })
+    try {
+      this.notify({
+        agent,
+        subject: "compaction done",
+        text:
+          "Autocode compacted this session: a summary now stands for the " +
+          "conversation before it. If work was planned or in progress, carry " +
+          "on with the steps that are left, without waiting to be asked: " +
+          "first read the notes you wrote down (the task, where you are, what " +
+          "comes next). If nothing is left to do, end your turn.",
+      })
+    } catch {}
   }
 
   // autocode_me compact: after the current turn.

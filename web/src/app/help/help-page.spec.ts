@@ -530,6 +530,9 @@ describe('HelpPage', () => {
     const sees = section(page, 'sees');
     expect(sees).toContain('[autocode] compaction next');
     expect(sees).toContain('a stable state');
+    // the owner, 2026-11-17: after it, go on
+    expect(sees).toContain('[autocode] compaction done');
+    expect(sees).toContain('goes on with the steps that are left');
     // the owner, 2026-11-09: also to an idle agent with nothing waiting
     expect(sees).toContain('also when nothing else waits for it');
   });

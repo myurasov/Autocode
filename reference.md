@@ -495,6 +495,9 @@ between turns: a summary replaces the conversation.
   owner's turns in the TUI; then at most once per `min_interval`). Not in the error state.
 - In that turn the agent brings its work to a stable state and writes down in files what it needs: the task, where it
   is, decisions, open points. What waits comes after the compaction.
+- After it, once the compaction's turn succeeded: `[autocode] compaction done` (with what waits), so the agent reads
+  its notes and goes on with the steps that are left, or ends its turn when nothing is. History:
+  `session.compact.done`.
 - `autocode_me action=compact` asks for one after the current turn, with no notice. History shows
   `session.compact.noticed` and `session.compacted`.
 - So agents keep their working state in files (a task list, notes, a checkpoint), not only in the conversation.
@@ -613,8 +616,9 @@ Message m_123 from agent team:b, subject "results":
 ```
 
 - **Header:** the reasons, like `[autocode] wake "training-done" fired by the owner`, `[autocode] retry 3`,
-  `[autocode] lock "gpu:0" granted`, `[autocode] resume`, `[autocode] cost warning`, `[autocode] compaction next` or
-  `[autocode] question from team:worker: "..."`. Into a running turn it ends `, during your turn`.
+  `[autocode] lock "gpu:0" granted`, `[autocode] resume`, `[autocode] cost warning`, `[autocode] compaction next`,
+  `[autocode] compaction done` or `[autocode] question from team:worker: "..."`. Into a running turn it ends
+  `, during your turn`.
 - **Wakes:** what kind each is and when it runs next (`(once, this was its only run)`,
   `(idle 30m repeat; again after 30m more idle)`), its text, `Added by ...:` with a fired wake's extra text, and
   `Its check said:` with the check's output.

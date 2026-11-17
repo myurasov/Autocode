@@ -6,6 +6,7 @@
  * a session whose context passed compact_at is told first (tier 0g: a
  * "compaction next" prompt), then compacted when that turn ends, before the
  * next injection, or idle with nothing waiting (the owner, 2026-11-09);
+ * after it, "compaction done" (the owner, 2026-11-17), with what waits;
  * autocode_me compact asks for one (no notice); a turn cut
  * by a lost OpenCode is resumed when the host is back; agents expire after
  * expire_after since their last turn; the background service is restarted
@@ -195,6 +196,10 @@ describe("compaction", () => {
     )
     expect(text).toContain("stable state")
     expect(text).toContain("write down in files")
+    // what comes after it (the owner, 2026-11-17)
+    expect(text).toContain(
+      'After the compaction, "compaction done" tells you to go on',
+    )
     // the wake waits for after the compaction
     expect(text).not.toContain('wake "w"')
     expect(
@@ -210,12 +215,23 @@ describe("compaction", () => {
     const out = await sent()
     expect(out.map((i) => i.type)).toEqual(["compact"])
     expect(out[0].payload).toEqual({ session: "ses_a" })
-    // the compaction is a turn; when it ends, the wake comes
+    // the compaction is a turn; when it ends, "compaction done" (the owner,
+    // 2026-11-17: a session stopped after it with work left), and the wake
     await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
     await report(t, HOST, [step(0.01, 8000)])
     await turnEnds()
     t.clock.advance(2000)
-    expect((await prompts()).ses_a).toStartWith('[autocode] wake "w"')
+    const after = (await prompts()).ses_a as string
+    expect(after).toStartWith('[autocode] compaction done, wake "w"\n\n')
+    expect(after).toContain(
+      "Autocode compacted this session: a summary now stands for the " +
+        "conversation before it.",
+    )
+    expect(after).toContain("carry on with the steps that are left")
+    expect(after).toContain("If nothing is left to do, end your turn.")
+    expect(after.indexOf("compacted this session")).toBeLessThan(
+      after.indexOf('Wake "w"'),
+    )
     const h = (await owner("GET", "/v1/history?kind=session.compacted")).body
       .history
     expect(h[0].data).toMatchObject({ context: 125_000, limit: 100_000 })
@@ -342,6 +358,14 @@ describe("compaction", () => {
     await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
     await report(t, HOST, [step(0.01, 150_000)])
     await turnEnds()
+    // "compaction done", even with nothing waiting (the owner, 2026-11-17)
+    t.clock.advance(2000)
+    const done = await sent()
+    expect(done.map((i) => i.type)).toEqual(["inject"])
+    expect(done[0].payload.text).toStartWith("[autocode] compaction done\n\n")
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await report(t, HOST, [step(0.01, 9000)])
+    await turnEnds()
     // nothing more: no second notice, no loop
     for (const wait of [2000, MIN, 10 * MIN]) {
       t.clock.advance(wait)
@@ -417,13 +441,51 @@ describe("compaction", () => {
     expect((await prompts()).ses_a).toStartWith("[autocode] compaction next")
   })
 
-  test("autocode_me compact: after the current turn, with no notice", async () => {
+  test("autocode_me compact: after the current turn, with no notice; then compaction done", async () => {
     await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
     const res = await as(a, "POST", "/v1/me/compact")
     expect(res.status).toBe(200)
     expect((await sent()).map((i) => i.type)).toEqual([])
     await turnEnds()
     expect((await sent()).map((i) => i.type)).toEqual(["compact"])
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await turnEnds()
+    t.clock.advance(2000)
+    expect((await prompts()).ses_a).toStartWith("[autocode] compaction done")
+  })
+
+  // The owner, 2026-11-17: "after compaction, we will be sending 'compaction
+  // done, complete planned steps if any' so sessions dont stop if there are
+  // things to do". Only after a compaction that went through, once.
+  test("compaction done: once, only when the compaction's turn succeeded; the owner's own turns get none", async () => {
+    await as(a, "POST", "/v1/me/compact")
+    await turnEnds()
+    expect((await sent()).map((i) => i.type)).toEqual(["compact"])
+    // the compaction's turn failed: no "compaction done" (retries take over)
+    await owner("PATCH", "/v1/settings", { server: { retry_interval: "10m" } })
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await report(t, HOST, [
+      {
+        type: "turn.ended",
+        session: "ses_a",
+        outcome: "failed",
+        error: "provider.internal",
+      },
+    ])
+    t.clock.advance(2000)
+    expect((await sent()).map((i) => i.type)).toEqual([])
+    const notices = async () =>
+      (await owner("GET", "/v1/messages?agent=team:a")).body.messages.filter(
+        (m: any) => m.subject === "compaction done",
+      )
+    expect(await notices()).toEqual([])
+    // a turn that is no compaction's: none either
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await turnEnds()
+    t.clock.advance(2000)
+    const out = await sent()
+    for (const i of out)
+      expect(String(i.payload?.text ?? "")).not.toContain("compaction done")
   })
 })
 
