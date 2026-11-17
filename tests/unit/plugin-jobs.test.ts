@@ -2,12 +2,24 @@
  * The plugin's tier 0f parts: a spawn instruction becomes a session in the
  * folder (title, model and variant, OpenCode agent); a remove instruction
  * removes it; autocode_me jobs, run and finish; the turn's last reply is
- * found in the session's messages.
+ * found in the session's messages; a registered session's title (the owner,
+ * 2026-11-17: "@<agent-id>"), but a run's.
  */
 import { describe, expect, test } from "bun:test"
 import { guideText, helpText, TOPICS } from "../../plugin/src/guide.ts"
-import { lastReply, spawnInput } from "../../plugin/src/jobs.ts"
+import { agentTitle, lastReply, spawnInput } from "../../plugin/src/jobs.ts"
 import { ME_TOOL, runMe } from "../../plugin/src/tools.ts"
+
+describe("a registered session's title", () => {
+  test("@ and its agent ID; none for a run's session, or once unregistered", () => {
+    expect(agentTitle("kaggle:casmi26:master", false)).toBe(
+      "@kaggle:casmi26:master",
+    )
+    // a run's session keeps its run's title
+    expect(agentTitle("mail:2026-10-28T12:00", true)).toBeNull()
+    expect(agentTitle(null, false)).toBeNull()
+  })
+})
 
 describe("spawn", () => {
   test("a session in this folder with the job's model, variant and agent", () => {

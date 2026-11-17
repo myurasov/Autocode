@@ -1,5 +1,6 @@
 /*
- * Agents register with autocode_me on every machine and see each other.
+ * Agents register with autocode_me on every machine and see each other; a
+ * registered session's title becomes "@<agent ID>" (the owner, 2026-11-17).
  */
 import { describe, expect, test } from "bun:test"
 import {
@@ -10,6 +11,7 @@ import {
 } from "../helpers/autocode.ts"
 import { nodes } from "../helpers/env.ts"
 import { OpenCode } from "../helpers/opencode.ts"
+import { until } from "../helpers/wait.ts"
 
 const run = crypto.randomUUID().slice(0, 6)
 const idFor = (node: string) => `e2e:${run}:${node}`
@@ -40,6 +42,12 @@ describe("registration through autocode_me", () => {
         status: "idle",
         directory: "/home/dev/work",
       })
+      // The owner, 2026-11-17: "i want opencode sessions to set their names
+      // to "@<agent-id>" upon registration".
+      await until(
+        async () => (await oc.getSession(s.id))?.title === `@${idFor(node)}`,
+        { timeoutMs: 30_000, what: "the session's title @<agent ID>" },
+      )
     },
   )
 

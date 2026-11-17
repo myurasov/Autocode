@@ -3,8 +3,18 @@
  * becomes a fresh session (ctx.session.create: this folder, the job's model
  * and variant, its OpenCode agent), remove deletes one (ctx.session.remove),
  * and a run's result, when it ends without finish, is its last reply: the
- * newest assistant message with text (a turn may end on a tool call).
+ * newest assistant message with text (a turn may end on a tool call). A
+ * registered session's title is its agent ID, but a run's.
  */
+
+/*
+ * The title a registered session takes (the owner, 2026-11-17: "i want
+ * opencode sessions to set their names to "@<agent-id>" upon registration"):
+ * none for a run's session, which keeps its run's title, or with no agent.
+ */
+export function agentTitle(agent: string | null, run: boolean): string | null {
+  return agent && !run ? `@${agent}` : null
+}
 
 // What ctx.session.create is given for a spawn.
 export function spawnInput(directory: string, p: any) {

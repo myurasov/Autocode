@@ -524,6 +524,10 @@ describe('HelpPage', () => {
     for (const part of ['model', 'Spend', 'Context', 'the Unregistered box'])
       expect(agents).toContain(part);
     expect(section(page, 'web-hosts')).toContain('the Offline box');
+    // the owner, 2026-11-17: a registered session's title is its ID
+    expect(section(page, 'register')).toContain(
+      "the session's title becomes @ and its ID, like @kaggle:casmi26:lead",
+    );
     // the owner, 2026-11-17: a click on its description edits it; no Edit
     expect(agents).toContain('A click on a description edits it');
     expect(agents).not.toContain('Edit a description');

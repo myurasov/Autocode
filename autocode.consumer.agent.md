@@ -33,7 +33,8 @@ can wake it later by typing a prompt into it.
 - `autocode_me register` with an ID like `project:role:name` (letters,
   digits, `-`, `_`, `.` and `:`) and a one-line description. One ID per
   session; `unregister` frees it and removes your wakes. Subagents act
-  for their top-level session.
+  for their top-level session. When you register, the session's title
+  becomes `@` and your ID (like `@myproject:lead`).
 - `status` shows your registration, the server's time and zone, how
   Autocode delivers to you, your wakes, how many messages wait for
   you, and your spend and context; `discover` finds agents by pattern

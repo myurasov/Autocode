@@ -621,6 +621,8 @@ describe("the guide", () => {
       "into a running turn too (`compaction next, during your turn`)",
       // and after it, the owner, 2026-11-17
       "`[autocode] compaction done`: go on with the steps that are left",
+      // the session's title (the owner, 2026-11-17)
+      "the session's title becomes `@` and your ID",
     ])
       expect(guide).toContain(answer)
     for (const gone of [

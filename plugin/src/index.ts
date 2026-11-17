@@ -19,7 +19,7 @@ import {
   SKILL_DESCRIPTION,
   SKILL_ID,
 } from "./guide.ts"
-import { lastReply, spawnInput } from "./jobs.ts"
+import { agentTitle, lastReply, spawnInput } from "./jobs.ts"
 import {
   activeSessions,
   cancelForm,
@@ -368,12 +368,25 @@ export default {
             env,
           })
         }
-        case "registration":
+        case "registration": {
           if (typeof p.agent === "string") {
             registered.set(session, p.agent)
             mine.add(session)
           } else registered.delete(session)
+          // its title "@<agent ID>" (the owner, 2026-11-17); a rename that
+          // fails leaves the registration as it is
+          const title = agentTitle(
+            typeof p.agent === "string" ? p.agent : null,
+            runs.has(session),
+          )
+          if (title)
+            await ctx.session
+              .update({ sessionID: session, title })
+              .catch((err: unknown) =>
+                log(`title of ${session}: ${(err as Error)?.message ?? err}`),
+              )
           return { ok: true }
+        }
         case "ping":
           return { pong: true }
         default:

@@ -177,6 +177,8 @@ autocode_me  action=discover  pattern=team:*
 - One ID per session: letters, digits, `-`, `_`, `.` and `:`, up to 255 characters, with levels split by `:`
   (project, role, name). `owner` and `autocode` are reserved. A Subagent acts for its top-level session.
 - Registering again with the same ID from the same session changes nothing: safe after a compaction.
+- On registration the plugin sets the session's title to `@` and the ID (`@myproject:lead`), so it is found in
+  OpenCode's session list; a job's run keeps its run's title.
 - An ID another session holds is refused (`id_taken`) while that session exists; once it is deleted, the ID moves to
   the next session that registers it. A session with an ID is refused another (`session_has_id`).
 - Unregistered by `unregister`, by the owner, when its session is deleted, or `expire_after` (14 days) after its
