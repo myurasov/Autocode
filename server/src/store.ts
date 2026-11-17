@@ -600,12 +600,16 @@ export const MIGRATIONS: string[] = [
    * the variant of an agent's model (high, max...), from its last step. And
    * the compaction that is out (the review before 1.0.0): its instruction,
    * and whether the agent asked for it, so that one OpenCode could not do is
-   * known and is not taken for done.
+   * known and is not taken for done. And a run keeps the time limit and the
+   * cap it started with: read from its job alone, they were gone with a job
+   * deleted under its run (the documentation pass before 1.0.0).
    */
   `
   ALTER TABLE agents ADD COLUMN effort TEXT;
   ALTER TABLE agents ADD COLUMN compact_instruction TEXT;
   ALTER TABLE agents ADD COLUMN compact_asked INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE runs ADD COLUMN timeout_ms INTEGER;
+  ALTER TABLE runs ADD COLUMN run_usd REAL;
   `,
 ]
 

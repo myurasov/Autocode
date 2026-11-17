@@ -350,6 +350,55 @@ describe("runs", () => {
     })
   })
 
+  /*
+   * The documentation pass before 1.0.0: a run's limits were read from its
+   * job, so a run whose job was deleted went on with the default hour and
+   * no cap. A run keeps the limits it started with.
+   */
+  test("a run whose job was deleted keeps its time limit and its cap", async () => {
+    await owner("PUT", "/v1/jobs/mail", { ...JOB, timeout: "5m", run_usd: 2 })
+    await owner("POST", "/v1/jobs/mail/run")
+    await started()
+    expect((await owner("DELETE", "/v1/jobs/mail")).status).toBe(200)
+    t.clock.advance(5 * MIN)
+    const out = await sent()
+    expect(out.map((i) => i.type)).toContain("interrupt")
+    expect((await runs("mail"))[0]).toMatchObject({
+      state: "failed",
+      reason: "time limit (5m)",
+    })
+
+    await owner("PUT", "/v1/jobs/costly", { ...JOB, run_usd: 0.5 })
+    await owner("POST", "/v1/jobs/costly/run")
+    const { run } = await started("costly")
+    const session = (await owner("GET", `/v1/agents/${run.id}`)).body.agent
+      .session
+    await owner("DELETE", "/v1/jobs/costly")
+    await report(t, HOST, [{ type: "turn.started", session }])
+    await report(t, HOST, [{ type: "cost", session, usd: 0.6, context: 1000 }])
+    await report(t, HOST, [
+      { type: "turn.ended", session, outcome: "succeeded" },
+    ])
+    expect((await runs("costly"))[0]).toMatchObject({
+      state: "failed",
+      reason: "run cap ($0.60 of $0.50)",
+    })
+  })
+
+  // A job set again while its run works: the new limits hold for that run.
+  test("a job's changed limits hold for its run that works", async () => {
+    await owner("PUT", "/v1/jobs/mail", { ...JOB, timeout: "1h" })
+    await owner("POST", "/v1/jobs/mail/run")
+    await started()
+    await owner("PUT", "/v1/jobs/mail", { ...JOB, timeout: "5m" })
+    t.clock.advance(5 * MIN)
+    await sent()
+    expect((await runs("mail"))[0]).toMatchObject({
+      state: "failed",
+      reason: "time limit (5m)",
+    })
+  })
+
   test("a spawn that fails fails the run", async () => {
     await owner("PUT", "/v1/jobs/mail", JOB)
     await owner("POST", "/v1/jobs/mail/run")

@@ -478,8 +478,8 @@ export class Jobs {
     this.db
       .query(
         `INSERT INTO runs (id, job, started_by, how, extra, state,
-           started_at, ask_id, bill_to)
-         VALUES (?, ?, ?, ?, ?, 'starting', ?, ?, ?)`,
+           started_at, ask_id, bill_to, timeout_ms, run_usd)
+         VALUES (?, ?, ?, ?, ?, 'starting', ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -490,6 +490,9 @@ export class Jobs {
         now,
         ask ?? null,
         this.billTo(job, how, by, ask),
+        // its limits, should its job be deleted under it
+        job.timeout_ms,
+        job.run_usd,
       )
     this.d.history.record("run.started", {
       data: { id, job: name, by, how },
@@ -558,6 +561,19 @@ export class Jobs {
       .run(instruction, job.host_id, this.d.now(), run.id)
   }
 
+  /*
+   * A run's time limit and cap: its job's as they are now (a job set again
+   * changes them for its run that works), and with the job deleted the ones
+   * the run started with.
+   */
+  private limits(run: any, job: any): { timeout: number; usd: number | null } {
+    const from = job ?? run
+    return {
+      timeout: from?.timeout_ms ?? DEFAULT_TIMEOUT,
+      usd: from?.run_usd ?? null,
+    }
+  }
+
   // Where a run's result goes: the starting agent, else the job's.
   private dest(run: any, job: any): string {
     if ((run.how ?? "agent") === "agent") return run.started_by
@@ -595,7 +611,7 @@ export class Jobs {
       .query("SELECT * FROM runs WHERE state = 'starting'")
       .all() as any[]) {
       const job = this.row(run.job)
-      const limit = job?.timeout_ms ?? DEFAULT_TIMEOUT
+      const limit = this.limits(run, job).timeout
       // no spawn yet: its host was offline; it waits up to the time limit
       if (!run.instruction_id) {
         if (now - run.started_at >= limit)
@@ -650,7 +666,7 @@ export class Jobs {
       .query("SELECT * FROM runs WHERE state = 'running'")
       .all() as any[]) {
       const job = this.row(run.job)
-      const limit = job?.timeout_ms ?? DEFAULT_TIMEOUT
+      const limit = this.limits(run, job).timeout
       if (now - run.started_at >= limit) {
         const host = this.hostOf(run, job)
         if (host && run.session_id)
@@ -741,10 +757,11 @@ export class Jobs {
     const job = this.row(run.job)
     const spent = this.d.spent(agent)
     this.db.query("UPDATE runs SET cost = ? WHERE id = ?").run(spent, run.id)
-    if (job?.run_usd && spent > job.run_usd) {
+    const cap = this.limits(run, job).usd
+    if (cap && spent > cap) {
       this.fail(
         this.runRow(run.id),
-        `run cap ($${spent.toFixed(2)} of $${Number(job.run_usd).toFixed(2)})`,
+        `run cap ($${spent.toFixed(2)} of $${Number(cap).toFixed(2)})`,
       )
       return
     }
