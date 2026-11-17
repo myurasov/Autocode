@@ -59,16 +59,21 @@ describe("a Subagent's cost", () => {
       const marker = `SUBCOST-${run}`
       const fake = new FakeModel(node)
       const before = (await admin("GET", `/v1/costs/${enc(sub)}`)).cost
-      // the fake model's price: input $1, output $2 per million tokens; four
-      // scripted steps (the parent's call, the Subagent's two, the parent's
-      // last), whichever session takes each
+      // the fake model's price: input $1, output $2 per million tokens; five
+      // scripted steps (the parent's call and its "launched", the Subagent's
+      // two, the parent's last), whichever session takes each
       /*
+       * OpenCode 2.3 runs a Subagent in the background: the tool returns at
+       * once ("The subagent is working in the background"), the agent's turn
+       * ends, and the Subagent's result comes to it later as a message
+       * (<subagent sessionID="..." state="completed" ...>), a turn of its own.
        * OpenCode sends the Subagent's requests with its top-level session's
        * header, so the steps go by their text (the fake model takes, for each
        * request, the first step whose text it holds, in this order): the
-       * agent's last request alone holds the Subagent's result; the
-       * Subagent's hold its prompt; the agent's first holds the user prompt.
-       * Small prompts (a big one starts OpenCode's own compaction).
+       * agent's last request alone holds the Subagent's result; its second
+       * the tool's answer; the Subagent's hold its prompt; the agent's first
+       * holds the user prompt. Small prompts (a big one starts OpenCode's own
+       * compaction).
        */
       await fake.script(
         [
@@ -76,6 +81,11 @@ describe("a Subagent's cost", () => {
             match: "<subagent sessionID",
             usage: { prompt_tokens: 1_000, completion_tokens: 12_000 },
             reply: "parent done",
+          },
+          {
+            match: "is working in the background",
+            usage: { prompt_tokens: 1_000, completion_tokens: 5_000 },
+            reply: "launched",
           },
           {
             match: `${marker} child work`,
@@ -110,23 +120,38 @@ describe("a Subagent's cost", () => {
         true,
       )
       await oc.run(own.id, `use a subagent ${run}`, 120_000)
-      // the Subagent ran in a session of its own: the agent's result names it
-      const results = (await fake.requests()).flatMap((r: any) =>
-        (r.messages as any[])
-          .filter((m) => m?.role === "tool")
-          .map((m) => String(m.content)),
+      // the Subagent ran in a session of its own, in the background: its
+      // result, which names it, reaches the agent in a later turn
+      const texts = async () =>
+        (await fake.requests()).flatMap((r: any) =>
+          (r.messages as any[]).map((m) =>
+            typeof m?.content === "string"
+              ? m.content
+              : JSON.stringify(m?.content ?? ""),
+          ),
+        )
+      const tag = await until(
+        async () =>
+          (await texts())
+            .map((t) =>
+              /<subagent sessionID=\\?"([^"\\]+)\\?" state=\\?"completed\\?"/.exec(
+                t,
+              ),
+            )
+            .find(Boolean),
+        {
+          timeoutMs: 60_000,
+          intervalMs: 300,
+          what: "the Subagent's result in the agent's session",
+        },
       )
-      const tag = results
-        .map((t) => /<subagent sessionID="([^"]+)" state="completed">/.exec(t))
-        .find(Boolean)
-      expect(tag, JSON.stringify(results.slice(-4))).toBeTruthy()
       const child = tag![1]!
       expect(child).not.toBe(own.id)
       // its shell ran: it took its own scripted steps
-      expect(results).toContain("child\n")
+      expect(await texts()).toContain("child\n")
       // the steps' cost ($1 a million input, $2 a million output): the
-      // agent's $0.021 and $0.025, the Subagent's $0.301 and $0.351
-      const expected = 0.021 + 0.301 + 0.351 + 0.025
+      // agent's $0.021, $0.011 and $0.025, the Subagent's $0.301 and $0.351
+      const expected = 0.021 + 0.011 + 0.301 + 0.351 + 0.025
       const after = await until(
         async () => {
           const c = (await admin("GET", `/v1/costs/${enc(sub)}`)).cost

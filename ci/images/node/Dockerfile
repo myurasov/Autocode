@@ -1,7 +1,7 @@
 # An OpenCode "machine" with this build's autocode binary and plugin bundle (and
 # the spike probe, used only when PROBE=1). Built per run on top of the pinned
 # OpenCode image.
-ARG OPENCODE_IMAGE=localhost/autocode-ci/opencode:2.2.0
+ARG OPENCODE_IMAGE=localhost/autocode-ci/opencode:2.3.0
 ARG BUILD_IMAGE=localhost/autocode-ci/build:latest
 FROM ${BUILD_IMAGE} AS build
 FROM ${OPENCODE_IMAGE}

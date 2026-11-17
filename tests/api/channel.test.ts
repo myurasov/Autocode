@@ -71,9 +71,88 @@ describe("plugin channel", () => {
         machine: "m1",
         directory: "/work",
         online: true,
-        opencode_version: "2.2.0",
+        opencode_version: "2.3.0",
+        opencode_supported: true,
       }),
     ])
+  })
+
+  /*
+   * The owner, 2026-11-17: "make opencode 2.3 base minumum supported
+   * versiobn": a machine whose OpenCode is older is refused, with the reason;
+   * it is listed (offline, marked), and the owner gets one alert.
+   */
+  test("an OpenCode older than the minimum is refused, listed as not supported, and alerted once", async () => {
+    const t = await start()
+    const info = (await call(t.url, undefined, "GET", "/v1/info")).body
+    expect(info.opencode_min).toBe("2.3.0")
+    const old = await hello(t, "mac:work:1", { opencode: { version: "2.2.0" } })
+    expect(old.status).toBe(426)
+    expect(old.body.error.code).toBe("opencode_too_old")
+    expect(old.body.error.message).toBe(
+      "this OpenCode is v2.2.0; Autocode needs v2.3.0 or later. " +
+        "Update OpenCode on this machine, then start it again.",
+    )
+    // again (the plugin tries again later): refused, no second alert
+    expect(
+      (await hello(t, "mac:work:1", { opencode: { version: "2.2.0" } })).status,
+    ).toBe(426)
+    const hosts = (await call(t.url, t.admin, "GET", "/v1/hosts")).body.hosts
+    expect(hosts).toEqual([
+      expect.objectContaining({
+        id: "mac:work:1",
+        machine: "mac",
+        online: false,
+        opencode_version: "2.2.0",
+        opencode_supported: false,
+        opencode_needs: "2.3.0",
+      }),
+    ])
+    const alerts = (
+      await call(t.url, t.admin, "GET", "/v1/inbox")
+    ).body.items.filter((i: any) => i.kind === "alert")
+    expect(alerts.map((a: any) => [a.title, a.body])).toEqual([
+      [
+        "Host mac:work:1 runs OpenCode v2.2.0: too old for Autocode",
+        "Autocode needs OpenCode v2.3.0 or later. Update OpenCode on mac, " +
+          "then start it again; until then its sessions are not connected.",
+      ],
+    ])
+    // it serves nothing: no session token, no poll
+    expect(
+      (
+        await call(
+          t.url,
+          t.consumer,
+          "POST",
+          "/v1/hosts/mac%3Awork%3A1/sessions/ses_x/token",
+          { instance: "inst-mac:work:1" },
+        )
+      ).status,
+    ).not.toBe(200)
+    // updated: accepted, online, supported
+    const now = await hello(t, "mac:work:1", { opencode: { version: "2.3.1" } })
+    expect(now.status).toBe(200)
+    expect(
+      (await call(t.url, t.admin, "GET", "/v1/hosts")).body.hosts[0],
+    ).toMatchObject({ online: true, opencode_supported: true })
+  })
+
+  test("a version that is not a plain release number is not judged", async () => {
+    const t = await start()
+    for (const [host, version] of [
+      ["m:dev", "0.0.0-dev-1304"],
+      ["m:name", "local"],
+      ["m:none", ""],
+      ["m:new", "v3.0.0"],
+    ] as const)
+      expect(
+        (await hello(t, host, { opencode: { version } })).status,
+        version,
+      ).toBe(200)
+    expect(
+      (await hello(t, "m:one", { opencode: { version: "1.14.33" } })).status,
+    ).toBe(426)
   })
 
   test("hello records the host's OpenCode process (kind and ID) and whether it can set shell values; a missing or bad one is left empty", async () => {

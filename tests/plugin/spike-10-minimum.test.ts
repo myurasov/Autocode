@@ -1,5 +1,6 @@
 /*
- * Spike check 10: the OpenCode under test (2.2.0, the minimum) has everything
+ * Spike check 10: the OpenCode under test (2.3.0, the minimum since Autocode
+ * 1.0.0: the owner, 2026-11-17) has everything
  * checks 1 to 9 rely on. When a newer release joins the matrix, this file says
  * at once if it dropped a route or a plugin function Autocode uses.
  */
@@ -10,7 +11,7 @@ import { probe } from "../helpers/probe.ts"
 import { until } from "../helpers/wait.ts"
 
 const oc = new OpenCode(nodes[0]!)
-const minimum = "2.2.0"
+const minimum = "2.3.0"
 
 function newer(a: string, b: string) {
   const pa = a.split(".").map(Number)

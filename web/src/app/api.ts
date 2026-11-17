@@ -259,6 +259,10 @@ export interface Host {
   online: boolean;
   instance: string;
   opencode_version: string;
+  // false: its OpenCode is older than Autocode's minimum, opencode_needs
+  // (the owner, 2026-11-17); it is not served
+  opencode_supported?: boolean;
+  opencode_needs?: string;
   plugin_version: string;
   // The OpenCode process it runs in: service, serve, run, tui, ... ('' when
   // its plugin did not say).

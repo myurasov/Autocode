@@ -6,7 +6,14 @@
  */
 
 import type { Database } from "bun:sqlite"
-import { AutocodeError, checkId, VERSION } from "@autocode/shared"
+import {
+  AutocodeError,
+  checkId,
+  MIN_OPENCODE,
+  opencodeTooOld,
+  opencodeTooOldText,
+  VERSION,
+} from "@autocode/shared"
 import type { History } from "./history.ts"
 import { revokeSessionTokens } from "./tokens.ts"
 
@@ -73,12 +80,15 @@ export class Hosts {
   // The last turn event applied to each session (kind and time).
   private readonly lastEvent = new Map<string, string>()
   // Called when a registered agent's turn ends (the retries, tier 0b3).
-  // `reply`: the turn's last text (tier 0f: a run's result)
+  // `reply`: the turn's last text (tier 0f: a run's result); `background`:
+  // how many of its Subagents still work (OpenCode 2.3 runs them in the
+  // background; a run does not end while any does)
   onTurnEnded: (
     agent: string,
     outcome: string,
     error: string | null,
     reply: string | null,
+    background: number,
   ) => void = () => {}
   // The host's sessions that are runs of jobs now (tier 0f).
   runsOf: (host: string) => string[] = () => []
@@ -92,6 +102,9 @@ export class Hosts {
   onHello: (host: string, body: any) => void = () => {}
   // A session's turn ended (registered or not; its forms are gone).
   onSessionTurnEnded: (session: string) => void = () => {}
+  // A host whose OpenCode is older than the minimum said hello (the owner's
+  // alert, once while it is open).
+  onTooOld: (host: string, machine: string, version: string) => void = () => {}
 
   constructor(
     private readonly db: Database,
@@ -114,6 +127,17 @@ export class Hosts {
         404,
       )
     return host
+  }
+
+  // A host whose OpenCode is older than the minimum is not served.
+  requireSupported(id: string) {
+    const version = this.row(id)?.opencode_version
+    if (typeof version === "string" && opencodeTooOld(version))
+      throw new AutocodeError(
+        "opencode_too_old",
+        opencodeTooOldText(version),
+        426,
+      )
   }
 
   private markOnline(id: string, wasOnline: boolean) {
@@ -184,9 +208,56 @@ export class Hosts {
     const { kind, pid } = processOf(body.process)
     const shellValues =
       typeof body.shell_values === "boolean" ? Number(body.shell_values) : null
-    const sessions = this.reportedSessions(body.sessions, directory)
     const now = this.now()
     const before = this.row(id)
+    /*
+     * An OpenCode older than the minimum (the owner, 2026-11-17) is refused
+     * with the reason: its host is listed, offline, with that version, so the
+     * owner sees why; a host a current instance serves stays as it is.
+     */
+    if (opencodeTooOld(opencode)) {
+      const served =
+        before?.online &&
+        before.instance !== instance &&
+        !opencodeTooOld(before.opencode_version)
+      if (!served) {
+        this.db
+          .query(
+            `INSERT INTO hosts (id, machine, directory, instance,
+               opencode_version, plugin_version, process_kind, process_pid,
+               shell_values, online, first_seen, last_seen)
+             VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, 0, ?, ?)
+             ON CONFLICT (id) DO UPDATE SET
+               machine = excluded.machine, directory = excluded.directory,
+               instance = '', opencode_version = excluded.opencode_version,
+               plugin_version = excluded.plugin_version,
+               process_kind = excluded.process_kind,
+               process_pid = excluded.process_pid,
+               shell_values = excluded.shell_values,
+               online = 0, last_seen = excluded.last_seen`,
+          )
+          .run(
+            id,
+            machine,
+            directory,
+            opencode,
+            plugin,
+            kind,
+            pid,
+            shellValues,
+            now,
+            now,
+          )
+        if (before?.online) this.history.record("host.offline", { host: id })
+        this.onTooOld(id, machine, opencode)
+      }
+      throw new AutocodeError(
+        "opencode_too_old",
+        opencodeTooOldText(opencode),
+        426,
+      )
+    }
+    const sessions = this.reportedSessions(body.sessions, directory)
     /*
      * An instance that was superseded asks without takeover: it gets the host
      * back only once the current one is gone (no poll open, and none in the
@@ -344,6 +415,7 @@ export class Hosts {
     error: string | null,
     at?: unknown,
     reply: string | null = null,
+    background = 0,
   ) {
     if (!this.fresh(session, at, "ended")) return
     const res = this.db
@@ -366,9 +438,14 @@ export class Hosts {
       this.history.record("turn.ended", {
         agent,
         session,
-        data: { outcome, ...(error ? { error } : {}) },
+        data: {
+          outcome,
+          ...(error ? { error } : {}),
+          // its Subagents that still work in the background
+          ...(background ? { background } : {}),
+        },
       })
-      this.onTurnEnded(agent, outcome, error, reply)
+      this.onTurnEnded(agent, outcome, error, reply, background)
     }
   }
 
@@ -425,6 +502,7 @@ export class Hosts {
     signal?: AbortSignal,
   ): Promise<{ instructions: Instruction[] }> {
     const host = this.known(id)
+    this.requireSupported(id)
     if (!instance || host.instance !== instance)
       throw new AutocodeError(
         "superseded",
@@ -472,6 +550,7 @@ export class Hosts {
 
   events(id: string, body: any, onSessionDeleted: (session: string) => void) {
     const host = this.known(id)
+    this.requireSupported(id)
     if (!body || !Array.isArray(body.events))
       throw new AutocodeError("bad_request", "events must be a list")
     this.markOnline(id, !!host.online)
@@ -508,7 +587,20 @@ export class Hosts {
           typeof event.error === "string" ? event.error.slice(0, 500) : null
         const reply =
           typeof event.reply === "string" ? event.reply.slice(0, 32_000) : null
-        this.turnEnded(event.session, outcome, error, event.at, reply)
+        const background =
+          Number.isInteger(event.background) &&
+          event.background > 0 &&
+          event.background < 10_000
+            ? (event.background as number)
+            : 0
+        this.turnEnded(
+          event.session,
+          outcome,
+          error,
+          event.at,
+          reply,
+          background,
+        )
       } else if (event.type === "cost" && typeof event.session === "string") {
         try {
           this.onCost(event)
@@ -658,6 +750,12 @@ export class Hosts {
       online: !!h.online,
       instance: h.instance,
       opencode_version: h.opencode_version,
+      // false: older than the minimum, opencode_needs (the owner,
+      // 2026-11-17); such a host is not served
+      opencode_supported: !opencodeTooOld(h.opencode_version ?? ""),
+      ...(opencodeTooOld(h.opencode_version ?? "")
+        ? { opencode_needs: MIN_OPENCODE }
+        : {}),
       plugin_version: h.plugin_version,
       process_kind: h.process_kind,
       process_pid: h.process_pid,

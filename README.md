@@ -65,7 +65,7 @@ talk to the same server.
 
 ## Installation
 
-Needs OpenCode 2.2.0 or later on each machine. The server installs as a systemd user service on Linux (ARM64 or
+Needs OpenCode 2.3.0 or later on each machine. The server installs as a systemd user service on Linux (ARM64 or
 x86-64); the binary also runs on macOS ARM64 (the CLI, `serve` by hand), and the plugin runs wherever OpenCode does.
 Machines reach the server over the LAN or Tailscale.
 

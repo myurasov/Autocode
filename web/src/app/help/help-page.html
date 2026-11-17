@@ -131,7 +131,7 @@
     <h3 id="connect">
       <span class="n">{{ sec.connect.n }}</span> {{ sec.connect.label }}
     </h3>
-    <p>On each machine whose OpenCode (2.2.0 or later) should use Autocode:</p>
+    <p>On each machine whose OpenCode (2.3.0 or later) should use Autocode:</p>
     <pre>
 autocode plugin install --url http://SERVER:4848 \
   --consumer-token-file FILE --server-id ID</pre
@@ -554,9 +554,10 @@ autocode plugin install --url http://SERVER:4848 \
       </li>
       <li>
         A run ends with <code>autocode_me action=finish result=...</code>, or
-        when it ends a turn with nothing waiting (its last reply is the
-        result). Past its time limit or its cap it fails: you get an alert,
-        and its session is kept until you delete it.
+        when it ends a turn with nothing waiting and no Subagent of its own
+        still working in the background (its last reply is the result). Past
+        its time limit or its cap it fails: you get an alert, and its session
+        is kept until you delete it.
       </li>
       <li>
         <code>question_mode=job:daily-report</code> (or the permission and
@@ -887,7 +888,8 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       machine: status, the OpenCode process (the background service or
       <code>opencode serve</code>, with its process ID), versions and last
       seen. "no shell values" under the process means that the shells of that
-      server get no Autocode values (see
+      server get no Autocode values, and "too old" under the OpenCode version
+      that this OpenCode is older than Autocode works with (see
       <a routerLink="/help" fragment="trouble">Troubleshooting</a>). Offline
       hosts show only with the Offline box (off by default). A host's link
       from the Agents page leads here with its row highlighted (an offline
@@ -1284,6 +1286,18 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
           <td>
             The network or Tailscale between that machine and the server. The
             plugin retries, waiting longer each time (up to 30 s).
+          </td>
+        </tr>
+        <tr>
+          <td>
+            A host is marked "too old", or a tool says "this OpenCode is
+            v2.2.0; Autocode needs v2.3.0 or later"
+          </td>
+          <td>
+            That machine's OpenCode is older than Autocode works with. Update
+            OpenCode there and start it again. Until then the host is listed
+            as offline and its sessions are not connected; the Inbox has one
+            alert for it.
           </td>
         </tr>
         <tr>

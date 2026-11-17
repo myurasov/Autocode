@@ -3,7 +3,7 @@
  * history.
  */
 
-import { apiCall, shownVersion } from "@autocode/shared"
+import { apiCall, MIN_OPENCODE, shownVersion } from "@autocode/shared"
 import { CliError, type Parsed } from "./args.ts"
 import { connect } from "./connect.ts"
 
@@ -67,7 +67,12 @@ export async function info(args: Parsed): Promise<number> {
   print(
     args,
     res,
-    () => `server ${res.id}, autocode ${shownVersion(res.version)}, at ${url}`,
+    () =>
+      `server ${res.id}, autocode ${shownVersion(res.version)}, ` +
+      (res.opencode_min
+        ? `for OpenCode ${shownVersion(res.opencode_min)} or later, `
+        : "") +
+      `at ${url}`,
   )
   return 0
 }
@@ -156,7 +161,11 @@ export async function hosts(args: Parsed): Promise<number> {
         h.online ? "yes" : "no",
         [h.process_kind, h.process_pid].filter(Boolean).join(" "),
         h.shell_values === true ? "yes" : h.shell_values === false ? "no" : "",
-        shownVersion(h.opencode_version ?? ""),
+        shownVersion(h.opencode_version ?? "") +
+          // older than the minimum (the owner, 2026-11-17)
+          (h.opencode_supported === false
+            ? ` (too old: needs ${shownVersion(MIN_OPENCODE)} or later)`
+            : ""),
         local(h.last_seen),
       ]),
       [

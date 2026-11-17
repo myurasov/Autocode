@@ -89,6 +89,15 @@ export class HostsPage {
   protected readonly processText = processText;
   protected readonly versionText = versionText;
   protected readonly noShellValues = NO_SHELL_VALUES;
+  // Why a host is marked too old (the owner, 2026-11-17: OpenCode 2.3.0 is
+  // the minimum).
+  protected tooOld(h: Host): string {
+    return (
+      `Autocode needs OpenCode ${versionText(h.opencode_needs ?? '')} or ` +
+      'later. Update OpenCode on this machine, then start it again; until ' +
+      'then its sessions are not connected.'
+    );
+  }
   private inFlight = 0;
 
   // The host a link led to, and whether the list on show lacks it.

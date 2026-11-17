@@ -528,6 +528,17 @@ describe('HelpPage', () => {
       "Effort (the model's variant, like high or max, when it runs with one)",
     );
     expect(section(page, 'web-hosts')).toContain('the Offline box');
+    // the owner, 2026-11-17: OpenCode 2.3.0 is the minimum
+    expect(section(page, 'connect')).toContain('(2.3.0 or later)');
+    expect(section(page, 'trouble')).toContain(
+      'A host is marked "too old", or a tool says "this OpenCode is v2.2.0; ' +
+        'Autocode needs v2.3.0 or later"',
+    );
+    // and a run waits for its Subagents (OpenCode 2.3 runs them in the
+    // background)
+    expect(section(page, 'jobs')).toContain(
+      'no Subagent of its own still working in the background',
+    );
     // the owner, 2026-11-17: a registered session's title is its ID
     expect(section(page, 'register')).toContain(
       "the session's title becomes @ and its ID, like @kaggle:casmi26:lead",

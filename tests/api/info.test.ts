@@ -42,7 +42,12 @@ describe("server ID and GET /v1/info", () => {
     const t = await start({ id: "from-flag" })
     const res = await call(t.url, undefined, "GET", "/v1/info")
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ id: "from-flag", version: VERSION })
+    // and the oldest OpenCode it works with (the owner, 2026-11-17)
+    expect(res.body).toEqual({
+      id: "from-flag",
+      version: VERSION,
+      opencode_min: "2.3.0",
+    })
   })
 
   test("--id wins over the config file", async () => {

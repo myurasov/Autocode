@@ -62,10 +62,13 @@ describe("spike check 6: shell environment", () => {
   test("a Subagent's shell call is seen with the Subagent's own session, whose parent is known", async () => {
     const s = await oc.createSession({})
     const marker = `SUBSHELL-${crypto.randomUUID().slice(0, 8)}`
+    // OpenCode 2.3 runs a Subagent in the background (see spike check 2):
+    // the calling session's requests hold its prompt, the Subagent's do not
     await fake.script(
       [
         {
           session: s.id,
+          match: "a subagent runs a shell",
           tool_calls: [
             {
               name: "subagent",
@@ -77,6 +80,7 @@ describe("spike check 6: shell environment", () => {
             },
           ],
         },
+        { match: "a subagent runs a shell", reply: "launched" },
         {
           match: marker,
           tool_calls: [
@@ -87,7 +91,7 @@ describe("spike check 6: shell environment", () => {
           ],
         },
         { match: marker, reply: "child done" },
-        { session: s.id, reply: "parent done" },
+        { match: "a subagent runs a shell", reply: "parent done" },
       ],
       true,
     )

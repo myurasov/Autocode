@@ -4532,3 +4532,74 @@ test("the ... row: only its dots, bigger and centered, the cell its control", as
   await td.press("Enter")
   await expect.poll(() => rows.count()).toBeGreaterThan(before)
 })
+
+/*
+ * The owner, 2026-11-17: "make opencode 2.3 base minumum supported versiobn":
+ * a machine whose OpenCode is older is refused; the Hosts tab lists it,
+ * offline and marked under its version, and the Inbox has one alert for it.
+ * Last in the file: its host and alert stay out of the other tests' lists.
+ */
+test("Hosts: a machine whose OpenCode is older than the minimum is marked, and alerted in the Inbox", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const host = "oldmac:work:1"
+  const title = `Host ${host} runs OpenCode v2.2.0: too old for Autocode`
+  try {
+    for (let i = 0; i < 2; i++) {
+      const hello = await api.post(`/v1/hosts/${host}/hello`, {
+        headers: bearer(consumer),
+        data: {
+          instance: "i-old",
+          machine: "oldmac",
+          directory: "/Users/someone/work",
+          opencode: { version: "2.2.0" },
+          plugin: { version: "1.0.0" },
+        },
+      })
+      expect(hello.status()).toBe(426)
+      expect((await hello.json()).error.code).toBe("opencode_too_old")
+    }
+    await signIn(page, admin)
+    await openTab(page, "Hosts")
+    const row = page.locator(`table.hosts tr[data-host="${host}"]`)
+    await expect(row.locator("td.status")).toHaveText("offline")
+    const cell = row.locator("td.opencode")
+    const mark = cell.locator(".too-old")
+    await expect(mark).toHaveText("too old: needs v2.3.0 or later")
+    await expect(cell).toContainText("v2.2.0")
+    // under the version, in the error color
+    const look = await cell.evaluate((td) => {
+      const m = td.querySelector(".too-old") as HTMLElement
+      const probe = document.createElement("span")
+      probe.className = "errmsg"
+      document.body.append(probe)
+      const err = getComputedStyle(probe).color
+      probe.remove()
+      const range = document.createRange()
+      range.selectNodeContents(td.firstChild!)
+      return {
+        color: getComputedStyle(m).color === err,
+        under:
+          m.getBoundingClientRect().top >=
+          range.getBoundingClientRect().bottom - 1,
+      }
+    })
+    expect(look).toEqual({ color: true, under: true })
+    // a host of a current OpenCode has no mark
+    await expect(
+      page.locator("table.hosts tr[data-host] .too-old"),
+    ).toHaveCount(1)
+    await openTab(page, "Inbox")
+    await expect(
+      page.locator("table.inbox tr[data-item]").filter({ hasText: title }),
+    ).toHaveCount(1)
+  } finally {
+    const items = (
+      await (await api.get("/v1/inbox", { headers: bearer(admin) })).json()
+    ).items.filter((i: any) => i.title === title)
+    for (const i of items)
+      await api.post(`/v1/inbox/${i.id}/close`, { headers: bearer(admin) })
+    await api.dispose()
+  }
+})

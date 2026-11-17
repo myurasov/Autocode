@@ -8,7 +8,7 @@
 # service logs and server database of a failed one, are kept in
 # __out/ci/<run>/<suite>/. The web UI's unit tests run while its image builds
 # (a failure stops the run there); their output is in
-# __out/ci/<run>/web-image.log. Env: OPENCODE_VERSION (default 2.2.0),
+# __out/ci/<run>/web-image.log. Env: OPENCODE_VERSION (default 2.3.0),
 # AUTOCODE_TARGETS (extra binaries to build, e.g. "all"), CI_GREP (the web
 # suite: only the browser tests whose names match), CI_PARALLEL, CI_KEEP=1
 # (leave the Compose projects up after the run, for debugging);
@@ -44,7 +44,7 @@ esac
 run_id="$(date -u +%Y%m%dT%H%M%SZ)"
 out="$root/__out/ci/$run_id"
 mkdir -p "$out"
-opencode_version="${OPENCODE_VERSION:-2.2.0}"
+opencode_version="${OPENCODE_VERSION:-2.3.0}"
 
 limit_for() {
   case "$1" in

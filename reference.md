@@ -72,7 +72,8 @@ Install the server once, connect the OpenCode of each machine, then sign in to t
 
 ### Requirements
 
-- OpenCode 2.2.0 or later on each machine that should use Autocode.
+- OpenCode 2.3.0 or later on each machine that should use Autocode. A machine with an older OpenCode is refused: the
+  Hosts page lists it as offline and "too old", its tools say why, and the Inbox gets one alert.
 - The server installs as a systemd user service on Linux (ARM64 or x86-64). The binary also runs on macOS ARM64 (the
   CLI, and `serve` by hand). The plugin runs wherever OpenCode does. Machines reach the server over the LAN or
   Tailscale.
@@ -589,7 +590,9 @@ autocode_me  action=job_delete  job=digest
 ### How a Run Ends
 
 - Its prompt ends by saying it is a run of a job. It does the work, then `autocode_me action=finish result="..."`. If
-  it ends a turn with nothing waiting and without `finish`, its last reply is the result.
+  it ends a turn with nothing waiting and without `finish`, its last reply is the result. A Subagent of its own that
+  still works in the background counts as waiting: the run ends with the reply of a later turn, once its Subagents are
+  done.
 - The result goes to the agent that started it, else to the job's `--to` (the owner's Inbox for `owner`). A long result
   is cut in the message; the whole stays in the run (`autocode job runs NAME --json`, the Jobs page).
 - Then its agent is unregistered and, unless `--keep-session`, its session removed. Nothing in its session survives:
@@ -861,6 +864,7 @@ Find the symptom, then the check.
 | Plugin log: "no client config" | Run `autocode plugin install` on that machine. |
 | Plugin log: "the server at ... is X, not Y" | The client config's `server_id` does not match the server: fix the config or the server ID. |
 | A host is `online no` | The network or Tailscale between that machine and the server; the plugin retries with growing waits (up to 30 s). |
+| A host is "too old"; a tool says "this OpenCode is v2.2.0; Autocode needs v2.3.0 or later" | That machine's OpenCode is older than Autocode works with: update OpenCode there and start it again. Until then its host is offline and its sessions are not connected. |
 | Plugin log: "superseded by a newer instance" | Two OpenCode processes use the same folder and data folder: the newest holds the channel; the older takes over when it is gone. Tools and shell values work in both. |
 | An agent shows `offline` | Its host is offline, or its session was deleted (the ID can move to another session). |
 | An agent shows `waiting` | It has an open ask: `autocode inbox` shows it (TO: when it went to another agent). Its wakes and messages wait until it is answered (also in the TUI) or expires. |

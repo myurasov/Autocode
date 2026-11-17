@@ -178,7 +178,10 @@ export default {
           !channel.reachable &&
           (channel.state !== "starting" || !(await channel.whenConnected(1000)))
         )
-          throw new Error("the Autocode server is not reachable")
+          // an OpenCode older than the minimum: the server's own reason
+          throw new Error(
+            channel.refused ?? "the Autocode server is not reachable",
+          )
         const res = await request(
           config.url,
           config.consumer_token,
@@ -681,6 +684,27 @@ export default {
       if (session !== raw) report.context = undefined as any
       channel.report(report)
     }
+    /*
+     * OpenCode 2.3 runs Subagents in the background: a session's turn ends
+     * while they still work, and their results come to it in later turns.
+     * Its idle hook (experimental.idle, new in 2.3) lists what still works
+     * when a session's model work is done; the turn's end tells the server
+     * how many Subagents do, so a job's run does not end with them at work.
+     * Background shells do not count: starting one is the session's choice.
+     */
+    const working = new Map<string, number>()
+    try {
+      await ctx.session.hook("experimental.idle", (event: any) => {
+        if (typeof event?.sessionID !== "string") return
+        const list = Array.isArray(event.background) ? event.background : []
+        working.set(
+          event.sessionID,
+          list.filter((b: any) => b?.kind === "subagent").length,
+        )
+      })
+    } catch (err) {
+      log(`no idle hook: ${(err as Error).message}`)
+    }
     // OpenCode's form and permission events, as asks (tier 0d).
     const onAskEvent = async (event: any) => {
       const data = event?.data ?? {}
@@ -775,6 +799,11 @@ export default {
               if (outcome !== "started") await steps.get(session)
               // OpenCode's own time of the event orders them at the server
               const at = Number(event.created) || Date.now()
+              // its Subagents still at work (said by this turn's idle hook,
+              // which runs before the turn's end is published)
+              const background =
+                outcome === "succeeded" ? (working.get(session) ?? 0) : 0
+              if (outcome !== "started") working.delete(session)
               // a run of a job ends with its last reply (tier 0f)
               const reply =
                 outcome === "succeeded" && runs.has(session)
@@ -794,6 +823,7 @@ export default {
                       at,
                       ...(data.error?.type ? { error: data.error.type } : {}),
                       ...(reply ? { reply } : {}),
+                      ...(background ? { background } : {}),
                     },
               )
             }

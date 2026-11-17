@@ -209,6 +209,12 @@ a {
   color: var(--warn);
   cursor: help;
 }
+/* Hosts: an OpenCode older than Autocode's minimum, under its version. */
+.too-old {
+  display: block;
+  color: var(--err);
+  cursor: help;
+}
 .notice {
   color: var(--ok);
 }

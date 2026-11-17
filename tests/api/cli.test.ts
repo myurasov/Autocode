@@ -92,11 +92,14 @@ describe("autocode CLI", () => {
     expect(res.code).toBe(0)
     expect(res.stdout).toContain("api-test")
     expect(res.stdout).toContain(`autocode v${VERSION},`)
+    // the oldest OpenCode it works with (the owner, 2026-11-17)
+    expect(res.stdout).toContain("for OpenCode v2.3.0 or later,")
     expect(
       JSON.parse((await cli(["info", "--url", t.url, "--json"])).stdout),
     ).toEqual({
       id: "api-test",
       version: VERSION,
+      opencode_min: "2.3.0",
     })
     const down = await cli(["info", "--url", "http://127.0.0.1:9"])
     expect(down.code).toBe(3)
@@ -199,7 +202,14 @@ describe("autocode CLI", () => {
       /ID\s+MACHINE\s+FOLDER\s+ONLINE\s+PROCESS\s+SHELL VALUES/,
     )
     expect(res.stdout).toMatch(
-      /m:1\s+m\s+\/work\s+yes\s+service 4242\s+yes\s+v2\.2\.0\s/,
+      /m:1\s+m\s+\/work\s+yes\s+service 4242\s+yes\s+v2\.3\.0\s/,
+    )
+    // a machine whose OpenCode is older than the minimum is marked (the
+    // owner, 2026-11-17)
+    await hello(t, "mac:old", { opencode: { version: "2.2.0" } })
+    const marked = await cli(["hosts"], asAdmin())
+    expect(marked.stdout).toMatch(
+      /mac:old\s+mac\s+\/work\s+no\s+v2\.2\.0 \(too old: needs v2\.3\.0 or later\)\s/,
     )
     expect(
       JSON.parse((await cli(["hosts", "--json"], asAdmin())).stdout)[0].id,

@@ -89,10 +89,18 @@ test("a Subagent's shell acts as its top-level session", async () => {
   const fake = new FakeModel(node)
   const s = await readySession(oc)
   const marker = `SUBSHELL-${crypto.randomUUID().slice(0, 8)}`
+  /*
+   * OpenCode 2.3 runs a Subagent in the background: the tool returns at once,
+   * the calling session's turn ends, and it is told when the Subagent is done
+   * (a turn of its own). The calling session's requests hold its prompt; the
+   * Subagent's hold only the marker.
+   */
+  const prompt = "a subagent probes its shell"
   await fake.script(
     [
       {
         session: s.id,
+        match: prompt,
         tool_calls: [
           {
             name: "subagent",
@@ -104,6 +112,7 @@ test("a Subagent's shell acts as its top-level session", async () => {
           },
         ],
       },
+      { match: prompt, reply: "launched" },
       {
         match: marker,
         tool_calls: [
@@ -119,19 +128,24 @@ test("a Subagent's shell acts as its top-level session", async () => {
         ],
       },
       { match: marker, reply: "child done" },
-      { session: s.id, reply: "parent done" },
+      { match: prompt, reply: "parent done" },
     ],
     true,
   )
-  await oc.run(s.id, "a subagent probes its shell", 90_000)
+  await oc.run(s.id, prompt, 90_000)
   // The Subagent's shell output is the tool result that starts with the marker
-  // line.
-  const results = (await fake.requests()).flatMap((r) =>
-    (r.messages as any[])
-      .filter((m) => m?.role === "tool")
-      .map((m) => String(m.content)),
+  // line; it comes once the Subagent, in the background, has run its shell.
+  const out = await until(
+    async () =>
+      (await fake.requests())
+        .flatMap((r) =>
+          (r.messages as any[])
+            .filter((m) => m?.role === "tool")
+            .map((m) => String(m.content)),
+        )
+        .find((text) => text.startsWith(`${marker}\n`)),
+    { timeoutMs: 60_000, intervalMs: 300, what: "the Subagent's shell output" },
   )
-  const out = results.find((text) => text.startsWith(`${marker}\n`))
   expect(out).toBeTruthy()
   // The shell ran in the Subagent's own session, yet acts as the top-level one.
   const own = /oc=(ses_\S+)/.exec(out ?? "")?.[1]

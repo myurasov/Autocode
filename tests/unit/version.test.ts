@@ -9,7 +9,14 @@ import { existsSync } from "node:fs"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { RELEASE, shownVersion, VERSION, versionOf } from "@autocode/shared"
+import {
+  MIN_OPENCODE,
+  opencodeTooOld,
+  RELEASE,
+  shownVersion,
+  VERSION,
+  versionOf,
+} from "@autocode/shared"
 import { compileCli, generate } from "../../cli/build.ts"
 import { buildPlugin } from "../../plugin/build.ts"
 
@@ -37,6 +44,26 @@ describe("the version", () => {
 
   test("of an unnumbered build (these tests) is -dev", () => {
     expect(VERSION).toBe(`${RELEASE}-dev`)
+  })
+
+  // The owner, 2026-11-17: "make opencode 2.3 base minumum supported
+  // versiobn".
+  test("OpenCode's minimum is 2.3.0; only a plain release number below it is too old", () => {
+    expect(MIN_OPENCODE).toBe("2.3.0")
+    for (const v of ["2.2.0", "v2.2.9", "1.14.33", "2.2.99", "0.9.0"])
+      expect(opencodeTooOld(v), v).toBe(true)
+    for (const v of [
+      "2.3.0",
+      "v2.3.0",
+      "2.3.1",
+      "2.10.0",
+      "3.0.0",
+      "",
+      "local",
+      "0.0.0-dev-1304",
+      "2.2.0-beta-1",
+    ])
+      expect(opencodeTooOld(v), v).toBe(false)
   })
 
   test("is shown with a v; a name or nothing stays as it is", () => {

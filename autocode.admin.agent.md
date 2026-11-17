@@ -37,7 +37,7 @@ server.
 
 ## Install
 
-You need OpenCode 2.2.0 or later on every machine that should use Autocode. The server runs as a systemd user service
+You need OpenCode 2.3.0 or later on every machine that should use Autocode. The server runs as a systemd user service
 on Linux (ARM64 or x86-64); the CLI also runs on macOS ARM64. Machines reach the server over the LAN or Tailscale.
 
 1. **Get the binary.** Build it from this repository (needs [Bun](https://bun.sh) and Docker for the web UI):

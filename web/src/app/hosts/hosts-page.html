@@ -78,7 +78,16 @@
               >
             }
           </td>
-          <td class="opencode">{{ versionText(h.opencode_version) }}</td>
+          <td class="opencode">
+            {{ versionText(h.opencode_version) }}
+            <!-- older than Autocode's minimum (the owner, 2026-11-17) -->
+            @if (h.opencode_supported === false) {
+              <span class="too-old" [title]="tooOld(h)"
+                >too old: needs {{ versionText(h.opencode_needs ?? '') }} or
+                later</span
+              >
+            }
+          </td>
           <td class="plugin">{{ versionText(h.plugin_version) }}</td>
           <td class="time" [title]="h.last_seen" [appTime]="h.last_seen"></td>
         </tr>

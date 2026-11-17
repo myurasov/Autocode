@@ -56,10 +56,17 @@ describe("spike check 2: plugin tools", () => {
   test("a Subagent's tool call knows its own session, whose parent is the calling session", async () => {
     const s = await oc.createSession({})
     const marker = `SUBAGENT-${crypto.randomUUID().slice(0, 8)}`
+    /*
+     * OpenCode 2.3 runs a Subagent in the background: the tool returns at
+     * once, the calling session's turn ends, and it is told when the Subagent
+     * is done (a turn of its own). The calling session's requests hold its
+     * prompt; the Subagent's hold only the marker.
+     */
     await fake.script(
       [
         {
           session: s.id,
+          match: "use a subagent",
           tool_calls: [
             {
               name: "subagent",
@@ -71,12 +78,13 @@ describe("spike check 2: plugin tools", () => {
             },
           ],
         },
+        { match: "use a subagent", reply: "launched" },
         {
           match: marker,
           tool_calls: [{ name: "probe_whoami", arguments: {} }],
         },
         { match: marker, reply: "child done" },
-        { session: s.id, reply: "parent done" },
+        { match: "use a subagent", reply: "parent done" },
       ],
       true,
     )

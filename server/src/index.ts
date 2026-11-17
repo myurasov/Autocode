@@ -13,6 +13,7 @@ import {
   AutocodeError,
   checkId,
   localTime,
+  MIN_OPENCODE,
   machineName,
   matchesPattern,
   onlyFields,
@@ -20,6 +21,7 @@ import {
   parseListen,
   parsePattern,
   resolveSettings,
+  shownVersion,
   VERSION,
 } from "@autocode/shared"
 import { Agents } from "./agents.ts"
@@ -174,6 +176,29 @@ export async function startServer(
           "the default) to have Autocode restart it.",
       }),
   )
+  // A machine's OpenCode is older than the minimum (the owner, 2026-11-17):
+  // one alert for the host and version, while it is open.
+  hosts.onTooOld = (host, machine, version) => {
+    const title =
+      `Host ${host} runs OpenCode ${shownVersion(version.replace(/^v/, ""))}: ` +
+      "too old for Autocode"
+    if (
+      db
+        .query(
+          "SELECT 1 FROM inbox WHERE kind = 'alert' AND title = ? " +
+            "AND closed_at IS NULL",
+        )
+        .get(title)
+    )
+      return
+    inbox.open("alert", {
+      title,
+      body:
+        `Autocode needs OpenCode ${shownVersion(MIN_OPENCODE)} or later. ` +
+        `Update OpenCode on ${machine}, then start it again; until then ` +
+        "its sessions are not connected.",
+    })
+  }
   hosts.onHello = (host, body) => {
     loader.online(host)
     // the forms and requests OpenCode still has (the review of 0d)
@@ -283,16 +308,18 @@ export async function startServer(
       )?.busy,
   )
   delivery.costs = costs
-  hosts.onTurnEnded = (agent, outcome, error, reply) => {
+  hosts.onTurnEnded = (agent, outcome, error, reply, background) => {
     retries.turnEnded(agent, outcome, error)
     costs.uncut(agent)
     costs.turnEnded(agent, outcome)
     /*
      * A run of a job: past run_usd it fails; idle with its reply it ends,
      * unless something of its own is pending (spec: no queued injection, no
-     * open question or approval, no lock wait, no wake of its own).
+     * open question or approval, no lock wait, no wake of its own, no
+     * Subagent of its own still working in the background: OpenCode 2.3).
      */
     const pending =
+      background > 0 ||
       !!db.query("SELECT 1 FROM queue WHERE agent_id = ?").get(agent) ||
       !!db.query("SELECT 1 FROM wakes WHERE agent_id = ?").get(agent) ||
       !!db
@@ -520,7 +547,8 @@ export async function startServer(
       path: "/v1/info",
       access: "public",
       summary: "server ID and version",
-      handler: () => ({ id, version: VERSION }),
+      // and the oldest OpenCode it works with (the owner, 2026-11-17)
+      handler: () => ({ id, version: VERSION, opencode_min: MIN_OPENCODE }),
     },
     {
       method: "GET",
@@ -581,6 +609,7 @@ export async function startServer(
             `host ${host} has not said hello`,
             404,
           )
+        hosts.requireSupported(host)
         // A deleted session never comes back (a late call from it must not take
         // its agent ID back).
         if (

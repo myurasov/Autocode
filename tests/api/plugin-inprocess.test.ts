@@ -1,6 +1,6 @@
 /*
  * The real plugin module, set up with a fake OpenCode plugin context (in the
- * shapes OpenCode 2.2.0 uses), against an in-process server: the parts of its
+ * shapes OpenCode 2.3.0 uses), against an in-process server: the parts of its
  * wiring that real OpenCode cannot be made to show on demand.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
@@ -76,7 +76,7 @@ function fakeApi(): FakeApi {
       if (authorization !== `Basic ${btoa("opencode:pw")}`)
         return new Response("unauthorized", { status: 401 })
       if (url.pathname === "/api/info")
-        return Response.json({ version: "2.2.0", pid: state.infoPid })
+        return Response.json({ version: "2.3.0", pid: state.infoPid })
       if (
         req.method === "PUT" &&
         /^\/api\/session\/[^/]+\/environment$/.test(url.pathname)
@@ -143,7 +143,7 @@ function startedAs(how: Started) {
       join(state, "opencode", "service.json"),
       JSON.stringify({
         id: "svc",
-        version: "2.2.0",
+        version: "2.3.0",
         url: api.url,
         pid: how === "service-other-pid" ? process.pid + 1 : process.pid,
         password: "pw",
@@ -208,6 +208,8 @@ async function startPlugin(
   directory: string,
   sessions: Session[],
   how: Started = "serve",
+  // the OpenCode it runs in: the minimum unless told otherwise
+  version = "2.3.0",
 ): Promise<Fake> {
   mkdirSync(directory, { recursive: true })
   startedAs(how)
@@ -219,7 +221,7 @@ async function startPlugin(
   let wake: (() => void) | undefined
   const ctx = {
     location: { directory },
-    app: { version: "2.2.0" },
+    app: { version },
     storage: {
       get: async (key: string) => structuredClone(storage.get(key)),
       set: async (key: string, value: unknown) => {
@@ -635,6 +637,41 @@ describe("the plugin in-process", () => {
  * registration), turn events, the agent guide (the autocode skill and the line
  * for registered sessions), and the wake and message tools.
  */
+/*
+ * The owner, 2026-11-17: "make opencode 2.3 base minumum supported versiobn":
+ * in an older OpenCode the plugin is refused by the server; its tools say
+ * why, and the owner sees the host, offline, with its version.
+ */
+describe("the plugin in an OpenCode older than the minimum", () => {
+  test("the tools say why they cannot work; the host is listed as not supported", async () => {
+    const dir = join(root, "work-old")
+    const old = await startPlugin(
+      dir,
+      [{ id: "ses_old23", directory: dir }],
+      "serve",
+      "2.2.0",
+    )
+    await until(() => logCount("Autocode needs v2.3.0 or later") > 0, {
+      timeoutMs: 15_000,
+      what: "the plugin to be refused",
+    })
+    const out = await me(old).execute(
+      { action: "register", id: "inproc:old23" },
+      { sessionID: "ses_old23" },
+    )
+    expect(out.content).toBe(
+      "error: this OpenCode is v2.2.0; Autocode needs v2.3.0 or later. " +
+        "Update OpenCode on this machine, then start it again.",
+    )
+    const hosts = (await call(t.url, t.admin, "GET", "/v1/hosts")).body.hosts
+    expect(hosts.find((h: any) => h.directory === dir)).toMatchObject({
+      online: false,
+      opencode_version: "2.2.0",
+      opencode_supported: false,
+    })
+  })
+})
+
 describe("the plugin in-process, tier 0b", () => {
   const tool = (fake: Fake, name: string) =>
     fake.tools.find((x) => x.name === name)
@@ -808,6 +845,81 @@ describe("the plugin in-process, tier 0b", () => {
     const failed = await agentOf("inproc:turns")
     expect(failed.last_outcome).toBe("failed")
     expect(failed.error.type).toBe("rate_limit")
+  })
+
+  /*
+   * OpenCode 2.3 runs Subagents in the background (the minimum: the owner,
+   * 2026-11-17): its idle hook says what still works when a session's turn
+   * ends; the plugin tells the server how many Subagents do (a job's run does
+   * not end while any does).
+   */
+  test("a turn that ends while Subagents work in the background says how many; shells do not count", async () => {
+    const dir = join(root, "work-23-background")
+    const sessions: Session[] = [{ id: "ses_bg", directory: dir }]
+    const fake = await connected(() => startPlugin(dir, sessions))
+    await tool(fake, "autocode_me").execute(
+      { action: "register", id: "inproc:background" },
+      { sessionID: "ses_bg" },
+    )
+    const event = (type: string) => ({
+      type,
+      location: { directory: dir },
+      data: { sessionID: "ses_bg" },
+    })
+    const ended = async () =>
+      (
+        await call(
+          t.url,
+          t.admin,
+          "GET",
+          "/v1/history?kind=turn.ended&match=inproc:background",
+        )
+      ).body.history
+    const idle = fake.hooks["session.experimental.idle"]!
+    fake.emit(event("session.execution.started"))
+    await idle({
+      sessionID: "ses_bg",
+      background: [
+        {
+          kind: "subagent",
+          sessionID: "ses_bg",
+          childSessionID: "ses_bg_child1",
+          agent: "general",
+          description: "one",
+        },
+        {
+          kind: "subagent",
+          sessionID: "ses_bg",
+          childSessionID: "ses_bg_child2",
+          agent: "general",
+          description: "two",
+        },
+        { kind: "shell", sessionID: "ses_bg", shellID: "sh_1", command: "x" },
+      ],
+    })
+    fake.emit(event("session.execution.succeeded"))
+    await until(async () => (await ended()).length === 1, {
+      what: "the first turn's end",
+    })
+    expect((await ended())[0].data).toEqual({
+      outcome: "succeeded",
+      background: 2,
+    })
+    // the next turn: nothing in the background (the last one's count is gone)
+    fake.emit(event("session.execution.started"))
+    await idle({ sessionID: "ses_bg", background: [] })
+    fake.emit(event("session.execution.succeeded"))
+    await until(async () => (await ended()).length === 2, {
+      what: "the second turn's end",
+    })
+    expect((await ended())[0].data).toEqual({ outcome: "succeeded" })
+    // a turn whose idle hook did not run (a failure): none said
+    fake.emit(event("session.execution.started"))
+    fake.emit(event("session.execution.succeeded"))
+    await until(async () => (await ended()).length === 3, {
+      what: "the third turn's end",
+    })
+    expect((await ended())[0].data).toEqual({ outcome: "succeeded" })
   })
 
   test("the agent guide: the autocode skill for every session, the line only for registered ones and their Subagents", async () => {

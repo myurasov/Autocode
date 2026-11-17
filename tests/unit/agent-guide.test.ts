@@ -623,6 +623,9 @@ describe("the guide", () => {
       "`[autocode] compaction done`: go on with the steps that are left",
       // the session's title (the owner, 2026-11-17)
       "the session's title becomes `@` and your ID",
+      // a run waits for its Subagents (OpenCode 2.3 runs them in the
+      // background)
+      "A Subagent of yours that still works in the background counts as",
     ])
       expect(guide).toContain(answer)
     for (const gone of [

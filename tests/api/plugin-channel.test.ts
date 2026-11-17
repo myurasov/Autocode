@@ -37,7 +37,7 @@ function channel(url: string, overrides: Partial<ChannelOptions> = {}) {
     instance: "one",
     machine: "m",
     directory: "/work",
-    opencodeVersion: "2.2.0",
+    opencodeVersion: "2.3.0",
     onInstruction: async () => ({ done: true }),
     backoffMs: { min: 50, max: 200 },
     supersededWaitMs: 200,
@@ -197,6 +197,33 @@ describe("plugin channel against the server", () => {
     )
     expect(t.server.instruction(good)?.result).toEqual({ echoed: { x: 1 } })
     expect(seen).toEqual(["echo", "bad"])
+  })
+
+  // The owner, 2026-11-17: OpenCode 2.3.0 is the minimum.
+  test("an OpenCode older than the minimum: the server refuses it, the channel keeps the reason and asks again later", async () => {
+    const t = await start()
+    const lines: string[] = []
+    const c = channel(t.url, {
+      opencodeVersion: "2.2.0",
+      unsupportedWaitMs: 150,
+      log: (line) => lines.push(line),
+    })
+    await until(() => c.state === "unsupported", {
+      timeoutMs: 5000,
+      what: "the channel to be refused",
+    })
+    expect(c.refused).toBe(
+      "this OpenCode is v2.2.0; Autocode needs v2.3.0 or later. " +
+        "Update OpenCode on this machine, then start it again.",
+    )
+    expect(c.reachable).toBe(false)
+    expect(await c.whenConnected(100)).toBe(false)
+    // it asks again (an updated OpenCode starts a new plugin anyway)
+    await until(
+      () => lines.filter((l) => l.startsWith("refused: ")).length >= 2,
+      { timeoutMs: 5000, what: "a second hello" },
+    )
+    expect(c.state).toBe("unsupported")
   })
 
   test("a server with another ID than the config expects is refused", async () => {

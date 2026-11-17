@@ -370,8 +370,10 @@ prompt and a schedule. Each run is a fresh session, an agent of its own.
 - Started as a run yourself (your prompt ends by saying so): do the
   work, then `autocode_me action=finish result=...`. If you end a turn
   with nothing waiting and without finishing, its last reply is the
-  result. A run past its time limit, or past its `run_usd` cap, is
-  stopped and counts as failed.
+  result. A Subagent of yours that still works in the background counts as
+  waiting: the run goes on until its result has come and you have replied.
+  A run past its time limit, or past its `run_usd` cap, is stopped and
+  counts as failed.
 
 <!-- topic: prompts -->
 

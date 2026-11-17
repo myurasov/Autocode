@@ -15,7 +15,7 @@ test.each(nodes)(
     await new OpenCode(node).loadLocation()
     const host = await hostOf(node)
     expect(host.directory).toBe("/home/dev/work")
-    expect(host.opencode_version).toBe("2.2.0")
+    expect(host.opencode_version).toBe("2.3.0")
     expect(host.id.startsWith(`${node}:work:`)).toBe(true)
     // The machines run `opencode serve` with --port and a password: the plugin
     // reports that, its PID, and that it can set its shells' values.

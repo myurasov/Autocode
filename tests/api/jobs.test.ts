@@ -601,6 +601,57 @@ describe("review of 0f", () => {
     return sessionToken(t, HOST, session)
   }
 
+  /*
+   * OpenCode 2.3 (the minimum: the owner, 2026-11-17) runs Subagents in the
+   * background: a run's turn ends while they still work, and their results
+   * come to it in later turns. The plugin says how many still work.
+   */
+  test("a run whose Subagents still work in the background does not end at its reply; it ends once they are done", async () => {
+    await owner("PUT", "/v1/jobs/mail", JOB)
+    await owner("POST", "/v1/jobs/mail/run")
+    await started()
+    await report(t, HOST, [{ type: "turn.started", session: "ses_run1" }])
+    await report(t, HOST, [
+      {
+        type: "turn.ended",
+        session: "ses_run1",
+        outcome: "succeeded",
+        reply: "Launched two helpers.",
+        background: 2,
+      },
+    ])
+    expect((await runs("mail"))[0].state).toBe("running")
+    // the history says why the turn's end was not the run's
+    const ended = (await owner("GET", "/v1/history?kind=turn.ended")).body
+      .history[0]
+    expect(ended.data).toMatchObject({ outcome: "succeeded", background: 2 })
+    // a Subagent's result came: a turn of its own, one still works
+    await report(t, HOST, [{ type: "turn.started", session: "ses_run1" }])
+    await report(t, HOST, [
+      {
+        type: "turn.ended",
+        session: "ses_run1",
+        outcome: "succeeded",
+        reply: "One helper is done.",
+        background: 1,
+      },
+    ])
+    expect((await runs("mail"))[0].state).toBe("running")
+    await report(t, HOST, [{ type: "turn.started", session: "ses_run1" }])
+    await report(t, HOST, [
+      {
+        type: "turn.ended",
+        session: "ses_run1",
+        outcome: "succeeded",
+        reply: "Done: both helpers reported.",
+      },
+    ])
+    expect((await runs("mail"))[0]).toMatchObject({
+      state: "succeeded",
+      result: "Done: both helpers reported.",
+    })
+  })
+
   test("a run with its own wake still waiting does not end at its reply", async () => {
     await owner("PUT", "/v1/jobs/mail", JOB)
     await owner("POST", "/v1/jobs/mail/run")

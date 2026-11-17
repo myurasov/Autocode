@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "@autocode/shared": "workspace:*",
-    "@opencode/client": "2.2.0"
+    "@opencode/client": "2.3.0"
   }
 }

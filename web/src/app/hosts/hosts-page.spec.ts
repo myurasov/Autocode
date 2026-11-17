@@ -29,7 +29,7 @@ const HOSTS: Host[] = [
     directory: '/home/someone/kaggle',
     online: true,
     instance: 'i1',
-    opencode_version: '2.2.0',
+    opencode_version: '2.3.0',
     plugin_version: '0.1.0-build12',
     process_kind: 'service',
     process_pid: 2164472,
@@ -43,7 +43,7 @@ const HOSTS: Host[] = [
     directory: '/Users/someone/work',
     online: false,
     instance: 'i2',
-    opencode_version: '2.2.0',
+    opencode_version: '2.3.0',
     plugin_version: '0.1.0',
     process_kind: '',
     process_pid: null,
@@ -68,10 +68,10 @@ describe('HostsPage', () => {
   }
 
   // With the Offline box on: every host.
-  async function open(): Promise<HTMLElement> {
+  async function open(hosts = HOSTS): Promise<HTMLElement> {
     signedIn();
     fixture = TestBed.createComponent(HostsPage);
-    load();
+    load(hosts);
     await settle(fixture);
     const box = el(fixture).querySelector('#show-offline') as HTMLInputElement;
     if (!box.checked) box.click();
@@ -100,6 +100,28 @@ describe('HostsPage', () => {
     expect(
       page.querySelector('tr[data-host="laptop:project:6f3d676f"]'),
     ).not.toBeNull();
+  });
+
+  // The owner, 2026-11-17: "make opencode 2.3 base minumum supported
+  // versiobn": a machine whose OpenCode is older is listed, marked.
+  it("marks a host whose OpenCode is older than Autocode's minimum", async () => {
+    const page = await open([
+      {
+        ...HOSTS[1]!,
+        opencode_version: '2.2.0',
+        opencode_supported: false,
+        opencode_needs: '2.3.0',
+      },
+    ]);
+    const cell = page.querySelector('tr[data-host] td.opencode')!;
+    expect(text(cell)).toBe('v2.2.0 too old: needs v2.3.0 or later');
+    const mark = cell.querySelector('.too-old')!;
+    expect(text(mark)).toBe('too old: needs v2.3.0 or later');
+    expect(mark.getAttribute('title')).toBe(
+      'Autocode needs OpenCode v2.3.0 or later. Update OpenCode on this ' +
+        'machine, then start it again; until then its sessions are not ' +
+        'connected.',
+    );
   });
 
   it('lists hosts by machine with folder, status, process, versions and last seen (ISO in the tooltip)', async () => {
@@ -138,7 +160,8 @@ describe('HostsPage', () => {
     expect(text(row.querySelector('td.folder'))).toBe('/home/someone/kaggle');
     expect(text(row.querySelector('td.status'))).toBe('online');
     expect(row.querySelector('.dot')!.classList).toContain('ok');
-    expect(text(row.querySelector('td.opencode'))).toBe('v2.2.0');
+    expect(text(row.querySelector('td.opencode'))).toBe('v2.3.0');
+    expect(row.querySelector('td.opencode .too-old')).toBeNull();
     expect(text(row.querySelector('td.plugin'))).toBe('v0.1.0-build12');
     // shells that get their values: nothing more to say
     expect(text(row.querySelector('td.process'))).toBe('bg service (2164472)');

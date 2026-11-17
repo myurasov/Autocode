@@ -47,6 +47,8 @@ export interface ChannelOptions {
   log?: (line: string) => void
   backoffMs?: { min: number; max: number }
   supersededWaitMs?: number
+  // How long until a refused OpenCode (older than the minimum) asks again.
+  unsupportedWaitMs?: number
 }
 
 export type ChannelState =
@@ -55,10 +57,15 @@ export type ChannelState =
   | "backoff"
   | "wrong_server"
   | "superseded"
+  // the server refused this OpenCode: older than Autocode's minimum
+  | "unsupported"
   | "stopped"
 
 export class Channel {
   state: ChannelState = "starting"
+  // Why the server refused this OpenCode (state unsupported): what the tools
+  // answer with.
+  refused?: string
   serverId?: string
   pollWait = 50
   private readonly abort = new AbortController()
@@ -224,6 +231,7 @@ export class Channel {
       ...(active ? { active } : {}),
     })
     this.takeover = true
+    this.refused = undefined
     this.serverId = res.server.id
     this.pollWait = Number(res.poll?.wait) || 50
     this.setConnected()
@@ -320,6 +328,18 @@ export class Channel {
           this.takeover = false
           this.log("superseded by a newer instance of this host; waiting")
           await this.sleep(this.options.supersededWaitMs ?? 60_000)
+          continue
+        }
+        /*
+         * This OpenCode is older than Autocode's minimum (the owner,
+         * 2026-11-17): the reason is kept for the tools, and the hello is
+         * tried again later (the server lists the host with it).
+         */
+        if (err instanceof ServerError && err.code === "opencode_too_old") {
+          this.state = "unsupported"
+          this.refused = err.message
+          this.log(`refused: ${err.message}`)
+          await this.sleep(this.options.unsupportedWaitMs ?? 600_000)
           continue
         }
         if (this.state !== "wrong_server") this.state = "backoff"

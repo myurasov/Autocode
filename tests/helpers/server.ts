@@ -130,7 +130,7 @@ export async function hello(
       instance: `inst-${host}`,
       machine: host.split(":")[0],
       directory: "/work",
-      opencode: { version: "2.2.0" },
+      opencode: { version: "2.3.0" },
       plugin: { version: "0.1.0" },
       ...extra,
     },

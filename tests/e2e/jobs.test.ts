@@ -44,6 +44,7 @@ afterAll(async () => {
     job,
     `${job}-owner`,
     `${job}-slow`,
+    `${job}-sub`,
     `${job}-asks`,
     `${starter?.id}:own-${run}`,
   ])
@@ -183,6 +184,79 @@ describe("jobs across machines", () => {
       (i: any) => i.title === `Result of run ${done.id}`,
     )
     expect(item?.body).toBe(`report ${run} done`)
+  }, 240_000)
+
+  /*
+   * OpenCode 2.3 (the minimum: the owner, 2026-11-17) runs Subagents in the
+   * background: the run's first turn ends as soon as its Subagent is
+   * launched. The run does not end there (its "launched" is not its result):
+   * it ends with the reply of the turn that got the Subagent's result.
+   */
+  test("a run that uses a Subagent ends after the Subagent's result, not when it is launched", async () => {
+    const name = `${job}-sub`
+    const marker = `RUNSUB-${run}`
+    await admin("PUT", `/v1/jobs/${name}`, {
+      host: jobHost,
+      model: "fake/main",
+      prompt: `Delegate ${run}.`,
+      trigger: "fire-only",
+      to: "owner",
+    })
+    // by their text, in this order: the run's last request alone holds the
+    // Subagent's result; its second the tool's answer; the Subagent's its
+    // prompt; the run's first the job's prompt
+    await new FakeModel(nodes.at(-1)!).script(
+      [
+        {
+          match: "<subagent sessionID",
+          reply: `final ${run}: the helper is done`,
+        },
+        { match: "is working in the background", reply: `launched ${run}` },
+        {
+          match: `${marker} helper work`,
+          tool_calls: [
+            {
+              name: "shell",
+              arguments: { command: "sleep 3; echo helped", description: "w" },
+            },
+          ],
+        },
+        { match: `${marker} helper work`, reply: "helper done" },
+        {
+          match: `Delegate ${run}.`,
+          tool_calls: [
+            {
+              name: "subagent",
+              arguments: {
+                agent: "general",
+                description: "helper",
+                prompt: `${marker} helper work`,
+              },
+            },
+          ],
+        },
+      ],
+      true,
+    )
+    await admin("POST", `/v1/jobs/${name}/run`)
+    const done = await until(
+      async () => {
+        const r = (await admin("GET", `/v1/runs?job=${name}`)).runs[0]
+        return r && r.state !== "running" && r.state !== "starting"
+          ? r
+          : undefined
+      },
+      { timeoutMs: 150_000, intervalMs: 1000, what: "the run to end" },
+    )
+    expect(done).toMatchObject({
+      state: "succeeded",
+      result: `final ${run}: the helper is done`,
+    })
+    // its first turn ended with the Subagent in the background
+    const ends = (
+      await admin("GET", `/v1/history?kind=turn.ended&match=${enc(done.id)}`)
+    ).history.map((h: any) => h.data)
+    expect(ends).toContainEqual({ outcome: "succeeded", background: 1 })
   }, 240_000)
 
   test("a run past its time limit fails; its session is kept until the owner deletes it", async () => {
