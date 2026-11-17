@@ -2756,6 +2756,57 @@ test("Agents: a click on a description edits it; Cancel and Escape go back, Save
 })
 
 /*
+ * The owner, 2026-11-17, after 1.0.0 was published ("fold that in 1.0.0";
+ * "the sort arrow need to sit on the right of the text in 5 px"): the arrow
+ * comes right after its heading's text, 5 px from it, at the middle of the
+ * cell's height, on every table; not at the cell's right edge. It takes no
+ * width, so a heading stays as narrow as its text.
+ */
+test("the sort arrow sits to the right of its heading's text, 5 px from it", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  const places = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("#frame thead th.sortable")].map((th) => {
+        const button = th.querySelector("button.sort") as HTMLElement
+        const arrow = th.querySelector(".arrow") as HTMLElement
+        const at = arrow.getBoundingClientRect()
+        // the heading's text: what the button holds before the arrow
+        const range = document.createRange()
+        range.setStart(button, 0)
+        range.setEndBefore(arrow)
+        const last = [...range.getClientRects()].at(-1)!
+        const cell = th.getBoundingClientRect()
+        const round = (n: number) => Math.round(n * 10) / 10
+        return {
+          name: (button.textContent ?? "").trim(),
+          gap: round(at.left - last.right),
+          off: round(at.top + at.height / 2 - (cell.top + cell.height / 2)),
+          size: [round(at.width), round(at.height)],
+          flow: getComputedStyle(arrow).position,
+        }
+      }),
+    )
+  for (const tab of ["Agents", "Inbox", "Messages", "Wakes", "Costs"]) {
+    if (tab !== "Agents") await openTab(page, tab)
+    const found = await places()
+    expect(found.length, tab).toBeGreaterThan(1)
+    for (const p of found) {
+      const where = `${tab}: ${p.name}`
+      expect(Math.abs(p.gap - 5), `${where}: ${p.gap} px after`).toBeLessThan(1)
+      expect(
+        Math.abs(p.off),
+        `${where}: ${p.off} px off the middle`,
+      ).toBeLessThan(1)
+      expect(p.size, where).toEqual([8, 8])
+      // out of the flow: it adds nothing to the heading's width
+      expect(p.flow, where).toBe("absolute")
+    }
+  }
+})
+
+/*
  * The owner, 2026-11-17: "make table header cell hilight entirely when hover
  * (showing it can sort)": on the Agents tab the heading row is two lines tall
  * ("Last Active" wraps), so a one-line button lit only the middle of a cell.

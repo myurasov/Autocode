@@ -300,10 +300,12 @@ th {
  * and lights up under the pointer, however tall its row is ("make table
  * header cell hilight entirely when hover"); its text is a button in the
  * heading's own look, for the keyboard, whose focus ring goes around the
- * cell. An arrow at the cell's right edge says the direction of the sorted
- * column; a faint one shows on hover. The arrow sits in the cell's padding
- * and takes no width of its own, so a heading is as narrow as its text (the
- * Agents table, thirteen columns since Effort, still fits 1280 px).
+ * cell. An arrow to the right of the text, 5 px from it, says the direction
+ * of the sorted column; a faint one shows on hover (the owner, 2026-11-17:
+ * "the sort arrow need to sit on the right of the text in 5 px"; it was at
+ * the cell's right edge). The arrow is out of the flow and takes no width of
+ * its own, so a heading is as narrow as its text (the Agents table, thirteen
+ * columns since Effort, still fits 1280 px).
  */
 th.sortable {
   position: relative;
@@ -336,12 +338,12 @@ th.sortable:has(> button.sort:focus-visible) {
 th.sortable .arrow {
   position: absolute;
   top: 50%;
-  right: 0;
   width: 0.5rem;
   height: 0.5rem;
   margin-top: -0.25rem;
   background: var(--chevron) center / contain no-repeat;
   opacity: 0;
+  margin-left: 5px;
 }
 th.sortable:hover .arrow {
   opacity: 0.35;
