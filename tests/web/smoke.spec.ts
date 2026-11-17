@@ -2701,6 +2701,64 @@ test("Inbox: the Agent filter by agent, the agent an ask went to, and the addres
 })
 
 /*
+ * The owner, 2026-11-17: "make table header cell hilight entirely when hover
+ * (showing it can sort)": on the Agents tab the heading row is two lines tall
+ * ("Last Active" wraps), so a one-line button lit only the middle of a cell.
+ * The cell itself lights up, at its very corner too, and a click there sorts.
+ */
+test("Agents: a sortable heading lights up whole on hover, and sorts from its corner", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, admin)
+  await openTab(page, "Agents")
+  const model = page.locator("table.agents thead th", { hasText: "Model" })
+  const plain = page.locator("table.agents thead th").last()
+  const box = (await model.boundingBox())!
+  const button = (await model.locator("button.sort").boundingBox())!
+  const background = (th: typeof model) =>
+    th.evaluate((e) => getComputedStyle(e).backgroundColor)
+  const idle = await background(model)
+  expect(idle).toBe(await background(plain))
+  // the cell's top left corner, and its bottom right one
+  for (const [x, y] of [
+    [box.x + 2, box.y + 2],
+    [box.x + box.width - 2, box.y + box.height - 2],
+  ] as const) {
+    await page.mouse.move(x, y)
+    await expect.poll(() => background(model)).not.toBe(idle)
+    expect(
+      await model.evaluate((e) => getComputedStyle(e).cursor),
+      "a pointer over the whole cell",
+    ).toBe("pointer")
+    await page.mouse.move(0, 0)
+    await expect.poll(() => background(model)).toBe(idle)
+  }
+  // the case the owner saw: the row is taller than the heading's one line
+  expect(box.height - button.height).toBeGreaterThan(10)
+  // by the keyboard, the focus ring goes around the whole cell
+  await model.locator("button.sort").focus()
+  await page.keyboard.press("Tab")
+  await page.keyboard.press("Shift+Tab")
+  expect(
+    await model.evaluate((e) => getComputedStyle(e).outlineStyle),
+    "the cell's focus ring",
+  ).toBe("solid")
+  await page.mouse.move(0, 0)
+  // a heading that does not sort stays as it is
+  const plainBox = (await plain.boundingBox())!
+  await page.mouse.move(plainBox.x + 2, plainBox.y + 2)
+  expect(await background(plain)).toBe(idle)
+  // a click at the corner sorts by that column, and again reverses it
+  await page.mouse.click(box.x + 2, box.y + 2)
+  await expect(model).toHaveAttribute("aria-sort", "ascending")
+  await page.mouse.click(box.x + 2, box.y + 2)
+  await expect(model).toHaveAttribute("aria-sort", "descending")
+  // back to the default, for the tests that follow
+  await page.evaluate(() => localStorage.removeItem("autocode.sort.agents"))
+})
+
+/*
  * The owner, 2026-11-17: "close all button should close only sessions visible
  * (considering filter if any)": a message that came after the page last
  * loaded is not shown yet, so Close All leaves it open. The page's clock is

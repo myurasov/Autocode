@@ -71,7 +71,7 @@ describe('Sorting', () => {
     expect(ids(s.sort(ROWS))).toEqual(['d', 'C', 'b', 'a']);
   });
 
-  it("a column may start the other way (a time to come: soonest first)", () => {
+  it('a column may start the other way (a time to come: soonest first)', () => {
     const s = new Sorting<Row>('next', {
       columns: {
         at: { time: (r) => r.at },
@@ -174,5 +174,30 @@ describe('SortHead', () => {
     (button(id!) as HTMLButtonElement).click();
     await settle(fixture);
     expect(id!.getAttribute('aria-sort')).toBe('descending');
+  });
+
+  // The owner, 2026-11-17: "make table header cell hilight entirely when
+  // hover (showing it can sort)": the cell is what sorts, so a click
+  // anywhere in it does, and one on its button counts once.
+  it('the whole cell sorts: a click on the cell itself, once for one on its button', async () => {
+    setup();
+    const fixture = TestBed.createComponent(Head);
+    await settle(fixture);
+    const [id, at, plain] = [...el(fixture).querySelectorAll('th')];
+    const s = fixture.componentInstance.s;
+    (id as HTMLElement).click();
+    await settle(fixture);
+    expect([s.key(), s.dir()]).toEqual(['id', 'asc']);
+    (id as HTMLElement).click();
+    await settle(fixture);
+    expect([s.key(), s.dir()]).toEqual(['id', 'desc']);
+    // the button's click reaches the cell: one step, not two
+    (at!.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect([s.key(), s.dir()]).toEqual(['at', 'desc']);
+    // a plain heading does nothing
+    (plain as HTMLElement).click();
+    await settle(fixture);
+    expect([s.key(), s.dir()]).toEqual(['at', 'desc']);
   });
 });

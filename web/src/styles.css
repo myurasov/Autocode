@@ -285,18 +285,29 @@ th {
   font-weight: var(--bold);
 }
 /*
- * A sortable column's heading (the owner, 2026-11-17): the whole cell is its
- * button, in the heading's own look; an arrow after the text says the
- * direction of the sorted column, a faint one shows on hover.
+ * A sortable column's heading (the owner, 2026-11-17): the whole cell sorts
+ * and lights up under the pointer, however tall its row is ("make table
+ * header cell hilight entirely when hover"); its text is a button in the
+ * heading's own look, for the keyboard, whose focus ring goes around the
+ * cell. An arrow after the text says the direction of the sorted column; a
+ * faint one shows on hover.
  */
+th.sortable {
+  cursor: pointer;
+  /* a second click reverses the order: it does not select the text */
+  user-select: none;
+}
+th.sortable:hover {
+  background: var(--softer);
+  color: var(--fg-strong);
+}
 th.sortable > button.sort {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  /* the cell keeps its padding; the button covers it */
-  width: calc(100% + 1rem);
-  margin: -0.5rem;
-  padding: 0.5rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   border: 0;
   background: none;
   color: inherit;
@@ -306,11 +317,10 @@ th.sortable > button.sort {
 th.num.sortable > button.sort {
   justify-content: flex-end;
 }
-th.sortable > button.sort:hover {
-  background: var(--softer);
-  color: var(--fg-strong);
-}
 th.sortable > button.sort:focus-visible {
+  outline: none;
+}
+th.sortable:has(> button.sort:focus-visible) {
   outline: 2px solid var(--link);
   outline-offset: -2px;
 }
@@ -322,11 +332,11 @@ th.sortable .arrow {
   background: var(--chevron) center / contain no-repeat;
   opacity: 0;
 }
-th.sortable > button.sort:hover .arrow {
+th.sortable:hover .arrow {
   opacity: 0.35;
 }
 th.sorted .arrow,
-th.sorted > button.sort:hover .arrow {
+th.sorted:hover .arrow {
   opacity: 1;
 }
 th.sorted.asc .arrow {

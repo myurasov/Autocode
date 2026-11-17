@@ -144,22 +144,25 @@ export interface SortControl {
 
 /*
  * A sortable column heading: its text in a button, with an arrow that says
- * the direction when it is the sorted column (aria-sort says it too).
+ * the direction when it is the sorted column (aria-sort says it too). The
+ * whole cell sorts and lights up under the pointer (the owner, 2026-11-17:
+ * "make table header cell hilight entirely when hover"): the click is the
+ * cell's, so the button, which the keyboard uses, has none of its own (its
+ * click reaches the cell: one step).
  */
 @Component({
   selector: 'th[appSort]',
   host: {
     '[attr.aria-sort]': 'sorting().aria(appSort())',
+    '[attr.title]': "'Sort by ' + label()",
     '[class.sortable]': 'true',
     '[class.sorted]': "sorting().aria(appSort()) !== 'none'",
     '[class.asc]': "sorting().aria(appSort()) === 'ascending'",
+    '(click)': 'sorting().click(appSort())',
   },
-  template: `<button
-    type="button"
-    class="sort"
-    [title]="'Sort by ' + label()"
-    (click)="sorting().click(appSort())"
-  ><ng-content /><span class="arrow" aria-hidden="true"></span></button>`,
+  template: `<button type="button" class="sort" [title]="'Sort by ' + label()">
+    <ng-content /><span class="arrow" aria-hidden="true"></span>
+  </button>`,
 })
 export class SortHead {
   readonly appSort = input.required<string>();
