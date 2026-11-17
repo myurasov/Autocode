@@ -6,11 +6,12 @@
   shows its notes and expiry, and what it asks with its answer's controls (a
   question's options, a permission's Allow Once, Allow Always and Reject, an
   approval's options, Approve and Reject; its text once, under a title that
-  names the agent); and when the list last loaded.
+  names the agent); and when the list last loaded. The Agent field filters by
+  an agent pattern (the owner, 2026-11-17).
 -->
 
 <div class="toolbar">
-  <button type="button" (click)="refresh()">Refresh</button>
+  <button type="button" (click)="applyMatch()">Refresh</button>
   <span class="result">
     @if (failed()) {
       <span class="errmsg" role="alert">{{ failed() }}</span>
@@ -18,6 +19,16 @@
       <span class="notice" role="status">{{ notice() }}</span>
     }
   </span>
+  <label for="inbox-match">Agent</label>
+  <input
+    id="inbox-match"
+    type="text"
+    spellcheck="false"
+    placeholder="for example kaggle:* or a,b:*"
+    [value]="pattern()"
+    (input)="typed($any($event.target).value)"
+    (keydown.enter)="applyMatch()"
+  />
   <label class="check" for="show-closed">
     <input
       id="show-closed"
@@ -303,7 +314,13 @@
     } @empty {
       <tr>
         <td class="muted" colspan="6">
-          {{ loaded() ? 'Nothing in the inbox.' : 'Loading...' }}
+          {{
+            !loaded()
+              ? 'Loading...'
+              : match()
+                ? 'Nothing in the inbox matches ' + match() + '.'
+                : 'Nothing in the inbox.'
+          }}
         </td>
       </tr>
     }

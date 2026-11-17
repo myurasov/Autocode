@@ -8,23 +8,27 @@
  * rejected with a reason, an approval approved or rejected with an option and
  * a note, their notes and expiry, the server's error when someone answered
  * first; Closed with the answers given; the empty inbox; a failed
- * answer; "Updated" in the footer; and the 10 s refresh (one at a time).
+ * answer; "Updated" in the footer; and the 10 s refresh (one at a time); the
+ * Agent filter (the owner, 2026-11-17), in the address, a second after the
+ * last key.
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import {
   apiError,
   button,
   el,
   parts,
+  press,
   settle,
   setup,
   signedIn,
   text,
   type,
 } from '../../testing/helpers';
-import { REFRESH_MS } from '../agents/agents-page';
+import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
 import type { InboxItem } from '../api';
 import { localTime } from '../format';
 import { InboxPage } from './inbox-page';
@@ -70,9 +74,10 @@ describe('InboxPage', () => {
 
   afterEach(() => http.verify());
 
-  function load(items = ITEMS, all = false): void {
+  function load(items = ITEMS, all = false, match?: string): void {
     const req = http.expectOne((r) => r.url === '/v1/inbox');
     expect(req.request.params.get('all')).toBe(all ? '1' : null);
+    expect(req.request.params.get('match')).toBe(match ?? null);
     req.flush({ items });
   }
 
@@ -215,6 +220,109 @@ describe('InboxPage', () => {
     expect(text(page.querySelector('table.inbox tbody'))).toBe(
       'Nothing in the inbox.',
     );
+  });
+
+  // The owner, 2026-11-17: "add filtering by agent name on inbox tab".
+  describe('the Agent filter', () => {
+    const ids = (page: HTMLElement) =>
+      [...page.querySelectorAll('table.inbox tbody tr[data-item]')].map((r) =>
+        r.getAttribute('data-item'),
+      );
+
+    it('filters by an agent pattern; the filter goes into the address, and the address sets it', async () => {
+      const page = await open();
+      const router = TestBed.inject(Router);
+      const input = page.querySelector('#inbox-match') as HTMLInputElement;
+      expect(text(page.querySelector('label[for="inbox-match"]'))).toBe(
+        'Agent',
+      );
+      expect(input.getAttribute('placeholder')).toBe(
+        'for example kaggle:* or a,b:*',
+      );
+      type(input, 'kaggle:w*');
+      press(input, 'Enter');
+      await settle(fixture);
+      expect(router.url).toBe('/?match=kaggle:w*');
+      load([ITEMS[1]!], false, 'kaggle:w*');
+      await settle(fixture);
+      expect(ids(page)).toEqual(['ib_2']);
+
+      // a link or Back: the field follows the address
+      await router.navigateByUrl('/?match=kaggle:lead');
+      await settle(fixture);
+      load([ITEMS[0]!], false, 'kaggle:lead');
+      await settle(fixture);
+      expect(input.value).toBe('kaggle:lead');
+      expect(ids(page)).toEqual(['ib_1']);
+      await router.navigateByUrl('/');
+      await settle(fixture);
+      load();
+      await settle(fixture);
+      expect(input.value).toBe('');
+      expect(ids(page)).toEqual(['ib_1', 'ib_2']);
+    });
+
+    it('applies the typed pattern a second after the last key', async () => {
+      vi.useFakeTimers();
+      try {
+        signedIn();
+        fixture = TestBed.createComponent(InboxPage);
+        await vi.advanceTimersByTimeAsync(0);
+        load();
+        await vi.advanceTimersByTimeAsync(0);
+        fixture.detectChanges();
+        const input = el(fixture).querySelector('#inbox-match');
+        type(input, 'kag');
+        await vi.advanceTimersByTimeAsync(FILTER_DELAY_MS - 400);
+        type(input, 'kaggle:*');
+        await vi.advanceTimersByTimeAsync(FILTER_DELAY_MS - 1);
+        http.expectNone((r) => r.url === '/v1/inbox');
+        await vi.advanceTimersByTimeAsync(1);
+        load(ITEMS, false, 'kaggle:*');
+        await vi.advanceTimersByTimeAsync(0);
+        expect(TestBed.inject(Router).url).toBe('/?match=kaggle:*');
+      } finally {
+        fixture.destroy();
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps the filter with Closed on, and says when nothing matches', async () => {
+      signedIn();
+      await TestBed.inject(Router).navigateByUrl('/?match=other:*');
+      fixture = TestBed.createComponent(InboxPage);
+      await settle(fixture);
+      load([], false, 'other:*');
+      await settle(fixture);
+      const page = el(fixture);
+      expect(text(page.querySelector('table.inbox tbody'))).toBe(
+        'Nothing in the inbox matches other:*.',
+      );
+      const toggle = page.querySelector('#show-closed') as HTMLInputElement;
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event('change'));
+      load([ANSWERED], true, 'other:*');
+      await settle(fixture);
+      expect(ids(page)).toEqual(['ib_1']);
+    });
+
+    it("shows a bad pattern's error", async () => {
+      const page = await open();
+      const input = page.querySelector('#inbox-match');
+      type(input, 'a b');
+      press(input, 'Enter');
+      await settle(fixture);
+      apiError(
+        http.expectOne((r) => r.url === '/v1/inbox'),
+        400,
+        'bad_pattern',
+        'a pattern is one or more IDs with * wildcards',
+      );
+      await settle(fixture);
+      expect(text(page.querySelector('p.errmsg'))).toBe(
+        'a pattern is one or more IDs with * wildcards',
+      );
+    });
   });
 
   it('shows why an answer failed and keeps the text', async () => {

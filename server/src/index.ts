@@ -1229,14 +1229,28 @@ export async function startServer(
       method: "GET",
       path: "/v1/inbox",
       access: ["admin"],
-      summary: "the owner's open inbox items (?all=1 for closed ones too)",
+      summary:
+        "the owner's open inbox items (?all=1 for closed ones too; ?match= " +
+        "an agent pattern: the item's agent, or the agent an ask was sent to)",
       handler: ({ url }) => {
         const all = url.searchParams.get("all") === "1"
+        // the owner, 2026-11-17: filtered by agent, as the other tabs are
+        const match = url.searchParams.get("match")?.trim() || null
+        const pattern = match ? parsePattern(match) : null
+        const routedTo = (x: any) =>
+          typeof x.routed === "string" && x.routed.startsWith("agent:")
+            ? x.routed.slice("agent:".length)
+            : null
+        const matches = (x: any) =>
+          !pattern ||
+          [x.agent, routedTo(x)].some(
+            (id) => typeof id === "string" && matchesPattern(pattern, id),
+          )
         // messages, alerts and asks in one list, oldest first
         const items: any[] = [
           ...inbox.list(all),
           ...(all ? asks.all() : asks.open()),
-        ]
+        ].filter(matches)
         return {
           items: items.sort((x, y) =>
             x.created_at < y.created_at

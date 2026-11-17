@@ -257,6 +257,13 @@ describe("owner commands", () => {
     const inbox = await cli(["inbox"], asAdmin())
     expect(inbox.stdout).toMatch(/ID\s+KIND\s+AGENT\s+TO\s+TITLE\s+CREATED/)
     expect(inbox.stdout).toContain('Message from kaggle:lead: "budget"')
+    // an agent pattern, as on the Inbox tab (the owner, 2026-11-17)
+    const mine = await cli(["inbox", "--match", "kaggle:w*"], asAdmin())
+    expect(mine.code, mine.stderr).toBe(0)
+    expect(mine.stdout).toContain("Message from kaggle:worker")
+    expect(mine.stdout).not.toContain("kaggle:lead")
+    const none = await cli(["inbox", "--match", "other:*"], asAdmin())
+    expect(none.stdout).toContain("no inbox item matches other:*")
     const items = JSON.parse((await cli(["inbox", "--json"], asAdmin())).stdout)
     const [first, second] = items
     const answered = await cli(["answer", first.id, "Yes,", "go."], asAdmin())

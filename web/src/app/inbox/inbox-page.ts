@@ -7,11 +7,15 @@
  * its agent as a message) or closes an item, and answers an ask: a question by
  * an option or in its own words, a permission once, always (after a
  * confirmation) or not, an approval with an option and a note. The result
- * shows in the toolbar, and the list refreshes after each.
+ * shows in the toolbar, and the list refreshes after each. The Agent field
+ * filters by an agent pattern (the owner, 2026-11-17), kept in the address,
+ * as on the other tabs.
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
-import { REFRESH_MS } from '../agents/agents-page';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
+import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
 import { type AskAnswer, Api, errorText, type InboxItem } from '../api';
 import { IdParts, TimeText } from '../breaks';
 import { localTime } from '../format';
@@ -76,6 +80,8 @@ export function askAnswerText(item: InboxItem): string {
 })
 export class InboxPage {
   private readonly api = inject(Api);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   protected readonly items = signal<InboxItem[]>([]);
   protected readonly loaded = signal(false);
@@ -87,6 +93,9 @@ export class InboxPage {
   protected readonly updatedAt = signal<number | null>(null);
   protected readonly busy = signal(false);
   protected readonly showClosed = signal(false);
+  // The agent filter in the address, and as typed.
+  protected readonly match = signal('');
+  protected readonly pattern = signal('');
   // at most 25 rows, then "..." (the owner, 2026-11-09)
   protected readonly paging = new Paged();
   protected readonly page = computed(() =>
@@ -103,30 +112,66 @@ export class InboxPage {
   protected readonly isAsk = isAsk;
   protected readonly askAnswerText = askAnswerText;
   private inFlight = 0;
+  private typing?: ReturnType<typeof setTimeout>;
 
   constructor() {
-    void this.refresh();
+    // The address sets the filter (a link, Back, or the toolbar's own).
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const match = params.get('match') ?? '';
+      this.pattern.set(match);
+      if (this.loaded() && match === this.match()) return;
+      this.match.set(match);
+      void this.refresh();
+    });
     const timer = setInterval(() => {
       if (this.inFlight === 0) void this.refresh();
     }, REFRESH_MS);
-    inject(DestroyRef).onDestroy(() => clearInterval(timer));
+    inject(DestroyRef).onDestroy(() => {
+      clearInterval(timer);
+      clearTimeout(this.typing);
+    });
   }
 
   protected async refresh(): Promise<void> {
     const all = this.showClosed();
+    const match = this.match();
+    const current = () => all === this.showClosed() && match === this.match();
     this.inFlight++;
     try {
-      const items = await this.api.inbox(all);
-      if (all !== this.showClosed()) return;
+      const items = await this.api.inbox(all, match);
+      if (!current()) return;
       this.items.set(items);
       this.error.set('');
       this.updatedAt.set(Date.now());
     } catch (err) {
-      if (all === this.showClosed()) this.error.set(errorText(err));
+      if (current()) this.error.set(errorText(err));
     } finally {
       this.inFlight--;
       this.loaded.set(true);
     }
+  }
+
+  // The pattern as typed applies a second after the last key.
+  protected typed(value: string): void {
+    this.pattern.set(value);
+    clearTimeout(this.typing);
+    this.typing = setTimeout(() => this.applyMatch(), FILTER_DELAY_MS);
+  }
+
+  // The filter goes into the address, which sets it (and keeps it for Back).
+  protected applyMatch(): void {
+    clearTimeout(this.typing);
+    const match = this.pattern().trim();
+    // The same filter again: the address stays, the list reloads.
+    if (match === this.match()) {
+      void this.refresh();
+      return;
+    }
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { match: match || null },
+      queryParamsHandling: 'merge',
+    });
   }
 
   protected toggleClosed(on: boolean): void {

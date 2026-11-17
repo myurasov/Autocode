@@ -545,6 +545,49 @@ describe("the owner's inbox lists every kind", () => {
       "approval",
     ])
   })
+  // The owner, 2026-11-17: "add filtering by agent name on inbox tab": an
+  // agent pattern, as on the other tabs; an ask sent to another agent
+  // matches that agent too; items without an agent match none.
+  test("?match= filters by an agent pattern: whose item, or the agent an ask went to", async () => {
+    await as(a, "POST", "/v1/messages", {
+      to: "owner",
+      text: "from the worker",
+    })
+    await as(b, "POST", "/v1/messages", { to: "owner", text: "from the lead" })
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:worker": { approval_mode: "agent:team:lead" } },
+    })
+    await as(a, "POST", "/v1/me/approvals", { text: "Go?" })
+    const items = async (q: string) =>
+      (await owner("GET", `/v1/inbox?${q}`)).body.items.map(
+        (i: any) => `${i.kind}:${i.agent}`,
+      )
+    expect(await items("match=team:worker")).toEqual([
+      "message:team:worker",
+      "approval:team:worker",
+    ])
+    // the lead's own message, and the approval sent to it
+    expect(await items("match=team:lead")).toEqual([
+      "message:team:lead",
+      "approval:team:worker",
+    ])
+    expect(await items("match=team:*")).toHaveLength(3)
+    expect(await items("match=team:worker,other:*")).toHaveLength(2)
+    expect(await items("match=other:*")).toEqual([])
+    // with Closed too
+    const [first] = (await owner("GET", "/v1/inbox")).body.items
+    await owner("POST", `/v1/inbox/${first.id}/close`)
+    expect(await items("all=1&match=team:worker")).toEqual([
+      "message:team:worker",
+      "approval:team:worker",
+    ])
+    expect(await items("match=team:worker")).toEqual(["approval:team:worker"])
+    // a bad pattern is the API's own error
+    const bad = await owner("GET", "/v1/inbox?match=a%20b")
+    expect(bad.status).toBe(400)
+    expect(bad.body.error.code).toBe("bad_pattern")
+  })
+
   // The agents CI (2026-11-08): the owner answers what the inbox lists by
   // its ID, an ask too (models ask approval for "ask the owner").
   test("an ask is answered and closed through the inbox's own routes too", async () => {

@@ -768,8 +768,12 @@ export class Api {
   }
 
   // The open items, or with all every item.
-  async inbox(all = false): Promise<InboxItem[]> {
-    const params = all ? new HttpParams().set('all', '1') : undefined;
+  // The owner's inbox: open items, or every one; match: an agent pattern (the
+  // item's agent, or the agent an ask was sent to).
+  async inbox(all = false, match = ''): Promise<InboxItem[]> {
+    let params = new HttpParams();
+    if (all) params = params.set('all', '1');
+    if (match.trim()) params = params.set('match', match.trim());
     return (
       await this.call(
         this.http.get<{ items: InboxItem[] }>('/v1/inbox', { params }),

@@ -75,7 +75,8 @@ owner:
                                          and its compaction threshold; one
                                          agent's days; --days X: the total
                                          over the last X days
-  inbox [--all] | inbox close ID         the owner's inbox
+  inbox [--all] [--match P] | inbox close ID
+                                         the owner's inbox (P: agents)
   answer ID TEXT...                      answer a message, question, permission
                                          (once|always|reject) or approval
   pause AGENT | resume AGENT             pause or resume an agent's injections

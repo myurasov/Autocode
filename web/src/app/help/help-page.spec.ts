@@ -228,7 +228,7 @@ describe('HelpPage', () => {
       'autocode info',
       'autocode agents [PATTERN]',
       'autocode hosts',
-      'autocode inbox [--all]',
+      'autocode inbox [--all] [--match PATTERN]',
       'autocode answer ITEM TEXT...',
       'autocode pause AGENT / resume AGENT',
       'autocode stop-all / resume-all',
@@ -395,6 +395,10 @@ describe('HelpPage', () => {
     // the box is "Closed" (the owner, 2026-11-09)
     expect(inbox).toContain('The Closed box lists');
     expect(inbox).not.toContain('Show Closed');
+    // the Agent filter (the owner, 2026-11-17)
+    expect(inbox).toContain(
+      'Agent filters by an ID pattern: the agent of an item, or the agent an ask was sent to',
+    );
     for (const part of [
       'questions',
       'permission prompts',

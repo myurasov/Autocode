@@ -203,9 +203,15 @@ export async function inbox(args: Parsed): Promise<number> {
     print(args, res, () => `closed ${id}`)
     return 0
   }
-  if (sub) usage("inbox [--all] | inbox close ID")
+  if (sub) usage("inbox [--all] [--match PATTERN] | inbox close ID")
   const all = args.switches.has("all") || args.flags.all !== undefined
-  const res = await c.call("GET", `/v1/inbox${all ? "?all=1" : ""}`)
+  // an agent pattern, as on the Inbox tab (the owner, 2026-11-17)
+  const match = typeof args.flags.match === "string" ? args.flags.match : ""
+  const query = new URLSearchParams()
+  if (all) query.set("all", "1")
+  if (match.trim()) query.set("match", match.trim())
+  const q = query.toString()
+  const res = await c.call("GET", `/v1/inbox${q ? `?${q}` : ""}`)
   print(args, res.items, () =>
     res.items.length
       ? table(
@@ -220,7 +226,9 @@ export async function inbox(args: Parsed): Promise<number> {
           ]),
           ["ID", "KIND", "AGENT", "TO", "TITLE", "CREATED"],
         )
-      : "the inbox is empty",
+      : match.trim()
+        ? `no inbox item matches ${match.trim()}`
+        : "the inbox is empty",
   )
   return 0
 }

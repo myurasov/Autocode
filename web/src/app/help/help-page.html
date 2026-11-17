@@ -699,8 +699,11 @@ autocode plugin install --url http://SERVER:4848 \
           </td>
         </tr>
         <tr>
-          <td><code>autocode inbox [--all]</code></td>
-          <td>your Inbox: messages to <code>owner</code> and alerts</td>
+          <td><code>autocode inbox [--all] [--match PATTERN]</code></td>
+          <td>
+            your Inbox: messages to <code>owner</code>, alerts and asks
+            (<code>--match</code>: of the agents that match)
+          </td>
         </tr>
         <tr>
           <td><code>autocode answer ITEM TEXT...</code></td>
@@ -916,7 +919,9 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
       Reject; one that may expire says when. Answer a message, and the answer
       goes to the agent as a message from the owner; Close a message or an
       alert you will not answer. The Closed box lists the answered and closed
-      ones too. The Kind is in color: a message green, an alert red, a
+      ones too. Agent filters by an ID pattern: the agent of an item, or the
+      agent an ask was sent to (a second after you stop typing; kept in the
+      address). The Kind is in color: a message green, an alert red, a
       question sky blue, a permission amber, an approval violet.
     </p>
 

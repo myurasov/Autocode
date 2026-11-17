@@ -2596,6 +2596,78 @@ test("Inbox: an ask sent to another agent shows Sent To and its note", async ({
 })
 
 /*
+ * The owner, 2026-11-17: "add filtering by agent name on inbox tab". The
+ * Agent field filters by a pattern: an item's agent, or the agent an ask was
+ * sent to; the filter is kept in the address and survives a reload.
+ */
+test("Inbox: the Agent filter by agent, the agent an ask went to, and the address", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const header = `Filtered ${Date.now()}`
+  const mode = (value: string | null) =>
+    api.patch("/v1/settings", {
+      headers: bearer(admin),
+      data: { agents: { "smoke:agent": { question_mode: value } } },
+    })
+  try {
+    // a question of smoke:agent's, sent to the long agent
+    expect((await mode(`agent:${LONG.agent}`)).ok()).toBe(true)
+    await openAsk(api, question(header))
+    await signIn(page, admin)
+    await openTab(page, "Inbox")
+    const rows = page.locator("table.inbox tbody tr[data-item]")
+    const ask = rows.filter({ hasText: header })
+    const fromSmoke = rows.filter({
+      hasText: 'Message from smoke:agent: "Smoke"',
+    })
+    await expect(ask).toHaveCount(1)
+    await expect(fromSmoke).toHaveCount(1)
+    const field = page.locator(".toolbar #inbox-match")
+    await expect(page.locator('.toolbar label[for="inbox-match"]')).toHaveText(
+      "Agent",
+    )
+    // the long agent: its own message, and the question sent to it
+    await field.fill(LONG.agent)
+    await field.press("Enter")
+    await expect(page).toHaveURL(/[?&]match=live/)
+    await expect(fromSmoke).toHaveCount(0)
+    await expect(ask).toHaveCount(1)
+    for (const agent of await rows.locator("td.agent").allInnerTexts())
+      expect(["smoke:agent", LONG.agent]).toContain(agent.trim())
+    await expect(
+      rows.filter({ hasText: `Message from ${LONG.agent}` }),
+    ).not.toHaveCount(0)
+    // a pattern, typed: applied a second after the last key
+    await field.fill("smoke:*")
+    await expect(page).toHaveURL(/[?&]match=smoke/, { timeout: 5000 })
+    await expect(fromSmoke).toHaveCount(1)
+    await expect(ask).toHaveCount(1)
+    for (const agent of await rows.locator("td.agent").allInnerTexts())
+      expect(agent.trim()).toBe("smoke:agent")
+    // kept in the address: a reload keeps it
+    await page.reload()
+    await expect(field).toHaveValue("smoke:*")
+    await expect(fromSmoke).toHaveCount(1)
+    // none matches
+    await field.fill("nobody:*")
+    await field.press("Enter")
+    await expect(page.locator("table.inbox tbody")).toHaveText(
+      "Nothing in the inbox matches nobody:*.",
+    )
+    // cleared: everything again
+    await field.fill("")
+    await field.press("Enter")
+    await expect(page).not.toHaveURL(/match=/)
+    await expect(fromSmoke).toHaveCount(1)
+  } finally {
+    await mode(null)
+    await answerAsks(api)
+    await api.dispose()
+  }
+})
+
+/*
  * The Inbox with a question, a permission and an approval open: it fits 1280
  * px (at 1024 px it may scroll inside the frame, never the window); its
  * buttons are in Title Case (an option is the agent's words) and their text
