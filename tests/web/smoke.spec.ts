@@ -1318,7 +1318,8 @@ test("Help: the last tab, with numbered contents that stay in view", async ({
   await expect(page).toHaveURL(/\/help$/)
   const toc = page.locator("nav.toc")
   await expect(toc.locator("a").first()).toHaveText("1 What Autocode Is")
-  await expect(toc.locator("a").last()).toHaveText("7 Troubleshooting")
+  // installing comes last: it is needed once (the 1.0.0 documentation pass)
+  await expect(toc.locator("a").last()).toHaveText("8.4 Tokens")
   const look = await page.evaluate(() => {
     const toc = document.querySelector("nav.toc")!
     const number = (a: Element) => a.querySelector(".n")!
@@ -1345,7 +1346,7 @@ test("Help: the last tab, with numbered contents that stay in view", async ({
   expect(look.indent).toBeGreaterThan(8)
   expect(look.line).toBe("solid")
   expect(look.beside).toBeGreaterThan(16)
-  // Scrolled down to section 5, the contents stay at the top of the window.
+  // Scrolled down to section 4, the contents stay at the top of the window.
   await page.evaluate(() => document.getElementById("web")!.scrollIntoView())
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(500)
   await expect
@@ -1376,10 +1377,10 @@ test("Help: a contents link scrolls to its section", async ({ page }) => {
       .locator(`#frame article #${id}`)
       .evaluate((e) => Math.round(e.getBoundingClientRect().top))
   for (const [name, id] of [
-    ["3.3 Wakes", "wakes"],
-    ["4.1 Your Commands", "commands"],
+    ["3.2 Wakes", "wakes"],
+    ["7.1 Your Commands", "commands"],
     ["1 What Autocode Is", "what"],
-    ["3.3 Wakes", "wakes"],
+    ["3.2 Wakes", "wakes"],
   ]) {
     await toc.getByRole("link", { name, exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`/help#${id}$`))
@@ -1387,7 +1388,7 @@ test("Help: a contents link scrolls to its section", async ({ page }) => {
     await expect.poll(() => top(id), name).toBeLessThanOrEqual(24)
   }
   await page.evaluate(() => window.scrollTo(0, 0))
-  await toc.getByRole("link", { name: "3.3 Wakes", exact: true }).click()
+  await toc.getByRole("link", { name: "3.2 Wakes", exact: true }).click()
   await expect.poll(() => top("wakes"), "again").toBeLessThanOrEqual(24)
 })
 

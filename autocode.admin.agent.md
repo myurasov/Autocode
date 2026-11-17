@@ -1,111 +1,261 @@
-# Autocode: Instructions for an Agent That Installs and Runs It <!-- omit in toc -->
+# Autocode: Guide for Whoever Installs and Administers It <!-- omit in toc -->
 
-You are working in the Autocode repository, or you were asked to install Autocode for its owner. This file says what
-this repository is and how to install, check and update Autocode. For every detail, see [`reference.md`](reference.md).
+This guide is for the person who installs and looks after Autocode, or for an AI agent that does it for them. It has
+the steps only. [`README.md`](README.md) explains the same install at more length, and [`reference.md`](reference.md)
+has every detail. "The owner" is the person who runs Autocode.
 
 - [What This Repository Is](#what-this-repository-is)
 - [Rules](#rules)
 - [Install](#install)
 - [Check That It Works](#check-that-it-works)
-- [Update](#update)
+- [Upgrade](#upgrade)
+- [Roll Back](#roll-back)
+- [Replace a Leaked Token](#replace-a-leaked-token)
 - [Uninstall](#uninstall)
 - [When Something Fails](#when-something-fails)
 
 ## What This Repository Is
 
-Autocode lets AI coding agents keep working on their own for days or weeks, work with each other, and stay under
-their owner's control. It links [OpenCode](https://opencode.ai) sessions, on one machine or several, to one Autocode
-server.
+Autocode keeps [OpenCode](https://opencode.ai) agents working while their owner is away: it prompts them again on a
+schedule, carries messages between them and to the owner, and lets the owner watch and stop them.
 
-- **One binary**, `autocode`: the server (`autocode serve`, or a systemd user service), the CLI, the OpenCode plugin
-  (it installs itself) and the web UI are all inside it.
-- **The server** runs on one machine and keeps everything (agents, wakes, messages, the owner's inbox, settings,
-  history) in `~/.autocode/`.
+- **One binary**, `autocode`: the server, the command line, the OpenCode plugin and the web UI are all inside it.
+- **The server** runs on one machine as a systemd user service. Everything it keeps is in `~/.autocode/`.
 - **The plugin** runs in each machine's OpenCode and connects it to the server. It gives sessions the `autocode_*`
   tools and the `autocode` skill, whose text is [`autocode.consumer.agent.md`](autocode.consumer.agent.md).
-- **The code:** `shared/`, `server/`, `plugin/`, `cli/`, `web/`, `tests/`, `ci/`. Development: see `reference.md`,
-  Development.
+- **The code:** `shared/`, `server/`, `plugin/`, `cli/`, `web/`, `tests/`, `ci/`. To change it, read
+  [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
 ## Rules
 
-- Ask the owner before you install, uninstall, restart or change a server that runs: other agents depend on it.
-- Never print, copy or send the tokens (`~/.autocode/admin.token`, `consumer.token`). Pass them as files
-  (`--consumer-token-file`, `--admin-token-file`).
-- Do not delete `~/.autocode/`: it holds the data and the tokens. Back up `autocode.db` before an update.
-- In a session that is an Autocode agent, use the `autocode_*` tools, not the CLI. The owner's CLI commands are
-  refused in an agent's shell.
+- Ask the owner before you install, upgrade, uninstall or restart anything that runs: agents depend on it.
+- A token is a password. Never print one, and never put one on a command line, in a chat, a message, a log or a commit.
+- Tokens move only as files. One copy is needed: `~/.autocode/consumer.token` from the server machine to each other
+  machine, with `scp -p`, which keeps its mode 0600. Copy `admin.token` the same way only to a machine where the
+  owner wants the owner's commands. No other copy of a token is needed.
+- Give tokens to commands as files: `--consumer-token-file`, `--admin-token-file`. Do not use `--consumer-token` or
+  `--admin-token`: the shell history and the process list would show the token.
+- Do not delete `~/.autocode/`: it holds the data and the tokens.
+- In a shell that OpenCode started for a session, the CLI acts as that session's agent (`me`, `fire`, `send`). Of
+  the owner's commands only `autocode install`, `uninstall`, `plugin`, `serve` and `info` work there. The others,
+  such as `hosts`, `agents` and `token rotate`, are refused: if you are an agent, ask the owner to run them in a
+  terminal and to tell you what they print.
+- One command below uses `sudo`. If it asks for a password, ask the owner to run it.
 
 ## Install
 
-You need OpenCode 2.3.0 or later on every machine that should use Autocode. The server runs as a systemd user service
-on Linux (ARM64 or x86-64); the CLI also runs on macOS ARM64. Machines reach the server over the LAN or Tailscale.
+The examples use `machine-a` for the server machine and `machine-b` for a second one. Both may run agents.
 
-1. **Get the binary.** Build it from this repository (needs [Bun](https://bun.sh) and Docker for the web UI):
+You need OpenCode 2.3.0 or later on every machine (`opencode --version`), and Linux with systemd on the server
+machine, ARM64 or x86-64. Run every command as the owner's normal user, not as root. Autocode speaks plain HTTP:
+Tailscale encrypts it, and on a plain LAN the tokens travel unencrypted.
 
-   ```sh
-   bun install
-   ci/dist.sh                       # dist/autocode for this machine
-   AUTOCODE_TARGETS=all ci/dist.sh  # also dist/autocode-linux-arm64, -linux-x64, -darwin-arm64
-   ```
-
-2. **Install the server** on the server machine, as the user who should own it:
+1. **Get the binary.** Releases carry no binaries. Build it on Linux with git, [Bun](https://bun.sh) and Docker:
 
    ```sh
-   ./autocode install --listen localhost,tailscale:4848 --id <server-id>
+   git clone https://github.com/myurasov/Autocode
+   cd Autocode
+   ci/dist.sh
    ```
 
-   It copies itself to `~/.autocode/bin/autocode`, installs and starts the `autocode` service, and saves the admin and
-   consumer tokens in `~/.autocode/` (mode 0600). For a start at boot, the owner runs `loginctl enable-linger $USER`
-   once (it needs root).
+   It worked if the last line names the build, like `build 1: v1.0.0-build1`. The binary is `dist/autocode`, for this
+   machine's CPU. For another CPU, or for a Mac, run `AUTOCODE_TARGETS=all ci/dist.sh`: it also makes
+   `dist/autocode-linux-x64`, `dist/autocode-linux-arm64` and `dist/autocode-darwin-arm64`.
 
-3. **Connect each machine's OpenCode** (the server machine too, if agents run there). Copy the consumer token to that
-   machine as a file (mode 0600), then:
+2. **Install the server** on `machine-a`, in the `Autocode` folder:
 
    ```sh
-   autocode plugin install --url http://<server>:4848 \
-     --consumer-token-file <file> --server-id <server-id> \
-     [--admin-token-file <file>]   # only where the owner runs owner commands
+   dist/autocode install --id home --listen localhost,tailscale:4848
+   sudo loginctl enable-linger $USER
    ```
 
-   Then restart OpenCode servers that were already running: `opencode service restart` for the background service
-   (it closes open TUIs: ask the owner first).
+   - `--id` names the server; `home` is an example. `--listen` says where it answers: `localhost,tailscale:4848` is
+     the default, and `0.0.0.0:4848` is every address of the machine, for a LAN without Tailscale.
+   - `install` copies the binary to `~/.autocode/bin/autocode`, starts the `autocode` service and creates
+     `~/.autocode/admin.token` and `~/.autocode/consumer.token`, mode 0600. It worked if it prints
+     `server home ... answers at http://127.0.0.1:4848`.
+   - The second line keeps the service running after the owner logs out, and starts it at boot. Run it as the
+     owner's user, as written: in a root shell `$USER` is root.
 
-4. **Tell the owner** how to sign in: the web UI at `http://<server>:4848/`, with the admin token from
-   `~/.autocode/admin.token` on the server machine.
+   **Typing `autocode`.** This guide writes `autocode` for `~/.autocode/bin/autocode`. Nothing changes the `PATH` of
+   a terminal: type the full path, or add the folder once and open a new terminal, with
+   `echo 'export PATH="$HOME/.autocode/bin:$PATH"' >> ~/.bashrc`. Scripts that agents start need no setup: the
+   plugin puts that folder first in the `PATH` of their shells, on every host that `autocode hosts` lists with `yes`
+   under SHELL VALUES.
+
+3. **Connect each machine's OpenCode.** On `machine-a`:
+
+   ```sh
+   autocode plugin install --url http://127.0.0.1:4848 --server-id home \
+     --consumer-token-file ~/.autocode/consumer.token
+   ```
+
+   On `machine-b`, where `machine-a` stands for the server machine's Tailscale name or LAN address:
+
+   ```sh
+   mkdir -p ~/.autocode && chmod 700 ~/.autocode
+   scp -p machine-a:.autocode/bin/autocode ~/autocode
+   scp -p machine-a:.autocode/consumer.token ~/.autocode/consumer.token
+   ~/autocode plugin install --url http://machine-a:4848 --server-id home \
+     --consumer-token-file ~/.autocode/consumer.token
+   ```
+
+   - With another CPU on `machine-b`, or on a Mac, copy the matching file from step 1 as `~/autocode` instead. A
+     Mac takes `dist/autocode-darwin-arm64`, also when `machine-a` is ARM64.
+   - `plugin install` copies the binary to `~/.autocode/bin/autocode`. Delete `~/autocode` afterwards.
+   - It worked if it prints `plugin installed in ...` and `client config ... points at home`.
+   - Keep the copied token file: an upgrade runs the same command again.
+   - On `machine-a` the owner's commands work as they are: they use the server's own `admin.token`. To run them on
+     `machine-b` too, copy `admin.token` there the same way and add `--admin-token-file ~/.autocode/admin.token`.
+     Without it, only `autocode info`, `hosts`, `agents`, `costs`, `history` and `settings` (to read) work there.
+     Every other command, `autocode wakes`, `inbox` and `messages` included, is refused.
+
+4. **Restart OpenCode** on each machine where it runs, so that it loads the plugin: `opencode service restart`. It
+   closes OpenCode's open terminal windows, so ask the owner first.
+
+5. **Tell the owner** how to sign in: the web UI is at `http://machine-a:4848/`, and the admin token is the one line
+   in `~/.autocode/admin.token` on `machine-a`. Name the file; do not show its content.
 
 ## Check That It Works
 
-- `autocode info`: the server's ID and version (`v1.0.0-rc4-build<n>`).
-- `autocode hosts`: one line per machine and OpenCode folder, `online yes`. A folder shows up once OpenCode uses it
-  (a TUI opens it, or a prompt runs there).
-- In an OpenCode session: `autocode_me action=status` answers (unregistered at first). Registering:
-  `autocode_me action=register id=test:check description="install check"`, then `autocode agents` lists it;
-  `autocode agents rm test:check` removes it.
-- `systemctl --user status autocode`; logs: `journalctl --user -u autocode`; the plugin's log:
-  `~/.autocode/logs/plugin.log`.
+| Run | It worked if |
+|---|---|
+| `autocode info` | it prints `server home, autocode v1.0.0-build1, for OpenCode v2.3.0 or later, at ...`, with your build's number |
+| `systemctl --user status autocode` on `machine-a` | it says `active (running)` |
+| `autocode hosts`, after OpenCode has opened a project folder | that machine and folder are listed, with `yes` under ONLINE and the plugin's version under PLUGIN |
+| in an OpenCode session: "what is your Autocode status?" | the agent calls `autocode_me` and answers; it is not registered at first |
 
-## Update
+To test a whole round, ask a session to "register with Autocode as `test:check`". `autocode agents` then lists
+`test:check`, and `autocode agents rm test:check` removes it.
 
-1. Build the new binary (Install, step 1).
-2. Back up the data: `sqlite3 ~/.autocode/autocode.db ".backup ~/.autocode/autocode-backup.db"`.
-3. Run the new binary's `install` again on the server machine (same flags). It replaces `~/.autocode/bin/autocode`
-   and restarts the service; the data and tokens stay, and the database is migrated at the start.
-4. On each machine, run `autocode plugin install` again with the new binary (same flags), then restart its running
-   OpenCode servers so they load the new plugin (ask the owner first: a restart closes open TUIs). Check:
-   `autocode hosts` shows the new plugin version for each online folder.
+Logs: the server's with `journalctl --user -u autocode`, the plugin's in `~/.autocode/logs/plugin.log` on each machine.
+
+## Upgrade
+
+1. Build the new binary: `git pull`, then `ci/dist.sh`, in the `Autocode` folder.
+2. On `machine-a`, keep the old binary, back up the database and save the two token files beside it. The backup
+   may run while the server runs:
+
+   ```sh
+   cp -p ~/.autocode/bin/autocode ~/.autocode/bin/autocode-old
+   sqlite3 "$HOME/.autocode/autocode.db" ".backup '$HOME/.autocode/autocode-backup.db'"
+   cp -p ~/.autocode/admin.token ~/.autocode/admin.token.backup
+   cp -p ~/.autocode/consumer.token ~/.autocode/consumer.token.backup
+   ```
+
+   Without the `sqlite3` command, stop the service first (`systemctl --user stop autocode`), then copy
+   `~/.autocode/autocode.db` to `~/.autocode/autocode-backup.db`.
+3. On `machine-a`, run the new binary's `install` with the same flags as before. `systemctl --user cat autocode`
+   shows them in its `ExecStart` line.
+
+   ```sh
+   dist/autocode install --id home --listen localhost,tailscale:4848
+   ```
+
+   It replaces `~/.autocode/bin/autocode` and restarts the service. The data and the tokens stay, and the database
+   is brought up to date at the start. It worked if `autocode info` prints the new version.
+4. On `machine-a`, run the same `autocode plugin install` command as in Install, step 3.
+5. On `machine-b`, keep the old binary the same way. Then copy the new one as `~/autocode` and run the same
+   `~/autocode plugin install` command as in Install, step 3: it replaces `~/.autocode/bin/autocode`.
+6. On every machine: `opencode service restart`. Ask the owner first: turns that run are cut, and Autocode resumes
+   them. It worked if `autocode hosts` shows the new version under PLUGIN for each host that is online.
+
+## Roll Back
+
+An older binary does not open a database that a newer one has changed. It stops with "the database ... is at schema
+N, newer than this autocode knows". Going back then needs the backup from Upgrade, step 2, and loses what happened
+since.
+
+1. On `machine-a`, install the old binary again, with the same flags:
+
+   ```sh
+   ~/.autocode/bin/autocode-old install --id home --listen localhost,tailscale:4848
+   ```
+
+   It worked if `autocode info` prints the old version. Then go to step 3.
+2. If it fails with "the service did not answer", and `journalctl --user -u autocode -n 20` shows the schema message
+   above, put the backup back:
+
+   ```sh
+   systemctl --user stop autocode
+   cp -p "$HOME/.autocode/autocode-backup.db" "$HOME/.autocode/autocode.db"
+   rm -f "$HOME/.autocode/autocode.db-wal" "$HOME/.autocode/autocode.db-shm"
+   systemctl --user start autocode
+   ```
+
+   If a token was replaced after that backup, also put back the two token files saved in Upgrade, step 2, before
+   the start: copy `admin.token.backup` over `admin.token`, and `consumer.token.backup` over `consumer.token`.
+   Without them, follow "The admin token is lost" below, then replace the consumer token.
+3. On every machine, install the plugin from the old binary: the command of Install, step 3, started as
+   `~/.autocode/bin/autocode-old plugin install` on `machine-b`. Then `opencode service restart`.
+
+## Replace a Leaked Token
+
+Run these on `machine-a`. The old token stops working at once. The command prints the path of the new token's file,
+never the token. A leaked admin token means replacing both: with the admin token, one can make a new consumer token.
+
+**The consumer token**
+
+1. On `machine-a`: `autocode token rotate --consumer`. Every session token ends with it. The plugins get new ones
+   by themselves when they reconnect, and shells that a session opens afterwards carry the new token.
+2. On every other machine, copy the new file and install the plugin again with it:
+
+   ```sh
+   scp -p machine-a:.autocode/consumer.token ~/.autocode/consumer.token
+   autocode plugin install --url http://machine-a:4848 --server-id home \
+     --consumer-token-file ~/.autocode/consumer.token
+   ```
+
+   OpenCode needs no restart: a running plugin reads the new token and connects again within about a minute. Until a
+   machine has the new token, its hosts are offline. On `machine-a` the command itself updates the client config.
+3. It worked if `autocode hosts` lists the hosts with `yes` under ONLINE again.
+4. A command that an agent started before the rotation keeps the old token: its closing `autocode fire me ...` is
+   refused. Ask each agent to look at the commands it left running, or fire the wake yourself:
+   `autocode fire AGENT WAKE`.
+
+**The admin token**
+
+1. On `machine-a`: `autocode token rotate --admin`, then `autocode token rotate --consumer` as above.
+2. The owner signs in to the web UI again, with the new token from `~/.autocode/admin.token`.
+3. On every other machine whose `plugin install` had `--admin-token-file`: copy the new `admin.token` there with
+   `scp -p`, and run that command again.
+
+**An agent's session token:** `autocode token rotate AGENT`, where `AGENT` is the agent's ID, such as `kaggle:lead`.
+The Agents tab has the same as **New Token**. Shells that the session opens afterwards carry the new token. A
+command that the session started earlier keeps the old one, and its `autocode fire me ...` is refused.
+
+**The admin token is lost.** No command reads a token back: the server keeps only a hash. If
+`~/.autocode/admin.token` is gone but another machine was connected with `--admin-token-file`, run
+`autocode token rotate --admin` there. If no copy is left, make the server create a new one. On `machine-a`, with
+the `sqlite3` command:
+
+```sh
+systemctl --user stop autocode
+sqlite3 "$HOME/.autocode/autocode.db" "DELETE FROM tokens WHERE kind = 'admin'"
+systemctl --user start autocode
+```
+
+The server makes a new `~/.autocode/admin.token` at that start.
 
 ## Uninstall
 
-- Server: `~/.autocode/bin/autocode uninstall` stops and removes the service; the binary and the data stay.
-- Plugin: `autocode plugin uninstall` on each machine; the client config `~/.autocode/client.json` stays.
-- Removing `~/.autocode/` deletes all data and the tokens: only when the owner asks for it.
+1. On each machine: `autocode plugin uninstall`, then `opencode service restart`. The client config
+   `~/.autocode/client.json` and the binary stay.
+2. On `machine-a`: `autocode uninstall`. It stops and removes the service. The binary and the data stay.
+3. Only when the owner asks for it, remove the rest. This deletes all data and the tokens, on each machine:
+   `rm -rf ~/.autocode`. Also remove the `PATH` line from `~/.bashrc` if you added it.
 
 ## When Something Fails
 
-See `reference.md`, Troubleshooting. The common cases:
+| You see | Check |
+|---|---|
+| `autocode: command not found` | Type `~/.autocode/bin/autocode`, or add the folder to the `PATH` as in Install, step 2. |
+| `autocode hosts` says `no hosts yet`, or lacks a machine | A folder is listed only after OpenCode has opened it, after the restart of Install, step 4. Then read `~/.autocode/logs/plugin.log` on that machine. |
+| `refused (forbidden): this route is not open to a consumer token` | This machine has no admin token: run the command on `machine-a`, or connect this machine with `--admin-token-file`. |
+| "in an agent's shell the CLI has only me, fire and send" | The shell was started by OpenCode for a session: the owner runs that command in a terminal. |
+| "the server at ... is X, not Y" | The server's ID is not the expected one: compare `--id` on the server with `--server-id` on that machine. |
+| `autocode install` waits, then fails with "the service did not answer" | `journalctl --user -u autocode -n 20`: a port in use, an address in `--listen` that this machine does not have, or a `--listen` without `localhost`: `install` checks the service at 127.0.0.1. |
+| a host is marked "too old" | Its OpenCode is older than 2.3.0, so nothing on that machine is served. Update OpenCode there and start it again. |
+| hosts go offline after a consumer token was replaced | That machine still has the old token: Replace a Leaked Token, step 2. |
 
-- `autocode hosts` shows nothing for a machine: the plugin loads with a folder only when OpenCode uses it; read
-  `~/.autocode/logs/plugin.log`.
-- "the server at ... is X, not Y": the expected server ID differs; check `--server-id` and the client config.
-- `autocode install` waits and fails: `journalctl --user -u autocode` (a port in use, a bad `--listen`).
-- Anything you cannot fix: tell the owner what you ran and what it said.
+More symptoms: `reference.md`, Troubleshooting. What you cannot fix: tell the owner what you ran and what it said.

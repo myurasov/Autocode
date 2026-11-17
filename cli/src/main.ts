@@ -47,68 +47,142 @@ import {
 
 const USAGE = `usage: autocode <command> [flags]
 
-owner:
-  serve [--id ID] [--listen localhost,tailscale:4848] [--data DIR]
-                                         run the server
-  install [--listen ...] [--id ...]      install the server as a
-                                         systemd user service (Linux)
-  uninstall                              remove the service (binary, data stay)
-  plugin install --url URL --consumer-token T [--server-id ID]
-      [--admin-token T] [--opencode-config-dir DIR]
+Set Up
+  serve [--id ID] [--listen ADDRESSES] [--data DIR]
+                             run the server in the foreground
+  install [--id ID] [--listen ADDRESSES] [--data DIR]
+                             install the server as a systemd user service
+                             and start it (Linux); the binary goes to
+                             ~/.autocode/bin/autocode
+  uninstall                  remove the service; the binary and data stay
+  plugin install --url URL --consumer-token-file FILE
+      [--admin-token-file FILE] [--server-id ID] [--opencode-config-dir DIR]
+                             connect this machine's OpenCode: the plugin,
+                             the client config, and the binary copied to
+                             ~/.autocode/bin/autocode. --admin-token-file
+                             is for the owner's commands on a machine other
+                             than the server's. --consumer-token TOKEN and
+                             --admin-token TOKEN take a token itself.
   plugin uninstall [--opencode-config-dir DIR]
-  info                                   the server's ID and version
-  agents [PATTERN] | agents rm AGENT     list agents (spend today, context
-                                         share), or unregister one
-  agents register AGENT --session SES [--force]
-                                         bind an ID to a session
-                                         (--force moves it from a live one)
-  hosts                                  the plugin instances (machine, folder)
-                                         and whether they are online
-  token rotate AGENT                     replace an agent's session token
-  settings [--agent ID] | settings set|unset KEY [VALUE]
-      [--agent ID | --match PATTERN]
-  history [--agent ID] [--kind KIND] [--since TIME] [--limit N]
-  costs [AGENT] [--match PATTERN] [--days X]
-                                         every agent's spend (today, total;
-                                         unregistered ones too, and the
-                                         totals), cap, what is left, context
-                                         and its compaction threshold; one
-                                         agent's days; --days X: the total
-                                         over the last X days
-  inbox [--all] [--match P] | inbox close ID
-                                         the owner's inbox (P: agents)
-  inbox close --all [--match P]          close its messages and alerts
-  answer ID TEXT...                      answer a message, question, permission
-                                         (once|always|reject) or approval
-  pause AGENT | resume AGENT             pause or resume an agent's injections
-  retry AGENT                            retry an agent in the error state now
-  locks [PATTERN] | locks release NAME AGENT
-                                         every lock (holders, queue); free one
-  job set NAME --host H --model M --prompt P --trigger T [--to TO]
-      [--timeout 1h] [--run-usd 2] [--keep-session]
-  job list | job run NAME [--text T] | job runs [NAME] | job delete NAME
-  job delete-session RUN                 jobs and their runs (spawned agents);
-                                         a failed run's kept session
-  stop-all | resume-all                  pause every agent and interrupt every
-                                         turn; resume what stop-all paused
-  wakes [AGENT]                          every wake, or one agent's
-  wake set AGENT NAME --trigger T --text TEXT [--check CMD]
-  wake cancel AGENT NAME
-  messages [--from P] [--to P] | messages read ID
-                                         every message (P: patterns); one whole
-  fire AGENT WAKE [--text TEXT]          deliver a wake now
-  send TO TEXT... [--subject S] [--reply-to ID]
-                                         TO: an ID, a pattern, a list
+                             remove the plugin; the client config stays
+  version                    this binary's version (also --version, -v)
+  help                       this text (also --help, -h)
 
-scripts in an agent's shell (only these and the setup commands above;
-the rest is the tools'):
-  me                                     this agent's registration and status
-  fire me WAKE [--text TEXT]             deliver one of its wakes now
-  send TO TEXT... [--subject S] [--reply-to ID]
-                                         TO: an ID, a pattern, a list or owner
+Look
+  info                       the server's ID and version
+  hosts                      the OpenCode folders that have connected:
+                             online or not, OpenCode's and the plugin's
+                             version
+  agents [PATTERN]           agents: status, spend today, context
+  costs [--match PATTERN] [--days N]
+                             every agent's spend, daily cap and context;
+                             --days N: the total over the last N days
+  costs AGENT                one agent's spend, with its spend per day
 
-flags everywhere: --json, --url URL, --token TOKEN,
-                  --server-id ID (refuse a server with another ID)`
+Agents
+  agents register AGENT --session SESSION [--description TEXT] [--force]
+                             give a session an agent ID; --force takes the
+                             ID from a session that still exists
+  agents rm AGENT            unregister an agent; its history stays
+  pause AGENT                send it no new prompts; a running turn goes on
+  resume AGENT               resume a paused agent
+  retry AGENT                retry an agent in the error state now
+  stop-all                   pause every agent and interrupt their turns,
+                             and their Subagents
+  resume-all                 resume the agents that stop-all paused
+
+Wakes
+  wakes [AGENT]              every wake, or one agent's
+  wake set AGENT NAME --trigger TRIGGER --text TEXT [--check COMMAND]
+                             set or replace a wake
+  wake cancel AGENT NAME     remove a wake
+  fire AGENT WAKE [--text TEXT]
+                             deliver a wake now
+
+Messages and Inbox
+  send TO TEXT... [--subject SUBJECT] [--reply-to ID]
+                             send a message as the owner; TO: an agent ID,
+                             a pattern or a comma list
+  messages [--from PATTERN] [--to PATTERN]
+                             the newest 200 messages, with their state
+  messages read ID           one message, whole
+  inbox [--all] [--match PATTERN]
+                             the open Inbox items; --all: closed ones too;
+                             --match: only those of matching agents
+  answer ID TEXT...          answer a message, a question, a permission
+                             (once, always, reject) or an approval
+  inbox close ID             close a message or an alert; an ask (ask_...)
+                             too: its agent stops waiting
+  inbox close --all [--match PATTERN]
+                             close every open message and alert; asks stay
+
+Locks
+  locks [PATTERN]            every lock, with its holders and its queue
+  locks release NAME AGENT   end an agent's hold, or its place in the queue
+
+Jobs
+  job set NAME --host HOST --model PROVIDER/MODEL --prompt TEXT
+      --trigger TRIGGER [--to TO] [--description TEXT] [--variant VARIANT]
+      [--agent OPENCODE_AGENT] [--timeout DURATION] [--run-usd DOLLARS]
+      [--keep-session]       set or replace a job
+  job list                   the jobs, with their next and last runs
+  job run NAME [--text TEXT]
+                             start a run now
+  job runs [NAME]            the runs: who started each, state, cost, result
+  job delete NAME            delete a job
+  job delete-session RUN     delete the session that a failed run left
+
+Settings and History
+  settings                   every setting, the rules, agents' own values
+  settings --agent AGENT     the values one agent gets, and from where
+  settings set KEY VALUE [--agent AGENT | --match PATTERN]
+  settings unset KEY [--agent AGENT | --match PATTERN]
+                             set or clear a value: server-wide, for one
+                             agent, or for the agents a pattern matches
+  history [--agent AGENT] [--kind KIND] [--since TIME] [--until TIME]
+      [--limit N]            what happened, newest first: 100 entries, or
+                             N (up to 1000)
+
+Tokens
+  Three forms; give an agent or one flag, never two of them:
+  token rotate AGENT         replace an agent's session token; a command
+                             it started earlier keeps the old one
+  token rotate --admin       replace the admin token; the new one is saved
+                             on the server (admin.token), never printed
+  token rotate --consumer    replace the consumer token (consumer.token);
+                             every session token ends with it; then run
+                             plugin install again on every other machine
+
+In an Agent's Shell
+  A script that an agent starts acts as that agent. It finds autocode by
+  name where hosts says yes under SHELL VALUES. Only these commands work
+  there, besides info, serve, install, uninstall and plugin:
+  me                         this agent's registration and status
+  fire me|AGENT WAKE [--text TEXT]
+                             deliver one of this agent's wakes now, or
+                             another agent's
+  send TO TEXT... [--subject SUBJECT] [--reply-to ID]
+                             send a message; TO may also be owner
+
+Flags Everywhere
+  --json                     print the data as JSON, not as a table
+  --url URL                  the server's address
+  --token TOKEN              the token to use
+  --server-id ID             refuse a server that has another ID
+
+Environment
+  AUTOCODE_URL               the server's address, without --url
+  AUTOCODE_TOKEN             the token to use, without --token
+  AUTOCODE_SERVER_ID         the server ID to expect, without --server-id
+  AUTOCODE_HOME              the Autocode home, in place of ~/.autocode
+  AUTOCODE_CONFIG            the client config, in place of client.json
+                             in the home
+  With no token given: the client config's admin token; on the server's
+  own machine its admin.token; else the client config's consumer token.
+
+AGENT is an agent's ID, like kaggle:lead. PATTERN matches IDs with *, like
+kaggle:*; several are separated by commas.
+Exit codes: 0 done, 1 refused or failed, 2 wrong usage, 3 server unreachable.`
 
 // What a script in an agent's shell may run.
 const SHELL_COMMANDS = new Set([

@@ -5,10 +5,12 @@
  * autocode.consumer.agent.md): the help topics the reference lists are the
  * guide's, notices come from `autocode`, a script in an agent's shell is not
  * offered the API, prose lines are at most 120 columns, and what went is
- * gone everywhere people read.
+ * gone everywhere people read. For 1.0.0 (the owner, 2026-11-17): building
+ * and testing are in DEVELOPMENT.md, and the reference names every command
+ * of the CLI, every kind of History, and the steps an operator needs.
  */
 import { expect, test } from "bun:test"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { TOPICS } from "../../plugin/src/guide.ts"
 
@@ -16,10 +18,12 @@ const root = resolve(import.meta.dir, "../..")
 const read = (path: string) => readFileSync(resolve(root, path), "utf8")
 const flat = (path: string) => read(path).replace(/\s+/g, " ")
 
-// What people read: the README, the reference, the agents' files, Help.
+// What people read: the README, the reference, the contributors' file, the
+// agents' files, Help.
 const DOCS = [
   "README.md",
   "reference.md",
+  "DEVELOPMENT.md",
   "AGENT.md",
   "autocode.admin.agent.md",
   "autocode.consumer.agent.md",
@@ -88,7 +92,12 @@ test("the docs' prose lines are at most 120 columns", () => {
 })
 
 test("the docs tell no development history", () => {
-  for (const path of ["reference.md", "AGENT.md", "autocode.admin.agent.md"]) {
+  for (const path of [
+    "reference.md",
+    "DEVELOPMENT.md",
+    "AGENT.md",
+    "autocode.admin.agent.md",
+  ]) {
     const text = flat(path)
     expect(text, path).not.toMatch(/\btier 0[a-g]\b/i)
     expect(text, path).not.toMatch(/\(now\)/)
@@ -141,4 +150,100 @@ test("README and the reference name the Costs tab and autocode costs", () => {
 // even with nothing waiting.
 test("the reference says a compaction comes even with nothing waiting", () => {
   expect(flat("reference.md")).toContain("even when nothing waits for it")
+})
+
+// For 1.0.0: building, the suites and the CI scripts moved out of the
+// reference, which keeps a pointer.
+test("the reference points to DEVELOPMENT.md, which has the build and the suites", () => {
+  expect(read("reference.md")).toContain("(DEVELOPMENT.md)")
+  const dev = read("DEVELOPMENT.md")
+  for (const part of ["## Build", "## Tests", "ci/dist.sh", "ci/run.sh"])
+    expect(dev, part).toContain(part)
+  // the build counter is explained, a fresh clone's first build too
+  expect(flat("DEVELOPMENT.md")).toContain("the first build is number 1")
+  expect(read("reference.md")).not.toContain("ci/live-server.sh")
+})
+
+test("the reference names every command of the CLI, and the flags of each", () => {
+  const ref = read("reference.md")
+  const main = read("cli/src/main.ts")
+  const commands = [...main.matchAll(/^ {4}case "([a-z-]+)":/gm)].map(
+    (m) => m[1],
+  )
+  expect(commands.length).toBeGreaterThan(20)
+  for (const command of commands)
+    expect(ref, command).toContain(`\`autocode ${command}`)
+  // each flag's value is named as the usage text names it
+  const usage = /const USAGE = `([^`]*)`/.exec(main)?.[1] ?? ""
+  const values = usage.match(/--[a-z-]+ [A-Z][A-Z_/]*/g) ?? []
+  expect(values.length).toBeGreaterThan(25)
+  for (const value of new Set(values)) expect(ref, value).toContain(value)
+  for (const flag of [
+    "--consumer-token-file FILE",
+    "--admin-token-file FILE",
+    "--force",
+    "--keep-session",
+    "token rotate --admin",
+    "token rotate --consumer",
+    "autocode version",
+    "--json",
+  ])
+    expect(ref, flag).toContain(flag)
+  // the flags of `serve` for development and tests: DEVELOPMENT.md only
+  const dev = read("DEVELOPMENT.md")
+  for (const flag of ["--web-dir", "--poll-wait", "--offline-after"]) {
+    expect(dev, flag).toContain(flag)
+    expect(ref, flag).not.toContain(flag)
+  }
+  // exit codes are every command's, in a section of their own
+  expect(ref).toContain("### Exit Codes")
+})
+
+test("the reference lists every kind of History", () => {
+  const ref = read("reference.md")
+  const dir = resolve(root, "server/src")
+  const kinds = new Set<string>()
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith(".ts")) continue
+    const source = readFileSync(resolve(dir, file), "utf8")
+    // the first argument of each record(...): one kind, or one of two
+    for (const call of source.matchAll(/\.record\(([^,{]*)/g))
+      for (const kind of (call[1] ?? "").matchAll(/"([a-z_.]+)"/g))
+        kinds.add(kind[1] ?? "")
+  }
+  expect(kinds.size).toBeGreaterThan(60)
+  for (const kind of kinds) expect(ref, kind).toContain(`\`${kind}\``)
+})
+
+// What the operator's test read could not find or found twice, differently.
+test("the reference has the operator's procedures and one answer each", () => {
+  const ref = read("reference.md")
+  for (const heading of [
+    "### Back Up",
+    "### Upgrade",
+    "### Roll Back",
+    "### Move the Server",
+    "### Replace a Leaked Token",
+    "### Stop an Agent That Overspends",
+    "### What the Database Keeps",
+    "### I Cannot Sign In",
+    "### The Server Does Not Start",
+    "### A Host Is Offline Though OpenCode Runs",
+    "### The Tools Are Missing",
+    "### A Message Does Not Arrive",
+  ])
+    expect(ref, heading).toContain(heading)
+  const text = flat("reference.md")
+  // a deleted session leaves its agent registered, offline
+  expect(text).toContain("A deleted session does not unregister its agent")
+  expect(text).not.toMatch(/Unregistered by[^.]*when its session is deleted/)
+  // an older binary refuses a newer database: the backup is needed
+  expect(text).toContain("newer than this autocode knows")
+  // no command stops one agent's turn or one run
+  expect(text).toContain("No Autocode command interrupts the turn of one agent")
+  expect(text).toContain("No command stops one run")
+  // the web UI has tabs, not pages
+  expect(text).not.toMatch(
+    /\b(Agents|Hosts|Wakes|Jobs|Locks|Messages|Settings) page\b/,
+  )
 })

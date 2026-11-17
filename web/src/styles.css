@@ -265,6 +265,11 @@ nav a.on {
 #frame:has(> app-help-page) {
   overflow: visible;
 }
+/* Help's numbered steps: indented and spaced as its other lists. */
+app-help-page article ol {
+  padding-left: 1.5rem;
+  margin: 0.3rem 0 0.7rem;
+}
 /* A page's first item starts at the top of its frame. */
 #frame > :first-child,
 #frame > router-outlet + * > :first-child {

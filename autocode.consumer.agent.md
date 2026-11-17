@@ -335,10 +335,14 @@ submission, a refresh of shared data.
   that turn, bring your work to a stable state and write down in files
   what you need to go on. After it, `[autocode] compaction done` tells
   you to go on with what is left. `autocode_me action=compact` asks for one
-  after your turn (no notice then). So keep your working state in
-  files, not only in the conversation.
+  after your turn (no notice then). If OpenCode could not do the one you
+  asked for, you get `[autocode] compaction failed`: nothing changed; ask
+  again if you still want it. So keep your working state in files, not
+  only in the conversation.
 - You are unregistered `expire_after` (14 days unless the owner set
-  another) after your session's last turn, and when it is deleted.
+  another) after your session's last turn. If your session is deleted,
+  your ID stays listed, offline, until then, and another session may
+  register it.
 
 <!-- topic: jobs -->
 
