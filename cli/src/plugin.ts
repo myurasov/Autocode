@@ -15,8 +15,9 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { apiCall, shownVersion } from "@autocode/shared"
 import { CliError, type Parsed } from "./args.ts"
-import { writeClientConfig } from "./connect.ts"
+import { autocodeHome, writeClientConfig } from "./connect.ts"
 import bundle from "./generated/plugin.ts"
+import { copySelf, ownBinary } from "./install.ts"
 
 export function opencodeConfigDir(flag?: string): string {
   if (flag) return flag
@@ -85,7 +86,11 @@ export async function pluginInstall(args: Parsed): Promise<number> {
     server_id: expected,
     admin_token: secret(args, "admin-token"),
   })
+  // the binary where this machine's agents find it (their shells' PATH)
+  const binary = ownBinary(process.execPath, autocodeHome())
+  if (binary) copySelf(binary)
   console.log(`plugin installed in ${dir}`)
+  if (binary) console.log(`autocode copied to ${binary}`)
   console.log(
     `client config ${config} points at ${info.id} ` +
       `${shownVersion(info.version)} (${url})`,

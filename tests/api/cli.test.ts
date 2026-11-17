@@ -199,8 +199,11 @@ describe("autocode CLI", () => {
     const res = await cli(["hosts"], asAdmin())
     expect(res.code).toBe(0)
     expect(res.stdout).toMatch(
-      /ID\s+MACHINE\s+FOLDER\s+ONLINE\s+PROCESS\s+SHELL VALUES/,
+      /ID\s+MACHINE\s+FOLDER\s+ONLINE\s+PROCESS\s+SHELL VALUES\s+OPENCODE\s+PLUGIN\s+LAST SEEN/,
     )
+    // each host's plugin version, beside OpenCode's (the documentation pass
+    // for 1.0.0: the upgrade check reads it)
+    expect(res.stdout).toMatch(/m:1\s.*\sv2\.3\.0\s+v0\.1\.0\s/)
     expect(res.stdout).toMatch(
       /m:1\s+m\s+\/work\s+yes\s+service 4242\s+yes\s+v2\.3\.0\s/,
     )
@@ -554,6 +557,28 @@ describe("autocode CLI", () => {
       )
       expect(out.code).toBe(0)
       expect(existsSync(plugin)).toBe(false)
+    } finally {
+      rmSync(own, { recursive: true, force: true })
+    }
+  })
+
+  // The documentation pass for 1.0.0: on the server machine, after a plain
+  // plugin install, the owner's commands were refused (the consumer token).
+  test("on the server machine the owner's commands use the server's admin.token, also after a plain plugin install", async () => {
+    const own = mkdtempSync(join(tmpdir(), "autocode-cli-server-"))
+    try {
+      mkdirSync(join(own, ".autocode"), { mode: 0o700 })
+      writeFileSync(join(own, ".autocode", "admin.token"), `${t.admin}\n`, {
+        mode: 0o600,
+      })
+      writeFileSync(
+        join(own, ".autocode", "client.json"),
+        JSON.stringify({ url: t.url, consumer_token: t.consumer }),
+        { mode: 0o600 },
+      )
+      // the owner's inbox is not open to a consumer token
+      const res = await cli(["inbox"], {}, own)
+      expect(res.code, res.stderr).toBe(0)
     } finally {
       rmSync(own, { recursive: true, force: true })
     }

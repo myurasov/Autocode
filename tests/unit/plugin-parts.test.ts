@@ -20,7 +20,11 @@ import {
   processOf,
   readClientConfig,
 } from "../../plugin/src/config.ts"
-import { serveApiOf, shellVariables } from "../../plugin/src/localapi.ts"
+import {
+  binDir,
+  serveApiOf,
+  shellVariables,
+} from "../../plugin/src/localapi.ts"
 import { log, logPath } from "../../plugin/src/log.ts"
 import { SessionTokens } from "../../plugin/src/sessions.ts"
 import { runMe } from "../../plugin/src/tools.ts"
@@ -195,6 +199,27 @@ describe("plugin: opencode serve's local API, from its documented flags", () => 
       AUTOCODE_TOKEN: "acs_new",
       AUTOCODE_SESSION: "ses_1",
     })
+  })
+
+  /*
+   * The documentation pass for 1.0.0 (a newcomer could not run `autocode` in
+   * an agent's script: nothing put it on the PATH): the folder of the
+   * installed binary goes to the front of the PATH, once.
+   */
+  test("a session's shells find autocode: its folder goes to the front of the PATH, once", () => {
+    const bin = "/home/someone/.autocode/bin"
+    expect(shellVariables({ PATH: "/usr/bin:/bin" }, {}, bin).PATH).toBe(
+      `${bin}:/usr/bin:/bin`,
+    )
+    // there already (anywhere): as it is
+    expect(shellVariables({ PATH: `/usr/bin:${bin}:/bin` }, {}, bin).PATH).toBe(
+      `/usr/bin:${bin}:/bin`,
+    )
+    // no PATH at all: the folder alone
+    expect(shellVariables({}, {}, bin).PATH).toBe(bin)
+    // no installed binary: nothing changes
+    expect(shellVariables({ PATH: "/bin" }, {}, undefined).PATH).toBe("/bin")
+    expect(binDir("/nowhere/at/all")).toBeUndefined()
   })
 })
 

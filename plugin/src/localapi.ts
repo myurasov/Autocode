@@ -10,6 +10,8 @@
  * a turn, and for the question tool's forms (tier 0d), which the plugin
  * context does not offer.
  */
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import { discover } from "@opencode/client/service"
 
 export interface LocalApi {
@@ -97,18 +99,36 @@ export async function findLocalApi(
   return undefined
 }
 
+// The folder of the installed autocode binary (the Autocode home's bin, where
+// `autocode install` and `autocode plugin install` put it), when it is there.
+export function binDir(home: string): string | undefined {
+  const dir = join(home, "bin")
+  return existsSync(join(dir, "autocode")) ? dir : undefined
+}
+
+// A PATH with a folder at its front, unless it is in it already.
+export function pathWith(path: string | undefined, bin?: string): string {
+  const parts = (path ?? "").split(":").filter(Boolean)
+  if (!bin || parts.includes(bin)) return parts.join(":")
+  return [bin, ...parts].join(":")
+}
+
 /*
  * A session's shell environment: OpenCode's own (the values that are set)
- * plus the session's values, which win.
+ * plus the session's values, which win; and, so that a script finds
+ * `autocode` by name, the installed binary's folder at the front of the PATH.
  */
 export function shellVariables(
   base: Record<string, string | undefined>,
   values: Record<string, string>,
+  bin?: string,
 ): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries(base))
     if (typeof value === "string") out[key] = value
-  return { ...out, ...values }
+  const all = { ...out, ...values }
+  if (bin) all.PATH = pathWith(all.PATH, bin)
+  return all
 }
 
 export async function setEnvironment(

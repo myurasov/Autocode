@@ -92,7 +92,8 @@ export async function agents(args: Parsed): Promise<number> {
     const session = args.flags.session
     if (!id || !session)
       throw new CliError(
-        "usage: autocode agents register <agent> --session <session> [--force]",
+        "usage: autocode agents register AGENT --session SESSION " +
+          "[--description TEXT] [--force]",
         2,
       )
     const res = await c.call("POST", "/v1/agents", {
@@ -166,6 +167,8 @@ export async function hosts(args: Parsed): Promise<number> {
           (h.opencode_supported === false
             ? ` (too old: needs ${shownVersion(MIN_OPENCODE)} or later)`
             : ""),
+        // the plugin's version, beside OpenCode's
+        shownVersion(h.plugin_version ?? ""),
         local(h.last_seen),
       ]),
       [
@@ -176,6 +179,7 @@ export async function hosts(args: Parsed): Promise<number> {
         "PROCESS",
         "SHELL VALUES",
         "OPENCODE",
+        "PLUGIN",
         "LAST SEEN",
       ],
     )

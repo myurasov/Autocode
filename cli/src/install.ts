@@ -24,6 +24,26 @@ import {
 import { CliError, type Parsed } from "./args.ts"
 import { autocodeHome } from "./connect.ts"
 
+/*
+ * Where `plugin install` copies the binary it runs from, so that agents'
+ * scripts on this machine find `autocode` (the plugin puts this folder on
+ * their PATH): the Autocode home's bin, as `install` does. Nothing for a
+ * development run (bun), or when it runs from there already.
+ */
+export function ownBinary(execPath: string, home: string): string | undefined {
+  const target = join(home, "bin", "autocode")
+  if (!basename(execPath).startsWith("autocode")) return undefined
+  return resolve(execPath) === target ? undefined : target
+}
+
+// Copies the running binary to a path, whole or not at all.
+export function copySelf(target: string) {
+  mkdirSync(join(target, ".."), { recursive: true, mode: 0o700 })
+  copyFileSync(process.execPath, `${target}.new`)
+  chmodSync(`${target}.new`, 0o755)
+  renameSync(`${target}.new`, target)
+}
+
 function quote(arg: string): string {
   return /[\s"\\]/.test(arg) ? `"${arg.replace(/(["\\])/g, "\\$1")}"` : arg
 }
@@ -167,7 +187,7 @@ export async function install(args: Parsed): Promise<number> {
   if (!linger.out.includes("Linger=yes"))
     console.log(
       "note: lingering is off, so the service starts at login, not at boot " +
-        "(loginctl enable-linger)",
+        "(sudo loginctl enable-linger $USER)",
     )
   return 0
 }

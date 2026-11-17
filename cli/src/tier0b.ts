@@ -376,9 +376,10 @@ export async function job(args: Parsed): Promise<number> {
   if (sub === "set") {
     if (!name || !f.host || !f.model || !f.prompt || !f.trigger)
       usage(
-        "job set NAME --host H --model PROVIDER/MODEL --prompt P " +
-          "--trigger T [--to TO] [--description D] [--variant V] " +
-          "[--agent A] [--timeout 1h] [--run-usd 2] [--keep-session]",
+        "job set NAME --host HOST --model PROVIDER/MODEL --prompt TEXT " +
+          "--trigger TRIGGER [--to TO] [--description TEXT] " +
+          "[--variant VARIANT] [--agent OPENCODE_AGENT] " +
+          "[--timeout DURATION] [--run-usd DOLLARS] [--keep-session]",
       )
     const res = await c.call("PUT", `/v1/jobs/${enc(name)}`, {
       host: f.host,

@@ -8,7 +8,13 @@ import { carryOut, formEvent, listOf, permissionEvent } from "./asks.ts"
 import { Channel, type Instruction } from "./channel.ts"
 import { runCheck } from "./checks.ts"
 import { request, ServerError } from "./client.ts"
-import { hostId, machineName, processOf, readClientConfig } from "./config.ts"
+import {
+  autocodeHome,
+  hostId,
+  machineName,
+  processOf,
+  readClientConfig,
+} from "./config.ts"
 import { costEvent, windowOf } from "./costs.ts"
 import { sessionIsGone } from "./errors.ts"
 import {
@@ -22,9 +28,11 @@ import {
 import { agentTitle, lastReply, spawnInput } from "./jobs.ts"
 import {
   activeSessions,
+  binDir,
   cancelForm,
   findLocalApi,
   listForms,
+  pathWith,
   replyForm,
   setEnvironment,
   shellVariables,
@@ -255,7 +263,13 @@ export default {
     const putShellValues = async (session: string, root: string) => {
       if (!api) return
       const values = await valuesFor(root)
-      await setEnvironment(api, session, shellVariables(process.env, values))
+      // with the installed binary's folder on the PATH: scripts call
+      // `autocode` by name
+      await setEnvironment(
+        api,
+        session,
+        shellVariables(process.env, values, binDir(autocodeHome())),
+      )
       shellSet.set(session, { root, token: values.AUTOCODE_TOKEN })
     }
     // Once per session at a time; a failure leaves the shell as it was.
@@ -363,6 +377,8 @@ export default {
           try {
             Object.assign(env, await valuesFor(session))
           } catch {}
+          // a check finds `autocode` by name, as the session's shells do
+          env.PATH = pathWith(env.PATH, binDir(autocodeHome()))
           return await runCheck({
             command: String(p.command),
             directory: String(p.directory || directory),

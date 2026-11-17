@@ -62,6 +62,29 @@ export function writeClientConfig(update: ClientConfigFile): string {
   return path
 }
 
+/*
+ * The token for the owner's commands, outside an agent's shell: the client
+ * config's admin token; else, for a server on this machine, the server's own
+ * admin.token (so the owner's commands work there after a plain `plugin
+ * install`, whose config holds only the consumer token); else the config's
+ * consumer token; else that file.
+ */
+export function ownerToken(
+  config: ClientConfigFile,
+  at: { url: string; file?: string },
+): string | undefined {
+  if (config.admin_token) return config.admin_token
+  let own = false
+  try {
+    const host = new URL(at.url).hostname.replace(/^\[|\]$/g, "")
+    own = host === "127.0.0.1" || host === "localhost" || host === "::1"
+  } catch {
+    // not a URL: the request fails later and says so
+  }
+  if (own && at.file) return at.file
+  return config.consumer_token ?? at.file
+}
+
 export interface Connection {
   url: string
   token?: string
@@ -99,9 +122,11 @@ export function connect(args: Parsed): Connection {
   const agentShell = inAgentShell()
   let token = args.flags.token ?? process.env.AUTOCODE_TOKEN
   if (!token && !agentShell) {
-    token = config.admin_token ?? config.consumer_token
     const file = join(autocodeHome(), "admin.token")
-    if (!token && existsSync(file)) token = readFileSync(file, "utf8").trim()
+    token = ownerToken(config, {
+      url,
+      file: existsSync(file) ? readFileSync(file, "utf8").trim() : undefined,
+    })
   }
   let checked: Promise<void> | undefined
   const check = async () => {

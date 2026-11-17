@@ -20,6 +20,9 @@ import { fetchJson, until } from "../helpers/wait.ts"
 const probe =
   'echo "url=$AUTOCODE_URL server=$AUTOCODE_SERVER_ID ' +
   'session=$AUTOCODE_SESSION own=[$FAKE_MODEL_URL]"; ' +
+  // where `autocode plugin install` put the binary, first on the PATH
+  'echo "path=${PATH%%:*} bin=$(test -x "$HOME/.autocode/bin/autocode" ' +
+  '&& echo yes) found=$(command -v autocode)"; ' +
   'curl -s --max-time 5 -H "Authorization: Bearer $AUTOCODE_TOKEN" ' +
   '"$AUTOCODE_URL/v1/me"'
 
@@ -46,6 +49,13 @@ test.each(nodes)(
     expect(out).toContain(`"session":"${s.id}"`)
     // the session environment replaces OpenCode's own: the plugin keeps it
     expect(out).toContain(`own=[http://fake-model:9000/${node}/v1]`)
+    // scripts find autocode by name: plugin install copied the binary to the
+    // Autocode home, and the plugin put its folder first on the PATH (the
+    // documentation pass for 1.0.0)
+    expect(out).toContain(
+      "path=/home/dev/.autocode/bin bin=yes " +
+        "found=/home/dev/.autocode/bin/autocode",
+    )
   },
 )
 
