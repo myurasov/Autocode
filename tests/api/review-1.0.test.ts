@@ -138,6 +138,65 @@ describe("a host whose OpenCode is older than the minimum", () => {
     )
   })
 
+  /*
+   * Found on the live data before the 1.0.0 deploy: the mark came from the
+   * version a host record holds, so every offline record of a folder that
+   * was last used with an older OpenCode (weeks ago, before the minimum)
+   * showed as "too old", in the Hosts tab's default view. Only a host whose
+   * OpenCode was refused is marked.
+   */
+  test("only a refused host is marked: a record that went offline with an older OpenCode before is not", async () => {
+    await hello(t, "m:2", { process: { kind: "tui", pid: 78 } })
+    t.server.db
+      .query(
+        "UPDATE hosts SET opencode_version = '2.2.0', online = 0 " +
+          "WHERE id = 'm:2'",
+      )
+      .run()
+    expect((await old()).status).toBe(426)
+    const hosts = (await owner("GET", "/v1/hosts")).body.hosts
+    const stale = hosts.find((h: any) => h.id === "m:2")
+    expect(stale).toMatchObject({
+      online: false,
+      opencode_version: "2.2.0",
+      opencode_supported: true,
+    })
+    expect(stale).not.toHaveProperty("opencode_needs")
+    expect(hosts.find((h: any) => h.id === HOST)).toMatchObject({
+      online: false,
+      opencode_version: "2.2.0",
+      opencode_supported: false,
+      opencode_needs: "2.3.0",
+    })
+    // after the update it is served again, and the mark is gone
+    expect((await hello(t, HOST)).status).toBe(200)
+    expect(
+      (await owner("GET", "/v1/hosts")).body.hosts.find(
+        (h: any) => h.id === HOST,
+      ),
+    ).toMatchObject({ online: true, opencode_supported: true })
+  })
+
+  // Such a record's folder is one the loader still sees to: its agent's
+  // wake raises the alert that its OpenCode is gone (a TUI's own server).
+  test("an offline record with an older OpenCode is not taken for a refused host by the loader", async () => {
+    const a = await registered(t, HOST, "ses_a", "team:a")
+    await sent()
+    await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "every 1m" })
+    t.server.db
+      .query(
+        "UPDATE hosts SET opencode_version = '2.2.0', online = 0 " +
+          "WHERE id = ?",
+      )
+      .run(HOST)
+    t.clock.advance(2 * 60_000)
+    t.server.tick()
+    await Bun.sleep(50)
+    const alerts = await titles()
+    expect(alerts.length).toBe(1)
+    expect(alerts[0]).not.toContain("too old")
+  })
+
   test("one alert for it, not again once closed, and none that its OpenCode is gone", async () => {
     const a = await registered(t, HOST, "ses_a", "team:a")
     await sent()

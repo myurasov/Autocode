@@ -71,6 +71,20 @@ function processOf(value: any): { kind: string; pid: number | null } {
   return { kind, pid }
 }
 
+/*
+ * Whether a host's last hello was refused because its OpenCode is older than
+ * the minimum: a refused host has no instance (see hello). A record that
+ * holds an older version from the time before the minimum, offline since, is
+ * not one: it is just offline (found on the live data before 1.0.0: weeks-old
+ * folders all showed as "too old").
+ */
+export function refusedAsOld(h: {
+  instance?: string | null
+  opencode_version?: string | null
+}): boolean {
+  return h.instance === "" && opencodeTooOld(h.opencode_version ?? "")
+}
+
 export class Hosts {
   // Raised when the consumer token is replaced: polls opened with the old one
   // end (the review before 1.0.0).
@@ -132,13 +146,14 @@ export class Hosts {
     return host
   }
 
-  // A host whose OpenCode is older than the minimum is not served.
+  // A host whose OpenCode was refused as older than the minimum is not
+  // served.
   requireSupported(id: string) {
-    const version = this.row(id)?.opencode_version
-    if (typeof version === "string" && opencodeTooOld(version))
+    const row = this.row(id)
+    if (row && refusedAsOld(row))
       throw new AutocodeError(
         "opencode_too_old",
-        opencodeTooOldText(version),
+        opencodeTooOldText(row.opencode_version),
         426,
       )
   }
@@ -771,12 +786,10 @@ export class Hosts {
       online: !!h.online,
       instance: h.instance,
       opencode_version: h.opencode_version,
-      // false: older than the minimum, opencode_needs (the owner,
-      // 2026-11-17); such a host is not served
-      opencode_supported: !opencodeTooOld(h.opencode_version ?? ""),
-      ...(opencodeTooOld(h.opencode_version ?? "")
-        ? { opencode_needs: MIN_OPENCODE }
-        : {}),
+      // false: its OpenCode was refused as older than the minimum, with
+      // opencode_needs (the owner, 2026-11-17); such a host is not served
+      opencode_supported: !refusedAsOld(h),
+      ...(refusedAsOld(h) ? { opencode_needs: MIN_OPENCODE } : {}),
       plugin_version: h.plugin_version,
       process_kind: h.process_kind,
       process_pid: h.process_pid,

@@ -22,14 +22,13 @@ import {
   formatDuration,
   formatTrigger,
   localTime,
-  opencodeTooOld,
   parseDuration,
   resolveSettings,
   type Trigger,
 } from "@autocode/shared"
 import type { CompactDue } from "./costs.ts"
 import type { History } from "./history.ts"
-import type { Hosts } from "./hosts.ts"
+import { type Hosts, refusedAsOld } from "./hosts.ts"
 import type { Loader } from "./loader.ts"
 import type { Inbox, Messages } from "./messages.ts"
 import type { Retries, RetryNote } from "./retries.ts"
@@ -437,7 +436,7 @@ export class Delivery {
                 a.compacting, s.busy, s.inject_pending_at, s.turn_started_at,
                 s.deleted_at, s.directory, s.host_id, h.online,
                 h.machine, h.directory AS host_directory, h.process_kind,
-                h.opencode_version,
+                h.opencode_version, h.instance,
                 EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
                         AND k.state = 'open' AND k.job_def IS NULL) AS asking
          FROM agents a JOIN sessions s ON s.id = a.session_id
@@ -445,13 +444,13 @@ export class Delivery {
       )
       .get(agent) as any
     // an unloaded folder of this machine's background service is loaded
-    // again; not one whose OpenCode is too old (it is refused, not lost)
+    // again; not one whose OpenCode was refused as too old (it is not lost)
     if (
       row &&
       !row.online &&
       !row.deleted_at &&
       !row.paused &&
-      !opencodeTooOld(row.opencode_version ?? "")
+      !refusedAsOld(row)
     )
       this.loader?.load({
         id: row.host_id,
