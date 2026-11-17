@@ -158,6 +158,29 @@ describe("jobs", () => {
   })
 })
 
+describe("a job's at trigger", () => {
+  // The documentation's fact check before 1.0.0: a job took a time that had
+  // passed, and then never ran; a wake refuses it.
+  test("a time that has passed is refused, as for a wake; one ahead runs once", async () => {
+    const past = await owner("PUT", "/v1/jobs/once", {
+      ...JOB,
+      trigger: "at 2020-01-01T00:00:00Z",
+    })
+    expect(past.status).toBe(400)
+    expect(past.body.error).toMatchObject({
+      code: "bad_trigger",
+      message: "that time has passed already",
+    })
+    expect((await owner("GET", "/v1/jobs")).body.jobs).toEqual([])
+    const ahead = await owner("PUT", "/v1/jobs/once", {
+      ...JOB,
+      trigger: `at ${new Date(t.clock.now() + 5 * MIN).toISOString()}`,
+    })
+    expect(ahead.status).toBe(201)
+    expect(ahead.body.job.next).not.toBeNull()
+  })
+})
+
 describe("runs", () => {
   test("the owner runs a job: spawned on its host, registered under the run's ID, prompted", async () => {
     await owner("PUT", "/v1/jobs/mail", JOB)

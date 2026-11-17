@@ -75,6 +75,21 @@ beforeEach(async () => {
 afterEach(() => t.stop())
 
 describe("an agent sets a job", () => {
+  // The documentation's fact check before 1.0.0: as for the owner's jobs
+  // and for wakes.
+  test("an at time that has passed is refused before anything is asked", async () => {
+    const res = await as(lead, "POST", "/v1/me/jobs", {
+      ...DEF,
+      trigger: "at 2020-01-01T00:00:00Z",
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatchObject({
+      code: "bad_trigger",
+      message: "that time has passed already",
+    })
+    expect((await owner("GET", "/v1/inbox")).body.items).toEqual([])
+  })
+
   test("job_mode ask: an approval with the whole definition; the job exists once the owner approves", async () => {
     const res = await as(lead, "POST", "/v1/me/jobs", DEF)
     expect(res.status).toBe(202)

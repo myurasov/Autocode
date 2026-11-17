@@ -228,6 +228,12 @@ export class Jobs {
         "bad_trigger",
         "a job's trigger is every, at, cron or fire-only",
       )
+    // as for a wake: such a job would never run
+    if (
+      trigger.kind === "at" &&
+      nextRun(trigger, now, { tz: this.d.tz(), anchor: now }) === null
+    )
+      throw new AutocodeError("bad_trigger", "that time has passed already")
     const to = String(body.to ?? "owner")
     if (to !== "owner") {
       const parts = parsePattern(to)
