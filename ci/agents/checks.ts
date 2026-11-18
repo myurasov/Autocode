@@ -1,8 +1,8 @@
 /*
  * The agents suite's own checks, apart from the run so that they can be
  * tested (tests/unit/agents-checks.test.ts): what an agent did with Autocode
- * that it should have done with a tool, and the owner's OpenCode config read
- * as JSONC (comments and trailing commas).
+ * that it should have done with a tool, the owner's OpenCode config read as
+ * JSONC (comments and trailing commas), and what ended a fired wake.
  */
 
 // A tool call: the tool's name and its input.
@@ -18,10 +18,22 @@ const PLUGIN_PATH = /plugins\/autocode|opencode\/plugins/
 const CLI = /(?:^|[;&|(`]|\$\()\s*(?:[\w./~-]*\/)?autocode\s+([a-z-]+)/gm
 
 /*
+ * Asking whether a shell value is set, which calls nothing: `test -n "$X"`,
+ * `[ -z $X ]`, `[[ -n ${X} ]]`, `${X:+set}`, `${X:-none}`.
+ */
+const VALUE = "AUTOCODE_(?:TOKEN|URL)"
+const ASKED = new RegExp(
+  `(?:\\btest|\\[\\[?)\\s+-[nz]\\s+"?\\$\\{?${VALUE}\\}?"?` +
+    `|\\$\\{${VALUE}:[+-][^}]*\\}`,
+  "g",
+)
+
+/*
  * What the agent did that it should have done with a tool, or null: never
  * an autocode_* tool; the plugin's code read with any tool; the CLI (a
  * background job's `autocode fire` is allowed when asked for); Autocode's API
- * called with the session's token.
+ * called with the session's token (asking whether the shell has the token is
+ * not a call).
  */
 export function misuseOf(calls: Call[], allowFire = false): string | null {
   if (!calls.some(([name]) => name.startsWith("autocode_")))
@@ -36,7 +48,8 @@ export function misuseOf(calls: Call[], allowFire = false): string | null {
     for (const [, sub] of cmd.matchAll(CLI))
       if (!(allowFire && sub === "fire"))
         return `ran the CLI (autocode ${sub}) instead of a tool`
-    if (/\$\{?AUTOCODE_(TOKEN|URL)\b/.test(cmd) && !/\bautocode\s/.test(cmd))
+    const used = /\$\{?AUTOCODE_(TOKEN|URL)\b/.test(cmd.replace(ASKED, ""))
+    if (used && !/\bautocode\s/.test(cmd))
       return "called Autocode's API from a shell instead of a tool"
   }
   return null
@@ -86,4 +99,31 @@ export function readJsonc(text: string): any {
     }
   }
   return JSON.parse(out)
+}
+
+// A history entry, as far as the checks read it.
+export type Entry = { at: string; data?: { name?: string; by?: string } }
+
+/*
+ * What ended a wake that a job fired, or null while nothing has: Autocode's
+ * prompt, sent after the fire, or the agent's own cancel of that wake after
+ * the fire. OpenCode's notice for a background shell may wake the session
+ * before Autocode's prompt; an agent that does the wake's work in that turn
+ * and then cancels the wake leaves no prompt to send (a full run on OpenCode
+ * 2.3, 2026-11-17).
+ */
+export function afterFire(
+  firedAt: number,
+  wake: string,
+  agent: string,
+  sent: Entry[],
+  cancelled: Entry[],
+): { at: string; by: "prompt" | "cancel" } | null {
+  const after = (h: Entry) => Date.parse(h.at) >= firedAt
+  const prompt = sent.find(after)
+  if (prompt) return { at: prompt.at, by: "prompt" }
+  const cancel = cancelled.find(
+    (h) => after(h) && h.data?.name === wake && h.data?.by === agent,
+  )
+  return cancel ? { at: cancel.at, by: "cancel" } : null
 }

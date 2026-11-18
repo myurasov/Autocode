@@ -36,7 +36,7 @@ import {
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
-import { misuseOf, readJsonc } from "./checks.ts"
+import { afterFire, misuseOf, readJsonc } from "./checks.ts"
 import { workHours } from "./schedule.ts"
 
 const root = resolve(import.meta.dir, "../..")
@@ -583,24 +583,34 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
     // than the setup turn fires during it, and its prompt comes as that turn
     // ends: so from the fire, not from the end of the setup
     const firedAt = Date.parse(fired.at)
-    let sent: any
+    const past = async (kind: string) =>
+      (
+        await ac(
+          "GET",
+          `/v1/history?kind=${kind}&agent=${encodeURIComponent(ctx.id)}`,
+        )
+      ).history
+    // an agent that OpenCode's notice woke first may do the wake's work in
+    // that turn and cancel the wake: then no prompt is left to send
+    let sent: { at: string }
     try {
       sent = await until(
         async () =>
-          (
-            await ac(
-              "GET",
-              "/v1/history?kind=injection.sent&agent=" +
-                encodeURIComponent(ctx.id),
-            )
-          ).history.find((h: any) => Date.parse(h.at) >= firedAt),
+          afterFire(
+            firedAt,
+            w.name,
+            ctx.id,
+            await past("injection.sent"),
+            await past("wake.cancelled"),
+          ),
         turnMs,
         "Autocode's prompt for the wake",
       )
     } catch {
       return "the wake fired, but its prompt was never sent"
     }
-    // the turn that prompt started: it ends after the prompt was sent
+    // the turn that prompt started, or the one that cancelled the wake: it
+    // ends after that
     await idleAfter(ctx, Date.parse(sent.at), "the woken turn")
     // the job itself must fire the wake: its own command, not a later check
     const shells = (await toolCalls(ctx))
@@ -1121,13 +1131,15 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
    * approved and writes its result down. The run counts for the agent.
    */
   async propose(ctx) {
-    writeFileSync(file(ctx, "data.csv"), "a\nb\nc\nd\ne\n")
+    // a file of its own: the run scenario's job counts another, and every
+    // model's jobs are listed together
+    writeFileSync(file(ctx, "items.txt"), "a\nb\nc\nd\ne\n")
     const before = await idleTime(ctx)
     await oc("POST", `/api/session/${ctx.session}/prompt`, {
       text:
         `${register(ctx)} set up an Autocode job of your own named ` +
         `\`count\`, with your own model (\`${ctx.m.model}\`), that counts ` +
-        "the lines of data.csv in this folder with `wc -l` and finishes " +
+        "the lines of items.txt in this folder with `wc -l` and finishes " +
         "with the count alone as its result; it runs only when started, and " +
         "a run may spend at most $1. Once the job exists, run it once, and " +
         "when its result comes back to you, write the count alone into " +
