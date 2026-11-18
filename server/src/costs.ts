@@ -351,6 +351,24 @@ export class Costs {
     // the agent's model: its own session's last step (a Subagent's step,
     // with no context of the agent's, may run another model)
     const model = typeof event.model === "string" ? event.model.trim() : ""
+    // each model's name by its ID, from any step (a Subagent's too), for
+    // the jobs' models (the owner, 2026-11-17): "" forgets it
+    if (
+      model &&
+      model.length <= 200 &&
+      typeof event.model_name === "string" &&
+      event.model_name.trim().length <= 100
+    ) {
+      const name = event.model_name.trim()
+      if (name)
+        this.db
+          .query(
+            "INSERT INTO model_names (model, name) VALUES (?, ?) " +
+              "ON CONFLICT(model) DO UPDATE SET name = excluded.name",
+          )
+          .run(model, name)
+      else this.db.query("DELETE FROM model_names WHERE model = ?").run(model)
+    }
     if (model && model.length <= 200 && Number.isInteger(context)) {
       // another model: the last one's name is not its name
       this.db

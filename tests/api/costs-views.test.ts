@@ -278,6 +278,95 @@ describe("an agent's model name", () => {
   })
 })
 
+/*
+ * The owner, 2026-11-17, looking at build 71: "why some models say
+ * bedrock-claude-opus-5-5 (aws/anthropic), some just bedrock-claude-opus-5-5?"
+ * An agent had the name only after its own next step. A model's name is the
+ * model's: an agent that has not said it shows the one another agent's step
+ * gave that model.
+ */
+describe("the same model's name for every agent", () => {
+  test("an agent that has not said its model's name shows the model's known name", async () => {
+    await registered(t, HOST, "ses_b", "team:b")
+    const b = async () => {
+      const x = (await owner("GET", "/v1/agents/team:b")).body.agent
+      return [x.model, x.model_name]
+    }
+    // its step says the model, not the name (an older plugin, or the list
+    // could not be read)
+    await report(t, HOST, [step(0.1, 1000, "ses_b")])
+    expect(await b()).toEqual(["fake/main", null])
+    await report(t, HOST, [{ ...step(0.1), model_name: "Fake Main" }])
+    expect(await b()).toEqual(["fake/main", "Fake Main"])
+    const all = (await owner("GET", "/v1/agents")).body.agents
+    expect(all.map((x: any) => x.model_name)).toEqual([
+      "Fake Main",
+      "Fake Main",
+    ])
+    // on another model, it has no name from that one
+    await report(t, HOST, [
+      { ...step(0.1, 1000, "ses_b"), model: "fake/other" },
+    ])
+    expect(await b()).toEqual(["fake/other", null])
+  })
+})
+
+/*
+ * The owner, 2026-11-17: "i want models/efforts tho be shown in the same way
+ * on agents and jobs tabs". A job's model has no session of its own to say
+ * its name, so the server keeps each model's name by its ID, from any
+ * agent's step, past that agent's unregistering, and a job's view says it.
+ */
+describe("a job's model name", () => {
+  const JOB = {
+    host: HOST,
+    description: "Summarizes the day's mail",
+    model: "fake/main",
+    prompt: "Summarize today's mail in five lines.",
+    trigger: "fire-only",
+    to: "owner",
+  }
+  const named = async (job: string) =>
+    (await owner("GET", "/v1/jobs")).body.jobs.find((j: any) => j.name === job)
+      .model_name
+
+  test("the name any agent's step gave the model, kept when that agent is gone", async () => {
+    expect((await owner("PUT", "/v1/jobs/mail", JOB)).status).toBe(201)
+    expect(await named("mail")).toBeNull()
+    await report(t, HOST, [{ ...step(0.1), model_name: "Fake Main" }])
+    expect(await named("mail")).toBe("Fake Main")
+    // and where a job is set: its view says the name at once
+    const again = await owner("PUT", "/v1/jobs/mail", JOB)
+    expect(again.body.job.model_name).toBe("Fake Main")
+    // a job on another model has no name from it
+    await owner("PUT", "/v1/jobs/other", { ...JOB, model: "fake/other" })
+    expect(await named("other")).toBeNull()
+    await owner("DELETE", "/v1/agents/team:a")
+    expect(await named("mail")).toBe("Fake Main")
+  })
+
+  test('a new name replaces it, and "" forgets it', async () => {
+    await owner("PUT", "/v1/jobs/mail", JOB)
+    await report(t, HOST, [{ ...step(0.1), model_name: "Fake Main" }])
+    await report(t, HOST, [{ ...step(0.1), model_name: "Fake Main 2" }])
+    expect(await named("mail")).toBe("Fake Main 2")
+    // OpenCode's list has no name for it any more
+    await report(t, HOST, [{ ...step(0.1), model_name: "" }])
+    expect(await named("mail")).toBeNull()
+    // a Subagent's step names its own model (no context of the agent's)
+    await report(t, HOST, [
+      {
+        ...step(0.1),
+        context: undefined,
+        model: "fake/sub",
+        model_name: "Sub",
+      },
+    ])
+    await owner("PUT", "/v1/jobs/sub", { ...JOB, model: "fake/sub" })
+    expect(await named("sub")).toBe("Sub")
+  })
+})
+
 // The owner, 2026-11-08: unregistered agents on Agents too (a box), and
 // Costs' Total over the last X days.
 describe("unregistered agents and days", () => {

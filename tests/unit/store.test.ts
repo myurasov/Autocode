@@ -380,6 +380,42 @@ describe("store", () => {
     db.close()
   })
 
+  // 22 (the owner, 2026-11-17: "i want models/efforts tho be shown in the
+  // same way on agents and jobs tabs"): each model's name by its ID, for a
+  // job's model, which no session reports; the agents' names go in.
+  test("migration 22 keeps each model's name by its ID, starting with the agents' names", () => {
+    const path = tempDb()
+    const old = openStore(path, MIGRATIONS.slice(0, 21))
+    old.run(
+      "INSERT INTO hosts (id, machine, directory, instance, first_seen, " +
+        "last_seen) VALUES ('m:1', 'm', '/w', 'i', 1, 1)",
+    )
+    for (const [id, model, name] of [
+      ["a:b", "fake/main", "Fake Main"],
+      ["a:c", "fake/main", "Fake Main"],
+      ["a:d", "fake/other", null],
+      ["a:e", null, null],
+    ] as const) {
+      old.run(
+        "INSERT INTO sessions (id, host_id, created_at, last_seen) " +
+          "VALUES (?, 'm:1', 1, 1)",
+        [`ses_${id}`],
+      )
+      old.run(
+        "INSERT INTO agents (id, session_id, registered_at, last_active, " +
+          "model, model_name) VALUES (?, ?, 1, 1, ?, ?)",
+        [id, `ses_${id}`, model, name],
+      )
+    }
+    old.close()
+    const db = openStore(path)
+    expect(schemaVersion(db)).toBeGreaterThanOrEqual(22)
+    expect(db.query("SELECT model, name FROM model_names").all()).toEqual([
+      { model: "fake/main", name: "Fake Main" },
+    ])
+    db.close()
+  })
+
   test("a failing migration leaves the database at the version before it", () => {
     const path = tempDb()
     openStore(path, ["CREATE TABLE t (a TEXT)"]).close()

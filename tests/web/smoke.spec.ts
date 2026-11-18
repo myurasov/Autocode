@@ -4407,10 +4407,20 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
               usd: 53.61,
               context: 501_000,
               limit: 1_000_000,
-              model: "nvidia-ih/aws/anthropic/bedrock-claude-opus-5-5",
-              // its name in OpenCode's model list (the owner, 2026-11-17),
-              // for one of them, and a long one
-              ...(i === 1 ? { model_name: "Opus 5.5 (1M context)" } : {}),
+              // one of them on a model with a name in OpenCode's model list
+              // (the owner, 2026-11-17), a long one; a name is its model's,
+              // for every agent on it, so that one has a model of its own
+              ...(i === 1
+                ? {
+                    model: "nvidia-ih/azure/anthropic/claude-opus-5-5",
+                    model_name: "Opus 5.5 (1M context)",
+                  }
+                : i === 0
+                  ? // a claude-agent model: its ID has no version
+                    { model: "claude-agent/fable", model_name: "Fable 5.2" }
+                  : {
+                      model: "nvidia-ih/aws/anthropic/bedrock-claude-opus-5-5",
+                    }),
               // the Effort column (the owner, 2026-11-17), a long one
               effort: "medium",
             },
@@ -4436,7 +4446,7 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
       await expect(named).toHaveText("Opus 5.5 (1M context)")
       await expect(named).toHaveAttribute(
         "title",
-        "nvidia-ih/aws/anthropic/bedrock-claude-opus-5-5",
+        "nvidia-ih/azure/anthropic/claude-opus-5-5",
       )
       await expect(row.locator("td.model + td.effort")).toHaveText("medium")
       await expect(row.locator("td.status")).toContainText("working")

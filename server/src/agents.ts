@@ -31,7 +31,10 @@ const SELECT = `
   SELECT a.id, a.description, a.session_id, a.registered_at, a.last_active,
          a.paused, a.error, a.error_since, a.error_at, a.retries, a.retry_at,
          a.filter_step, a.filter_compacting,
-         a.model, a.model_name, a.effort, s.host_id, s.directory,
+         a.model,
+         COALESCE(a.model_name, (SELECT n.name FROM model_names n
+                                 WHERE n.model = a.model)) AS model_name,
+         a.effort, s.host_id, s.directory,
          s.deleted_at, s.busy,
          s.idle_since, s.last_outcome, h.machine, h.online,
          EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
@@ -111,7 +114,9 @@ export class Agents {
       last_outcome: row.last_outcome ?? null,
       // its last step's provider/model (the owner, 2026-11-08)
       model: row.model ?? null,
-      // its name as OpenCode's model list has it (the owner, 2026-11-17)
+      // its name as OpenCode's model list has it (the owner, 2026-11-17):
+      // the one its own step said, else the one any agent's step gave that
+      // model, so that one model reads the same in every row
       model_name: row.model_name ?? null,
       // and its effort, the model's variant (the owner, 2026-11-17)
       effort: row.effort ?? null,

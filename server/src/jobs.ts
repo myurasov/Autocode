@@ -116,6 +116,10 @@ export class Jobs {
           "AND state != 'skipped' ORDER BY started_at DESC LIMIT 1",
       )
       .get(row.name) as any
+    // its model's name, as the agents' steps said it (the owner, 2026-11-17)
+    const named = this.db
+      .query("SELECT name FROM model_names WHERE model = ?")
+      .get(row.model) as { name: string } | null
     return {
       name: row.name,
       description: row.description,
@@ -124,6 +128,7 @@ export class Jobs {
       directory: host?.directory ?? null,
       online: !!host?.online,
       model: row.model,
+      model_name: named?.name ?? null,
       ...(row.variant ? { variant: row.variant } : {}),
       ...(row.agent ? { agent: row.agent } : {}),
       prompt: row.prompt,

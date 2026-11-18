@@ -619,6 +619,23 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE agents ADD COLUMN model_name TEXT;
   `,
+  /*
+   * 22 (the owner, 2026-11-17: "i want models/efforts tho be shown in the
+   * same way on agents and jobs tabs"): each model's name by its ID, as the
+   * agents' steps say it. A job's model has no session of its own to say
+   * its name, and an agent's row goes when it unregisters. The names the
+   * agents hold go in.
+   */
+  `
+  CREATE TABLE model_names (
+    model TEXT PRIMARY KEY,
+    name TEXT NOT NULL
+  );
+  INSERT INTO model_names (model, name)
+    SELECT model, MAX(model_name) FROM agents
+    WHERE model IS NOT NULL AND model_name IS NOT NULL AND model_name != ''
+    GROUP BY model;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {
