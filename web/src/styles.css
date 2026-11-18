@@ -22,6 +22,8 @@
   --link: #369;
   --sel: #eef4ff;
   --ok: #2a7;
+  /* An idle agent's dot: the Inbox's Question sky blue. */
+  --idle: #18c;
   --warn: #b80;
   --err: #c33;
   --accent-soft: #f3f9e8;
@@ -52,6 +54,7 @@ html.dark {
   --link: #6cb1e0;
   --sel: #24344a;
   --ok: #4c9;
+  --idle: #6cf;
   --warn: #d9a03c;
   --err: #e77;
   --accent-soft: #22301a;
@@ -509,6 +512,10 @@ table.settings td.value {
 }
 .dot.ok {
   background: var(--ok);
+}
+/* Idle: at rest, not working's green (the owner, 2026-11-17). */
+.dot.idle {
+  background: var(--idle);
 }
 .dot.warn {
   background: var(--warn);

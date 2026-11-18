@@ -132,7 +132,8 @@ describe('AgentsPage', () => {
     expect(text(lead.querySelector('td.id'))).toBe('kaggle:lead');
     expect(text(lead.querySelector('td.desc'))).toBe('leads the team');
     expect(text(lead.querySelector('td.status'))).toBe('idle');
-    expect(lead.querySelector('.dot')!.classList).toContain('ok');
+    // idle: its own color (the owner, 2026-11-17)
+    expect(lead.querySelector('.dot')!.classList).toContain('idle');
     expect(text(lead.querySelector('td.folder'))).toBe('/home/someone/kaggle');
     expect(text(lead.querySelector('td.session'))).toBe('ses_lead');
     const [registered, active] = [...lead.querySelectorAll('td.time')];
@@ -928,7 +929,9 @@ describe('AgentsPage', () => {
     confirm.mockRestore();
   });
 
-  it('shows each status with its dot: idle and working green, paused amber, offline red, error pink-red', async () => {
+  // idle in a color of its own since the owner, 2026-11-17 ("mak idle status
+  // dot different color than green"): it was green, as working is
+  it('shows each status with its dot: idle sky blue, working green, paused amber, offline red, error pink-red', async () => {
     signedIn();
     fixture = TestBed.createComponent(AgentsPage);
     const statuses = ['idle', 'working', 'paused', 'offline', 'error'];
@@ -947,7 +950,7 @@ describe('AgentsPage', () => {
       ...row(s).querySelector('td.status .dot')!.classList,
     ]);
     expect(dots).toEqual([
-      ['dot', 'ok'],
+      ['dot', 'idle'],
       ['dot', 'ok'],
       ['dot', 'warn'],
       ['dot', 'off'],

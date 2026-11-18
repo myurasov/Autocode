@@ -108,12 +108,14 @@ export function contextTitle(k: CostNumbers): string {
 }
 
 /*
- * The color of an agent's status dot, the same on every tab: idle and working
- * green (ok), paused amber (warn), offline red (off), error pink-red (err);
- * any other status (waiting) the plain dot's amber.
+ * The color of an agent's status dot, the same on every tab: working green
+ * (ok), idle sky blue (idle; the owner, 2026-11-17: not working's green),
+ * paused amber (warn), offline red (off), error pink-red (err); any other
+ * status (waiting) the plain dot's amber.
  */
 export function dotClass(status: string): string {
-  if (status === 'idle' || status === 'working') return 'ok';
+  if (status === 'working') return 'ok';
+  if (status === 'idle') return 'idle';
   if (status === 'paused') return 'warn';
   if (status === 'offline') return 'off';
   if (status === 'error') return 'err';

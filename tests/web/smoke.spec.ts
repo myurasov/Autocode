@@ -4453,6 +4453,80 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
   }
 })
 
+// The owner, 2026-11-17: "mak idle status dot different color than green":
+// an idle agent's dot is sky blue (the Inbox's Question color), in both
+// themes; working keeps the green, and no two statuses share a color but
+// paused and waiting (amber).
+test("status dots: idle is sky blue, not working's green, in both themes", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  const colors = () =>
+    page.evaluate(() => {
+      const dot = (kind: string) => {
+        const d = document.createElement("span")
+        d.className = `dot ${kind}`
+        document.body.append(d)
+        const color = getComputedStyle(d).backgroundColor
+        d.remove()
+        return color
+      }
+      return {
+        idle: dot("idle"),
+        ok: dot("ok"),
+        warn: dot("warn"),
+        off: dot("off"),
+        err: dot("err"),
+      }
+    })
+  const isDark = () =>
+    page.evaluate(() => document.documentElement.classList.contains("dark"))
+  const want = { light: "rgb(17, 136, 204)", dark: "rgb(102, 204, 255)" }
+  for (let i = 0; i < 2; i++) {
+    const dark = await isDark()
+    const seen = await colors()
+    expect(seen.idle, dark ? "dark" : "light").toBe(
+      want[dark ? "dark" : "light"],
+    )
+    expect(new Set(Object.values(seen)).size, "five colors").toBe(5)
+    await page.getByRole("button", { name: "Light or dark" }).click()
+    await expect.poll(isDark).toBe(!dark)
+  }
+  // an agent of this test's own, just registered: idle, with that dot
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const host = "smoke:dots:1"
+  try {
+    const hello = await api.post(`/v1/hosts/${host}/hello`, {
+      headers: bearer(consumer),
+      data: {
+        instance: "i-dots",
+        machine: "smoke",
+        directory: "/home/someone/dots",
+        sessions: ["ses_dots"],
+      },
+    })
+    expect(hello.ok(), await hello.text()).toBe(true)
+    const t = await api.post(`/v1/hosts/${host}/sessions/ses_dots/token`, {
+      headers: bearer(consumer),
+      data: { instance: "i-dots" },
+    })
+    const reg = await api.post("/v1/agents", {
+      headers: bearer((await t.json()).token),
+      data: { id: "dots:idle", description: "An idle agent" },
+    })
+    expect([200, 201]).toContain(reg.status())
+    // the list is loaded anew when its tab opens
+    await openTab(page, "Hosts")
+    await openTab(page, "Agents")
+    const row = page.locator('table.agents tr[data-agent="dots:idle"]')
+    await expect(row.locator("td.status")).toContainText("idle")
+    await expect(row.locator("td.status .dot")).toHaveClass(/\bidle\b/)
+  } finally {
+    await api.delete("/v1/agents/dots:idle", { headers: bearer(admin) })
+    await api.dispose()
+  }
+})
+
 // The owner, 2026-11-09: the Inbox's Kind in color: Message green, Alert red,
 // Question sky blue (Permission amber, Approval violet), in both themes.
 test("the Inbox's Kind is colored by kind, in both themes", async ({

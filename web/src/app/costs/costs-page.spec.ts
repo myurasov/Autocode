@@ -288,7 +288,7 @@ describe('CostsPage', () => {
       ...row(page, `s:${status}`).querySelector('td.status .dot')!.classList,
     ];
     expect(statuses.map(dot)).toEqual([
-      ['dot', 'ok'],
+      ['dot', 'idle'],
       ['dot', 'ok'],
       ['dot', 'warn'],
       ['dot', 'off'],
