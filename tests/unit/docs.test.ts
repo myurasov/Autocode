@@ -52,6 +52,47 @@ test("AGENT.md points to the admin and the consumer files, which say what they a
   )
 })
 
+/*
+ * The owner, 2026-11-17 ("update docs to say that Autocode is long-term
+ * autonomy support framework. frame intro sections and feature lists in
+ * that manner. make them more ficused and less verbose"; first asked on
+ * 2026-11-07, and lost in the 1.0.0 documentation pass).
+ */
+test("every document says what Autocode is: a long-term autonomy support framework, in its opening", () => {
+  const opening = (path: string, chars: number) => flat(path).slice(0, chars)
+  expect(opening("README.md", 400)).toContain(
+    "Autocode is a long-term autonomy support framework",
+  )
+  expect(opening("reference.md", 400)).toContain(
+    "Autocode is a long-term autonomy support framework",
+  )
+  const admin = flat("autocode.admin.agent.md")
+  expect(
+    admin.slice(admin.indexOf("## What This Repository Is")).slice(0, 300),
+  ).toContain("Autocode is a long-term autonomy support framework")
+  const guide = flat("autocode.consumer.agent.md")
+  expect(guide.slice(guide.indexOf("# Autocode")).slice(0, 300)).toContain(
+    "Autocode is a long-term autonomy support framework",
+  )
+  const help = flat("web/src/app/help/help-page.html")
+  expect(help.slice(help.indexOf('id="what"')).slice(0, 500)).toContain(
+    "Autocode is a long-term autonomy support framework",
+  )
+})
+
+// Focused: the README's list of what Autocode provides is nine short items,
+// none longer than two lines of 120 columns.
+test("the README's feature list is short: nine items of at most two lines", () => {
+  const readme = read("README.md")
+  const list = readme
+    .slice(readme.indexOf("What Autocode provides:"))
+    .split("\n\n")[1]!
+  const items = list.split(/\n(?=- \*\*)/)
+  expect(items.length).toBe(9)
+  for (const item of items)
+    expect(item.split("\n").length, item).toBeLessThanOrEqual(2)
+})
+
 test("README and Help list what Autocode provides; no needs table", () => {
   const readme = read("README.md")
   expect(readme).not.toContain("| An autonomous agent needs to |")

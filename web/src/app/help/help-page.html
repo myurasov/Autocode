@@ -24,66 +24,60 @@
       <span class="n">{{ sec.what.n }}</span> {{ sec.what.label }}
     </h2>
     <p>
-      Autocode keeps AI coding agents working on their own for days or weeks.
-      They come back to their work without you, coordinate with each other,
-      and stay under your control.
+      Autocode is a long-term autonomy support framework for OpenCode 2
+      agents. It gives them what they need to work on their own for days or
+      weeks, alone or as a team, and keeps them under your control.
     </p>
     <p>
-      Autocode coordinates OpenCode 2 sessions. It has two parts: a server,
-      which keeps the state and serves this web UI, and a plugin, which
-      OpenCode loads on every machine that should use Autocode. The plugin
-      connects each project folder that OpenCode has open, called a host, to
-      the server. A session that registers with an ID becomes an agent.
+      It has two parts: a server, which keeps the state and serves this web
+      UI, and a plugin, which OpenCode loads on every machine. A project
+      folder that OpenCode has open is a host; a session that registers with
+      an ID becomes an agent.
     </p>
-    <p>What it provides:</p>
+    <p>What it provides, each for work that goes on with nobody watching:</p>
     <ul class="provides">
       <li>
-        <strong>Wakes:</strong> an agent comes back to its work later with
-        nobody prompting it. A wake comes on a schedule, at a time or when the
-        agent is idle, and checks decide whether it is worth waking.
+        <strong>Wakes:</strong> bring an agent back to its work on a schedule,
+        at a time or when it is idle; a check can skip one.
       </li>
       <li>
-        <strong>Long commands:</strong> an agent starts a long command, such
-        as a training run, and is woken when it ends: the command fires a
-        wake of the kind <code>fire-only</code>.
+        <strong>Long commands:</strong> an agent starts a command that runs
+        for hours and is woken when it ends (a <code>fire-only</code> wake).
       </li>
       <li>
-        <strong>Messages:</strong> agents talk to other agents and to you, on
-        any machine, and find each other by ID pattern (discovery).
+        <strong>Messages:</strong> agents work as a team: they talk to other
+        agents and to you, and find each other by discovery.
       </li>
       <li>
         <strong>Locks and semaphores:</strong> agents share scarce resources,
-        such as a GPU or a submission, without getting in each other's way.
+        such as a GPU.
       </li>
       <li>
-        <strong>Recovery:</strong> retries of failed turns, and resumes of
-        turns cut when OpenCode restarted.
+        <strong>Recovery:</strong> retries of failed turns and resumes of
+        turns that a restart cut.
       </li>
       <li>
-        <strong>The Inbox:</strong> agents ask for a decision and the rest
-        goes on. Their questions, permissions and approvals are answered by
-        you, by another agent or by a job.
+        <strong>The Inbox:</strong> an agent asks for a decision and the rest
+        goes on; you, another agent or a job answer its questions, permissions
+        and approvals.
       </li>
       <li>
         <strong>Limits:</strong> a daily cost cap, compaction of long sessions
-        and expiry of old agents, while nobody watches.
+        and expiry of old agents.
       </li>
       <li>
-        <strong>Jobs:</strong> a task handed to a fresh agent for each run, on
-        a schedule or when you or an agent start it.
+        <strong>Jobs:</strong> a task handed to a fresh agent, on a schedule
+        or on request.
       </li>
       <li>
         <strong>Control:</strong> pause, Stop All, this web UI and the history
-        of everything that happened.
+        of everything.
       </li>
     </ul>
     <p>
-      Autocode adds only what agents need to work alone for a long time. You
-      still work with your agents in OpenCode as before.
-    </p>
-    <p>
-      You control it all here, in this web UI. Every prompt that Autocode
-      types into a session says that it comes from Autocode.
+      You control it all here, and still work with your agents in OpenCode as
+      before. Every prompt that Autocode types says that it comes from
+      Autocode.
     </p>
     <p>
       Not set up yet? Start with

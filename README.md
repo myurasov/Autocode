@@ -1,15 +1,13 @@
 # Autocode <!-- omit in toc -->
 
-Autocode keeps [OpenCode](https://opencode.ai) agents working while you are away. It prompts them again on a
-schedule, lets them message each other and you, and lets you watch and stop them from a web UI and a command line.
+Autocode is a long-term autonomy support framework for [OpenCode](https://opencode.ai) agents. It gives AI coding
+agents what they need to work on their own for days or weeks, alone or as a team, and keeps them under your control.
 
-It is for developers who use OpenCode 2 (2.3.0 or later) on one Linux machine or several, and want an agent to keep
-going for hours or days: look at a training run every 30 minutes, process files as they arrive, or work in a team of
-agents.
+It is for developers who use OpenCode 2 (2.3.0 or later) on one Linux machine or several.
 
 **What you install:** one Autocode server on one of your machines, and a plugin in each machine's OpenCode. Both
-come from a single `autocode` binary, which is also the command line and holds the web UI. There is no download:
-you build the binary once from source, with git, Bun and Docker. You host all of it yourself.
+come from a single `autocode` binary, which is also the command line and holds the web UI. You build it from source
+and host it yourself.
 
 - [Why Autocode](#why-autocode)
 - [How It Works](#how-it-works)
@@ -22,28 +20,22 @@ you build the binary once from source, with git, Bun and Docker. You host all of
 
 ## Why Autocode
 
-An agent in a conversation stops when its turn ends and waits for someone to type. Autocode types for you: at the
-times you or the agent chose, with what the agent needs to carry on. You check in only when you want to.
+An agent in a conversation stops when its turn ends and waits for someone to type. To work for days with nobody
+watching, it must come back to its work, work with others, get past failures and stay within limits. Every feature
+of Autocode is there for that.
 
 What Autocode provides:
 
-- **Wakes:** a wake is a prompt that Autocode types into an agent's session later: every 30 minutes, at a time, on
-  a cron schedule, or when the session has been idle. A wake can have a check: a shell command that Autocode runs
-  first. If the check finds nothing to do, the wake is skipped and no model is called.
-- **Long commands:** an agent starts a long command in the background, with a last step that tells Autocode to wake
-  the agent when the command ends.
-- **Messages:** agents write to each other and to you, on any machine. An agent can also read its messages itself,
-  or wait for a reply.
-- **Locks:** a lock guards something that only one agent may use at a time, such as a GPU. The others wait in a
-  queue, and each hold has a time limit.
-- **Recovery:** a turn that failed is tried again, and a turn that an OpenCode restart interrupted is resumed.
-- **Your Inbox:** an agent that needs a decision asks and waits, and the others keep working. Its questions,
-  permission prompts and approvals (the yes it must get before a risky step) come to your Inbox: a tab of the web
-  UI, also `autocode inbox`. Another agent that you name can answer in your place.
-- **Limits:** a daily cost cap for each agent, and compaction of long sessions: a summary replaces the older part.
-  An agent whose session has had no turn for 14 days is unregistered.
-- **Jobs:** a saved task with a prompt, a model and a schedule. Each run gets a new session. You or an agent can
-  start a run, and agents can save jobs of their own if you approve.
+- **Wakes:** bring an agent back to its work with nobody prompting it: on a schedule, at a time, or when it has
+  been idle. A check, a shell command, skips a wake when there is nothing to do, at no model cost.
+- **Long commands:** an agent starts a command that runs for hours in the background, and is woken when it ends.
+- **Messages:** agents work as a team: they write to each other and to you, on any machine.
+- **Locks:** agents share what only one may use at a time, such as a GPU, with a queue and time limits.
+- **Recovery:** a failed turn is tried again and a turn cut by a restart is resumed, so the work goes on unattended.
+- **Limits:** a long session is compacted so that it can go on for weeks, and a daily cost cap bounds each agent.
+- **Your Inbox:** an agent that needs a decision asks and waits, and the others keep working. You answer its
+  questions, permission prompts and approvals in the web UI or with `autocode inbox`.
+- **Jobs:** a saved task that a fresh agent runs, on a schedule or when you or an agent start it.
 - **Control:** pause and resume an agent, stop all agents at once, and read the history of what happened.
 
 ## How It Works

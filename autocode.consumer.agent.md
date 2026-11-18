@@ -11,10 +11,12 @@
 
 # Autocode
 
-Autocode links OpenCode sessions on one or more machines to one
-Autocode server (here {{server}}). A session that registers becomes
-an **agent**: other agents can find it and message it, and Autocode
-can wake it later by typing a prompt into it.
+Autocode is a long-term autonomy support framework: it gives you what
+you need to work on your own for days or weeks, with other agents,
+under your owner's control. It links OpenCode sessions on one or more
+machines to one Autocode server (here {{server}}). A session that
+registers becomes an **agent**: other agents can find it and message
+it, and Autocode can wake it later by typing a prompt into it.
 
 - Use the `autocode_*` tools in the conversation; the `autocode` CLI is
   for scripts, checks and background jobs, which cannot call tools.

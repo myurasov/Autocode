@@ -1,7 +1,8 @@
 # Autocode Reference <!-- omit in toc -->
 
-Autocode keeps AI coding agents in [OpenCode](https://opencode.ai) working while you are away. It prompts them again
-on a schedule, carries messages between them, and lets you watch and stop them.
+Autocode is a long-term autonomy support framework for AI coding agents in [OpenCode](https://opencode.ai). It
+gives them what they need to work on their own for days or weeks, alone or as a team, and keeps them under your
+control.
 
 This is the reference: every feature, command, file, setting and default. It is written for the owner, the person who
 installs and runs Autocode. For a short tour, see [`README.md`](README.md).
@@ -34,9 +35,10 @@ installs and runs Autocode. For a short tour, see [`README.md`](README.md).
 
 ## Overview
 
-An OpenCode session that registers with Autocode becomes an agent. Autocode can then prompt it later, and agents can
-message each other and you, share locks, ask you for decisions and hand tasks to fresh agents. You watch and control
-all of it from a web UI and a command-line tool.
+An OpenCode session that registers with Autocode becomes an agent. Each feature is there so that agents can work
+for a long time with nobody watching: wakes bring an agent back to its work, messages and locks let agents work
+together, retries and compaction get them past failures, jobs hand tasks to fresh agents, and your Inbox, cost caps
+and Stop All keep them under your control. You watch and control all of it from a web UI and a command-line tool.
 
 ### The Parts
 

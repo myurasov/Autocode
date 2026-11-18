@@ -139,16 +139,22 @@ describe('HelpPage', () => {
     );
   });
 
-  it('says what Autocode is for: agents that work on their own for days or weeks, and what it provides', async () => {
+  it('says what Autocode is: a long-term autonomy support framework, for agents that work on their own for days or weeks, and what it provides', async () => {
     const page = await open();
     const what = section(page, 'what');
+    // the owner, 2026-11-17: "update docs to say that Autocode is long-term
+    // autonomy support framework"; the first words of the page
+    expect(
+      what.startsWith(
+        'Autocode is a long-term autonomy support framework for OpenCode 2 ' +
+          'agents.',
+      ),
+    ).toBe(true);
     for (const part of [
-      'working on their own for days or weeks',
-      'coordinate with each other',
+      'to work on their own for days or weeks, alone or as a team',
       'under your control',
-      'What it provides',
-      // what it is not: said as help, not as a design principle
-      'only what agents need to work alone',
+      // the list is framed by it
+      'What it provides, each for work that goes on with nobody watching',
       // The two parts, and the owner's control, as before.
       'a server, which keeps the state and serves this web UI',
       'a plugin',
@@ -158,8 +164,10 @@ describe('HelpPage', () => {
     // Locks and retries are here now, not in a later tier.
     expect(what).not.toContain('Later tiers add locks');
     // no design notes in what the owner reads (the 1.0.0 documentation pass)
-    expect(what).not.toContain('a framework for');
     expect(what).not.toContain('left out or kept small');
+    // focused: the whole part, its list included, is under 290 words (it
+    // was 351)
+    expect(what.split(/\s+/).length).toBeLessThan(290);
     expect(what).not.toMatch(/kaggle|casmi/i);
     // What Autocode provides, as a list (the owner, 2026-11-09: in place of
     // the "What an Agent Needs / What Autocode Has" table).
@@ -168,7 +176,7 @@ describe('HelpPage', () => {
       (li) => text(li),
     );
     const features: [string, string[]][] = [
-      ['Wakes', ['schedule', 'idle', 'checks']],
+      ['Wakes', ['schedule', 'idle', 'check can skip']],
       // "Long commands", not "Background jobs": a job is an Autocode job
       ['Long commands', ['fire-only', 'woken when it ends']],
       ['Messages', ['other agents', 'discovery']],
@@ -185,9 +193,9 @@ describe('HelpPage', () => {
       for (const w of words) expect(provides[i], `${name}: ${w}`).toContain(w);
     });
     // what it is, in plain words, comes before the list of what it provides
-    expect(
-      what.indexOf('Autocode coordinates OpenCode 2 sessions'),
-    ).toBeLessThan(what.indexOf('What it provides'));
+    expect(what.indexOf('It has two parts')).toBeLessThan(
+      what.indexOf('What it provides'),
+    );
     // a newcomer is sent to the install steps, which come last
     expect(what).toContain('Start with Install and Connect');
   });

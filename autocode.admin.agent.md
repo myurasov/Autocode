@@ -16,8 +16,8 @@ has every detail. "The owner" is the person who runs Autocode.
 
 ## What This Repository Is
 
-Autocode keeps [OpenCode](https://opencode.ai) agents working while their owner is away: it prompts them again on a
-schedule, carries messages between them and to the owner, and lets the owner watch and stop them.
+Autocode is a long-term autonomy support framework for [OpenCode](https://opencode.ai) agents: it gives them what
+they need to work on their own for days or weeks, and keeps them under their owner's control.
 
 - **One binary**, `autocode`: the server, the command line, the OpenCode plugin and the web UI are all inside it.
 - **The server** runs on one machine as a systemd user service. Everything it keeps is in `~/.autocode/`.
