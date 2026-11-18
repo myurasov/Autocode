@@ -4668,6 +4668,15 @@ test("expand/collapse markers: the forms and Days have the group headings' chevr
     ).toBe("none")
     await settled(summary, closed.transform)
     expect(await look(summary, "::before"), tab).toEqual(closed)
+    // a form's marker sits on its title's baseline (the owner, 2026-11-17:
+    // "make details.panel>summary:before vertical align 0px"); a group's
+    // chevron and the Days button keep theirs, 2 px below
+    expect(
+      await summary.evaluate(
+        (e) => getComputedStyle(e, "::before").verticalAlign,
+      ),
+      tab,
+    ).toBe("0px")
     await summary.click()
     await settled(summary, open.transform)
     expect(await look(summary, "::before"), tab).toEqual(open)
@@ -4679,6 +4688,9 @@ test("expand/collapse markers: the forms and Days have the group headings' chevr
     .getByRole("button", { name: "Days", exact: true })
   await settled(days, closed.transform)
   expect(await look(days, "::before")).toEqual(closed)
+  expect(
+    await days.evaluate((e) => getComputedStyle(e, "::before").verticalAlign),
+  ).toBe("-2px")
   await days.click()
   await expect(days).toHaveAttribute("aria-expanded", "true")
   await settled(days, open.transform)

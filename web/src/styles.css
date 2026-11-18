@@ -447,6 +447,10 @@ button.days::before {
   background: var(--chevron) center / contain no-repeat;
   transition: transform 0.12s;
 }
+/* A form's marker sits on its title's baseline (the owner, 2026-11-17). */
+details.panel > summary::before {
+  vertical-align: 0px;
+}
 tr[app-fold].folded .chevron,
 details.panel:not([open]) > summary::before,
 button.days[aria-expanded="false"]::before {
