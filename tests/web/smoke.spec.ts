@@ -4275,7 +4275,7 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
       data: {
         instance: "i-fit",
         machine: "smoke",
-        directory: "/home/someone/Projects-Co-SA",
+        directory: "/home/someone/Projects-Work",
         sessions,
       },
     })

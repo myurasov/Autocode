@@ -79,8 +79,8 @@ describe("server ID and GET /v1/info", () => {
 
   test("a host name becomes a valid ID: other characters turn into -, and an empty one falls back", () => {
     expect(deriveServerId("machine-a")).toBe("machine-a")
-    expect(deriveServerId("Misha's MacBook Pro.local")).toBe(
-      "Misha-s-MacBook-Pro.local",
+    expect(deriveServerId("Someone's MacBook Pro.local")).toBe(
+      "Someone-s-MacBook-Pro.local",
     )
     expect(deriveServerId("--")).toBe("autocode")
     expect(deriveServerId("x".repeat(300)).length).toBe(255)
