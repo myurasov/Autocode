@@ -2759,8 +2759,7 @@ test("Agents: a click on a description edits it; Cancel and Escape go back, Save
  * The owner, 2026-11-17, after 1.0.0 was published ("fold that in 1.0.0";
  * "the sort arrow need to sit on the right of the text in 5 px"): the arrow
  * comes right after its heading's text, 5 px from it, at the middle of the
- * cell's height, on every table; not at the cell's right edge. It takes no
- * width, so a heading stays as narrow as its text.
+ * cell's height, on every table; not at the cell's right edge.
  */
 test("the sort arrow sits to the right of its heading's text, 5 px from it", async ({
   page,
@@ -2800,10 +2799,110 @@ test("the sort arrow sits to the right of its heading's text, 5 px from it", asy
         `${where}: ${p.off} px off the middle`,
       ).toBeLessThan(1)
       expect(p.size, where).toEqual([8, 8])
-      // out of the flow: it adds nothing to the heading's width
+      // the owner's rule: placed by the cell (its room is the next test's)
       expect(p.flow, where).toBe("absolute")
     }
   }
+})
+
+/*
+ * The owner, 2026-11-17: "sorting indicator should be considered in minimal
+ * width of a table col (eg it sholdnt be cut off with too narrow cols and it
+ * shgouldnt go beyoud righ padding of header cell)", and "make sure sorting
+ * mark is not cut off or overlaps right padding when text in th is aligned
+ * right". A heading keeps room for its arrow after its text, so a column is
+ * never narrower than its heading with the arrow, and the arrow ends before
+ * the cell's right padding (8 px, as every cell's): on every tab, in
+ * headings aligned left and right, at 1280 px and in a narrow window, where
+ * the columns are as narrow as they get. Before, the arrow of a column as
+ * narrow as its heading reached 5 px past the cell's padding, into the next
+ * cell; in a right-aligned heading it always did.
+ */
+test("the sort arrow has room in its heading: never in the cell's right padding", async ({
+  page,
+}) => {
+  await signIn(page, admin)
+  const places = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("#frame thead th.sortable")].map((th) => {
+        const button = th.querySelector("button.sort") as HTMLElement
+        const arrow = th.querySelector(".arrow") as HTMLElement
+        const at = arrow.getBoundingClientRect()
+        const cell = th.getBoundingClientRect()
+        const style = getComputedStyle(th)
+        const pad = Number.parseFloat(style.paddingRight)
+        // where the cell's right padding starts
+        const inner =
+          cell.right - Number.parseFloat(style.borderRightWidth) - pad
+        // the heading's lines of text: the widest, and the last one's end
+        const range = document.createRange()
+        range.setStart(button, 0)
+        range.setEndBefore(arrow)
+        const lines = [...range.getClientRects()]
+        const text = Math.max(...lines.map((r) => r.width))
+        const round = (n: number) => Math.round(n * 10) / 10
+        return {
+          name: (button.textContent ?? "").trim(),
+          align: style.textAlign,
+          pad,
+          past: round(at.right - inner),
+          gap: round(at.left - lines.at(-1)!.right),
+          // the cell's width inside its padding, less its text and arrow
+          spare: round(inner - cell.left - pad - text - 5 - at.width),
+        }
+      }),
+    )
+  const tabs = [
+    "Hosts",
+    "Agents",
+    "Inbox",
+    "Messages",
+    "Locks",
+    "Wakes",
+    "Jobs",
+    "Costs",
+    "History",
+  ]
+  const rights = new Set<string>()
+  for (const width of [1280, 700]) {
+    await page.setViewportSize({ width, height: 800 })
+    for (const tab of tabs) {
+      await openTab(page, tab)
+      if (tab === "Costs") {
+        // an agent's days: a table of its own, with amounts at the right
+        const days = page
+          .locator('table.costs tr[data-agent="smoke:agent"]')
+          .getByRole("button", { name: "Days", exact: true })
+        if ((await days.getAttribute("aria-expanded")) !== "true")
+          await days.click()
+        await expect(days).toHaveAttribute("aria-expanded", "true")
+      }
+      const found = await places()
+      if (["Agents", "Inbox", "Messages", "Wakes", "Costs"].includes(tab))
+        expect(found.length, tab).toBeGreaterThan(1)
+      for (const p of found) {
+        const where = `${width} px, ${tab}: ${p.name} (${p.align})`
+        if (p.align === "right") rights.add(`${tab}: ${p.name}`)
+        expect(p.pad, where).toBe(8)
+        expect(
+          p.past,
+          `${where}: the arrow ends ${p.past} px into the padding`,
+        ).toBeLessThan(1)
+        expect(
+          Math.abs(p.gap - 5),
+          `${where}: ${p.gap} px after the text`,
+        ).toBeLessThan(1)
+        expect(
+          p.spare,
+          `${where}: ${p.spare} px for the text and the arrow`,
+        ).toBeGreaterThan(-1)
+      }
+    }
+  }
+  // headings aligned right were among them: the amounts of Costs
+  expect([...rights]).toEqual(
+    expect.arrayContaining(["Costs: Today", "Costs: Total"]),
+  )
 })
 
 /*

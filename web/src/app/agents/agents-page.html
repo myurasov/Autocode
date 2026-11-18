@@ -221,8 +221,13 @@
           >
             @if (a.cost && a.cost.context !== null) {
               <!-- the numbers, then a bar of the threshold's share (the
-                   owner, 2026-11-09) -->
-              <span class="numbers">{{ contextShort(a.cost) }}</span>
+                   owner, 2026-11-09); they break only after a slash -->
+              <span class="numbers"
+                >@for (part of contextParts(a.cost); track $index) {<span
+                    class="part"
+                    >{{ part }}</span
+                  >@if (!$last) {<wbr />}}</span
+              >
               @if (contextBar(a.cost); as bar) {
                 <span
                   class="bar"

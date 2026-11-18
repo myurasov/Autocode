@@ -303,9 +303,13 @@ th {
  * cell. An arrow to the right of the text, 5 px from it, says the direction
  * of the sorted column; a faint one shows on hover (the owner, 2026-11-17:
  * "the sort arrow need to sit on the right of the text in 5 px"; it was at
- * the cell's right edge). The arrow is out of the flow and takes no width of
- * its own, so a heading is as narrow as its text (the Agents table, thirteen
- * columns since Effort, still fits 1280 px).
+ * the cell's right edge). The arrow is placed by the cell, out of the flow,
+ * so the heading's button keeps room for it after its text, 5 px and the
+ * arrow's width: a column is never narrower than its heading with the
+ * arrow, and the arrow ends before the cell's right padding (the owner,
+ * 2026-11-17: "sorting indicator should be considered in minimal width of a
+ * table col"; in a column as narrow as its heading it reached into the next
+ * cell).
  */
 th.sortable {
   position: relative;
@@ -321,7 +325,8 @@ th.sortable > button.sort {
   display: block;
   width: 100%;
   margin: 0;
-  padding: 0;
+  /* the arrow's room: its margin and its width */
+  padding: 0 calc(5px + 0.5rem) 0 0;
   border: 0;
   background: none;
   color: inherit;
@@ -699,6 +704,16 @@ table.agents td.context .bar.over > span {
 table.agents td.context .numbers {
   display: block;
 }
+/*
+ * Context takes one line wherever the table has the room: the width of its
+ * longest numbers, like "120K/100K/200K", with the cell's padding, which the
+ * table gives this column before it widens the others. Only a table that
+ * would not fit otherwise breaks the numbers (the sort arrows' room in the
+ * headings, the owner, 2026-11-17: thirteen columns must still fit 1280 px).
+ */
+table.agents td.context {
+  width: 9rem;
+}
 table.costs tr.days > td {
   background: var(--softer);
 }
@@ -806,8 +821,8 @@ table.agents td.context a:hover {
   text-decoration: underline;
 }
 /*
- * Each keeps to two lines in a narrow cell: Spend breaks only after its
- * slash, Context only after its "of".
+ * Each keeps its parts whole in a narrow cell: Spend breaks only after its
+ * slash, Context only after one of its own.
  */
 table.agents td.spend .part,
 table.agents td.context .part,

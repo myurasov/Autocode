@@ -28,7 +28,13 @@ import {
 } from '../../testing/helpers';
 import type { Agent, AgentError, CostNumbers } from '../api';
 import { contains } from '../filter';
-import { contextBar, contextShort, localTime, tokensShort } from '../format';
+import {
+  contextBar,
+  contextParts,
+  contextShort,
+  localTime,
+  tokensShort,
+} from '../format';
 import {
   AgentsPage,
   FILTER_DELAY_MS,
@@ -169,6 +175,14 @@ describe('AgentsPage', () => {
     // under the numbers a bar of the threshold's share (the owner,
     // 2026-11-09), amber from 75%, as the Costs tab's Daily Cap
     expect(context.firstElementChild!.className).toBe('numbers');
+    // the numbers may break after a slash, and nowhere else: a cell that
+    // must be narrow gives up width (the owner, 2026-11-17: the sort arrows'
+    // room in the headings; the table must still fit 1280 px)
+    const numbers = context.querySelector('.numbers')!;
+    expect(
+      [...numbers.querySelectorAll('.part')].map((e) => e.textContent),
+    ).toEqual(['80K/', '100K/', '200K']);
+    expect(numbers.querySelectorAll('.part + wbr').length).toBe(2);
     const bar = context.querySelector('.numbers + .bar') as HTMLElement;
     expect(bar.classList).toContain('near');
     expect(bar.classList).not.toContain('over');
@@ -332,6 +346,13 @@ describe('AgentsPage', () => {
     // no window known: the context and the threshold
     expect(contextShort(k({ context_limit: null }))).toBe('854K/777K');
     expect(contextShort(k({ context: null }))).toBe('—');
+    // its parts, each kept whole: a number with the slash after it
+    expect(contextParts(k({}))).toEqual(['854K/', '777K/', '1M']);
+    expect(contextParts(k({ compact_at: null, context_share: null }))).toEqual([
+      '854K/',
+      '1M',
+    ]);
+    expect(contextParts(k({ context: null }))).toEqual(['—']);
   });
 
   // The owner, 2026-11-08: an Unregistered box right of the filter, off by

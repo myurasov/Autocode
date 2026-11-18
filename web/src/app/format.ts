@@ -55,6 +55,12 @@ export function contextShort(k: CostNumbers): string {
     .join('/');
 }
 
+// Its parts, which a narrow cell keeps whole: "854K/", "777K/", "1M" (it
+// breaks only after a slash).
+export function contextParts(k: CostNumbers): string[] {
+  return contextShort(k).split(/(?<=\/)/);
+}
+
 /*
  * A model ID as the provider's path and the model's name: "nvidia-ih/aws/
  * anthropic/", "bedrock-claude-opus-5-5" (the name alone without a path).

@@ -31,7 +31,7 @@ import { type Agent, type AgentError, Api, errorText } from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
 import {
   contextBar,
-  contextShort,
+  contextParts,
   contextTitle,
   dotClass,
   localTime,
@@ -223,7 +223,7 @@ export class AgentsPage {
   protected readonly spendParts = spendParts;
   protected readonly modelParts = modelParts;
   protected readonly contextBar = contextBar;
-  protected readonly contextShort = contextShort;
+  protected readonly contextParts = contextParts;
   protected readonly contextTitle = contextTitle;
   protected readonly errorTimes = errorTimes;
 
