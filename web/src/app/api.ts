@@ -66,6 +66,8 @@ export interface Agent {
   // step's provider/model.
   cost?: CostNumbers;
   model?: string | null;
+  // the model's name as OpenCode's model list has it ("Fable 5.2")
+  model_name?: string | null;
   // and its effort: the model's variant (high, max...), when it has one
   effort?: string | null;
 }

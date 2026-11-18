@@ -231,6 +231,53 @@ describe("an agent's model effort", () => {
   })
 })
 
+// The owner, 2026-11-17: the model's name as OpenCode has it ("Fable 5.2"
+// for claude-agent/fable), beside its ID.
+describe("an agent's model name", () => {
+  const view = async () => {
+    const a = (await owner("GET", "/v1/agents/team:a")).body.agent
+    return [a.model, a.model_name]
+  }
+
+  test("the last step's model name is the agent's, on its views; \"\" forgets it", async () => {
+    expect(await view()).toEqual([null, null])
+    await report(t, HOST, [{ ...step(0.1), model_name: " Fake Main " }])
+    expect(await view()).toEqual(["fake/main", "Fake Main"])
+    expect((await owner("GET", "/v1/agents")).body.agents[0].model_name).toBe(
+      "Fake Main",
+    )
+    expect((await as(a, "GET", "/v1/me")).body.agent.model_name).toBe(
+      "Fake Main",
+    )
+    // OpenCode's list has no name for it any more
+    await report(t, HOST, [{ ...step(0.1), model_name: "" }])
+    expect(await view()).toEqual(["fake/main", null])
+  })
+
+  test("a step that does not say it keeps the name of the same model, and drops it with another model", async () => {
+    await report(t, HOST, [{ ...step(0.1), model_name: "Fake Main" }])
+    // the list could not be read, or an older plugin: nothing said
+    await report(t, HOST, [step(0.1)])
+    expect(await view()).toEqual(["fake/main", "Fake Main"])
+    // a Subagent's step (no context of the agent's) and a bad name change
+    // nothing
+    await report(t, HOST, [
+      {
+        ...step(0.1),
+        context: undefined,
+        model: "fake/sub",
+        model_name: "Sub",
+      },
+    ])
+    await report(t, HOST, [{ ...step(0.1), model_name: "x".repeat(101) }])
+    await report(t, HOST, [{ ...step(0.1), model_name: 5 }])
+    expect(await view()).toEqual(["fake/main", "Fake Main"])
+    // another model, and no name with it: the old name is not its name
+    await report(t, HOST, [{ ...step(0.1), model: "fake/other" }])
+    expect(await view()).toEqual(["fake/other", null])
+  })
+})
+
 // The owner, 2026-11-08: unregistered agents on Agents too (a box), and
 // Costs' Total over the last X days.
 describe("unregistered agents and days", () => {

@@ -5,7 +5,7 @@
  * the turn, and status says the spend and the cap.
  */
 import { describe, expect, test } from "bun:test"
-import { costEvent, windowOf } from "../../plugin/src/costs.ts"
+import { costEvent, nameOf, windowOf } from "../../plugin/src/costs.ts"
 import { guideText, helpText, TOPICS } from "../../plugin/src/guide.ts"
 import { ME_TOOL, runMe } from "../../plugin/src/tools.ts"
 
@@ -64,6 +64,43 @@ describe("cost events", () => {
     expect(
       costEvent("ses_a", { ...STEP.data, tokens: undefined }, {}),
     ).toMatchObject({ usd: 0.0123, context: 0 })
+  })
+
+  /*
+   * The owner, 2026-11-17: "why i see claude-agent/fable for this agent (why
+   * it doesnt say fable 5.2)?": OpenCode's model list has each model's name
+   * ("Fable 5.2" for the ID fable); the step says it with the model.
+   */
+  test('a step says its model\'s name; none ("") when the list has none; not known without the list', () => {
+    expect(
+      costEvent("ses_a", STEP.data, { model: "prov/fable", name: "Fable 5.2" }),
+    ).toMatchObject({ model: "prov/fable", model_name: "Fable 5.2" })
+    expect(
+      costEvent("ses_a", STEP.data, { model: "prov/fable", name: "" }),
+    ).toMatchObject({ model: "prov/fable", model_name: "" })
+    expect(
+      "model_name" in costEvent("ses_a", STEP.data, { model: "prov/fable" })!,
+    ).toBe(false)
+    // never a name without its model
+    expect(
+      "model_name" in costEvent("ses_a", STEP.data, { name: "Fable 5.2" })!,
+    ).toBe(false)
+  })
+
+  test("the name of a model from OpenCode's list", () => {
+    const models = [
+      { id: "fable", providerID: "prov", name: " Fable 5.2 " },
+      { id: "plain", providerID: "prov" },
+      { id: "odd", providerID: "prov", name: 7 },
+    ]
+    expect(nameOf(models, { providerID: "prov", id: "fable" })).toBe(
+      "Fable 5.2",
+    )
+    expect(nameOf(models, { providerID: "prov", id: "plain" })).toBe("")
+    expect(nameOf(models, { providerID: "prov", id: "odd" })).toBe("")
+    // not in the list (or no list): not known
+    expect(nameOf(models, { providerID: "x", id: "fable" })).toBeUndefined()
+    expect(nameOf([], undefined)).toBeUndefined()
   })
 
   test("the window of a model from OpenCode's list", () => {

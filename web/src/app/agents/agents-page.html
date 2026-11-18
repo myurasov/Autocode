@@ -170,9 +170,20 @@
               </span>
             }
           </td>
-          <!-- Its model, spend and context (the owner, 2026-11-08). -->
-          <td class="model id-like" [attr.title]="a.model || null">
-            @if (a.model) {
+          <!--
+            Its model, spend and context (the owner, 2026-11-08). The model
+            by its name where OpenCode's model list has one ("Fable 5.2";
+            the owner, 2026-11-17), else its ID without the provider's path;
+            the whole ID in the tooltip.
+          -->
+          <td
+            class="model"
+            [class.id-like]="!a.model_name"
+            [attr.title]="a.model || null"
+          >
+            @if (a.model_name) {
+              <span class="model-name">{{ a.model_name }}</span>
+            } @else if (a.model) {
               <code
                 [appBreaks]="modelParts(a.model)[1]"
                 breakAfter="-"

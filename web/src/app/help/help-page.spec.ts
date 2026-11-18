@@ -879,6 +879,12 @@ describe('HelpPage', () => {
         'that spent something',
     ])
       expect(agents, part).toContain(part);
+    // the owner, 2026-11-17: the model by its name ("why it doesnt say
+    // fable 5.2")
+    expect(agents).toContain(
+      'by its name where OpenCode has one, like Fable 5.2; else its ID',
+    );
+    expect(agents).toContain('Hover for the whole ID with its provider');
     // the owner, 2026-11-17: "add col in agents tab for model effort"
     expect(agents).toContain(
       'Effort: how hard the model is set to think, like high or max',

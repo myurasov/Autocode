@@ -143,9 +143,11 @@ describe('AgentsPage', () => {
   it("shows each agent's model, spend today and in total, and its context's share of the threshold", async () => {
     const page = await open();
     const row = page.querySelector('tr[data-agent="kaggle:lead"]')!;
-    // the model's name; the whole ID (its provider's path too) in the tooltip
+    // the model's ID without its provider's path, as no name is known for
+    // it; the whole ID in the tooltip
     const model = row.querySelector('td.model')!;
     expect(text(model)).toBe('claude-opus-5-5');
+    expect(model.querySelector('code')).not.toBeNull();
     expect(model.getAttribute('title')).toBe('prov/claude-opus-5-5');
     // its effort, the model's variant (the owner, 2026-11-17: "add col in
     // agents tab for model effort")
@@ -181,6 +183,38 @@ describe('AgentsPage', () => {
   });
 
   // The owner, 2026-11-09: "add bar under the context numbers on agents tab".
+  // The owner, 2026-11-17: "why i see claude-agent/fable for this agent
+  // (why it doesnt say fable 5.2)?"
+  it('shows a model by its name where OpenCode has one, its ID in the tooltip; sorts by what shows', async () => {
+    const named = {
+      ...AGENTS[0]!,
+      id: 'a:named',
+      model: 'claude-agent/fable',
+      model_name: 'Fable 5.2',
+    };
+    const plain = { ...AGENTS[0]!, id: 'a:plain', model: 'zeta/alpha-1' };
+    const page = await open([named, plain]);
+    const cell = (id: string) =>
+      page.querySelector(`tr[data-agent="${id}"] td.model`)!;
+    expect(text(cell('a:named'))).toBe('Fable 5.2');
+    // a name is words, not an ID: in the page's own font
+    expect(cell('a:named').querySelector('code')).toBeNull();
+    expect(cell('a:named').getAttribute('title')).toBe('claude-agent/fable');
+    expect(text(cell('a:plain'))).toBe('alpha-1');
+    // by Model: "alpha-1" before "Fable 5.2", as shown (by their IDs with
+    // the providers' paths it was the other way round)
+    const heading = [...page.querySelectorAll('thead th')].find(
+      (th) => text(th) === 'Model',
+    ) as HTMLElement;
+    heading.click();
+    await settle(fixture);
+    expect(
+      [...page.querySelectorAll('tr[data-agent]')].map((r) =>
+        r.getAttribute('data-agent'),
+      ),
+    ).toEqual(['a:plain', 'a:named']);
+  });
+
   it("the context's bar: its share of the threshold (amber from 75%, red from 100%, full at most); else of the window", () => {
     const k = (over: Partial<CostNumbers>): CostNumbers => ({
       today_usd: 0,

@@ -351,10 +351,25 @@ export class Costs {
     // the agent's model: its own session's last step (a Subagent's step,
     // with no context of the agent's, may run another model)
     const model = typeof event.model === "string" ? event.model.trim() : ""
-    if (model && model.length <= 200 && Number.isInteger(context))
+    if (model && model.length <= 200 && Number.isInteger(context)) {
+      // another model: the last one's name is not its name
       this.db
-        .query("UPDATE agents SET model = ? WHERE id = ?")
-        .run(model, agent)
+        .query(
+          "UPDATE agents SET model_name = CASE WHEN model IS ? " +
+            "THEN model_name ELSE NULL END, model = ? WHERE id = ?",
+        )
+        .run(model, model, agent)
+      // its name as OpenCode's model list has it (the owner, 2026-11-17:
+      // "Fable 5.2" for claude-agent/fable): "" says the list has none; a
+      // step that does not say it keeps the name
+      if (typeof event.model_name === "string") {
+        const name = event.model_name.trim()
+        if (name.length <= 100)
+          this.db
+            .query("UPDATE agents SET model_name = ? WHERE id = ?")
+            .run(name || null, agent)
+      }
+    }
     // and its effort, the model's variant (the owner, 2026-11-17): "" says
     // the model runs with none; a step that does not say it keeps the last
     if (typeof event.effort === "string" && Number.isInteger(context)) {

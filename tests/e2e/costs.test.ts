@@ -216,6 +216,9 @@ describe("an agent's model effort", () => {
         { timeoutMs: 30_000, what: "the agent's model and effort" },
       )
       expect(seen.model).toBe("fake/main")
+      // its name in OpenCode's model list (the owner, 2026-11-17: "why it
+      // doesnt say fable 5.2")
+      expect(seen.model_name).toBe("Fake main")
       expect(seen.effort).toBe("high")
       // the suite's agent: OpenCode's default model, no variant
       expect((await agent()).effort).toBe(null)

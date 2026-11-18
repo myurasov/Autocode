@@ -149,7 +149,11 @@ export class AgentsPage {
       id: { text: (a) => a.id },
       desc: { text: (a) => a.description },
       status: { text: (a) => a.status },
-      model: { text: (a) => a.model },
+      // by what the cell shows: the model's name, else its ID without the
+      // provider's path
+      model: {
+        text: (a) => a.model_name || (a.model ? modelParts(a.model)[1] : null),
+      },
       effort: { text: (a) => a.effort },
       spend: { number: (a) => a.cost?.today_usd },
       context: { number: (a) => a.cost?.context },

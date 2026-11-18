@@ -369,6 +369,17 @@ describe("store", () => {
     db.close()
   })
 
+  // 21 (the owner, 2026-11-17: the model's name beside its ID).
+  test("migration 21 adds the model's name to the agents, empty at first", () => {
+    const db = openStore(":memory:")
+    expect(schemaVersion(db)).toBeGreaterThanOrEqual(21)
+    const columns = (
+      db.query("PRAGMA table_info(agents)").all() as { name: string }[]
+    ).map((c) => c.name)
+    expect(columns).toContain("model_name")
+    db.close()
+  })
+
   test("a failing migration leaves the database at the version before it", () => {
     const path = tempDb()
     openStore(path, ["CREATE TABLE t (a TEXT)"]).close()

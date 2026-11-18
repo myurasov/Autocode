@@ -1412,7 +1412,11 @@ autocode job set daily-report --host HOST --model MODEL \
           >{{ sec.statuses.label }}</a
         >.
       </li>
-      <li>Model: the model that the agent's last step ran.</li>
+      <li>
+        Model: the model that the agent's last step ran, by its name where
+        OpenCode has one, like Fable 5.2; else its ID. Hover for the whole ID
+        with its provider.
+      </li>
       <li>
         Effort: how hard the model is set to think, like high or max.
         OpenCode calls it the model's variant; it is the Variant of a job and

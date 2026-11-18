@@ -611,6 +611,14 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE runs ADD COLUMN timeout_ms INTEGER;
   ALTER TABLE runs ADD COLUMN run_usd REAL;
   `,
+  /*
+   * 21 (the owner, 2026-11-17: "why i see claude-agent/fable for this agent
+   * (why it doesnt say fable 5.2)?"): the name of an agent's model as
+   * OpenCode's model list has it, beside its ID.
+   */
+  `
+  ALTER TABLE agents ADD COLUMN model_name TEXT;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

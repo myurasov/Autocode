@@ -4309,6 +4309,9 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
               context: 501_000,
               limit: 1_000_000,
               model: "nvidia-ih/aws/anthropic/bedrock-claude-opus-5-5",
+              // its name in OpenCode's model list (the owner, 2026-11-17),
+              // for one of them, and a long one
+              ...(i === 1 ? { model_name: "Opus 5.5 (1M context)" } : {}),
               // the Effort column (the owner, 2026-11-17), a long one
               effort: "medium",
             },
@@ -4326,6 +4329,15 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
       const row = page.locator(`table.agents tr[data-agent="${ids[2]}"]`)
       await expect(row.locator("td.model")).toHaveText(
         "bedrock-claude-opus-5-5",
+      )
+      // a model with a name shows it, with its ID in the tooltip
+      const named = page.locator(
+        `table.agents tr[data-agent="${ids[1]}"] td.model`,
+      )
+      await expect(named).toHaveText("Opus 5.5 (1M context)")
+      await expect(named).toHaveAttribute(
+        "title",
+        "nvidia-ih/aws/anthropic/bedrock-claude-opus-5-5",
       )
       await expect(row.locator("td.model + td.effort")).toHaveText("medium")
       await expect(row.locator("td.status")).toContainText("working")

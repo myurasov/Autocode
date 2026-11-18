@@ -16,7 +16,7 @@ import {
   processOf,
   readClientConfig,
 } from "./config.ts"
-import { costEvent, windowOf } from "./costs.ts"
+import { costEvent, nameOf, windowOf } from "./costs.ts"
 import { sessionIsGone } from "./errors.ts"
 import {
   agentLine,
@@ -711,17 +711,18 @@ export default {
      * A model step's cost and context (tier 0e): a Subagent's counts for its
      * top-level session; the context is the top-level session's own.
      */
-    const windows = new Map<string, number | undefined>()
-    const windowFor = async (ref: any) => {
+    // each model's window and name, from OpenCode's list
+    const known = new Map<string, { limit: number; name?: string }>()
+    const modelFor = async (ref: any) => {
       const key = `${ref?.providerID}/${ref?.id}`
-      if (!windows.has(key)) {
-        const list = await ctx.model.list({}).catch(() => undefined)
-        const n = windowOf(listOf(list), ref)
+      if (!known.has(key)) {
+        const models = listOf(await ctx.model.list({}).catch(() => undefined))
+        const n = windowOf(models, ref)
         // a failed list is asked again next time
         if (n === undefined) return undefined
-        windows.set(key, n)
+        known.set(key, { limit: n, name: nameOf(models, ref) })
       }
-      return windows.get(key)
+      return known.get(key)
     }
     const onStep = async (event: any) => {
       const data = event?.data ?? {}
@@ -757,7 +758,10 @@ export default {
           ? ref.variant
           : ""
         : undefined
-      let limit = ref ? await windowFor(ref) : undefined
+      const found = ref ? await modelFor(ref) : undefined
+      let limit = found?.limit
+      // its name as OpenCode's list has it (the owner, 2026-11-17)
+      let name = found?.name
       if (!ref) {
         const def = await ctx.model.default({}).catch(() => undefined)
         const m =
@@ -765,12 +769,18 @@ export default {
         if (m?.id) {
           ref = { providerID: m.providerID, id: m.id }
           const n = Number(m.limit?.context)
-          limit = Number.isFinite(n) && n > 0 ? n : await windowFor(ref)
+          const listed =
+            Number.isFinite(n) && n > 0 && typeof m.name === "string"
+              ? undefined
+              : await modelFor(ref)
+          limit = Number.isFinite(n) && n > 0 ? n : listed?.limit
+          name = typeof m.name === "string" ? m.name.trim() : listed?.name
         }
       }
       const report = costEvent(session, data, {
         ...(ref?.id ? { model: `${ref.providerID}/${ref.id}` } : {}),
         ...(limit ? { limit } : {}),
+        ...(name === undefined ? {} : { name }),
         ...(effort === undefined ? {} : { effort }),
       })
       if (!report) return

@@ -1407,6 +1407,8 @@ tab are days in the server's zone.
 **Agents**
 
 - One row per agent, grouped by machine: status, model, effort, spend, context, host, folder, session, times.
+- **Model** is the model that the agent's last step ran, by its name where OpenCode has one, like `Fable 5.2`.
+  Without a name it is the model's ID. Hover for the whole ID with its provider, like `claude-agent/fable`.
 - **Effort** is how hard the model is set to think, like `high` or `max`. OpenCode calls it the model's variant.
   It is empty when the model runs with its default. You set it in OpenCode, not in Autocode.
 - **Spend** is today and in total. A click shows the agent on the Costs tab.
