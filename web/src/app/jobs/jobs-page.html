@@ -189,6 +189,7 @@
       <th appSort="name" [sorting]="jobSorting">Name</th>
       <th appSort="where" [sorting]="jobSorting">Where</th>
       <th appSort="model" [sorting]="jobSorting">Model</th>
+      <th appSort="effort" [sorting]="jobSorting">Effort</th>
       <th appSort="trigger" [sorting]="jobSorting">Trigger</th>
       <th appSort="next" [sorting]="jobSorting">Next</th>
       <th appSort="to" [sorting]="jobSorting">To</th>
@@ -217,13 +218,21 @@
             >
           }
         </td>
-        <td class="model">
-          <code>{{ j.model }}</code>
-          @if (j.variant) {
-            &ngsp;<div class="muted">variant {{ j.variant }}</div>
-          }
+        <!-- Its model and effort as on the Agents tab (the owner,
+             2026-11-17): provider/model, the provider in grey, the model's
+             name where one is known in the tooltip; the variant as its
+             Effort. -->
+        <td class="model" [attr.title]="j.model_name || null">
+          <app-model [model]="j.model" [name]="j.model_name" />
           @if (j.agent) {
             &ngsp;<div class="muted">agent {{ j.agent }}</div>
+          }
+        </td>
+        <td class="effort">
+          @if (j.variant) {
+            {{ j.variant }}
+          } @else {
+            <span class="muted">—</span>
           }
         </td>
         <td class="trigger">{{ j.trigger }}</td>

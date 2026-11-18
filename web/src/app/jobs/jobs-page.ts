@@ -35,6 +35,7 @@ import { FOLD_CHARS, folded } from '../format';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { leftText } from '../locks/locks-page';
 import { TRIGGER_HINT } from '../wakes/wakes-page';
+import { ModelText } from '../model';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -67,6 +68,7 @@ const STARTERS = ['owner', 'schedule', 'ask'];
     AgentLink,
     Breaks,
     IdParts,
+    ModelText,
     MoreRow,
     RouterLink,
     SortHead,
@@ -90,7 +92,9 @@ export class JobsPage {
     columns: {
       name: { text: (j) => j.name },
       where: { text: (j) => `${j.machine ?? j.host} ${j.directory ?? ''}` },
+      // by what the cells show, as on the Agents tab
       model: { text: (j) => j.model },
+      effort: { text: (j) => j.variant },
       trigger: { text: (j) => j.trigger },
       next: { time: (j) => j.next, first: 'asc' },
       to: { text: (j) => j.to },

@@ -172,22 +172,13 @@
           </td>
           <!--
             Its model, spend and context (the owner, 2026-11-08). The model
-            by its name where OpenCode's model list has one ("Fable 5.2";
-            the owner, 2026-11-17), else its ID without the provider's path;
-            the whole ID in the tooltip.
+            as provider/model, the provider in grey; its name where
+            OpenCode's model list has one ("Fable 5.2") in the tooltip (the
+            owner, 2026-11-17).
           -->
-          <td
-            class="model"
-            [class.id-like]="!a.model_name"
-            [attr.title]="a.model || null"
-          >
-            @if (a.model_name) {
-              <span class="model-name">{{ a.model_name }}</span>
-            } @else if (a.model) {
-              <code
-                [appBreaks]="modelParts(a.model)[1]"
-                breakAfter="-"
-              ></code>
+          <td class="model" [attr.title]="a.model_name || null">
+            @if (a.model) {
+              <app-model [model]="a.model" [name]="a.model_name" />
             } @else {
               <span class="muted">—</span>
             }

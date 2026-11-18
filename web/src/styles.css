@@ -837,15 +837,16 @@ table.agents td.context a:hover {
  */
 table.agents td.spend .part,
 table.agents td.context .part,
-table.agents td.effort {
+table.agents td.effort,
+table.jobs td.effort {
   white-space: nowrap;
 }
 /*
- * A model: its name, which breaks only after its hyphens (never inside a
- * word); the whole ID (with the provider's path) in the tooltip. An error's
- * type breaks after its dots.
+ * A model, on Agents and Jobs alike: provider/model, the provider in grey
+ * (the owner, 2026-11-17). It breaks only after a slash or a hyphen, never
+ * inside a word. An error's type breaks after its dots.
  */
-table.agents td.model code,
+td.model code,
 td.status .error-type {
   overflow-wrap: normal;
   word-break: normal;

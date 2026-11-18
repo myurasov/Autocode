@@ -890,9 +890,23 @@ describe('HelpPage', () => {
     // the owner, 2026-11-17: the model by its name ("why it doesnt say
     // fable 5.2")
     expect(agents).toContain(
-      'by its name where OpenCode has one, like Fable 5.2; else its ID',
+      'its provider in grey, a slash and the model, like claude-agent/fable',
     );
-    expect(agents).toContain('Hover for the whole ID with its provider');
+    // the owner, 2026-11-17: "i want provider to be reflected in model cols"
+    expect(agents).toContain(
+      'Hover for its name where OpenCode has one, like Fable 5.2.',
+    );
+    // the owner, 2026-11-17: "for claude-agent provider also add version in
+    // (), like claude-agent/fable (5.2)"
+    expect(agents).toContain(
+      'A claude-agent model also shows its version, like ' +
+        'claude-agent/fable (5.2).',
+    );
+    // and "i want models/efforts tho be shown in the same way on agents
+    // and jobs tabs"
+    expect(section(page, 'web-jobs')).toContain(
+      'Model and Effort (both as on the Agents tab)',
+    );
     // the owner, 2026-11-17: "add col in agents tab for model effort"
     expect(agents).toContain(
       'Effort: how hard the model is set to think, like high or max',

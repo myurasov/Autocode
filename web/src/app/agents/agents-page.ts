@@ -35,13 +35,13 @@ import {
   contextTitle,
   dotClass,
   localTime,
-  modelParts,
   spendParts,
 } from '../format';
 import { HostLink, highlightParam, scrollToHighlight } from '../links';
 import { FoldRow, Folds } from '../fold';
 import { contains } from '../filter';
 import { Latest } from '../latest';
+import { ModelText } from '../model';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -130,6 +130,7 @@ function count(n: number, thing: string): string {
     FoldRow,
     HostLink,
     IdParts,
+    ModelText,
     MoreRow,
     RouterLink,
     SortHead,
@@ -149,11 +150,8 @@ export class AgentsPage {
       id: { text: (a) => a.id },
       desc: { text: (a) => a.description },
       status: { text: (a) => a.status },
-      // by what the cell shows: the model's name, else its ID without the
-      // provider's path
-      model: {
-        text: (a) => a.model_name || (a.model ? modelParts(a.model)[1] : null),
-      },
+      // by what the cell shows: provider/model
+      model: { text: (a) => a.model },
       effort: { text: (a) => a.effort },
       spend: { number: (a) => a.cost?.today_usd },
       context: { number: (a) => a.cost?.context },
@@ -221,7 +219,6 @@ export class AgentsPage {
   protected readonly pausedText = pausedText;
   protected readonly dotClass = dotClass;
   protected readonly spendParts = spendParts;
-  protected readonly modelParts = modelParts;
   protected readonly contextBar = contextBar;
   protected readonly contextParts = contextParts;
   protected readonly contextTitle = contextTitle;

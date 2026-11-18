@@ -2287,11 +2287,15 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
       page.locator('table.costs tr[data-agent="smoke:agent"]'),
     ).toHaveClass(/highlight/)
     await openTab(page, "Agents")
-    await expect(agent.locator("td.model")).toHaveText("main")
-    await expect(agent.locator("td.model")).toHaveAttribute(
-      "title",
-      "fake/main",
-    )
+    // provider/model, the provider in grey (the owner, 2026-11-17: "i want
+    // it like so: provider-slug-in-grey/model-slug")
+    await expect(agent.locator("td.model code")).toHaveText("fake/main")
+    await expect(agent.locator("td.model .provider")).toHaveText("fake/")
+    const shades = await agent.locator("td.model code").evaluate((code) => ({
+      provider: getComputedStyle(code.querySelector(".provider")!).color,
+      model: getComputedStyle(code.querySelector(".slug")!).color,
+    }))
+    expect(shades.provider).not.toBe(shades.model)
     // the ID column keeps room for the ID's parts (not two letters a line):
     // 6rem since the Effort column (the owner, 2026-11-17; it was 7rem), so
     // the thirteen columns fit 1280 px
@@ -3235,7 +3239,11 @@ test("Jobs: a job set through the form on the fixture's host", async ({
     await expect(form.locator(".notice")).toHaveText(`Set job ${name}.`)
     const row = page.locator(`table.jobs tr[data-job="${name}"]`)
     await expect(row.locator("td.where")).toHaveText("smoke /work")
-    await expect(row.locator("td.model")).toHaveText("test/model")
+    // a model as on the Agents tab: provider/model, the provider in grey;
+    // no variant, so no effort (the owner, 2026-11-17)
+    await expect(row.locator("td.model code")).toHaveText("test/model")
+    await expect(row.locator("td.model .provider")).toHaveText("test/")
+    await expect(row.locator("td.model + td.effort")).toHaveText("—")
     await expect(row.locator("td.trigger")).toHaveText("every 1h")
     await expect(row.locator("td.next")).toHaveText(/\(in (59m|1h)\)$/)
     await expect(row.locator("td.to")).toHaveText("owner")
@@ -4436,18 +4444,26 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
       await page.setViewportSize({ width, height: 800 })
       await openTab(page, "Agents")
       const row = page.locator(`table.agents tr[data-agent="${ids[2]}"]`)
-      await expect(row.locator("td.model")).toHaveText(
-        "bedrock-claude-opus-5-5",
+      await expect(row.locator("td.model code")).toHaveText(
+        "nvidia-ih/aws/anthropic/bedrock-claude-opus-5-5",
       )
-      // a model with a name shows it, with its ID in the tooltip
+      await expect(row.locator("td.model .provider")).toHaveText(
+        "nvidia-ih/aws/anthropic/",
+      )
+      // a model with a name reads the same; its name is the tooltip
       const named = page.locator(
         `table.agents tr[data-agent="${ids[1]}"] td.model`,
       )
-      await expect(named).toHaveText("Opus 5.5 (1M context)")
-      await expect(named).toHaveAttribute(
-        "title",
+      await expect(named.locator("code")).toHaveText(
         "nvidia-ih/azure/anthropic/claude-opus-5-5",
       )
+      await expect(named).toHaveAttribute("title", "Opus 5.5 (1M context)")
+      // a claude-agent model with its version (the owner, 2026-11-17: "like
+      // claude-agent/fable (5.2)"); no other provider's
+      await expect(
+        page.locator(`table.agents tr[data-agent="${ids[0]}"] td.model code`),
+      ).toHaveText("claude-agent/fable (5.2)")
+      await expect(named.locator(".version")).toHaveCount(0)
       await expect(row.locator("td.model + td.effort")).toHaveText("medium")
       await expect(row.locator("td.status")).toContainText("working")
       await expect(row.locator("td.spend")).toContainText(" today / $")

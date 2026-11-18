@@ -35,6 +35,7 @@ import {
   localTime,
   tokensShort,
 } from '../format';
+import { modelVersion } from '../model';
 import {
   AgentsPage,
   FILTER_DELAY_MS,
@@ -150,12 +151,16 @@ describe('AgentsPage', () => {
   it("shows each agent's model, spend today and in total, and its context's share of the threshold", async () => {
     const page = await open();
     const row = page.querySelector('tr[data-agent="kaggle:lead"]')!;
-    // the model's ID without its provider's path, as no name is known for
-    // it; the whole ID in the tooltip
+    // the model as "provider/model", its provider in grey (the owner,
+    // 2026-11-17: "i want it like so: provider-slug-in-grey/model-slug");
+    // no tooltip, as OpenCode has no name for it
     const model = row.querySelector('td.model')!;
-    expect(text(model)).toBe('claude-opus-5-5');
-    expect(model.querySelector('code')).not.toBeNull();
-    expect(model.getAttribute('title')).toBe('prov/claude-opus-5-5');
+    expect(text(model.querySelector('code'))).toBe('prov/claude-opus-5-5');
+    const provider = model.querySelector('code .provider')!;
+    expect(text(provider)).toBe('prov/');
+    expect(provider.classList).toContain('muted');
+    expect(text(model.querySelector('code .slug'))).toBe('claude-opus-5-5');
+    expect(model.getAttribute('title')).toBeNull();
     // its effort, the model's variant (the owner, 2026-11-17: "add col in
     // agents tab for model effort")
     expect(text(row.querySelector('td.model + td.effort'))).toBe('high');
@@ -208,16 +213,43 @@ describe('AgentsPage', () => {
       model_name: 'Fable 5.2',
     };
     const plain = { ...AGENTS[0]!, id: 'a:plain', model: 'zeta/alpha-1' };
-    const page = await open([named, plain]);
+    const deep = {
+      ...AGENTS[0]!,
+      id: 'a:deep',
+      model: 'hub/aws/anthropic/m-1',
+    };
+    const page = await open([named, plain, deep]);
     const cell = (id: string) =>
       page.querySelector(`tr[data-agent="${id}"] td.model`)!;
-    expect(text(cell('a:named'))).toBe('Fable 5.2');
-    // a name is words, not an ID: in the page's own font
-    expect(cell('a:named').querySelector('code')).toBeNull();
-    expect(cell('a:named').getAttribute('title')).toBe('claude-agent/fable');
-    expect(text(cell('a:plain'))).toBe('alpha-1');
-    // by Model: "alpha-1" before "Fable 5.2", as shown (by their IDs with
-    // the providers' paths it was the other way round)
+    // a named model reads as the others do; its name is the tooltip. A
+    // claude-agent model, whose ID has no version, shows the one in its name
+    // (the owner, 2026-11-17: "for claude-agent provider also add version in
+    // (), like claude-agent/fable (5.2)")
+    expect(text(cell('a:named'))).toBe('claude-agent/fable (5.2)');
+    expect(text(cell('a:named').querySelector('code .version'))).toBe('(5.2)');
+    expect(text(cell('a:named').querySelector('.provider'))).toBe(
+      'claude-agent/',
+    );
+    expect(text(cell('a:named').querySelector('.slug'))).toBe('fable');
+    expect(cell('a:named').getAttribute('title')).toBe('Fable 5.2');
+    expect(text(cell('a:plain'))).toBe('zeta/alpha-1');
+    expect(cell('a:plain').getAttribute('title')).toBeNull();
+    // only that provider's, and only with a name that has a version
+    expect(modelVersion('claude-agent/fable', 'Fable 5.2')).toBe('5.2');
+    expect(modelVersion('claude-agent/opus', 'Opus 5.5 (1M context)')).toBe(
+      '5.5',
+    );
+    expect(modelVersion('claude-agent/fable', 'Fable')).toBe('');
+    expect(modelVersion('claude-agent/fable', null)).toBe('');
+    expect(modelVersion('zeta/alpha', 'Alpha 1.5')).toBe('');
+    expect(modelVersion('hub/claude-agent/fable', 'Fable 5.2')).toBe('');
+    // the provider is the ID's path before its last part; it may break
+    // after its slashes, the model after its hyphens
+    const provider = cell('a:deep').querySelector('.provider')!;
+    expect(text(provider)).toBe('hub/aws/anthropic/');
+    expect(provider.querySelectorAll('wbr').length).toBe(2);
+    expect(text(cell('a:deep').querySelector('.slug'))).toBe('m-1');
+    // by Model: by what shows, the provider first
     const heading = [...page.querySelectorAll('thead th')].find(
       (th) => text(th) === 'Model',
     ) as HTMLElement;
@@ -227,7 +259,7 @@ describe('AgentsPage', () => {
       [...page.querySelectorAll('tr[data-agent]')].map((r) =>
         r.getAttribute('data-agent'),
       ),
-    ).toEqual(['a:plain', 'a:named']);
+    ).toEqual(['a:named', 'a:deep', 'a:plain']);
   });
 
   it("the context's bar: its share of the threshold (amber from 75%, red from 100%, full at most); else of the window", () => {

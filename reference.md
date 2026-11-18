@@ -1409,8 +1409,10 @@ tab are days in the server's zone.
 **Agents**
 
 - One row per agent, grouped by machine: status, model, effort, spend, context, host, folder, session, times.
-- **Model** is the model that the agent's last step ran, by its name where OpenCode has one, like `Fable 5.2`.
-  Without a name it is the model's ID. Hover for the whole ID with its provider, like `claude-agent/fable`.
+- **Model** is the model that the agent's last step ran: its provider in grey, a slash and the model, like
+  `claude-agent/fable`. Hover for its name where OpenCode has one, like `Fable 5.2`. The name comes from the
+  agents' steps, so it is there once one agent has run that model. A `claude-agent` model also shows its version,
+  taken from that name: `claude-agent/fable (5.2)`.
 - **Effort** is how hard the model is set to think, like `high` or `max`. OpenCode calls it the model's variant.
   It is empty when the model runs with its default. You set it in OpenCode, not in Autocode.
 - **Spend** is today and in total. A click shows the agent on the Costs tab.
@@ -1465,8 +1467,8 @@ tab are days in the server's zone.
 
 **Jobs**
 
-- The jobs: where, model, trigger, next run, where results go, Last Run, and **Set By**: the owner, or the agent
-  that set it.
+- The jobs: where, model and effort (both as on the Agents tab), trigger, next run, where results go, Last Run,
+  and **Set By**: the owner, or the agent that set it.
 - **Run Now**, with optional text; **Edit**; **Delete**; **Set a Job**, on a host that is online.
 - Below, the runs, newest first: who started it, state, times, its own cost, result, and why one failed or was
   skipped. **Delete Session** removes the kept session of a failed run.

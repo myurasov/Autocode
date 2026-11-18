@@ -149,6 +149,8 @@ export interface Job {
   directory: string | null;
   online: boolean;
   model: string;
+  // its name as OpenCode's model list has it, when an agent's step said it
+  model_name?: string | null;
   variant?: string;
   agent?: string;
   prompt: string;

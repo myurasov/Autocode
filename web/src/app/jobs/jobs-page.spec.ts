@@ -219,6 +219,7 @@ describe('JobsPage', () => {
       'Name',
       'Where',
       'Model',
+      'Effort',
       'Trigger',
       'Next',
       'To',
@@ -236,7 +237,18 @@ describe('JobsPage', () => {
     );
     expect(cell(mail, 'where')).toBe('laptop /Users/someone/mail');
     expect(mail.querySelector('td.where .offline')).toBeNull();
-    expect(cell(mail, 'model')).toBe('openai/gpt-5 variant high');
+    // a model and its effort as on the Agents tab (the owner, 2026-11-17:
+    // "i want models/efforts tho be shown in the same way on agents and jobs
+    // tabs", "i want it like so: provider-slug-in-grey/model-slug"): the
+    // provider in grey, a slash, the model; the job's variant in an Effort
+    // column
+    const model = mail.querySelector('td.model')!;
+    expect(text(model.querySelector('code'))).toBe('openai/gpt-5');
+    expect(text(model.querySelector('code .provider'))).toBe('openai/');
+    expect(text(model.querySelector('code .slug'))).toBe('gpt-5');
+    expect(cell(mail, 'model')).toBe('openai/gpt-5');
+    expect(model.getAttribute('title')).toBeNull();
+    expect(text(mail.querySelector('td.model + td.effort'))).toBe('high');
     expect(cell(mail, 'trigger')).toBe('every 1h');
     const next = mail.querySelector('td.next')!;
     expect(text(next)).toBe(`${localTime(list[0]!.next)} (in 9m)`);
@@ -262,6 +274,8 @@ describe('JobsPage', () => {
     expect(nightly.querySelector('td.name')!.getAttribute('title')).toBeNull();
     expect(cell(nightly, 'where')).toBe('machine-a /home/someone/work offline');
     expect(cell(nightly, 'model')).toBe('anthropic/claude-sonnet agent build');
+    // no variant: the model's default
+    expect(cell(nightly, 'effort')).toBe('—');
     expect(cell(nightly, 'next')).toBe('—');
     expect(nightly.querySelector('td.to a.id-link')!.getAttribute('href')).toBe(
       '/agents?agent=team:lead',
@@ -273,6 +287,43 @@ describe('JobsPage', () => {
   });
 
   // The owner, 2026-11-09 (rc2): a job's row on Costs links here.
+  // The owner, 2026-11-17: a job's model as on the Agents tab.
+  it("shows a job's model as the Agents tab does, its name in the tooltip, and sorts by what it shows", async () => {
+    const [mail, nightly] = jobs();
+    const page = await open([
+      { ...mail!, model: 'zeta/alpha-1', model_name: 'Alpha One' },
+      {
+        ...nightly!,
+        model: 'claude-agent/fable',
+        model_name: 'Fable 5.2',
+        variant: 'max',
+      },
+    ]);
+    // a claude-agent model with its version, as on the Agents tab
+    expect(text(job(page, 'team:nightly').querySelector('td.model code'))).toBe(
+      'claude-agent/fable (5.2)',
+    );
+    const model = job(page, 'mail').querySelector('td.model')!;
+    expect(text(model.querySelector('code'))).toBe('zeta/alpha-1');
+    expect(model.getAttribute('title')).toBe('Alpha One');
+    const names = () =>
+      [...page.querySelectorAll('table.jobs tr[data-job]')].map((r) =>
+        r.getAttribute('data-job'),
+      );
+    const heading = (label: string) =>
+      [...page.querySelectorAll('table.jobs thead th')].find(
+        (th) => text(th) === label,
+      ) as HTMLElement;
+    // by Model: "claude-agent/fable" before "zeta/alpha-1", as shown
+    heading('Model').click();
+    await settle(fixture);
+    expect(names()).toEqual(['team:nightly', 'mail']);
+    // by Effort: "high" before "max"
+    heading('Effort').click();
+    await settle(fixture);
+    expect(names()).toEqual(['mail', 'team:nightly']);
+  });
+
   it('highlights the job a link led to (?job=)', async () => {
     Element.prototype.scrollIntoView = () => {};
     signedIn();
@@ -351,6 +402,7 @@ describe('JobsPage', () => {
       'Name',
       'Where',
       'Model',
+      'Effort',
       'Trigger',
       'Next',
       'To',
