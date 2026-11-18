@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import {
   call,
   hello,
+  report,
   sessionToken,
   type TestServer,
   testServer,
@@ -275,6 +276,64 @@ describe("discovery and status", () => {
     const after = (await call(t.url, token, "GET", "/v1/me")).body.agent
       .last_active
     expect(Date.parse(after) - Date.parse(before)).toBe(60_000)
+  })
+
+  /*
+   * The owner, 2026-11-17, looking at the live Agents tab: one agent was
+   * working with a Last Active of 2 am, another idle and active minutes ago:
+   * "working agent is active by definition. i think its a bug". Last Active
+   * was moved by the agent's own calls only. Its session's turns and steps
+   * move it too, and a working agent is active now.
+   */
+  test("a working agent is active now; its turn's end is its last activity", async () => {
+    const t = await start()
+    const token = await sessionToken(t, "m:1", "ses_1")
+    await register(t, token, "a:b")
+    const seen = async () => {
+      const a = (await call(t.url, t.admin, "GET", "/v1/agents/a:b")).body.agent
+      return [a.status, Date.parse(a.last_active) - t0]
+    }
+    const t0 = t.clock.now()
+    // a turn starts; hours later it still runs, with no call to Autocode
+    t.clock.advance(60_000)
+    await report(t, "m:1", [{ type: "turn.started", session: "ses_1" }])
+    t.clock.advance(3 * 3_600_000)
+    expect(await seen()).toEqual(["working", 60_000 + 3 * 3_600_000])
+    // as the agents' list and discover say it
+    const listed = (await call(t.url, t.admin, "GET", "/v1/agents")).body
+      .agents[0]
+    expect(Date.parse(listed.last_active) - t0).toBe(60_000 + 3 * 3_600_000)
+    // the turn ends: that moment stays its last activity
+    await report(t, "m:1", [
+      { type: "turn.ended", session: "ses_1", outcome: "succeeded" },
+    ])
+    const ended = 60_000 + 3 * 3_600_000
+    t.clock.advance(600_000)
+    expect(await seen()).toEqual(["idle", ended])
+  })
+
+  test("a step moves Last Active, in a session the server did not know to be busy too", async () => {
+    const t = await start()
+    const token = await sessionToken(t, "m:1", "ses_1")
+    await register(t, token, "a:b")
+    const t0 = t.clock.now()
+    t.clock.advance(120_000)
+    await report(t, "m:1", [
+      {
+        type: "cost",
+        session: "ses_1",
+        usd: 0.1,
+        context: 1000,
+        limit: 200_000,
+        model: "fake/main",
+      },
+    ])
+    t.clock.advance(60_000)
+    const a = (await call(t.url, t.admin, "GET", "/v1/agents/a:b")).body.agent
+    expect([a.status, Date.parse(a.last_active) - t0]).toEqual([
+      "idle",
+      120_000,
+    ])
   })
 })
 

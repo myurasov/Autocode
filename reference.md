@@ -1418,6 +1418,8 @@ tab are days in the server's zone.
   compacts it, and the most the model can hold. The tooltip has the exact numbers. The bar under it shows how close
   the session is to compaction: amber from 75%, red from 100%. Without a threshold, the bar shows the share of the
   model's window.
+- **Last Active** is when the agent's session last started or ended a turn, ran a step or called Autocode. A
+  working agent is active now.
 - **Status details.** A paused agent's tooltip says who paused it. An agent in `error` shows its error and one of
   `retry 3 in 40s`, `retrying now`, `not retried` or `retries ran out`.
 - **In a row:** click the description to edit it; **Pause**, **Resume**, **Retry**, **New Token**, **Unregister**.

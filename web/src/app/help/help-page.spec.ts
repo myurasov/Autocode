@@ -898,6 +898,11 @@ describe('HelpPage', () => {
       'Effort: how hard the model is set to think, like high or max',
     );
     expect(agents).toContain('You set it in OpenCode, not here');
+    // the owner, 2026-11-17: "working agent is active by definition"
+    expect(agents).toContain(
+      'Last Active: when its session last started or ended a turn, ran a ' +
+        'step or called Autocode. A working agent is active now.',
+    );
     expect(section(page, 'web-hosts')).toContain('the Offline box');
     // the two warnings a host's row can carry
     expect(section(page, 'web-hosts')).toContain(

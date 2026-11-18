@@ -359,6 +359,9 @@ export async function startServer(
   const answerAck = (instructionId: string) => hosts.instruction(instructionId)
   const answerAlert = (agent: string, title: string, body: string) =>
     inbox.open("alert", { agent, title, body })
+  // an agent's Last Active follows its session's turns and steps, not only
+  // its own calls (the owner, 2026-11-17)
+  hosts.onActivity = (session) => agents.touch(session)
   hosts.onCost = (event) => {
     const session = String(event.session)
     // a run's session counts as its run, also once the run ended and its

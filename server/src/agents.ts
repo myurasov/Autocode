@@ -96,17 +96,29 @@ export class Agents {
     if (host) this.hosts.enqueue(host, "registration", { session, agent })
   }
 
+  /*
+   * When the agent was last active: its session's last turn start, step or
+   * turn end, or its own last call; now, while it works (the owner,
+   * 2026-11-17: "working agent is active by definition").
+   */
+  private lastActive(row: any, status: string): string {
+    return new Date(
+      status === "working" ? this.now() : row.last_active,
+    ).toISOString()
+  }
+
   ownerView(row: any): AgentView {
+    const status = this.status(row)
     return {
       id: row.id,
       description: row.description,
-      status: this.status(row),
+      status,
       session: row.session_id,
       host: row.host_id,
       machine: row.machine,
       directory: row.directory,
       registered_at: new Date(row.registered_at).toISOString(),
-      last_active: new Date(row.last_active).toISOString(),
+      last_active: this.lastActive(row, status),
       paused: row.paused ?? "",
       idle_since: row.idle_since
         ? new Date(row.idle_since).toISOString()
@@ -126,11 +138,12 @@ export class Agents {
   }
 
   private discoverView(row: any): AgentView {
+    const status = this.status(row)
     return {
       id: row.id,
       description: row.description,
-      status: this.status(row),
-      last_active: new Date(row.last_active).toISOString(),
+      status,
+      last_active: this.lastActive(row, status),
     }
   }
 

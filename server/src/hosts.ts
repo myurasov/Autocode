@@ -113,6 +113,8 @@ export class Hosts {
   onAsk: (host: string, event: any) => void = () => {}
   // A model step's cost (tier 0e), and a turn cut by a lost OpenCode.
   onCost: (event: any) => void = () => {}
+  // A session showed life: its turn started or ended, or it ran a step.
+  onActivity: (session: string) => void = () => {}
   onCut: (session: string) => void = () => {}
   // A host said hello (the loader alerts again after a new outage), with
   // the plugin's body (its pending forms and requests, per session).
@@ -427,6 +429,12 @@ export class Hosts {
     return true
   }
 
+  private active(session: string) {
+    try {
+      this.onActivity(session)
+    } catch {}
+  }
+
   private turnStarted(session: string, at?: unknown) {
     if (!this.fresh(session, at, "started")) return
     this.db
@@ -612,6 +620,7 @@ export class Hosts {
         event.type === "turn.started" &&
         typeof event.session === "string"
       ) {
+        this.active(event.session)
         this.turnStarted(event.session, event.at)
       } else if (
         event.type === "turn.ended" &&
@@ -629,6 +638,7 @@ export class Hosts {
           event.background < 10_000
             ? (event.background as number)
             : 0
+        this.active(event.session)
         this.turnEnded(
           event.session,
           outcome,
@@ -638,6 +648,7 @@ export class Hosts {
           background,
         )
       } else if (event.type === "cost" && typeof event.session === "string") {
+        this.active(event.session)
         try {
           this.onCost(event)
         } catch {}
