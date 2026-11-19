@@ -156,6 +156,18 @@ export async function agents(args: Parsed): Promise<number> {
 }
 
 export async function hosts(args: Parsed): Promise<number> {
+  const [sub, ...rest] = args.words
+  // an offline host's record, at once (1.0.1); the others go by themselves
+  if (sub === "rm") {
+    const id = rest[0]
+    if (!id) throw new CliError("usage: autocode hosts rm <host>", 2)
+    const res = await connect(args).call(
+      "DELETE",
+      `/v1/hosts/${encodeURIComponent(id)}`,
+    )
+    print(args, res, () => `removed ${id}`)
+    return 0
+  }
   const res = await connect(args).call("GET", "/v1/hosts")
   print(args, res.hosts, () => {
     if (!res.hosts.length) return "no hosts yet: no plugin has connected"

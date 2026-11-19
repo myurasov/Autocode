@@ -532,6 +532,8 @@ describe('HelpPage', () => {
       ['check_output', '2000'],
       ['max_tool_wait', '5m'],
       ['timezone', "the server machine's"],
+      // 1.0.1 (the owner, 2026-11-19: "fix for stale host records")
+      ['host_expire_after', '1d'],
       ['history_days', '30'],
       ['retry_interval', '1m'],
       ['retry_attempts', '0'],
@@ -928,6 +930,15 @@ describe('HelpPage', () => {
     expect(section(page, 'web-hosts')).toContain(
       'A host marked "too old" shows either way',
     );
+    // 1.0.1 (the owner, 2026-11-19: "fix for stale host records")
+    expect(section(page, 'web-hosts')).toContain(
+      'An offline host leaves the list a day after it was last heard ' +
+        'from (host_expire_after)',
+    );
+    expect(section(page, 'settings')).toContain(
+      'forget a host this long after it was last heard from',
+    );
+    expect(section(page, 'commands')).toContain('autocode hosts rm HOST');
     // the owner, 2026-11-17: OpenCode 2.3.0 is the minimum
     expect(section(page, 'connect')).toContain('(2.3.0 or later)');
     expect(section(page, 'trouble')).toContain(

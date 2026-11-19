@@ -1378,6 +1378,12 @@ autocode job set daily-report --host HOST --model MODEL \
         default. A host marked "too old" shows either way.
       </li>
       <li>
+        An offline host leaves the list a day after it was last heard from
+        (<code>host_expire_after</code>), unless an agent is registered
+        there, a job is set on it or a run still runs there. When its folder
+        is opened in OpenCode again, it is back.
+      </li>
+      <li>
         A row can carry two warnings. "too old", under the OpenCode version,
         with the version it needs: Autocode cannot use this OpenCode; update
         it. "no shell values", under the process: scripts that agents run on
@@ -1870,6 +1876,15 @@ autocode settings --agent kaggle:lead</pre
             The time zone of <code>at</code> and <code>cron</code> triggers,
             and of the days that spend and caps are counted by. A cron trigger
             that exists keeps the zone it was set with. Server-wide only.
+          </td>
+        </tr>
+        <tr>
+          <td><code>host_expire_after</code></td>
+          <td>1d</td>
+          <td>
+            forget a host this long after it was last heard from, once it is
+            offline and no agent, job or run needs it; <code>0</code> keeps
+            every host. Server-wide only.
           </td>
         </tr>
         <tr>
@@ -2568,6 +2583,13 @@ echo 'export PATH="$HOME/.autocode/bin:$PATH"' >> ~/.bashrc</pre
             >
           </td>
           <td>the history, newest first</td>
+        </tr>
+        <tr>
+          <td><code>autocode hosts rm HOST</code></td>
+          <td>
+            remove an offline host from the list now; the others go by
+            themselves after <code>host_expire_after</code>
+          </td>
         </tr>
         <tr>
           <td><code>autocode token rotate AGENT</code></td>

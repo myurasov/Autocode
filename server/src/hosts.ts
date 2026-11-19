@@ -351,6 +351,10 @@ export class Hosts {
     return {
       server: { id: this.options.serverId, version: VERSION },
       host: id,
+      // this hello made the host's record (a new folder, or one whose
+      // record went: host_expire_after, 1.0.1): the tokens its sessions
+      // held are gone with the old record, and the plugin drops them
+      created: !before,
       poll: { wait: this.options.pollWait },
       sessions: this.sessionsOf(id),
       registered: this.registeredOf(id),
@@ -559,7 +563,9 @@ export class Hosts {
             "the consumer token was replaced",
             401,
           )
-        if (this.row(id)?.instance !== instance)
+        // the host's record went under the poll (1.0.1): not superseded,
+        // unknown, so that the plugin says hello again at once
+        if (this.known(id).instance !== instance)
           throw new AutocodeError(
             "superseded",
             `instance ${instance} of host ${id} was superseded by a newer one`,
@@ -808,6 +814,102 @@ export class Hosts {
       first_seen: new Date(h.first_seen).toISOString(),
       last_seen: new Date(h.last_seen).toISOString(),
     }))
+  }
+
+  /*
+   * What still needs a host's record, or null (1.0.1): an agent registered
+   * in one of its sessions, a job set on it, a run that still runs there.
+   */
+  private neededBy(id: string): string | null {
+    const agent = this.db
+      .query(
+        "SELECT a.id FROM agents a JOIN sessions s ON s.id = a.session_id " +
+          "WHERE s.host_id = ? ORDER BY a.id LIMIT 1",
+      )
+      .get(id) as { id: string } | null
+    if (agent) return `the agent ${agent.id} is registered there`
+    const job = this.db
+      .query("SELECT name FROM jobs WHERE host_id = ? ORDER BY name LIMIT 1")
+      .get(id) as { name: string } | null
+    if (job) return `the job ${job.name} is set on it`
+    const run = this.db
+      .query(
+        "SELECT id FROM runs WHERE spawn_host = ? " +
+          "AND state IN ('starting', 'running') ORDER BY id LIMIT 1",
+      )
+      .get(id) as { id: string } | null
+    if (run) return `the run ${run.id} still runs there`
+    return null
+  }
+
+  /*
+   * Forgets a host: its record, its sessions with their tokens, and the
+   * instructions queued for it. History keeps what it holds, and says so.
+   * A folder that comes back says hello and is a host again.
+   */
+  private forget(row: any, by: "expired" | "owner") {
+    this.db.transaction(() => {
+      this.db
+        .query(
+          "DELETE FROM tokens WHERE session_id IN " +
+            "(SELECT id FROM sessions WHERE host_id = ?)",
+        )
+        .run(row.id)
+      this.db.query("DELETE FROM sessions WHERE host_id = ?").run(row.id)
+      this.db.query("DELETE FROM instructions WHERE host_id = ?").run(row.id)
+      this.db.query("DELETE FROM hosts WHERE id = ?").run(row.id)
+    })()
+    this.polling.delete(row.id)
+    this.lastPoll.delete(row.id)
+    this.history.record("host.removed", {
+      host: row.id,
+      data: {
+        by,
+        machine: row.machine,
+        directory: row.directory,
+        last_seen: new Date(row.last_seen).toISOString(),
+      },
+    })
+  }
+
+  /*
+   * The hosts last heard from `afterMs` ago or longer, offline, that nothing
+   * needs are forgotten (1.0.1; the owner, 2026-11-19: a server held 299
+   * records, 4 online). 0: none.
+   */
+  expire(afterMs: number): string[] {
+    if (!(afterMs > 0)) return []
+    const out: string[] = []
+    for (const row of this.db
+      .query(
+        "SELECT * FROM hosts WHERE online = 0 AND last_seen < ? ORDER BY id",
+      )
+      .all(this.now() - afterMs) as any[]) {
+      if (this.neededBy(row.id)) continue
+      this.forget(row, "expired")
+      out.push(row.id)
+    }
+    return out
+  }
+
+  // The owner removes one host: an offline one that nothing needs.
+  remove(id: string) {
+    const row = this.known(id)
+    if (row.online)
+      throw new AutocodeError(
+        "host_online",
+        `host ${id} is online: it goes when its folder is closed in OpenCode`,
+        409,
+      )
+    const needed = this.neededBy(id)
+    if (needed)
+      throw new AutocodeError(
+        "host_in_use",
+        `host ${id} is still needed: ${needed}`,
+        409,
+      )
+    this.forget(row, "owner")
+    return { removed: id }
   }
 
   // The consumer token was replaced: every open poll ends, unserved.

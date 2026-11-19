@@ -220,6 +220,27 @@ describe("autocode CLI", () => {
     ).toBe("m:1")
   })
 
+  // 1.0.1 (the owner, 2026-11-19: "fix for stale host records"): the owner
+  // removes one offline host's record at once.
+  test("hosts rm removes an offline host's record; an online one is refused", async () => {
+    await hello(t, "gone:1")
+    const online = await cli(["hosts", "rm", "gone:1"], asAdmin())
+    expect(online.code).toBe(1)
+    expect(online.stderr).toContain("online")
+    t.clock.advance(5_000)
+    t.server.maintenance()
+    const res = await cli(["hosts", "rm", "gone:1"], asAdmin())
+    expect([res.code, res.stdout.trim()]).toEqual([0, "removed gone:1"])
+    expect(
+      JSON.parse((await cli(["hosts", "--json"], asAdmin())).stdout).map(
+        (h: any) => h.id,
+      ),
+    ).not.toContain("gone:1")
+    const usage = await cli(["hosts", "rm"], asAdmin())
+    expect(usage.code).toBe(2)
+    expect(usage.stderr).toContain("usage: autocode hosts rm <host>")
+  })
+
   test("history shows entries, newest first, with filters", async () => {
     const res = await cli(["history", "--agent", "kaggle:lead"], asAdmin())
     expect(res.code).toBe(0)

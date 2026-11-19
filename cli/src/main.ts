@@ -142,6 +142,8 @@ Settings and History
   history [--agent AGENT] [--kind KIND] [--since TIME] [--until TIME]
       [--limit N]            what happened, newest first: 100 entries, or
                              N (up to 1000)
+  hosts rm HOST              remove an offline host's record now; the others
+                             go by themselves after host_expire_after
 
 Tokens
   Three forms; give an agent or one flag, never two of them:

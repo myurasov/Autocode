@@ -163,6 +163,14 @@ export const SETTINGS: Record<string, SettingDef> = {
     default: "14d",
     help: "unregister an agent this long after its session's last turn",
   },
+  // 1.0.1 (the owner, 2026-11-19: "fix for stale host records"): a server
+  // held 299 host records, 4 online.
+  host_expire_after: {
+    kind: "duration",
+    scope: "server",
+    default: "1d",
+    help: "forget a host this long after it went offline (0: never)",
+  },
   history_days: {
     kind: "int",
     scope: "server",

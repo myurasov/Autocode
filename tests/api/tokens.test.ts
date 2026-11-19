@@ -519,9 +519,13 @@ describe("session tokens", () => {
     const DAY = 86_400_000
     for (let day = 0; day < 29; day++) {
       t.clock.advance(DAY)
+      // its host is heard from, as a live one is (a host offline for a week
+      // is forgotten with its sessions' tokens: 1.0.1)
+      await hello(t, "m:1")
       expect((await call(t.url, used, "GET", "/v1/me")).status).toBe(200)
     }
     t.clock.advance(2 * DAY)
+    await hello(t, "m:1")
     t.server.maintenance()
     expect((await call(t.url, old, "GET", "/v1/me")).status).toBe(401)
     expect((await call(t.url, used, "GET", "/v1/me")).status).toBe(200)

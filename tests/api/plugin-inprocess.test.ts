@@ -549,6 +549,62 @@ describe("the plugin in-process", () => {
     expect(tokens()).toBe(2)
   })
 
+  /*
+   * 1.0.1 (the owner, 2026-11-19: "fix for stale host records"): a host's
+   * record goes with its sessions' tokens (host_expire_after, or `autocode
+   * hosts rm`). Red on real OpenCode first (tests/restart/hosts.test.ts): a
+   * session's next shell said "refused (unauthorized)". The token the
+   * plugin holds, or kept in OpenCode's storage, is dead then, and a shell
+   * does not renew a refused token as a tool call does.
+   */
+  test("after its host's record went, a session's next shell has a living token: one a running plugin holds, and one a reloaded plugin kept", async () => {
+    const dir = join(root, "work-gone")
+    const sessions: Session[] = [{ id: "ses_gone", directory: dir }]
+    const shellToken = async (fake: Fake, id: string) => {
+      await toolCall(fake, "shell", "ses_gone", id)
+      return environments("ses_gone").at(-1)!.AUTOCODE_TOKEN!
+    }
+    const alive = async (token: string) =>
+      (await call(t.url, token, "GET", "/v1/whoami")).status === 200
+    const first = await connected(() => startPlugin(dir, sessions))
+    const one = await shellToken(first, "g1")
+    expect(await alive(one)).toBe(true)
+
+    // 1. the plugin stays up while the server forgets its host (a laptop
+    // asleep for days): what the server does at host_expire_after
+    const host = (
+      t.server.db
+        .query("SELECT host_id FROM sessions WHERE id = 'ses_gone'")
+        .get() as { host_id: string }
+    ).host_id
+    for (const sql of [
+      "DELETE FROM tokens WHERE session_id IN " +
+        "(SELECT id FROM sessions WHERE host_id = ?)",
+      "DELETE FROM sessions WHERE host_id = ?",
+      "DELETE FROM instructions WHERE host_id = ?",
+      "DELETE FROM hosts WHERE id = ?",
+    ])
+      t.server.db.query(sql).run(host)
+    expect(await alive(one)).toBe(false)
+    // its next poll is refused, it says hello again, and the session's
+    // shells get new values at once
+    await until(() => environments("ses_gone").at(-1)!.AUTOCODE_TOKEN !== one, {
+      what: "new values for the session's shells",
+    })
+    const two = await shellToken(first, "g2")
+    expect(two).not.toBe(one)
+    expect(await alive(two)).toBe(true)
+
+    // 2. OpenCode loads the plugin again (its folder was closed meanwhile):
+    // the token it kept in OpenCode's storage is dead
+    t.server.db.query("DELETE FROM tokens WHERE session_id = 'ses_gone'").run()
+    expect(await alive(two)).toBe(false)
+    const second = await connected(() => startPlugin(dir, sessions))
+    const three = await shellToken(second, "g3")
+    expect(three).not.toBe(two)
+    expect(await alive(three)).toBe(true)
+  })
+
   test("hello says whether the plugin can set shell values; where it cannot, a shell call sets nothing", async () => {
     const hostAt = async (dir: string) =>
       (await call(t.url, t.admin, "GET", "/v1/hosts")).body.hosts.find(

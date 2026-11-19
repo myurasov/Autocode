@@ -1226,6 +1226,7 @@ are those of `autocode --help`.
 | `autocode settings set KEY VALUE [--agent AGENT \| --match PATTERN]` | set a value: server-wide, for one agent, or for the agents a pattern matches |
 | `autocode settings unset KEY [--agent AGENT \| --match PATTERN]` | clear a value |
 | `autocode history [--agent AGENT] [--kind KIND] [--since TIME] [--until TIME] [--limit N]` | what happened, newest first (see [History Kinds](#history-kinds)) |
+| `autocode hosts rm HOST` | remove an offline host's row now. Refused while the host is online, or while an agent, a job or a run needs it. The others go by themselves: see [What the Database Keeps](#what-the-database-keeps) |
 | **Tokens** | |
 | `autocode token rotate AGENT` | replace an agent's session token |
 | `autocode token rotate --admin` | replace the admin token. The new one is saved on the server, in `admin.token`, never printed |
@@ -1265,6 +1266,7 @@ by one kind, or by a group such as `wake.*`.
 |---|---|
 | `server.started`, `settings.changed` | the server started; a setting changed |
 | `host.online`, `host.offline` | a host connected; the server stopped hearing from it |
+| `host.removed` | a host's row was removed: by `expired` (offline for `host_expire_after`) or by `owner` (`autocode hosts rm`). The data has its machine, its folder and when it was last heard from |
 | `host.load`, `host.load_failed` | the server loaded an unloaded folder again; it could not |
 | `opencode.restarted` | the server started a background service that was gone |
 | `session.token`, `session.deleted` | a new session token was made; a session was deleted in OpenCode |
@@ -1324,6 +1326,8 @@ A refused call names a code. The CLI prints `refused (CODE): reason`; a tool ans
 | `unknown_session` | `agents register`: the server does not know that session, or it was deleted |
 | `session_gone` | the session was deleted in OpenCode. A deleted session never gets a token again |
 | `unknown_host` | no host has that ID. See `autocode hosts` |
+| `host_online` | `hosts rm`: the host is online. Its row goes after its folder is closed in OpenCode |
+| `host_in_use` | `hosts rm`: an agent is registered there, a job is set on it, or a run still runs there. The message says which |
 | `no_recipient` | a message reaches nobody: the ID is not registered, or the pattern matches no agent |
 | `no_message` | there is no such message, or it is not one that the sender sent or got |
 | `too_large` | the text is longer than allowed: 32,000 characters for a message |
@@ -1402,9 +1406,11 @@ tab are days in the server's zone.
   [A Host Is Marked "no shell values"](#a-host-is-marked-no-shell-values)).
 - Offline hosts show only with the **Offline** box. A link to an offline host turns the box on. A host marked
   "too old" always shows.
+- An offline host leaves the list a day after it was last heard from (`host_expire_after`), unless an agent is
+  registered there, a job is set on it or a run still runs there. When its folder is opened in OpenCode again, it
+  is back.
 - A TUI attaches to the background service by default. So its folders stay loaded after the TUI exits, and their
   hosts online, until OpenCode unloads a folder an hour after its last use.
-- A host's row stays for good, also when its folder is gone: no command removes it.
 
 **Agents**
 
@@ -1550,6 +1556,7 @@ clears that value again.
 | `cap_warn` | agent | `90%` | warn the agent at this share of its cap |
 | `compact_at` | agent | `50% max 500000` | compact a session past this context size (see [Compaction](#compaction)) |
 | `expire_after` | agent | `14d` | unregister an agent this long after its session's last turn |
+| `host_expire_after` | server | `1d` | forget a host this long after it was last heard from, once it is offline and nothing needs it. `0`: never (see [What the Database Keeps](#what-the-database-keeps)) |
 | `history_days` | server | `30` | how many days history is kept, at least 1 (see [What the Database Keeps](#what-the-database-keeps)) |
 | `timezone` | server | the server machine's zone | the days of caps and costs, and the zone of `at` and `cron` triggers without one. A `cron` wake keeps the zone it was set with |
 | `listen` | server | `localhost,tailscale:4848` | the addresses and the port the server answers on. A change takes effect at the next start. The `--listen` flag wins over it |
@@ -1634,9 +1641,13 @@ The server cleans the database by itself: at each start, and then every 5 second
 | each agent's spend per day | `history_days`, but at least 31 days |
 | each agent's spend in total | for good, also after it unregistered |
 | agents, wakes, locks, jobs, settings | until they are removed |
-| hosts | for good, also when the folder is gone: no command removes a host's row |
+| hosts | `host_expire_after` (1 day) after they were last heard from, once offline. Not while an agent is registered there, a job is set on it or a run still runs there |
 
 `history_days` is a whole number of days, at least 1. To change it: `autocode settings set history_days 60`.
+
+`host_expire_after` is a duration, like `1d` or `36h`; `0` keeps every host. A host that is forgotten loses its row,
+its sessions and their tokens; History says `host.removed`. Nothing else is lost: when its folder is opened in
+OpenCode again, it is a host again. To remove one offline host at once: `autocode hosts rm HOST`.
 
 The file does not shrink by itself: the space of deleted rows is used again for new ones. To make it smaller, see
 [Shrink the Database](#shrink-the-database).
@@ -1978,7 +1989,8 @@ offline 65 seconds after the server last heard from its plugin.
    `opencode service restart`. This closes open TUIs and cuts the turns that run there; Autocode resumes the agents'
    turns.
 
-The row of a host stays after its folder is gone: no command removes it.
+The row of a host whose folder is gone leaves by itself, a day after the host was last heard from
+(`host_expire_after`). To remove it now: `autocode hosts rm HOST`.
 
 ### The Tools Are Missing
 

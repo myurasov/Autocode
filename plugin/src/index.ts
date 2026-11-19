@@ -176,12 +176,27 @@ export default {
           if (typeof session === "string") runs.add(session)
         // questions and permissions already pending (tier 0d)
         void reportPending([...registered.keys()])
-        // after a replaced consumer token: new tokens for the shells of the
-        // sessions that had the old ones, without waiting for a tool call
-        if (renewAll) {
-          renewAll = false
+        // new tokens for the shells of the sessions that hold dead ones,
+        // without waiting for a tool call
+        const renew = () => {
           for (const root of new Set([...shellSet.values()].map((s) => s.root)))
             void renewShellValues(root).catch(() => {})
+        }
+        /*
+         * The server did not know this host: a new folder, or one whose
+         * record went (host_expire_after, or the owner removed it: 1.0.1).
+         * Its sessions' tokens went with the record, so the ones kept here,
+         * in OpenCode's storage too, are dead: a shell would be refused
+         * with one (seen on real OpenCode: `autocode me` said "refused
+         * (unauthorized)" until a tool call renewed the token).
+         */
+        if (reply?.created === true) {
+          renewAll = false
+          void tokens.forgetAll().then(renew, () => {})
+        } else if (renewAll) {
+          // after a replaced consumer token
+          renewAll = false
+          renew()
         }
       },
     })

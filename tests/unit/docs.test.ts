@@ -256,6 +256,25 @@ test("the reference lists every kind of History", () => {
   for (const kind of kinds) expect(ref, kind).toContain(`\`${kind}\``)
 })
 
+// 1.0.1 (the owner, 2026-11-19: "lets implement fix for stale host
+// records"): a host's record goes by itself; the reference said that no
+// command removes one.
+test("the reference says how a host's record goes: the setting, the command, its errors", () => {
+  const ref = read("reference.md")
+  for (const part of [
+    "| `host_expire_after` | server | `1d` |",
+    "| `autocode hosts rm HOST` |",
+    "`host.removed`",
+    "| `host_online` |",
+    "| `host_in_use` |",
+    "| hosts | `host_expire_after` (1 day) after they were last heard from",
+  ])
+    expect(ref, part).toContain(part)
+  // what it said before 1.0.1, in two places
+  expect(ref).not.toContain("no command removes")
+  expect(ref).not.toContain("row stays for good")
+})
+
 // What the operator's test read could not find or found twice, differently.
 test("the reference has the operator's procedures and one answer each", () => {
   const ref = read("reference.md")

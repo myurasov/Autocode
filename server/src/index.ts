@@ -649,6 +649,15 @@ export async function startServer(
       handler: () => ({ hosts: hosts.list() }),
     },
     {
+      method: "DELETE",
+      path: "/v1/hosts/:host",
+      access: ["admin"],
+      summary:
+        "remove an offline host's record (one that no agent, job or run " +
+        "needs); the others go by themselves after host_expire_after",
+      handler: ({ params }) => hosts.remove(params.host!),
+    },
+    {
       method: "POST",
       path: "/v1/agents",
       access: ["session", "admin"],
@@ -1673,6 +1682,12 @@ export async function startServer(
         agents.unregister(agent, "expired")
         history.record("agent.expired", { agent })
       } catch {}
+    // hosts offline for host_expire_after that nothing needs (1.0.1)
+    try {
+      hosts.expire(parseDuration(String(settings.value("host_expire_after"))))
+    } catch (err) {
+      log(`hosts: ${(err as Error).message}`)
+    }
   }
   maintenance()
   const timer =
