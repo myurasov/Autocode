@@ -292,6 +292,44 @@ describe("plugin: session tokens", () => {
     expect(await tokens.token("ses_b")).toBe("tok-ses_b-3")
   })
 
+  /*
+   * 1.0.1: a kept token may be dead for reasons the plugin cannot see (its
+   * host's record went with its sessions' tokens; the token was unused for
+   * 30 days). A tool call renews a refused token, a shell does not: so a
+   * kept token is asked about once before it is used.
+   */
+  test("a kept token the server no longer takes is not used; one that cannot be asked about is", async () => {
+    const kept = new Map<string, string>([
+      ["ses_dead", "dead"],
+      ["ses_live", "live"],
+      ["ses_unknown", "unknown"],
+    ])
+    const asked: string[] = []
+    let n = 0
+    const tokens = new SessionTokens({
+      parentOf: async () => undefined,
+      requestToken: async (s) => `tok-${s}-${++n}`,
+      store: {
+        get: async (s) => kept.get(s),
+        set: async (s, t) => void kept.set(s, t),
+        remove: async (s) => void kept.delete(s),
+      },
+      alive: async (token) => {
+        asked.push(token)
+        if (token === "unknown") throw new Error("the server does not answer")
+        return token === "live"
+      },
+    })
+    expect(await tokens.token("ses_dead")).toBe("tok-ses_dead-1")
+    expect(kept.get("ses_dead")).toBe("tok-ses_dead-1")
+    expect(await tokens.token("ses_live")).toBe("live")
+    expect(await tokens.token("ses_unknown")).toBe("unknown")
+    // once each: a token in use is not asked about again, nor a new one
+    await tokens.token("ses_dead")
+    await tokens.token("ses_live")
+    expect(asked).toEqual(["dead", "live", "unknown"])
+  })
+
   test("a kept token carries a mark of its consumer token; one of another consumer token, or without a mark, is not used", () => {
     const now = consumerMark("acc_new")
     expect(now).toMatch(/^[0-9a-f]{12}$/)

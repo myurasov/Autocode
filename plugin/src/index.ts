@@ -210,6 +210,16 @@ export default {
         const info = await ctx.session.get({ sessionID })
         return info?.parentID || undefined
       },
+      // a kept token is dead only when the server says so: any other
+      // failure (no answer in 3 s, the server down) leaves it in use
+      alive: async (token) => {
+        try {
+          await request(config.url, token, "GET", "/v1/whoami", undefined, 3000)
+          return true
+        } catch (err) {
+          return !(err instanceof ServerError && err.status === 401)
+        }
+      },
       requestToken: async (session) => {
         /*
          * Only the first connection is worth a short wait; while the server is

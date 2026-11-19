@@ -6,7 +6,10 @@
  * token carries a mark of the consumer token it was got with: a replaced
  * consumer token ends every session token (autocode token rotate
  * --consumer), so one kept from before is not used again, and the ones held
- * are forgotten.
+ * are forgotten. A kept token may be dead for other reasons too (its host's
+ * record went with its sessions' tokens: host_expire_after, 1.0.1; it was
+ * unused for 30 days): the server is asked about it once before it is used,
+ * because a shell, unlike a tool call, does not renew a refused token.
  */
 import { createHash } from "node:crypto"
 
@@ -42,6 +45,9 @@ export interface SessionTokenDeps {
   parentOf: (session: string) => Promise<string | undefined>
   requestToken: (session: string) => Promise<string>
   store?: TokenStore
+  // Whether the server still takes a kept token; a failure to ask (the
+  // server does not answer) leaves the token in use.
+  alive?: (token: string) => Promise<boolean>
 }
 
 export class SessionTokens {
@@ -77,11 +83,16 @@ export class SessionTokens {
     return token
   }
 
-  // The stored token, or a new one from the server (then stored).
+  // The stored token if the server still takes it, or a new one from the
+  // server (then stored).
   private async fetch(root: string): Promise<string> {
     const store = this.deps.store
     const kept = await store?.get(root).catch(() => undefined)
-    if (kept) return kept
+    if (kept) {
+      const dead = (await this.deps.alive?.(kept).catch(() => true)) === false
+      if (!dead) return kept
+      await store?.remove(root).catch(() => {})
+    }
     const token = await this.deps.requestToken(root)
     await store?.set(root, token).catch(() => {})
     return token
