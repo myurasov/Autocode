@@ -84,7 +84,9 @@ call or model step that runs now), as `[autocode] 1 message, during
 your turn`. Take them into account and go on with your work.
 
 A turn cut off because your OpenCode restarted comes back as
-`[autocode] resume`: continue where you left off.
+`[autocode] resume`: continue where you left off. After its machine
+lost power, OpenCode may tell you itself that the server restarted
+while you were working: continue the same way.
 
 `[autocode] compaction next`: your session is compacted when this turn
 ends (its context passed `compact_at`). It comes as soon as it does,

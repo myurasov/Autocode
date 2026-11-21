@@ -130,6 +130,8 @@ export class Hosts {
   // A host said hello (the loader alerts again after a new outage), with
   // the plugin's body (its pending forms and requests, per session).
   onHello: (host: string, body: any) => void = () => {}
+  // another instance of the host said hello (its OpenCode started again)
+  onNewInstance: (host: string) => void = () => {}
   // A session's turn ended (registered or not; its forms are gone).
   onSessionTurnEnded: (session: string) => void = () => {}
   // A host whose OpenCode is older than the minimum said hello (the owner's
@@ -355,7 +357,12 @@ export class Hosts {
         host: id,
         data: { machine, directory, opencode, plugin },
       })
-    if (before && before.instance !== instance) this.wake(id)
+    if (before && before.instance !== instance) {
+      this.wake(id)
+      try {
+        this.onNewInstance(id)
+      } catch {}
+    }
     try {
       this.onHello(id, body)
     } catch {}
@@ -824,6 +831,15 @@ export class Hosts {
     return (
       this.db
         .query("DELETE FROM instructions WHERE id = ? AND sent_at IS NULL")
+        .run(instructionId).changes > 0
+    )
+  }
+
+  // Drops an instruction the host has not answered, fetched or not.
+  drop(instructionId: string): boolean {
+    return (
+      this.db
+        .query("DELETE FROM instructions WHERE id = ? AND acked_at IS NULL")
         .run(instructionId).changes > 0
     )
   }

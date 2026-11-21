@@ -1,0 +1,29 @@
+# A power cycle: one machine that boots systemd and runs both the Autocode
+# service and OpenCode's background service. The tests cut its power (every
+# process killed at the same instant) and boot it again. The container gets
+# its own cgroup namespace, so its systemd sees only its own cgroup tree.
+services:
+  fake-model:
+    extends: { file: common.yml, service: fake-model }
+  machine:
+    image: localhost/autocode-ci/machine:latest
+    pull_policy: never
+    hostname: machine
+    privileged: true
+    cgroup: private
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+    stop_grace_period: 5s
+    depends_on:
+      fake-model: { condition: service_healthy }
+  runner:
+    extends: { file: common.yml, service: runner }
+    environment:
+      MACHINE_CONTAINER: ${COMPOSE_PROJECT_NAME:-autocode-ci-power}-machine-1
+      MACHINE_URL: http://machine:4848
+      MACHINE_FAKE_MODEL_URL: http://fake-model:9000/machine/v1
+    command: ["bun", "test", "--timeout", "600000", "tests/power"]
+    depends_on:
+      - machine

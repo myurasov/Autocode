@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Runs the test suites:  ci/run.sh [suite...]   (default: all)
-# Suites: unit api plugin one two restart install web (in Docker) and agents
-# (real models, on the host: ci/agents/run.ts; the owner's word or a full run
-# only). Suites run side by side, CI_PARALLEL at a time (default 4). Each
+# Suites: unit api plugin one two restart power install web (in Docker) and
+# agents (real models, on the host: ci/agents/run.ts; the owner's word or a
+# full run only). Suites run side by side, CI_PARALLEL at a time (default 4). Each
 # Docker suite is its own Compose project (autocode-ci-<suite>) on its own
 # network, removed when it ends. The test output of every suite, and the
 # service logs and server database of a failed one, are kept in
@@ -17,7 +17,7 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 root="$(pwd)"
-all=(unit api plugin one two restart install web agents)
+all=(unit api plugin one two restart power install web agents)
 if [ $# -eq 0 ] || [ "$1" = all ]; then
   suites=("${all[@]}")
 else
@@ -51,6 +51,7 @@ limit_for() {
     unit | api) echo 600 ;;
     plugin) echo 1500 ;;
     one | two | restart) echo 1200 ;;
+    power) echo 1800 ;;
     install | web) echo 900 ;;
     agents) echo 2700 ;;
   esac
@@ -103,6 +104,14 @@ build() {
       -f ci/images/systemd/Dockerfile \
       -t localhost/autocode-ci/systemd:latest . \
       >>"$out/build.log" 2>&1 || return 1
+  if wants power; then
+    timeout 900 docker build -q --label autocode-ci=1 \
+      --build-arg \
+      "OPENCODE_IMAGE=localhost/autocode-ci/opencode:$opencode_version" \
+      -f ci/images/machine/Dockerfile \
+      -t localhost/autocode-ci/machine:latest . \
+      >>"$out/build.log" 2>&1 || return 1
+  fi
   if wants web; then
     timeout 900 docker build -q --label autocode-ci=1 \
       -f ci/images/web-smoke/Dockerfile \
@@ -168,7 +177,9 @@ run_suite() {
   if [ "$code" -ne 0 ]; then
     "${compose[@]}" logs --no-color --timestamps >"$dir/services.log" 2>&1
     "${compose[@]}" cp server:/root/.autocode "$dir/server-data" \
-      >/dev/null 2>&1 || true
+      >/dev/null 2>&1 ||
+      "${compose[@]}" cp machine:/home/dev/.autocode "$dir/server-data" \
+        >/dev/null 2>&1 || true
   fi
   if [ "${CI_KEEP:-0}" != 1 ]; then
     "${compose[@]}" down -v --remove-orphans --timeout 5 >/dev/null 2>&1

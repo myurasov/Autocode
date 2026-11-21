@@ -255,6 +255,7 @@ The server makes a new `~/.autocode/admin.token` at that start.
 | "in an agent's shell the CLI has only me, fire and send" | The shell was started by OpenCode for a session: the owner runs that command in a terminal. |
 | "the server at ... is X, not Y" | The server's ID is not the expected one: compare `--id` on the server with `--server-id` on that machine. |
 | `autocode install` waits, then fails with "the service did not answer" | `journalctl --user -u autocode -n 20`: a port in use, an address in `--listen` that this machine does not have, or a `--listen` without `localhost`: `install` checks the service at 127.0.0.1. |
+| after a reboot or a power cut the agents stay `offline` | `autocode history --kind host.load_failed`. "Failed to start server": Autocode did not find OpenCode's binary. Run `opencode service restart` once in a terminal (ask the owner first); the plugin then records the binary and Autocode starts it by itself from then on. See `reference.md`, A Power Cut or a Reboot. |
 | a host is marked "too old" | Its OpenCode is older than 2.3.0, so nothing on that machine is served. Update OpenCode there and start it again. |
 | hosts go offline after a consumer token was replaced | That machine still has the old token: Replace a Leaked Token, step 2. |
 

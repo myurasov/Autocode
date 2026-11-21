@@ -322,7 +322,13 @@ export async function startServer(
   const wakeStats = new WakeStats(db, (at) => costs.day(at), now)
   wakes.stats = wakeStats
   delivery.stats = wakeStats
-  hosts.onTurnStarted = (_session, cause) => wakeStats.turnStarted(cause)
+  hosts.onTurnStarted = (session, cause) => {
+    wakeStats.turnStarted(cause)
+    // a turn that starts before the resume prompt went: the cut turn goes
+    // on already (OpenCode resumed it itself)
+    const agent = agents.agentOfSession(session)
+    if (agent) costs.uncut(agent)
+  }
   // the work that outlives its turn (1.1.0-rc2, exact attribution): a
   // notice's turn and a Subagent's steps go by the turn that started it
   const turnWork = new TurnWork(db, now)
@@ -513,6 +519,7 @@ export async function startServer(
     jobs.start(job, "ask", "ask", undefined, ask)?.id ?? null
   retries.onGivenUp = (agent, reason) => jobs.turnsFailed(agent, reason)
   hosts.runsOf = (host) => jobs.runSessionsOf(host)
+  hosts.onNewInstance = (host) => delivery.hostBack(host)
   history.record("server.started", { data: { id, version: VERSION } })
   locks.sweep()
   // alerts about failed turns of agents that work again (or are gone)

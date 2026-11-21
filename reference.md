@@ -26,6 +26,7 @@ installs and runs Autocode. For a short tour, see [`README.md`](README.md).
   [Replace a Leaked Token](#replace-a-leaked-token), [Stop an Agent That Overspends](#stop-an-agent-that-overspends),
   [Shrink the Database](#shrink-the-database)
 - [Troubleshooting](#troubleshooting): [sign-in](#i-cannot-sign-in), [the server](#the-server-does-not-start),
+  [after a reboot](#agents-did-not-come-back-after-a-reboot),
   [an offline host](#a-host-is-offline-though-opencode-runs), [missing tools](#the-tools-are-missing),
   ["too old"](#a-host-is-marked-too-old), ["no shell values"](#a-host-is-marked-no-shell-values),
   [the plugin's log](#lines-in-the-plugins-log), [a wake](#a-wake-does-not-come),
@@ -943,13 +944,24 @@ service there.
 | What happened | On the server's own machine | On any other machine |
 |---|---|---|
 | OpenCode restarted under a running turn | the turn is cut. Autocode then types a resume prompt: see below | the same |
-| the background service is gone | Autocode starts it again when it has work for one of its hosts. History shows `opencode.restarted` | nothing: its hosts show offline. Start it yourself |
+| the background service is gone | Autocode starts it again when one of its hosts has something unfinished. History shows `opencode.restarted` | nothing: its hosts show offline. Start it yourself |
 | another OpenCode is gone: an `opencode serve`, or a private OpenCode server | one Inbox alert per host, when the server has work for it: start it yourself | nothing: its hosts show offline. Start it yourself |
-| OpenCode unloaded a folder | Autocode loads it again when it has work for it, if the background service had it. History shows `host.load` | the host stays offline until the folder is used |
+| OpenCode unloaded a folder | Autocode loads it again when the host has something unfinished, if the background service had it. History shows `host.load` | the host stays offline until the folder is used |
 
+- **Something unfinished** is any of these, for an agent of the host: a wake or a message that waits; a retry
+  that is due; a turn that was running when the host went; a prompt or a wake's check that Autocode handed to the
+  host and that the host has not finished.
 - **A turn that a restart cut.** History shows `turn.cut`. Once that OpenCode is back, Autocode types a resume
   prompt, `[autocode] resume`: "Your last turn was cut off (its OpenCode server restarted). Continue where you left
-  off."
+  off." It waits 5 seconds first: an OpenCode that was killed, not restarted, resumes the turn itself. Autocode
+  then types nothing, and History shows `turn.uncut`.
+- **How Autocode starts the background service.** As your own shells started it. A plugin that runs in the
+  background service writes down which OpenCode binary that service is and which environment it has, in
+  `~/.autocode/opencode-service.json` (mode 0600; the file stays on that machine). Autocode starts that binary
+  with that environment, so the shells of your agents keep their `PATH` and their variables. It leaves out what
+  belongs to one login or one start, such as `SSH_*`, `DISPLAY` and `TMUX`. Without that file it starts `opencode`
+  from its own `PATH`, or `~/.opencode/bin/opencode`. Under systemd it starts OpenCode in a scope of its own, so
+  that a restart or an update of Autocode leaves OpenCode running.
 - **An unloaded folder.** OpenCode unloads a folder after an hour without use, and the folder's host goes offline.
   Two things are use: OpenCode is opened in the folder; or a prompt goes to one of its sessions, a wake's prompt
   included. A wake that its check skips types no prompt, so it is not use.
@@ -960,6 +972,30 @@ service there.
 - **A lost connection.** A plugin that loses the server tries again, after waits that grow up to 30 seconds.
   Meanwhile it keeps what it has to report, and sends it when the server is back. In a very long outage the oldest
   reports can be dropped; the plugin's log says so.
+
+### A Power Cut or a Reboot
+
+A machine that runs both the server and OpenCode can lose power at any moment: every process stops at once. When
+the machine is on again, Autocode brings the agents back by itself. Nobody has to open OpenCode.
+
+| What | After the boot |
+|---|---|
+| the server | It starts by itself, if `autocode install` set it up and lingering is on (see [Install the Server](#install-the-server)). Agents, wakes, messages, locks and settings are all there |
+| OpenCode's background service | It does not start at a boot. Autocode starts it for every host with something unfinished, as described above. History shows `opencode.restarted` |
+| a turn that was running | It goes on, also when nothing else waited for that agent. OpenCode resumes a turn itself when it was killed under it, with a prompt of its own ("The server restarted while you were working."). When OpenCode does not, Autocode types `[autocode] resume`. The agent's idle wakes count from the end of the resumed turn |
+| a prompt that was on its way | It reaches its session when OpenCode is back. One whose turn had just started may come twice |
+| a wake's check that was running | It runs again when OpenCode is back. The time that the machine was off does not count against its time limit |
+| a wake whose runs fell due meanwhile | It runs once, not once for each run that was missed. Its next run counts from then |
+| a lock whose `ttl` ran out, an approval whose `expires` passed | The lock is freed and the approval counts as rejected. The agent is told in its next prompt |
+
+- **A quick reboot.** The server takes a host for connected until 65 seconds after it last heard from it. After a
+  reboot that is quicker than that, it starts OpenCode once those seconds have passed.
+- **A long outage.** An agent is unregistered when its last turn ended longer ago than `expire_after` (14 days by
+  default), and the time that the machine was off counts. Raise `expire_after` for agents that must outlast that.
+- **What the last moments can lose.** The database is never left damaged by a cut. What the server wrote in the
+  last second or so before the cut can be missing: a prompt may then be typed again, and a cost may not be counted.
+- **Machines other than the server's.** After their own power cut, start OpenCode there yourself, or open one of
+  its folders: Autocode cannot start OpenCode on another machine.
 
 ## Costs and Context
 
@@ -1695,6 +1731,7 @@ names.
 | `config.json` | optional: the server's ID, as `{"id": "home"}`. The server never writes it | the server |
 | `bin/autocode` | the binary, copied there by `install` and by `plugin install` | the server, and each connected machine |
 | `client.json` | the client config: the server's URL, the tokens, the expected server ID. Mode 0600 | each connected machine |
+| `opencode-service.json` | the binary and the environment of OpenCode's background service, written by the plugin so that the server can start that service again the same way. Mode 0600 | each connected machine |
 | `logs/plugin.log` | the plugin's log. At 1 MB it is renamed to `plugin.log.1` and started again | each connected machine |
 
 Two files live outside the home:
@@ -2083,6 +2120,21 @@ upgrade. Read the log, `journalctl --user -u autocode -n 20`, and find its line 
 | `cannot read .../config.json` | `config.json` is not valid JSON: fix it or delete it |
 | an SQL error right after an upgrade | the new version could not change the database. It changes it in numbered steps, and a step that fails is undone; steps before it stay. [Roll back](#roll-back): the old binary opens the database if no step had passed, and refuses it otherwise. Keep the log |
 
+### Agents Did Not Come Back After a Reboot
+
+The symptom: the machine was restarted or lost power, the server answers again, and its agents stay `offline`.
+
+1. **Does anything wait for them?** Autocode starts OpenCode only for a host with something unfinished (see
+   [A Power Cut or a Reboot](#a-power-cut-or-a-reboot)). An agent that was idle and has no wake has nothing: it
+   comes back when you open its folder.
+2. **Could Autocode start OpenCode?** `autocode history --kind host.load_failed` says when it could not, and why.
+   "Failed to start server" means that it did not find OpenCode's binary: start OpenCode once yourself, with
+   `opencode service restart` in a terminal. The plugin then writes down where the binary is, and Autocode starts
+   it by itself from then on.
+3. **Is it another machine than the server's?** Autocode cannot start OpenCode there: start it yourself.
+4. **Is OpenCode not the background service?** For an `opencode serve` that is gone, the Inbox has an alert:
+   start it yourself.
+
 ### A Host Is Offline Though OpenCode Runs
 
 A host is one project folder, not the machine. So one machine can have online and offline hosts at once. A host goes
@@ -2090,7 +2142,7 @@ offline 65 seconds after the server last heard from its plugin.
 
 1. **Was the folder unused for an hour?** OpenCode unloads it then, and its host goes offline. Start OpenCode in
    the folder, or send a prompt to one of its sessions. On the server's own machine Autocode loads the folder again
-   by itself when it has work for it. On every other machine it does not: see
+   by itself when the host has something unfinished. On every other machine it does not: see
    [OpenCode Restarts and Unloaded Folders](#opencode-restarts-and-unloaded-folders) for what keeps a folder loaded.
 2. **Is the host marked "too old"?** See [A Host Is Marked "too old"](#a-host-is-marked-too-old).
 3. **Can that machine reach the server?** Run `autocode hosts` there.

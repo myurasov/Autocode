@@ -494,6 +494,9 @@ describe("resume", () => {
     await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
     // OpenCode went away: the plugin's next hello says no turn runs
     await hello(t, HOST, { active: [] })
+    // not at once: OpenCode may be resuming the turn itself (5 s)
+    expect(await prompts()).toEqual({})
+    t.clock.advance(5000)
     const prompt = (await prompts()).ses_a
     expect(prompt).toStartWith("[autocode] resume\n\n")
     expect(prompt).toContain(

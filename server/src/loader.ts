@@ -8,11 +8,16 @@
  * failure is recorded once per streak); the work goes out once the host says
  * hello. Hosts on other machines wait until their folder is used again.
  * Tier 0e (owner, 2026-11-07): when the background service itself is gone,
- * it is started again (@opencode/client's published ensure); an OpenCode of
+ * it is started again (@opencode/client's published ensure), as the owner's
+ * shells started it and in a scope of its own (startPlan); an OpenCode of
  * another kind on this machine is the owner's to restart (one inbox alert
  * per host and outage).
  */
 
+import { existsSync } from "node:fs"
+import { homedir } from "node:os"
+import { delimiter, join } from "node:path"
+import { readServiceRecord, type ServiceRecord } from "@autocode/shared"
 import { discover, ensure } from "@opencode/client/service"
 import type { History } from "./history.ts"
 
@@ -24,9 +29,62 @@ export interface Service {
 export type FindService = () => Promise<Service | undefined>
 export type EnsureService = () => Promise<void>
 
+export interface StartPlan {
+  // what is run: the service's command, in a scope of its own under systemd
+  command: string[]
+  // the service's command alone
+  plain: string[]
+  env?: Record<string, string>
+}
+
+/*
+ * How this machine's background service is started (spec, OpenCode Plugin:
+ * Restart): the binary and the environment it ran with before, from the
+ * record a plugin in it wrote; without one, `opencode` from the server's own
+ * PATH, else where OpenCode's installer puts it (a systemd user service's
+ * PATH does not have that folder). A server that is a systemd service starts
+ * it through systemd-run, in a scope of its own: a child left in the server's
+ * own control group would be killed with every restart of the server.
+ */
+export function startPlan(
+  record: ServiceRecord | undefined,
+  env: Record<string, string | undefined> = process.env,
+  exists: (path: string) => boolean = existsSync,
+  home: string = homedir(),
+): StartPlan {
+  const onPath = (name: string) =>
+    (env.PATH ?? "")
+      .split(delimiter)
+      .filter(Boolean)
+      .map((dir) => join(dir, name))
+      .find(exists)
+  const installed = join(home, ".opencode", "bin", "opencode")
+  const exec =
+    record?.exec ??
+    onPath("opencode") ??
+    (exists(installed) ? installed : "opencode")
+  const plain = [exec, "serve", "--service"]
+  // systemd names each service's start in its environment
+  const runner = env.INVOCATION_ID ? onPath("systemd-run") : undefined
+  return {
+    command: runner
+      ? [runner, "--user", "--scope", "--quiet", "--collect", ...plain]
+      : plain,
+    plain,
+    env: record?.env,
+  }
+}
+
 // Starts this machine's background service when it is not running.
 export const ensureService: EnsureService = async () => {
-  await ensure()
+  const plan = startPlan(readServiceRecord())
+  try {
+    await ensure({ command: plan.command, env: plan.env })
+  } catch (err) {
+    if (plan.command.length === plan.plain.length) throw err
+    // no scope to be had (no user bus, say): started directly
+    await ensure({ command: plan.plain, env: plan.env })
+  }
 }
 
 // This machine's background service, through its published discovery.

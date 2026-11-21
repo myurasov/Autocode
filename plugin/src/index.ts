@@ -4,7 +4,7 @@
  * config.
  */
 
-import { parseDuration } from "@autocode/shared"
+import { parseDuration, writeServiceRecord } from "@autocode/shared"
 import { carryOut, formEvent, listOf, permissionEvent } from "./asks.ts"
 import { Channel, type Instruction } from "./channel.ts"
 import { runCheck } from "./checks.ts"
@@ -115,6 +115,15 @@ export default {
     // This OpenCode server's local API, where the plugin sets each session's
     // shell values; none when the plugin cannot reach it (spec, Shell values).
     const api = await findLocalApi()
+    // What the background service runs as, kept on this machine for the
+    // server to start it again the same way (spec, OpenCode Plugin: Restart).
+    if (processOf().kind === "service")
+      try {
+        if (writeServiceRecord(process.execPath, process.env))
+          log(`service record written: ${process.execPath}`)
+      } catch (err) {
+        log(`service record not written: ${(err as Error).message}`)
+      }
 
     // This folder's top-level sessions the plugin knows of, and the registered
     // ones with their agent IDs (the server tells it).

@@ -116,7 +116,7 @@ bun test tests/unit tests/api
 The suites that need containers run through `ci/run.sh`:
 
 ```sh
-ci/run.sh unit api plugin one two restart install web
+ci/run.sh unit api plugin one two restart power install web
 ```
 
 Name the suites you want. **`ci/run.sh` without a name runs all of them, and that includes `agents`, which calls
@@ -131,6 +131,7 @@ fake model server, `ci/fake-model/`.
 | `one` | `tests/e2e` | end to end, with one OpenCode machine |
 | `two` | `tests/e2e` | the same across two machines, plus a lost machine, a returning one and a network cut |
 | `restart` | `tests/restart` | the server restarted on its data; an OpenCode machine restarted |
+| `power` | `tests/power` | a machine that runs both the server and OpenCode loses power and boots again: real systemd, the installed service, OpenCode's background service |
 | `install` | `tests/install` | `autocode install` and `uninstall` as a systemd user service, and a reboot |
 | `web` | `tests/web`, `web/src` | the web UI's unit tests, and browser checks against a real server |
 | `agents` | `ci/agents` | real models must use Autocode correctly from plain requests. It runs on the machine itself, not in Docker, with your own OpenCode provider settings, apart from your sessions. The models are listed in `ci/agents/models.json` |

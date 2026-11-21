@@ -48,6 +48,9 @@ export interface CompactDue {
   notified: boolean
 }
 
+// How long the resume prompt waits for OpenCode's own resume of a cut turn.
+export const RESUME_WAIT_MS = 5000
+
 export interface CostView {
   today_usd: number
   total_usd: number
@@ -688,7 +691,9 @@ export class Costs {
 
   /*
    * A turn ended: a cut found at the hello just before was no cut (the
-   * plugin's outbox held its end); the cap's pause.
+   * plugin's outbox held its end); the cap's pause. A turn started before
+   * the resume prompt went: the cut turn goes on already (OpenCode resumed
+   * it itself).
    */
   uncut(agent: string) {
     const row = this.db
@@ -705,6 +710,19 @@ export class Costs {
       .query("UPDATE agents SET cut_at = ? WHERE id = ?")
       .run(this.now(), agent)
     this.history.record("turn.cut", { agent })
+  }
+
+  /*
+   * A cut found less than RESUME_WAIT_MS ago: OpenCode may be resuming the
+   * turn itself (2.3.0 does after its server was killed under it); a turn
+   * that starts in the session takes the cut back (uncut), and nothing goes
+   * to the agent meanwhile.
+   */
+  cutFresh(agent: string): boolean {
+    const row = this.db
+      .query("SELECT cut_at FROM agents WHERE id = ?")
+      .get(agent) as any
+    return !!row?.cut_at && this.now() - row.cut_at < RESUME_WAIT_MS
   }
 
   // The resume prompt a cut turn is due for, once.

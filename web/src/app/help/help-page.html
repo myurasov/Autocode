@@ -686,6 +686,14 @@
         OpenCode is back, <code>[autocode] resume</code> tells the agent to
         continue where it left off.
       </li>
+      <li>
+        After a power cut or a reboot of the server's machine, Autocode
+        starts OpenCode's background service again by itself for every
+        folder with something unfinished: a wake or message that waits, a
+        turn that was running, a prompt or a check that was on its way.
+        Nobody has to open OpenCode. A turn that was running goes on:
+        OpenCode resumes it itself, or Autocode's resume prompt does.
+      </li>
     </ul>
 
     <h2 id="opencode">
@@ -2315,8 +2323,9 @@ systemctl --user start autocode</pre
               <li>
                 Was the folder unused for an hour? OpenCode unloads such a
                 folder. Open it in a TUI or send it a prompt. On the server's
-                own machine, Autocode loads the folder again by itself when it
-                has work for it, if OpenCode runs as the background service.
+                own machine, Autocode loads the folder again by itself when
+                the host has something unfinished, if OpenCode runs as the
+                background service.
               </li>
               <li>
                 Is the host marked "too old" on the Hosts tab? See the next

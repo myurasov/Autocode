@@ -130,6 +130,7 @@ export class Delivery {
     injected(agent: string): void
     // the agent's spend and context, for a prompt's status line (1.1.0)
     view(agent: string): CostView
+    cutFresh(agent: string): boolean
     resumeNote(agent: string): { header: string; text: string } | null
     resumed(agent: string): void
   }
@@ -245,6 +246,7 @@ export class Delivery {
         ).map((r) => r.id),
         ...this.idlePastCompactAt(),
         ...this.busyPastCompactAt(),
+        ...this.unfinishedOffline(),
       ]),
     ].map((agent_id) => ({ agent_id }))
     for (const { agent_id } of agents)
@@ -256,6 +258,60 @@ export class Delivery {
           data: { error: (err as Error).message },
         })
       }
+  }
+
+  /*
+   * Agents on an offline host with something unfinished that nothing above
+   * names (spec, Power Cycle): a turn that was running when the host went,
+   * or a prompt handed over that the host has not finished. deliver() has
+   * such a host of this machine loaded again; a cut turn is found at its
+   * hello, and the prompt waits for its next poll.
+   */
+  private unfinishedOffline(): string[] {
+    const busy = this.db
+      .query(
+        `SELECT a.id FROM agents a JOIN sessions s ON s.id = a.session_id
+         JOIN hosts h ON h.id = s.host_id
+         WHERE s.busy = 1 AND h.online = 0 AND s.deleted_at IS NULL`,
+      )
+      .all() as { id: string }[]
+    const handed = this.db
+      .query(
+        `SELECT DISTINCT i.agent_id AS id FROM injections i
+         JOIN agents a ON a.id = i.agent_id AND a.session_id = i.session_id
+         JOIN hosts h ON h.id = i.host_id
+         WHERE i.settled_at IS NULL AND h.online = 0`,
+      )
+      .all() as { id: string }[]
+    return [...busy, ...handed].map((r) => r.id)
+  }
+
+  /*
+   * Another instance of a host said hello: its OpenCode started again, and
+   * the checks the old one was running went with it. They are sent again:
+   * the time the host was away does not count against a check's limit, and
+   * its wake's run is not lost (spec, Power Cycle).
+   */
+  hostBack(host: string) {
+    const out = this.db
+      .query(
+        `SELECT q.id, q.check_instruction FROM queue q
+         JOIN agents a ON a.id = q.agent_id
+         JOIN sessions s ON s.id = a.session_id
+         WHERE s.host_id = ? AND q.check_instruction IS NOT NULL`,
+      )
+      .all(host) as { id: number; check_instruction: string }[]
+    for (const q of out) {
+      const state = this.hosts.instruction(q.check_instruction)
+      if (state?.acked) continue
+      this.hosts.drop(q.check_instruction)
+      this.db
+        .query(
+          "UPDATE queue SET check_instruction = NULL, check_sent_at = NULL " +
+            "WHERE id = ?",
+        )
+        .run(q.id)
+    }
   }
 
   /*
@@ -506,6 +562,8 @@ export class Delivery {
       this.steer(row)
       return
     }
+    // a cut turn found a moment ago: OpenCode may be resuming it itself
+    if (this.costs?.cutFresh(agent)) return
     const values = this.values(agent)
     const now = this.now()
     const minInterval = parseDuration(String(values.min_interval))
