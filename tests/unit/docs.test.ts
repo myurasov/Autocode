@@ -314,6 +314,22 @@ test("the reference says what each wake costs, where it shows and what is not co
     expect(ref, part).toContain(part)
 })
 
+// 6: an agent is renamed in place; unregistering keeps its unread messages
+// to the owner.
+test("the reference has renaming in place, and what unregistering keeps", () => {
+  const ref = read("reference.md")
+  for (const part of [
+    "### Renaming an Agent",
+    "| `autocode agents rename AGENT NEW-ID` |",
+    "`rename` (`id`)",
+    "`agent.renamed`",
+    "| `job_exists` |",
+    "Its messages to you that you have not answered or closed stay in the Inbox",
+  ])
+    expect(ref, part).toContain(part)
+  expect(ref).not.toContain("closes its open asks and its\nopen Inbox items")
+})
+
 // 1.0.1 (the owner, 2026-11-19: "lets implement fix for stale host
 // records"): a host's record goes by itself; the reference said that no
 // command removes one.

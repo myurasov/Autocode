@@ -25,6 +25,7 @@ export interface MeInput {
     | "finish"
     | "job_set"
     | "job_delete"
+    | "rename"
   job?: string
   text?: string
   // job_set (the owner, 2026-11-09: agents set jobs of their own)
@@ -64,7 +65,8 @@ export const ME_TOOL = {
     "optional host, to, timeout, variant, opencode_agent, keep_session, " +
     "description: set a job of your own, <your ID>:<job>; the owner may " +
     "approve it first; its runs' cost counts for you), job_delete (job: " +
-    "one of yours).",
+    "one of yours), rename (id: a new ID for you; everything of yours " +
+    "comes along).",
   input: {
     type: "object",
     properties: {
@@ -82,6 +84,7 @@ export const ME_TOOL = {
           "finish",
           "job_set",
           "job_delete",
+          "rename",
         ],
       },
       job: {
@@ -141,7 +144,7 @@ export const ME_TOOL = {
         type: "string",
         description:
           "register: your agent ID, like project:role:name (letters, " +
-          "digits, - _ . :)",
+          "digits, - _ . :); rename: your new ID",
       },
       description: {
         type: "string",
@@ -304,6 +307,17 @@ export async function runMe(
       return (
         `Unregistered ${res.unregistered}; your wakes are removed and ` +
         "your locks released."
+      )
+    }
+    // in place (1.1.0): the agent stays what it is, under a new ID
+    case "rename": {
+      if (!input.id) return "error: rename needs id, your new agent ID"
+      const res = await call("POST", "/v1/me/rename", { id: input.id })
+      return (
+        `Renamed: you are ${res.agent.id} now. Your wakes, waiting ` +
+        "messages, locks, spend, settings and jobs came along; your " +
+        "session's title follows. A message sent to your old ID still " +
+        "reaches you."
       )
     }
     case "status": {
@@ -1086,11 +1100,16 @@ export async function runMessage(
       })
       const ids = res.messages.map((m: any) => m.id).join(", ")
       const skipped: string[] = res.skipped ?? []
+      // an old ID that forwarded to a renamed agent (1.1.0)
+      const renamed = Object.entries(res.renamed ?? {})
+        .map(([old, now]) => ` ${old} is ${now} now: use that ID.`)
+        .join("")
       return (
         `Sent to ${res.recipients.join(", ")} (${ids}).` +
         (skipped.length
           ? ` Skipped (not registered): ${skipped.join(", ")}.`
-          : "")
+          : "") +
+        renamed
       )
     }
     case "list": {

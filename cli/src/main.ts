@@ -84,6 +84,9 @@ Agents
                              give a session an agent ID; --force takes the
                              ID from a session that still exists
   agents rm AGENT            unregister an agent; its history stays
+  agents rename AGENT NEW-ID
+                             rename an agent in place: everything of its
+                             comes along, and the old ID forwards
   pause AGENT                send it no new prompts; a running turn goes on
   resume AGENT               resume a paused agent
   retry AGENT                retry an agent in the error state now

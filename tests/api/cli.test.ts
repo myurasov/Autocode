@@ -220,6 +220,26 @@ describe("autocode CLI", () => {
     ).toBe("m:1")
   })
 
+  // 1.1.0 (the owner, 2026-11-20): an agent is renamed in place
+  test("agents rename gives an agent a new ID in place; a taken one is refused", async () => {
+    const token = await sessionToken(t, "m:1", "ses_rename")
+    await call(t.url, token, "POST", "/v1/agents", { id: "cli:old" })
+    const res = await cli(["agents", "rename", "cli:old", "cli:new"], asAdmin())
+    expect([res.code, res.stdout.trim()]).toEqual([
+      0,
+      "renamed cli:old to cli:new",
+    ])
+    expect((await call(t.url, token, "GET", "/v1/me")).body.agent.id).toBe(
+      "cli:new",
+    )
+    const usage = await cli(["agents", "rename", "cli:new"], asAdmin())
+    expect(usage.code).toBe(2)
+    expect(usage.stderr).toContain(
+      "usage: autocode agents rename <agent> <new-id>",
+    )
+    await call(t.url, t.admin, "DELETE", "/v1/agents/cli:new")
+  })
+
   // 1.0.1 (the owner, 2026-11-19: "fix for stale host records"): the owner
   // removes one offline host's record at once.
   test("hosts rm removes an offline host's record; an online one is refused", async () => {

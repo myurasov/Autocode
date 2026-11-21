@@ -692,6 +692,15 @@
         An agent is unregistered 14 days after its session's last turn
         (<code>expire_after</code>), unless you or Stop All paused it.
       </li>
+      <li>
+        To change an agent's ID, rename it: ask the agent ("Rename yourself
+        to kaggle:lead"), or run
+        <code>autocode agents rename AGENT NEW-ID</code>. The agent stays
+        what it is, and its wakes, waiting messages, locks, spend, settings
+        and jobs come along. A message sent to the old ID still reaches the
+        agent. Unregistering and registering again would remove its wakes
+        and start its spend over.
+      </li>
     </ul>
 
     <h3 id="wakes">
@@ -1484,7 +1493,8 @@ autocode job set daily-report --host HOST --model MODEL \
       </li>
       <li>
         Unregister takes the agent's ID away after you confirm. Its session
-        keeps running.
+        keeps running. Its messages to you that you have not answered or
+        closed stay in the Inbox.
       </li>
     </ul>
     <p>Above the table:</p>
@@ -2406,6 +2416,13 @@ echo 'export PATH="$HOME/.autocode/bin:$PATH"' >> ~/.bashrc</pre
         <tr>
           <td><code>autocode agents rm AGENT</code></td>
           <td>unregister an agent (its history stays)</td>
+        </tr>
+        <tr>
+          <td><code>autocode agents rename AGENT NEW-ID</code></td>
+          <td>
+            rename an agent in place: everything of its comes along, and the
+            old ID forwards
+          </td>
         </tr>
         <tr>
           <td>

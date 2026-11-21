@@ -12,6 +12,7 @@ import {
   hello,
   instructions,
   registered,
+  report,
   type TestServer,
   testServer,
 } from "../helpers/server.ts"
@@ -251,6 +252,56 @@ describe("the owner", () => {
     expect(
       (await owner("GET", "/v1/messages?agent=team:a")).body.messages[0].from,
     ).toBe("owner")
+  })
+
+  /*
+   * 1.1.0 (the owner, 2026-11-20, from the review of real sessions): an
+   * agent's report closed unread in the Inbox when the agent was
+   * unregistered (a rename, done then as unregister and register).
+   */
+  test("unregistering keeps the agent's unread messages to the owner open; its alerts close", async () => {
+    const sent = await as(a, "POST", "/v1/messages", {
+      to: "owner",
+      subject: "Report",
+      text: "The release is out.",
+    })
+    // and an alert about the agent: its turn failed and is not retried
+    await report(t, HOST, [
+      { type: "turn.started", session: "ses_a" },
+      {
+        type: "turn.ended",
+        session: "ses_a",
+        outcome: "failed",
+        error: "provider.auth",
+      },
+    ])
+    const kinds = async () =>
+      (await owner("GET", "/v1/inbox")).body.items
+        .map((i: any) => i.kind)
+        .sort()
+    expect(await kinds()).toEqual(["alert", "message"])
+    expect((await as(a, "DELETE", "/v1/me")).status).toBe(200)
+    expect(await kinds()).toEqual(["message"])
+    const [item] = (await owner("GET", "/v1/inbox")).body.items
+    expect(item).toMatchObject({
+      agent: "team:a",
+      message_id: sent.body.messages[0].id,
+      body: "The release is out.",
+      closed_at: null,
+    })
+    // the message itself still waits for the owner
+    expect(
+      (await owner("GET", "/v1/messages?agent=team:a")).body.messages[0].state,
+    ).toBe("queued")
+    // an answer has nobody to go to, and says so; the item stays, and closes
+    const answer = await owner("POST", `/v1/inbox/${item.id}/answer`, {
+      text: "Thanks.",
+    })
+    expect(answer.status).toBe(404)
+    expect(answer.body.error.message).toContain("team:a")
+    expect(await kinds()).toEqual(["message"])
+    expect((await owner("POST", `/v1/inbox/${item.id}/close`)).status).toBe(200)
+    expect(await kinds()).toEqual([])
   })
 
   test("closing an inbox item; the owner lists every message", async () => {

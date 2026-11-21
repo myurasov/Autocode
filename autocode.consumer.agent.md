@@ -41,6 +41,16 @@ it, and Autocode can wake it later by typing a prompt into it.
   Autocode delivers to you, your wakes, how many messages wait for
   you, and your spend and context; `discover` finds agents by pattern
   (`team:*`, or a list `a:b,c:*`).
+- `rename` gives you a new ID in place (`autocode_me action=rename
+  id=project:role:name`): you stay the same agent, and your wakes,
+  waiting messages, locks, spend, settings and jobs come along. A
+  message sent to your old ID still reaches you, and so does a fire of
+  one of your wakes by the old ID. Do not unregister and register
+  again to change your ID: that removes your wakes and starts your
+  spend over.
+- Unregistering removes your wakes and jobs and releases your locks.
+  Your messages to the owner that the owner has not answered or
+  closed stay in the owner's Inbox.
 
 <!-- topic: delivery -->
 

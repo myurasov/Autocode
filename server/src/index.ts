@@ -42,6 +42,7 @@ import {
 } from "./loader.ts"
 import { formatTtl, type LockNotice, Locks } from "./locks.ts"
 import { Inbox, Messages } from "./messages.ts"
+import { trimAliases } from "./rename.ts"
 import { Retries } from "./retries.ts"
 import { SettingsStore } from "./settings-store.ts"
 import { openStore } from "./store.ts"
@@ -728,6 +729,26 @@ export async function startServer(
       summary: "change an agent's description",
       handler: async ({ params, body }) => ({
         agent: agents.patch(params.id!, await body()),
+      }),
+    },
+    {
+      method: "POST",
+      path: "/v1/agents/:id/rename",
+      access: ["admin"],
+      summary:
+        "rename an agent in place ({id}): its wakes, messages, locks, " +
+        "spend, settings and jobs come along; the old ID forwards",
+      handler: async ({ params, body }) => ({
+        agent: agents.rename(params.id!, ((await body()) as any)?.id, "owner"),
+      }),
+    },
+    {
+      method: "POST",
+      path: "/v1/me/rename",
+      access: ["session"],
+      summary: "rename the calling agent in place ({id})",
+      handler: async ({ caller, body }) => ({
+        agent: agents.rename(me(caller), ((await body()) as any)?.id, "self"),
       }),
     },
     {
@@ -1691,6 +1712,7 @@ export async function startServer(
     asks.trim(days)
     costs.trim(days)
     wakeStats.trim(days)
+    trimAliases(db, now() - days * 86_400_000)
     jobs.trim(days)
     // agents past expire_after since their last turn (tier 0e)
     for (const agent of costs.expired())

@@ -666,6 +666,18 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (agent_id, name, day)
   );
   `,
+  /*
+   * 25 (1.1.0; the owner, 2026-11-20): an agent is renamed in place, and
+   * its old ID forwards to the new one (a message to it, a fire by it)
+   * until somebody registers the old ID again.
+   */
+  `
+  CREATE TABLE agent_aliases (
+    old_id TEXT PRIMARY KEY,
+    new_id TEXT NOT NULL,
+    at INTEGER NOT NULL
+  );
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

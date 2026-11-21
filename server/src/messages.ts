@@ -21,6 +21,7 @@ import {
   parsePattern,
 } from "@autocode/shared"
 import type { History } from "./history.ts"
+import { aliasOf } from "./rename.ts"
 
 export const MAX_MESSAGE = 32_000
 // One read takes messages up to this much text together (one always fits).
@@ -111,7 +112,7 @@ export class Messages {
   private recipients(
     to: unknown,
     from: string,
-  ): { to: string[]; skipped: string[] } {
+  ): { to: string[]; skipped: string[]; renamed: Record<string, string> } {
     const parts =
       typeof to === "string"
         ? parsePattern(to)
@@ -126,7 +127,9 @@ export class Messages {
     const agents = this.registered()
     const out = new Set<string>()
     const skipped = new Set<string>()
-    for (const part of parts) {
+    // old IDs of renamed agents, and where they forward to (1.1.0)
+    const renamed: Record<string, string> = {}
+    for (let part of parts) {
       if (part === "owner") {
         if (from !== "owner") out.add("owner")
         continue
@@ -137,6 +140,12 @@ export class Messages {
         continue
       }
       checkId(part, "recipient")
+      // an agent that was renamed: its old ID, by itself, forwards
+      const alias = agents.includes(part) ? undefined : aliasOf(this.db, part)
+      if (alias && agents.includes(alias)) {
+        renamed[part] = alias
+        part = alias
+      }
       if (isReservedId(part) || part === from || !agents.includes(part)) {
         if (parts.length === 1)
           throw new AutocodeError(
@@ -157,7 +166,7 @@ export class Messages {
         `no registered agent matches ${parts.join(",")}`,
         404,
       )
-    return { to: [...out].sort(), skipped: [...skipped].sort() }
+    return { to: [...out].sort(), skipped: [...skipped].sort(), renamed }
   }
 
   send(from: string, body: any) {
@@ -197,7 +206,7 @@ export class Messages {
       )
         throw new AutocodeError("no_message", `no message ${replyTo}`, 404)
     }
-    const { to, skipped } = this.recipients(body.to, from)
+    const { to, skipped, renamed } = this.recipients(body.to, from)
     const sendId = randomId("s_")
     const toSpec = Array.isArray(body.to) ? body.to.join(",") : String(body.to)
     const now = this.now()
@@ -249,7 +258,14 @@ export class Messages {
         size: content.length,
       },
     })
-    return { send_id: sendId, recipients: to, skipped, messages }
+    return {
+      send_id: sendId,
+      recipients: to,
+      skipped,
+      messages,
+      // old IDs that forwarded to renamed agents (1.1.0)
+      ...(Object.keys(renamed).length ? { renamed } : {}),
+    }
   }
 
   /*
@@ -747,20 +763,17 @@ export class Inbox {
     }
   }
 
-  // Unregistering closes the agent's open items (its messages to the owner
-  // are read then, as at any close).
+  /*
+   * Unregistering closes the agent's open alerts. Its messages to the owner
+   * stay open until the owner answers or closes them (1.1.0; the owner,
+   * 2026-11-20: a report closed unread when its agent was unregistered and
+   * registered anew under another ID).
+   */
   closeForAgent(agent: string) {
-    for (const r of this.db
-      .query(
-        "SELECT message_id FROM inbox WHERE agent_id = ? " +
-          "AND closed_at IS NULL AND message_id IS NOT NULL",
-      )
-      .all(agent) as { message_id: string }[])
-      this.messages().markRead(r.message_id, "inbox")
     this.db
       .query(
         "UPDATE inbox SET closed_at = ? " +
-          "WHERE agent_id = ? AND closed_at IS NULL",
+          "WHERE agent_id = ? AND closed_at IS NULL AND kind != 'message'",
       )
       .run(this.now(), agent)
   }

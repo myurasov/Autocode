@@ -409,6 +409,23 @@ describe('HelpPage', () => {
     expect(rows(table)[6]![1]!).toContain(
       'the same, for one fire: the wake is removed when it is fired',
     );
+    // 1.1.0 (the owner, 2026-11-20): an agent is renamed in place, and
+    // unregistering keeps its unread messages to the owner
+    expect(section(page, 'register')).toContain(
+      'To change an agent\'s ID, rename it: ask the agent ("Rename ' +
+        'yourself to kaggle:lead"), or run autocode agents rename AGENT ' +
+        'NEW-ID.',
+    );
+    expect(section(page, 'register')).toContain(
+      'A message sent to the old ID still reaches the agent.',
+    );
+    expect(section(page, 'web-agents')).toContain(
+      'Its messages to you that you have not answered or closed stay in ' +
+        'the Inbox.',
+    );
+    expect(section(page, 'commands')).toContain(
+      'autocode agents rename AGENT NEW-ID',
+    );
     // 1.1.0 (the owner, 2026-11-20): a check may do the routine pass,
     // with its own time limit
     expect(section(page, 'wakes')).toContain(

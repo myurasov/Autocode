@@ -19,6 +19,7 @@ import {
   type Trigger,
 } from "@autocode/shared"
 import type { History } from "./history.ts"
+import { aliasOf } from "./rename.ts"
 import type { WakeStats, WakeWeek } from "./wake-stats.ts"
 
 export interface WakeItem {
@@ -329,6 +330,9 @@ export class Wakes {
     enqueue: Enqueue,
   ) {
     checkId(agent, "agent ID")
+    // a renamed agent's old ID forwards to it (1.1.0)
+    if (!this.db.query("SELECT 1 FROM agents WHERE id = ?").get(agent))
+      agent = aliasOf(this.db, agent) ?? agent
     this.agentExists(agent)
     const name = checkId(nameInput, "wake name")
     const row = this.db

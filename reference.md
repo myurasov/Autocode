@@ -340,7 +340,7 @@ Each tool takes an `action`.
 
 | Tool | Actions, with their parameters |
 |---|---|
-| `autocode_me` | `register` (`id`, `description`), `unregister`, `status`, `discover` (`pattern`), `help` (`topic`), `compact`, `jobs`, `run` (`job`, `text`), `finish` (`result`), `job_set` (see [Jobs That Agents Set](#jobs-that-agents-set)), `job_delete` (`job`) |
+| `autocode_me` | `register` (`id`, `description`), `unregister`, `status`, `discover` (`pattern`), `help` (`topic`), `compact`, `jobs`, `run` (`job`, `text`), `finish` (`result`), `job_set` (see [Jobs That Agents Set](#jobs-that-agents-set)), `job_delete` (`job`), `rename` (`id`) |
 | `autocode_wake` | `set` (`name`, `trigger`, `text`, `check`), `list`, `show` (`name`), `cancel` (`name`), `fire` (`agent`, `name`, `text`) |
 | `autocode_message` | `send` (`to`, `subject`, `text`, `reply_to`), `list`, `read` and `wait` (`id`, `from`, `reply_to`; wait: `seconds`), `answer` and `escalate` (`id`, `text`) |
 | `autocode_lock` | `acquire` (`name`, `ttl`, `max`, `mode`), `renew` (`name`, `ttl`), `release` (`name`), `list` (`pattern`) |
@@ -388,9 +388,40 @@ An agent is unregistered in one of four ways:
    expire, and neither does one with an open ask.
 4. It is a run of a job, and the run ends.
 
-Unregistering removes the agent's wakes and the jobs that it set, releases its locks, closes its open asks and its
-open Inbox items, and drops the messages that still wait for it. Asks that were sent to it go back to you. Its
-history and its spend stay.
+Unregistering removes the agent's wakes and the jobs that it set, releases its locks, closes its open asks and
+alerts, and drops the messages that still wait for it. Asks that were sent to it go back to you. Its history and
+its spend stay. Its messages to you that you have not answered or closed stay in the Inbox: close them when you
+have read them. An answer to one has nobody to go to and is refused, unless the agent was renamed.
+
+### Renaming an Agent
+
+To change an agent's ID, rename it. Do not unregister it and register it again: that removes its wakes and its
+jobs and starts its spend over.
+
+- **You:** `autocode agents rename AGENT NEW-ID`.
+- **The agent:** `autocode_me action=rename id=NEW-ID`. Ask it in plain words: "Rename yourself to kaggle:lead."
+
+The agent stays what it is: the same session, status and context. Everything that names it moves at once:
+
+| What | After the rename |
+|---|---|
+| wakes, and what waits to be delivered | the agent's, under the new ID |
+| locks and places in lock queues | kept |
+| open asks, and asks sent to it | kept |
+| Inbox items | show the new ID |
+| spend: today, per day and in total | kept. If the new ID was used before, the two are added |
+| its own settings | moved. A value that the new ID already has stays |
+| settings that send asks to it, like `question_mode agent:OLD` | name the new ID |
+| the jobs it set | renamed from `OLD:name` to `NEW:name`, with their runs |
+| History | keeps the old ID in what it recorded, and adds `agent.renamed` |
+
+- **The old ID forwards.** A message sent to the old ID goes to the agent, and the sender is told the new ID. A
+  fire of one of its wakes by the old ID works too. This ends when another session registers the old ID, or
+  after `history_days`. A pattern like `kaggle:*` matches only the IDs that are registered now.
+- **Refused:** a new ID that another agent holds (`id_taken`), a reserved one (`reserved_id`), the run of a job,
+  and a rename that would give one of the agent's jobs the name of an existing job (`job_exists`).
+- **The session's title** in OpenCode follows: `@` and the new ID.
+- The web UI has no button for it.
 
 **A deleted session does not unregister its agent.** When you delete an agent's session in OpenCode:
 
@@ -1236,6 +1267,7 @@ are those of `autocode --help`.
 | **Agents** | |
 | `autocode agents register AGENT --session SESSION [--description TEXT] [--force]` | give a session an agent ID. `--force` takes the ID from a session that still exists |
 | `autocode agents rm AGENT` | unregister an agent. Its history stays |
+| `autocode agents rename AGENT NEW-ID` | rename an agent in place: see [Renaming an Agent](#renaming-an-agent) |
 | `autocode pause AGENT` | send the agent no new prompts. Its wakes and messages wait. It interrupts nothing: a running turn goes on, and so do its Subagents |
 | `autocode resume AGENT` | end a pause. What waited is delivered |
 | `autocode retry AGENT` | retry an agent in `error` now |
@@ -1318,6 +1350,7 @@ by one kind, or by a group such as `wake.*`.
 | `agent.registered`, `agent.moved` | a session registered an ID; an ID moved to another session |
 | `agent.refused` | a registration was refused: `id_taken` or `session_has_id` |
 | `agent.changed` | an agent's description changed |
+| `agent.renamed` | an agent was renamed in place. The data has its old ID (`from`), its new one (`to`) and who did it (`by`: `owner` or `self`) |
 | `agent.unregistered`, `agent.expired` | an agent was unregistered, and the data says by whom; `expire_after` passed, and the agent was unregistered |
 | `agent.paused`, `agent.resumed` | an agent was paused; its pause was ended. The data says by whom |
 | `stop_all`, `resume_all` | Stop All and Resume All |
@@ -1363,9 +1396,10 @@ A refused call names a code. The CLI prints `refused (CODE): reason`; a tool ans
 | `forbidden` | this kind of token may not do that. Most owner commands need the admin token |
 | `opencode_too_old` | the machine's OpenCode is older than 2.3.0 |
 | `not_registered` | no agent has that ID, or the calling session is not registered |
-| `id_taken` | another session that still exists holds the ID |
+| `id_taken` | another session that still exists holds the ID. For a rename: another agent holds it |
 | `session_has_id` | the session is already registered under another ID |
 | `reserved_id` | the ID is reserved: `owner`, `autocode`, or one that starts with `job:` |
+| `job_exists` | a rename would give one of the agent's jobs the name of a job that exists. Delete or rename one of the two |
 | `bad_id` | the ID has characters that are not allowed, or is too long |
 | `unknown_session` | `agents register`: the server does not know that session, or it was deleted |
 | `session_gone` | the session was deleted in OpenCode. A deleted session never gets a token again |

@@ -16,6 +16,7 @@ import {
 } from "@autocode/shared"
 import type { History } from "./history.ts"
 import type { Hosts } from "./hosts.ts"
+import { dropAlias, renameAgent } from "./rename.ts"
 import { type ErrorView, errorView } from "./retries.ts"
 import { type Caller, revokeSessionTokens } from "./tokens.ts"
 
@@ -270,6 +271,8 @@ export class Agents {
           "last_active) VALUES (?, ?, ?, ?, ?)",
       )
       .run(id, session, description, now, now)
+    // an ID that forwarded to a renamed agent is this agent's own now
+    dropAlias(this.db, id)
     this.history.record("agent.registered", {
       ...fields,
       data: { description },
@@ -307,6 +310,22 @@ export class Agents {
       ...(h?.session ? { session: h.session } : {}),
       last_active: new Date(h?.at ?? 0).toISOString(),
     }
+  }
+
+  /*
+   * Renames an agent in place (1.1.0): everything that names it moves (see
+   * rename.ts), and its session is told its new ID.
+   */
+  rename(id: string, to: unknown, by: "owner" | "self"): AgentView {
+    const renamed = renameAgent(
+      { db: this.db, history: this.history, now: this.now },
+      checkId(id, "agent ID"),
+      to,
+      by,
+    )
+    const row = this.byId(renamed)
+    if (!row.deleted_at) this.notice(row.host_id, row.session_id, renamed)
+    return this.ownerView(row)
   }
 
   unregister(id: string, by: "self" | "owner" | "expired") {

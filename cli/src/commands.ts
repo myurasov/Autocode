@@ -92,6 +92,20 @@ export async function agents(args: Parsed): Promise<number> {
     print(args, res, () => `unregistered ${id}`)
     return 0
   }
+  // in place (1.1.0): its wakes, messages, locks, spend, settings and jobs
+  // come along; the old ID forwards
+  if (sub === "rename") {
+    const [from, to] = rest
+    if (!from || !to)
+      throw new CliError("usage: autocode agents rename <agent> <new-id>", 2)
+    const res = await c.call(
+      "POST",
+      `/v1/agents/${encodeURIComponent(from)}/rename`,
+      { id: to },
+    )
+    print(args, res, () => `renamed ${from} to ${res.agent.id}`)
+    return 0
+  }
   if (sub === "register") {
     const id = rest[0]
     const session = args.flags.session

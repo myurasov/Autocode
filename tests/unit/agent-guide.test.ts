@@ -272,6 +272,44 @@ describe("autocode_me", () => {
     )
   })
 
+  // 1.1.0 (the owner, 2026-11-20: rename an agent in place)
+  test("rename: asks the server, and says what came along", async () => {
+    const bodies: unknown[] = []
+    const call = async (method: string, path: string, body?: unknown) => {
+      expect([method, path]).toEqual(["POST", "/v1/me/rename"])
+      bodies.push(body)
+      return { agent: { id: "team:lead" } }
+    }
+    expect(await runMe({ action: "rename", id: "team:lead" }, call)).toBe(
+      "Renamed: you are team:lead now. Your wakes, waiting messages, " +
+        "locks, spend, settings and jobs came along; your session's title " +
+        "follows. A message sent to your old ID still reaches you.",
+    )
+    expect(bodies).toEqual([{ id: "team:lead" }])
+    expect(await runMe({ action: "rename" }, call)).toBe(
+      "error: rename needs id, your new agent ID",
+    )
+    expect(ME_TOOL.description).toContain(
+      "rename (id: a new ID for you; everything of yours comes along)",
+    )
+    expect((ME_TOOL.input.properties as any).id.description).toContain(
+      "rename: your new ID",
+    )
+  })
+
+  test("send says when an old ID forwarded to a renamed agent", async () => {
+    const call = async () => ({
+      send_id: "s_1",
+      recipients: ["team:lead"],
+      skipped: [],
+      messages: [{ id: "m_1", to: "team:lead" }],
+      renamed: { "team:a": "team:lead" },
+    })
+    expect(
+      await runMessage({ action: "send", to: "team:a", text: "Hi." }, call),
+    ).toBe("Sent to team:lead (m_1). team:a is team:lead now: use that ID.")
+  })
+
   test("status: paused, none, and not registered", async () => {
     const paused = server({
       "GET /v1/me": {
@@ -801,6 +839,18 @@ describe("the guide", () => {
         "and their dollars",
       "A wake that costs much and mostly finds nothing to do belongs in " +
         "a check",
+    ])
+      expect(guide).toContain(answer)
+  })
+
+  test("1.1.0: renaming in place, and what unregistering leaves", () => {
+    for (const answer of [
+      "`rename` gives you a new ID in place",
+      "Do not unregister and register again to change your ID",
+      "A message sent to your old ID still reaches you",
+      // 6a: the owner's unread messages stay
+      "Your messages to the owner that the owner has not answered or " +
+        "closed stay in the owner's Inbox",
     ])
       expect(guide).toContain(answer)
   })
