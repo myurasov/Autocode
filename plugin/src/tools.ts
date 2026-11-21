@@ -505,7 +505,8 @@ export const WAKE_TOOL = {
     'at 2026-11-30 18:00 (once); cron "*/30 8-16 * * 1-5" [zone]; idle 30m ' +
     "[repeat] (after that long idle, counted from your last turn's end); " +
     "fire-only (a job you start fires it by ending with: autocode fire me " +
-    "NAME). Times are in the server's zone (see autocode_me status). " +
+    "NAME); fire-only once (the same, removed once it is fired). Times are " +
+    "in the server's zone (see autocode_me status). " +
     "Exact rules: autocode_me action=help topic=wakes.",
   input: {
     type: "object",
@@ -531,7 +532,7 @@ export const WAKE_TOOL = {
         description:
           "set: when it runs: every 30m | every 2h from 09:00 | in 45m | " +
           'at 09:00 | at 2026-11-30 18:00 | cron "0 9 * * 1-5" [zone] | ' +
-          "idle 30m | idle 30m repeat | fire-only",
+          "idle 30m | idle 30m repeat | fire-only | fire-only once",
       },
       check: {
         type: "string",
@@ -771,6 +772,8 @@ const inTurn = (me: any) => me?.agent?.busy ?? me?.agent?.status === "working"
 function timing(w: any, c: Clock, working: boolean): string {
   const trigger = String(w.trigger)
   if (trigger === "fire-only") return "runs only when fired"
+  if (trigger === "fire-only once")
+    return "runs once, when fired, then it is removed"
   const idle = idleOf(trigger)
   if (idle) {
     if (w.due) return `due ${when(w.due, c)} if you stay idle`
@@ -843,6 +846,11 @@ function setText(w: any, me: any): string {
     parts.push(
       "It runs only when fired: autocode_wake fire, or " +
         `\`autocode fire me ${w.name}\` from a script.`,
+    )
+  else if (trigger === "fire-only once")
+    parts.push(
+      "It runs once, when fired (autocode_wake fire, or " +
+        `\`autocode fire me ${w.name}\` from a script), then it is removed.`,
     )
   else if (trigger.startsWith("at "))
     parts.push(

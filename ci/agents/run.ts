@@ -36,7 +36,7 @@ import {
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
-import { afterFire, misuseOf, readJsonc } from "./checks.ts"
+import { afterFire, fireOnlyWake, misuseOf, readJsonc } from "./checks.ts"
 import { workHours } from "./schedule.ts"
 
 const root = resolve(import.meta.dir, "../..")
@@ -556,9 +556,19 @@ const SCENARIOS: Record<string, (ctx: Ctx) => Promise<Outcome>> = {
         "Have Autocode wake you when the job ends (no polling and no fixed " +
         "schedule); when you are woken, tell me what job.txt says.",
     )
-    const wakes = await wakesOf(ctx)
-    const w = wakes.find((x) => x.trigger === "fire-only")
-    if (!w) return `no fire-only wake (${wakeList(wakes)})`
+    // from History: a `fire-only once` wake is gone once the job fired it,
+    // which a job shorter than the setup turn does before this reads
+    const name = fireOnlyWake(
+      (
+        await ac(
+          "GET",
+          `/v1/history?kind=wake.set&agent=${encodeURIComponent(ctx.id)}`,
+        )
+      ).history,
+    )
+    if (!name)
+      return `no fire-only wake (${wakeList(await wakesOf(ctx))} are left)`
+    const w = { name }
     const setupEnded = Date.now()
     let fired: any
     try {

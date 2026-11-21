@@ -102,7 +102,22 @@ export function readJsonc(text: string): any {
 }
 
 // A history entry, as far as the checks read it.
-export type Entry = { at: string; data?: { name?: string; by?: string } }
+export type Entry = {
+  at: string
+  data?: { name?: string; by?: string; trigger?: string }
+}
+
+/*
+ * The wake an agent set as fire-only, once or not: the newest such wake.set
+ * of its History, or null. A `fire-only once` wake is gone once its job
+ * fired it (1.1.0), so the wakes that are left do not show it.
+ */
+export function fireOnlyWake(sets: Entry[]): string | null {
+  const found = sets
+    .filter((h) => /^fire-only( once)?$/.test(h.data?.trigger ?? ""))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0]
+  return found?.data?.name ?? null
+}
 
 /*
  * What ended a wake that a job fired, or null while nothing has: Autocode's

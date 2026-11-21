@@ -256,6 +256,18 @@ test("the reference lists every kind of History", () => {
   for (const kind of kinds) expect(ref, kind).toContain(`\`${kind}\``)
 })
 
+// 1.1.0 (the owner, 2026-11-20: "implement 1-3, 5, 6, 7", from the review
+// of real sessions). 5: one-shot fire-only wakes.
+test("the reference has the one-shot fire-only wake: the trigger, the example and the goal", () => {
+  const ref = read("reference.md")
+  for (const part of [
+    "| `fire-only once` | the same, for one fire: the wake is removed when it is fired",
+    "name=training-done  trigger='fire-only once'",
+    "| Wake me when a long command ends | a `fire-only once` wake;",
+  ])
+    expect(ref, part).toContain(part)
+})
+
 // 1.0.1 (the owner, 2026-11-19: "lets implement fix for stale host
 // records"): a host's record goes by itself; the reference said that no
 // command removes one.

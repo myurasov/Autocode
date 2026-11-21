@@ -389,7 +389,12 @@ describe('HelpPage', () => {
       ['cron "0 9 * * 1-5"', 'cron "0 9 * * 1-5" Europe/Berlin'],
       ['idle 30m', 'idle 30m repeat'],
       ['fire-only'],
+      // 1.1.0 (the owner, 2026-11-20): fired once, then removed
+      ['fire-only once'],
     ]);
+    expect(rows(table)[6]![1]!).toContain(
+      'the same, for one fire: the wake is removed when it is fired',
+    );
     const idle = rows(table)[4]![1]!;
     expect(idle).toContain('end of its last turn');
     // never from before the wake was set

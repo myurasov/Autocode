@@ -228,7 +228,11 @@ export class Jobs {
       throw new AutocodeError("bad_trigger", "a job needs a trigger")
     const now = this.d.now()
     const trigger = parseTrigger(body.trigger, { tz: this.d.tz(), now })
-    if (trigger.kind === "idle")
+    // idle and `fire-only once` are a wake's (a job is fired many times)
+    if (
+      trigger.kind === "idle" ||
+      (trigger.kind === "fire-only" && trigger.once)
+    )
       throw new AutocodeError(
         "bad_trigger",
         "a job's trigger is every, at, cron or fire-only",

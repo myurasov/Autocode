@@ -774,6 +774,13 @@
           <td><code>fire-only</code></td>
           <td>only when fired: by you, another agent or a script</td>
         </tr>
+        <tr>
+          <td><code>fire-only once</code></td>
+          <td>
+            the same, for one fire: the wake is removed when it is fired, and
+            its prompt still comes. For a command that ends once.
+          </td>
+        </tr>
       </tbody>
     </table>
     <p>
@@ -2644,7 +2651,8 @@ nohup sh -c 'python train.py > log.txt 2>&amp;1
     >
     <p>
       The agent sets the wake first, with the trigger
-      <code>fire-only</code> and the name <code>training-done</code>.
+      <code>fire-only once</code> and the name <code>training-done</code>.
+      The wake is removed when the command fires it.
     </p>
 
     <h2 id="start">

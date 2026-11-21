@@ -8,7 +8,8 @@
  *                                     or the next HH:MM, in the zone
  *   cron "<5 fields>" [<zone>]        on wall time in the zone
  *   idle <duration> [repeat]          after the session is idle that long
- *   fire-only                         only when fired
+ *   fire-only [once]                  only when fired; with once, the wake
+ *                                     is removed when it is fired
  */
 
 import {
@@ -26,11 +27,11 @@ export type Trigger =
   | { kind: "at"; at: string }
   | { kind: "cron"; cron: string; tz: string }
   | { kind: "idle"; idle_ms: number; repeat: boolean }
-  | { kind: "fire-only" }
+  | { kind: "fire-only"; once?: true }
 
 const HELP =
   "a trigger looks like every 30m [from 09:00], in 45m, at 09:00, " +
-  'cron "0 9 * * 1-5" [zone], idle 30m [repeat] or fire-only'
+  'cron "0 9 * * 1-5" [zone], idle 30m [repeat] or fire-only [once]'
 
 function bad(text: string, why?: string): AutocodeError {
   return new AutocodeError(
@@ -168,9 +169,13 @@ export function parseTrigger(
         throw bad(text)
       return { kind: "idle", idle_ms, repeat: repeat === "repeat" }
     }
-    case "fire-only":
-      if (rest.length) throw bad(text)
-      return { kind: "fire-only" }
+    case "fire-only": {
+      // once: removed when it is fired (1.1.0)
+      const [once, ...extra] = rest
+      if (once === undefined) return { kind: "fire-only" }
+      if (once !== "once" || extra.length) throw bad(text)
+      return { kind: "fire-only", once: true }
+    }
     default:
       throw bad(text)
   }
@@ -190,7 +195,7 @@ export function formatTrigger(t: Trigger): string {
     case "idle":
       return `idle ${formatDuration(t.idle_ms)}${t.repeat ? " repeat" : ""}`
     case "fire-only":
-      return "fire-only"
+      return t.once ? "fire-only once" : "fire-only"
   }
 }
 

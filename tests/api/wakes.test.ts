@@ -329,6 +329,74 @@ describe("firing", () => {
     )
   })
 
+  /*
+   * 1.1.0 (the owner, 2026-11-20, from the review of real sessions: one
+   * agent held 26 fire-only wakes, 25 of them fired days before and never
+   * cancelled): `fire-only once` is fired once, then removed.
+   */
+  test("a fire-only once wake goes when it is fired; its run is still delivered, and says it was the only one", async () => {
+    const set = await as(a, "PUT", "/v1/me/wakes/job-done", {
+      text: "The job ended: read out.log.",
+      trigger: "fire-only once",
+    })
+    expect([set.status, set.body.wake.trigger]).toEqual([201, "fire-only once"])
+    // a plain fire-only wake beside it stays, however often it is fired
+    await as(a, "PUT", "/v1/me/wakes/again", {
+      text: "Again.",
+      trigger: "fire-only",
+    })
+    const names = async () =>
+      (await as(a, "GET", "/v1/me/wakes")).body.wakes.map((w: any) => w.name)
+    expect(await names()).toEqual(["again", "job-done"])
+    const fire = (name: string, body?: unknown) =>
+      as(a, "POST", `/v1/agents/team:a/wakes/${name}/fire`, body)
+    const fired = await fire("job-done", { text: "exit 0" })
+    expect(fired.status).toBe(200)
+    await fire("again")
+    expect(await names()).toEqual(["again"])
+    const [prompt] = await tick()
+    expect(prompt.payload.text).toContain(
+      'Wake "job-done" (fire-only, once: this was its only run):\n' +
+        "The job ended: read out.log.\n" +
+        "Added by agent team:a:\n> exit 0",
+    )
+    expect(prompt.payload.text).toContain('Wake "again" (fire-only):')
+    // a second fire finds no wake; History says the first one removed it
+    const second = await fire("job-done")
+    expect([second.status, second.body.error.code]).toEqual([404, "no_wake"])
+    const history = (
+      await owner("GET", "/v1/history?kind=wake.fired&agent=team:a")
+    ).body.history
+    expect(
+      history.map((h: any) => [h.data.name, h.data.once ?? false]).sort(),
+    ).toEqual([
+      ["again", false],
+      ["job-done", true],
+    ])
+  })
+
+  // OpenCode's own notice for a background shell may wake the agent first:
+  // it does the work and cancels the wake, whose run still waits
+  test("cancelling a one-time wake that is gone drops its run that still waits", async () => {
+    // team:a's turn runs: the fired run waits
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await as(a, "PUT", "/v1/me/wakes/job-done", {
+      text: "The job ended.",
+      trigger: "fire-only once",
+    })
+    await as(a, "POST", "/v1/agents/team:a/wakes/job-done/fire")
+    const gone = await as(a, "DELETE", "/v1/me/wakes/job-done")
+    expect([gone.status, gone.body]).toEqual([200, { cancelled: "job-done" }])
+    await report(t, HOST, [
+      { type: "turn.ended", session: "ses_a", outcome: "succeeded" },
+    ])
+    t.clock.advance(2 * MIN)
+    expect(await tick()).toEqual([])
+    // nothing waits now: no such wake
+    const again = await as(a, "DELETE", "/v1/me/wakes/job-done")
+    expect([again.status, again.body.error.code]).toEqual([404, "no_wake"])
+  })
+
   test("the owner fires; an unknown wake or agent is refused", async () => {
     await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "fire-only" })
     expect((await owner("POST", "/v1/agents/team:a/wakes/w/fire")).status).toBe(

@@ -103,6 +103,8 @@ describe("the tools' descriptions", () => {
       "idle 30m",
       "repeat",
       "fire-only",
+      // 1.1.0: fired once, then removed
+      "fire-only once",
     ])
       expect(WAKE_TOOL.description).toContain(trigger)
     expect(WAKE_TOOL.description).toContain("only while the session is idle")
@@ -110,6 +112,9 @@ describe("the tools' descriptions", () => {
     // 2026-11-03)
     expect(WAKE_TOOL.description).toContain(
       "a job you start fires it by ending with: autocode fire me NAME",
+    )
+    expect(WAKE_TOOL.description).toContain(
+      "fire-only once (the same, removed once it is fired)",
     )
     expect(MESSAGE_TOOL.description).toContain("owner")
   })
@@ -121,6 +126,7 @@ describe("the tools' descriptions", () => {
           expect((prop as any).description, `${tool.name}.${name}`).toBeTruthy()
     const trigger = (WAKE_TOOL.input.properties as any).trigger.description
     expect(trigger).toContain("in 45m")
+    expect(trigger).toContain("fire-only once")
     // the owner, 2026-11-07: no end date, no files
     expect(WAKE_TOOL.input.properties).not.toHaveProperty("end")
     expect(WAKE_TOOL.description).not.toContain("check, end")
@@ -484,6 +490,15 @@ describe("autocode_wake", () => {
       "It runs only when fired: autocode_wake fire, or `autocode fire me w` " +
         "from a script.",
     )
+    // 1.1.0 (the owner, 2026-11-20: one-shot fire-only wakes)
+    const one = await runWake(
+      { action: "set", name: "w", trigger: "fire-only once", text: "x" },
+      answers({ trigger: "fire-only once" }).call,
+    )
+    expect(one).toContain(
+      "It runs once, when fired (autocode_wake fire, or `autocode fire me " +
+        "w` from a script), then it is removed.",
+    )
   })
 
   test("list: the server's time, then each wake with when it falls due and the start of its text", async () => {
@@ -506,6 +521,7 @@ describe("autocode_wake", () => {
             text: long,
           }),
           wake({ name: "go", trigger: "fire-only", set_by: "owner" }),
+          wake({ name: "done", trigger: "fire-only once" }),
         ],
       },
     })
@@ -521,6 +537,9 @@ describe("autocode_wake", () => {
       `  ${long.slice(0, 100)}…`,
       "go: fire-only; runs only when fired; " +
         "last set 2026-10-28 05:00 PDT by the owner",
+      "  Go.",
+      "done: fire-only once; runs once, when fired, then it is removed; " +
+        "last set 2026-10-28 05:00 PDT",
       "  Go.",
     ])
   })
@@ -634,6 +653,20 @@ describe("the guide", () => {
       "There is no reading or waiting",
     ])
       expect(guide, gone).not.toContain(gone)
+  })
+
+  // 1.1.0, from the review of real sessions (the owner, 2026-11-20:
+  // "implement 1-3, 5, 6, 7").
+  test("1.1.0: a one-shot fire-only wake, and the recipe for a job uses it", () => {
+    for (const answer of [
+      "`fire-only once`: the same, for one fire: the wake is removed when " +
+        "it is fired",
+      "Wake me when a job ends: set a `fire-only once` wake",
+      // a wake that is gone may still have a run waiting
+      "`cancel` removes a wake and any of its runs still waiting (also " +
+        "the waiting run of a one-time wake that is gone already)",
+    ])
+      expect(guide).toContain(answer)
   })
 
   // The owner, 2026-11-07: no files, no end dates, no lock waits, and the

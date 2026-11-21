@@ -183,11 +183,14 @@ describe("what an injected prompt says", () => {
     const cases: [string, string, string][] = [
       ["once", "in 5m", "(once, this was its only run)"],
       ["fired", "fire-only", "(fire-only)"],
+      // 1.1.0: removed when it was fired
+      ["job", "fire-only once", "(fire-only, once: this was its only run)"],
     ]
     for (const [name, trigger] of cases)
       await as(a, "PUT", `/v1/me/wakes/${name}`, { text: name, trigger })
     t.clock.advance(5 * MIN)
     await owner("POST", "/v1/agents/team:a/wakes/fired/fire")
+    await owner("POST", "/v1/agents/team:a/wakes/job/fire")
     const [prompt] = await tick()
     for (const [name, , says] of cases)
       expect(prompt.payload.text).toContain(`Wake "${name}" ${says}:`)

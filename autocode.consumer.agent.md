@@ -141,6 +141,9 @@ Triggers (times without a zone are in the server's zone):
   background job you start can fire it as its last command:
   `nohup sh -c './train.sh; autocode fire me job-done' &` wakes you
   when the job ends (no polling; see Recipes).
+- `fire-only once`: the same, for one fire: the wake is removed when
+  it is fired, and its run is still delivered. Use it for a job that
+  ends once; a plain `fire-only` wake stays until you cancel it.
 
 More:
 
@@ -148,7 +151,8 @@ More:
   zone and from now; an idle wake: when, if you stay idle) and when it
   was last set (its schedule counts from then);
   `show` one whole; `cancel` removes a wake and any of its runs still
-  waiting.
+  waiting (also the waiting run of a one-time wake that is gone
+  already).
 - `fire` delivers a wake now (any agent's, by name; still only while
   that session is idle and after its `min_interval`). A fired wake
   skips its check; the prompt says who fired it, and your text is
@@ -192,10 +196,11 @@ worth waking you for. It costs no model calls.
 - A loop spaced from the end of each run: end each run by setting the
   same wake again with `in 30m` (the same name replaces it); to stop,
   don't set it again. A daily cron wake can start the loop each day.
-- Wake me when a job ends: set a `fire-only` wake, say `job-done`, and
-  start the job from your shell as
+- Wake me when a job ends: set a `fire-only once` wake, say
+  `job-done`, and start the job from your shell as
   `nohup sh -c './train.sh; autocode fire me job-done' &` (add
-  `--text "exit $?"` to the fire to pass the exit code).
+  `--text "exit $?"` to the fire to pass the exit code). The wake is
+  removed when the job fires it: nothing to cancel afterwards.
 - Poll cheaply: `every 10m` with a check that exits 1 when nothing
   changed.
 - Remind me once: `in 45m` or `at 15:00`.

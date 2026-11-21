@@ -246,14 +246,16 @@ export class Wakes {
     const res = this.db
       .query("DELETE FROM wakes WHERE agent_id = ? AND name = ?")
       .run(agent, name)
-    if (!res.changes)
-      throw new AutocodeError("no_wake", `${agent} has no wake ${name}`, 404)
-    // its runs that wait to be delivered go with it
-    this.db
+    // its runs that wait to be delivered go with it: also the run of a
+    // one-time wake that is gone already (an `at` wake after its time, a
+    // `fire-only once` wake after its fire: 1.1.0)
+    const waiting = this.db
       .query(
         "DELETE FROM queue WHERE agent_id = ? AND kind = 'wake' AND wake = ?",
       )
       .run(agent, name)
+    if (!res.changes && !waiting.changes)
+      throw new AutocodeError("no_wake", `${agent} has no wake ${name}`, 404)
     this.history.record("wake.cancelled", { agent, data: { name, by } })
     return { cancelled: name }
   }
@@ -291,12 +293,24 @@ export class Wakes {
       fired_by: by,
       extra: typeof extra === "string" && extra.trim() ? extra : null,
     })
-    this.db
-      .query(
-        "UPDATE wakes SET last_fired_at = ? WHERE agent_id = ? AND name = ?",
-      )
-      .run(this.now(), agent, name)
-    this.history.record("wake.fired", { agent, data: { name, by } })
+    // `fire-only once` (1.1.0): fired once, then removed, as an `at` wake
+    // is after its time; its run waits for delivery like any other
+    const trigger = JSON.parse(row.trigger) as Trigger
+    const once = trigger.kind === "fire-only" && trigger.once === true
+    if (once)
+      this.db
+        .query("DELETE FROM wakes WHERE agent_id = ? AND name = ?")
+        .run(agent, name)
+    else
+      this.db
+        .query(
+          "UPDATE wakes SET last_fired_at = ? WHERE agent_id = ? AND name = ?",
+        )
+        .run(this.now(), agent, name)
+    this.history.record("wake.fired", {
+      agent,
+      data: { name, by, ...(once ? { once: true } : {}) },
+    })
     return { fired: name, agent }
   }
 

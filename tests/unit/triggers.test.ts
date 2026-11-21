@@ -107,6 +107,15 @@ describe("parseTrigger", () => {
       repeat: true,
     })
     expect(parseTrigger("fire-only", opts)).toEqual({ kind: "fire-only" })
+    // 1.1.0 (the owner, 2026-11-20: one-shot fire-only wakes): fired once,
+    // then removed
+    expect(parseTrigger("fire-only once", opts)).toEqual({
+      kind: "fire-only",
+      once: true,
+    })
+    expect(
+      nextRun(parseTrigger("fire-only once", opts), 0, { tz: LA }),
+    ).toBeNull()
   })
 
   test("refuses what it cannot read, and says what a trigger looks like", () => {
@@ -125,8 +134,12 @@ describe("parseTrigger", () => {
       "idle",
       "idle 5m forever",
       "fire-only now",
+      "fire-only once more",
+      "fire-only twice",
     ])
       expect(() => parseTrigger(bad, opts), bad).toThrow(/trigger/)
+    // what a trigger looks like names the one-shot fire-only too
+    expect(() => parseTrigger("sometimes", opts)).toThrow(/fire-only \[once\]/)
   })
 
   // The review of 0b2 (2026-11-08): a duration past ten years, or one that
@@ -152,6 +165,7 @@ describe("parseTrigger", () => {
       "idle 45m",
       "idle 2h repeat",
       "fire-only",
+      "fire-only once",
     ]) {
       const t = parseTrigger(text, opts)
       expect(formatTrigger(t)).toBe(text)

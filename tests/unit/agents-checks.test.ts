@@ -10,7 +10,12 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { afterFire, misuseOf, readJsonc } from "../../ci/agents/checks.ts"
+import {
+  afterFire,
+  fireOnlyWake,
+  misuseOf,
+  readJsonc,
+} from "../../ci/agents/checks.ts"
 
 const shell = (command: string): [string, any] => ["shell", { command }]
 const tool: [string, any] = ["autocode_wake", { action: "list" }]
@@ -154,6 +159,34 @@ describe("afterFire", () => {
         [cancel(40, "job-done", "owner")],
       ),
     ).toBeNull()
+  })
+})
+
+/*
+ * 1.1.0: the guide's recipe for a job is a `fire-only once` wake, which is
+ * gone once the job fired it: the job scenario reads the wake from History
+ * (wake.set), not from the wakes that are left.
+ */
+describe("fireOnlyWake", () => {
+  const set = (name: string, trigger: string, at = "2026-11-20T10:00:00Z") => ({
+    at,
+    data: { name, trigger },
+  })
+  test("the wake the agent set as fire-only, once or not; the newest", () => {
+    expect(fireOnlyWake([set("done", "fire-only once")])).toBe("done")
+    expect(fireOnlyWake([set("done", "fire-only")])).toBe("done")
+    expect(
+      fireOnlyWake([
+        set("b", "fire-only once", "2026-11-20T10:00:05Z"),
+        set("a", "fire-only", "2026-11-20T10:00:01Z"),
+      ]),
+    ).toBe("b")
+  })
+  test("no other trigger", () => {
+    expect(
+      fireOnlyWake([set("poll", "every 1m"), set("soon", "at 2026-11-20")]),
+    ).toBeNull()
+    expect(fireOnlyWake([])).toBeNull()
   })
 })
 

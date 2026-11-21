@@ -475,7 +475,7 @@ More examples:
 autocode_wake  action=set  name=standup  trigger='cron "0 9 * * 1-5" America/Los_Angeles'  text="Write today's plan."
 autocode_wake  action=set  name=new-data  trigger="every 15m"  text="Load the new files."
                check='test -n "$(ls incoming/*.csv 2>/dev/null)"'
-autocode_wake  action=set  name=training-done  trigger=fire-only  text="Training finished: read runs/latest/log.txt."
+autocode_wake  action=set  name=training-done  trigger='fire-only once'  text="Training finished: read runs/latest/log.txt."
 autocode_wake  action=fire  agent=kaggle:worker-1  name=new-fold  text="Folds v3 are ready."
 ```
 
@@ -494,6 +494,7 @@ autocode_wake  action=fire  agent=kaggle:worker-1  name=new-fold  text="Folds v3
 | `idle 30m` | once, when the session has done nothing for 30 minutes |
 | `idle 30m repeat` | as `idle 30m`, then again every 30 minutes for as long as the session stays idle |
 | `fire-only` | never by itself: only when fired, by the agent, another agent, the owner or a script |
+| `fire-only once` | the same, for one fire: the wake is removed when it is fired, and its prompt still comes. For a command that ends once |
 
 - **Zone.** Times without a zone are in the server's zone: the `timezone` setting. `autocode_me action=status` shows
   it.
@@ -513,8 +514,9 @@ autocode_wake  action=fire  agent=kaggle:worker-1  name=new-fold  text="Folds v3
 - **`list`** shows three things for each wake. When it falls due next: as a time in the server's zone, and as a
   time from now. When it was last set: its schedule counts from then. And who set it. For an idle wake, "next" is
   when it falls due if the session stays idle. **`show`** prints one wake whole.
-- **`cancel`** removes a wake, and what of it still waits to be delivered. A wake has no end date: cancel it when
-  it is no longer needed. Unregistering removes all of an agent's wakes.
+- **`cancel`** removes a wake, and what of it still waits to be delivered: also the waiting prompt of a one-time
+  wake that is gone already (`in`, `at`, `fire-only once`). A wake has no end date: cancel it when it is no longer
+  needed. Unregistering removes all of an agent's wakes.
 - **`fire`** delivers a wake now. Any agent may fire any agent's wake. A fired wake skips its check. It still waits
   for an idle session and for `min_interval`. The prompt says who fired it, and quotes the extra text as theirs.
 - **Merging.** A wake that falls due several times before it can be delivered arrives once. Different wakes never
@@ -555,7 +557,7 @@ What its exit code means:
 | Every 30 minutes in work hours on weekdays | `cron "*/30 8-16 * * 1-5" America/Los_Angeles`, with a check |
 | A loop spaced from the end of each turn | each time the wake comes, the agent ends by setting the same wake again with `in 30m`. To stop, it does not set it again. A daily `cron` wake can start the loop |
 | Keep an agent reachable on a machine other than the server's | `every 30m`, or any wake whose prompt comes at least that often: it keeps the folder loaded (see [OpenCode Restarts and Unloaded Folders](#opencode-restarts-and-unloaded-folders)) |
-| Wake me when a long command ends | a `fire-only` wake; the command's last line is `autocode fire me NAME` |
+| Wake me when a long command ends | a `fire-only once` wake; the command's last line is `autocode fire me NAME`. The wake is gone after that |
 | Poll cheaply | `every 10m` with a check |
 | Remind me once | `in 45m` or `at 15:00` |
 | Nudge me when I have been idle | `idle 2h` |

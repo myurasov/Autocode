@@ -732,7 +732,10 @@ export class Delivery {
               `more idle)`
           : `(${formatTrigger(t)}; once per idle stretch)`
       case "fire-only":
-        return `(fire-only)`
+        // a one-shot one went when it was fired (1.1.0)
+        return t.once
+          ? "(fire-only, once: this was its only run)"
+          : "(fire-only)"
     }
   }
 

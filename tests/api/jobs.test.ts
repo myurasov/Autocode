@@ -158,6 +158,22 @@ describe("jobs", () => {
   })
 })
 
+describe("a job's trigger", () => {
+  // 1.1.0: `fire-only once` is a wake's trigger (the wake goes when it is
+  // fired); a job is fired many times
+  test("fire-only once is refused: it is a wake's trigger", async () => {
+    const res = await owner("PUT", "/v1/jobs/once", {
+      ...JOB,
+      trigger: "fire-only once",
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatchObject({
+      code: "bad_trigger",
+      message: "a job's trigger is every, at, cron or fire-only",
+    })
+  })
+})
+
 describe("a job's at trigger", () => {
   // The documentation's fact check before 1.0.0: a job took a time that had
   // passed, and then never ran; a wake refuses it.
