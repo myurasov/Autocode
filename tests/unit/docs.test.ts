@@ -82,15 +82,33 @@ test("every document says what Autocode is: a long-term autonomy support framewo
 
 // Focused: the README's list of what Autocode provides is nine short items,
 // none longer than two lines of 120 columns.
-test("the README's feature list is short: nine items of at most two lines", () => {
+// A table since 1.1.0-rc2 (the owner, 2026-11-21: "make autocode feature
+// list in the beginning of readme/help a table"): a feature and what it does.
+test("the README's feature list is a short table: nine features, each in at most two lines' worth", () => {
   const readme = read("README.md")
-  const list = readme
+  const table = readme
     .slice(readme.indexOf("What Autocode provides:"))
     .split("\n\n")[1]!
-  const items = list.split(/\n(?=- \*\*)/)
-  expect(items.length).toBe(9)
-  for (const item of items)
-    expect(item.split("\n").length, item).toBeLessThanOrEqual(2)
+    .split("\n")
+  expect(table.slice(0, 2)).toEqual(["| Feature | What It Does |", "|---|---|"])
+  const rows = table.slice(2)
+  expect(rows.map((r) => /^\| \*\*([^*]+)\*\* \| /.exec(r)?.[1])).toEqual([
+    "Wakes",
+    "Long commands",
+    "Messages",
+    "Locks",
+    "Recovery",
+    "Limits",
+    "Your Inbox",
+    "Jobs",
+    "Control",
+  ])
+  for (const row of rows) {
+    expect(row.length, row).toBeLessThanOrEqual(240)
+    expect(row, row).toMatch(/[^. ] \|$/)
+  }
+  // no list any more
+  expect(readme).not.toContain("- **Wakes:**")
 })
 
 test("README and Help list what Autocode provides; no needs table", () => {
@@ -99,7 +117,9 @@ test("README and Help list what Autocode provides; no needs table", () => {
   expect(readme).toContain("What Autocode provides:")
   const help = read("web/src/app/help/help-page.html")
   expect(help).not.toContain("What an Agent Needs")
-  expect(help).toContain('<ul class="provides">')
+  // a table since 1.1.0-rc2 (the owner, 2026-11-21)
+  expect(help).toContain('<table class="provides">')
+  expect(help).not.toContain('<ul class="provides">')
 })
 
 test("the reference lists every help topic, in the guide's order", () => {

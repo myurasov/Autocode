@@ -169,12 +169,21 @@ describe('HelpPage', () => {
     // was 351)
     expect(what.split(/\s+/).length).toBeLessThan(290);
     expect(what).not.toMatch(/kaggle|casmi/i);
-    // What Autocode provides, as a list (the owner, 2026-11-09: in place of
-    // the "What an Agent Needs / What Autocode Has" table).
+    // What Autocode provides, as a table of features (the owner,
+    // 2026-11-21: "make autocode feature list in the beginning of
+    // readme/help a table"); not the "What an Agent Needs / What Autocode
+    // Has" table that a list replaced on 2026-11-09.
     expect(page.querySelector('table.needs')).toBeNull();
-    const provides = [...page.querySelectorAll('#what ~ ul.provides > li')].map(
-      (li) => text(li),
+    expect(page.querySelector('ul.provides')).toBeNull();
+    const table = page.querySelector('#what ~ table.provides')!;
+    expect(
+      [...table.querySelectorAll('thead th')].map((th) => text(th)),
+    ).toEqual(['Feature', 'What It Does']);
+    // each feature's name in bold, then what it does
+    expect(table.querySelectorAll('tbody td:first-child strong').length).toBe(
+      9,
     );
+    const provides = rows(table).map(([name, does]) => `${name}: ${does}`);
     const features: [string, string[]][] = [
       ['Wakes', ['schedule', 'idle', 'check can skip']],
       // "Long commands", not "Background jobs": a job is an Autocode job

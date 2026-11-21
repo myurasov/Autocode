@@ -105,10 +105,12 @@ article pre {
 article td {
   vertical-align: top;
 }
-/* A table's first column: a trigger, setting or token, kept together. */
+/* A table's first column: a trigger, setting, token or feature, kept
+   together. */
 article table.triggers td:first-child code,
 article table.settings-help td:first-child,
-article table.tokens td:first-child {
+article table.tokens td:first-child,
+article table.provides td:first-child {
   white-space: nowrap;
 }
 

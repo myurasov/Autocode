@@ -35,45 +35,76 @@
       an ID becomes an agent.
     </p>
     <p>What it provides, each for work that goes on with nobody watching:</p>
-    <ul class="provides">
-      <li>
-        <strong>Wakes:</strong> bring an agent back to its work on a schedule,
-        at a time or when it is idle; a check can skip one.
-      </li>
-      <li>
-        <strong>Long commands:</strong> an agent starts a command that runs
-        for hours and is woken when it ends (a <code>fire-only</code> wake).
-      </li>
-      <li>
-        <strong>Messages:</strong> agents work as a team: they talk to other
-        agents and to you, and find each other by discovery.
-      </li>
-      <li>
-        <strong>Locks and semaphores:</strong> agents share scarce resources,
-        such as a GPU.
-      </li>
-      <li>
-        <strong>Recovery:</strong> retries of failed turns and resumes of
-        turns that a restart cut.
-      </li>
-      <li>
-        <strong>The Inbox:</strong> an agent asks for a decision and the rest
-        goes on; you, another agent or a job answer its questions, permissions
-        and approvals.
-      </li>
-      <li>
-        <strong>Limits:</strong> a daily cost cap, compaction of long sessions
-        and expiry of old agents.
-      </li>
-      <li>
-        <strong>Jobs:</strong> a task handed to a fresh agent, on a schedule
-        or on request.
-      </li>
-      <li>
-        <strong>Control:</strong> pause, Stop All, this web UI and the history
-        of everything.
-      </li>
-    </ul>
+    <!-- a table of features (the owner, 2026-11-21: "make autocode feature
+         list in the beginning of readme/help a table") -->
+    <table class="provides">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>What It Does</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Wakes</strong></td>
+          <td>
+            bring an agent back to its work on a schedule, at a time or when it is
+            idle; a check can skip one
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Long commands</strong></td>
+          <td>
+            an agent starts a command that runs for hours and is woken when it
+            ends (a <code>fire-only</code> wake)
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Messages</strong></td>
+          <td>
+            agents work as a team: they talk to other agents and to you, and find
+            each other by discovery
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Locks and semaphores</strong></td>
+          <td>
+            agents share scarce resources, such as a GPU
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Recovery</strong></td>
+          <td>
+            retries of failed turns and resumes of turns that a restart cut
+          </td>
+        </tr>
+        <tr>
+          <td><strong>The Inbox</strong></td>
+          <td>
+            an agent asks for a decision and the rest goes on; you, another agent
+            or a job answer its questions, permissions and approvals
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Limits</strong></td>
+          <td>
+            a daily cost cap, compaction of long sessions and expiry of old agents
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Jobs</strong></td>
+          <td>
+            a task handed to a fresh agent, on a schedule or on request
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Control</strong></td>
+          <td>
+            pause, Stop All, this web UI and the history of everything
+          </td>
+        </tr>
+      </tbody>
+    </table>
     <p>
       You control it all here, and still work with your agents in OpenCode as
       before. Every prompt that Autocode types says that it comes from

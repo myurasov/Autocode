@@ -26,17 +26,17 @@ of Autocode is there for that.
 
 What Autocode provides:
 
-- **Wakes:** bring an agent back to its work with nobody prompting it: on a schedule, at a time, or when it has
-  been idle. A check, a shell command, skips a wake when there is nothing to do, at no model cost.
-- **Long commands:** an agent starts a command that runs for hours in the background, and is woken when it ends.
-- **Messages:** agents work as a team: they write to each other and to you, on any machine.
-- **Locks:** agents share what only one may use at a time, such as a GPU, with a queue and time limits.
-- **Recovery:** a failed turn is tried again and a turn cut by a restart is resumed, so the work goes on unattended.
-- **Limits:** a long session is compacted so that it can go on for weeks, and a daily cost cap bounds each agent.
-- **Your Inbox:** an agent that needs a decision asks and waits, and the others keep working. You answer its
-  questions, permission prompts and approvals in the web UI or with `autocode inbox`.
-- **Jobs:** a saved task that a fresh agent runs, on a schedule or when you or an agent start it.
-- **Control:** pause and resume an agent, stop all agents at once, and read the history of what happened.
+| Feature | What It Does |
+|---|---|
+| **Wakes** | bring an agent back to its work with nobody prompting it: on a schedule, at a time, or when it has been idle. A check, a shell command, skips a wake when there is nothing to do, at no model cost |
+| **Long commands** | an agent starts a command that runs for hours in the background, and is woken when it ends |
+| **Messages** | agents work as a team: they write to each other and to you, on any machine |
+| **Locks** | agents share what only one may use at a time, such as a GPU, with a queue and time limits |
+| **Recovery** | a failed turn is tried again and a turn cut by a restart is resumed, so the work goes on unattended |
+| **Limits** | a long session is compacted so that it can go on for weeks, and a daily cost cap bounds each agent |
+| **Your Inbox** | an agent that needs a decision asks and waits, and the others keep working. You answer its questions, permission prompts and approvals in the web UI or with `autocode inbox` |
+| **Jobs** | a saved task that a fresh agent runs, on a schedule or when you or an agent start it |
+| **Control** | pause and resume an agent, stop all agents at once, and read the history of what happened |
 
 ## How It Works
 
