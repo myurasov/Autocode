@@ -57,7 +57,15 @@
     <nav>
       <a routerLink="/hosts" routerLinkActive="on">Hosts</a>
       <a routerLink="/agents" routerLinkActive="on">Agents</a>
-      <a routerLink="/inbox" routerLinkActive="on">Inbox</a>
+      <!-- its top edge is red-pink while something waits for the owner
+           (the owner, 2026-11-20) -->
+      <a
+        routerLink="/inbox"
+        routerLinkActive="on"
+        [class.has-items]="waiting.open() > 0"
+        [attr.title]="waitingText()"
+        >Inbox</a
+      >
       <a routerLink="/messages" routerLinkActive="on">Messages</a>
       <a routerLink="/locks" routerLinkActive="on">Locks</a>
       <a routerLink="/wakes" routerLinkActive="on">Wakes</a>

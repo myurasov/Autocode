@@ -409,6 +409,16 @@ describe('HelpPage', () => {
     expect(rows(table)[6]![1]!).toContain(
       'the same, for one fire: the wake is removed when it is fired',
     );
+    // 1.1.0-rc2 (the owner, 2026-11-20): the Inbox tab's highlight
+    expect(section(page, 'inbox')).toContain(
+      "While something waits for you, the Inbox tab's top edge is " +
+        'red-pink, whichever tab is open.',
+    );
+    expect(section(page, 'web-inbox')).toContain(
+      "The tab's top edge is red-pink while something waits for you: a " +
+        'message that is not a report, an alert, or an ask that is yours ' +
+        'to answer. Hover over the tab to see how many.',
+    );
     // 1.1.0 (the owner, 2026-11-20): a "report" mark for messages to you
     expect(section(page, 'inbox')).toContain(
       'An agent tells you what it did or found, and needs no answer.',

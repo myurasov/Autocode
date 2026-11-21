@@ -253,6 +253,16 @@ nav a.on {
   padding-top: 10px;
   z-index: 2;
 }
+/*
+ * The Inbox tab while something waits for the owner (the owner, 2026-11-20:
+ * "red-pink hilight at the top of inbox tab when it has messages for us"):
+ * its top 3 px in the logo's pink-red, the top border and 2 px drawn inside
+ * it, so the tab keeps its size, selected or not, in both themes.
+ */
+nav a.has-items {
+  border-top-color: var(--tint);
+  box-shadow: inset 0 2px 0 var(--tint);
+}
 #frame {
   display: block;
   border: 1px solid var(--border);

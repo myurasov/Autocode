@@ -1,7 +1,8 @@
 /*
  * Unit tests of the app shell: the server ID and version, the favicon before
  * the title, admin sign-in kept for the tab or the browser, refused consumer
- * and session tokens, sign out, and the light/dark switch.
+ * and session tokens, sign out, the light/dark switch, and the Inbox tab's
+ * highlight while something waits for the owner.
  */
 
 import type { HttpTestingController } from '@angular/common/http/testing';
@@ -16,6 +17,8 @@ import {
   text,
   type,
 } from '../testing/helpers';
+import { REFRESH_MS } from './agents/agents-page';
+import { Api } from './api';
 import { App } from './app';
 import { TOKEN_KEY } from './auth';
 import { THEME_KEY } from './theme';
@@ -44,6 +47,8 @@ describe('App (shell)', () => {
     token: string,
     kind: string,
     stay = false,
+    // how much waits for the owner in the Inbox
+    open = 0,
   ): Promise<void> {
     type(page.querySelector('#token'), token);
     if (stay) {
@@ -54,6 +59,11 @@ describe('App (shell)', () => {
     button(page, 'Sign In')!.click();
     http.expectOne('/v1/whoami').flush({ kind });
     await settle(fixture);
+    // signed in, the shell asks at once what waits for the owner
+    if (kind === 'admin') {
+      http.expectOne('/v1/inbox/count').flush({ open });
+      await settle(fixture);
+    }
   }
 
   it('shows Autocode, its version, and the sign-in form', async () => {
@@ -181,6 +191,108 @@ describe('App (shell)', () => {
     expect(page.querySelector('#token')).not.toBeNull();
     expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
     expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull();
+  });
+
+  /*
+   * 1.1.0-rc2 (the owner, 2026-11-20: "also, add red-pink hilight at the
+   * top of inbox tab when it has messages for us", then "i dont see
+   * red-pink hilight on inbox tab when we have messages").
+   */
+  describe("the Inbox tab's highlight", () => {
+    const tab = (page: HTMLElement) =>
+      [...page.querySelectorAll('nav a')].find((a) => text(a) === 'Inbox')!;
+
+    it('is on while something waits for the owner, and says how much; no other tab has it', async () => {
+      const page = await start();
+      await signIn(page, ADMIN, 'admin', false, 3);
+      expect(tab(page).classList).toContain('has-items');
+      expect(tab(page).getAttribute('title')).toBe('3 items wait for you');
+      expect(page.querySelectorAll('nav a.has-items').length).toBe(1);
+    });
+
+    it('is off with nothing waiting', async () => {
+      const page = await start();
+      await signIn(page, ADMIN, 'admin');
+      expect(tab(page).classList).not.toContain('has-items');
+      expect(tab(page).getAttribute('title')).toBeNull();
+    });
+
+    it('follows the Inbox list as it loads: an answer or a Close shows at once', async () => {
+      const page = await start();
+      await signIn(page, ADMIN, 'admin', false, 1);
+      expect(tab(page).getAttribute('title')).toBe('1 item waits for you');
+      // the Inbox page loads its list: the answer carries the number
+      const list = TestBed.inject(Api).inbox();
+      http.expectOne('/v1/inbox').flush({ items: [], open: 0 });
+      await list;
+      await settle(fixture);
+      expect(tab(page).classList).not.toContain('has-items');
+      // an older server's answer has no number: the tab stays as it is
+      const again = TestBed.inject(Api).inbox();
+      http.expectOne('/v1/inbox').flush({ items: [] });
+      await again;
+      await settle(fixture);
+      expect(tab(page).classList).not.toContain('has-items');
+    });
+
+    it('asks again every 10 seconds, one request at a time; a failed one keeps what it showed; sign out ends it', async () => {
+      // the clock is the test's from the start: the shell's timer is set
+      // at the sign-in
+      vi.useFakeTimers();
+      const tick = async (ms = 0) => {
+        await vi.advanceTimersByTimeAsync(ms);
+        for (let i = 0; i < 3; i++) {
+          fixture.detectChanges();
+          await vi.advanceTimersByTimeAsync(0);
+        }
+      };
+      const count = () => http.expectOne('/v1/inbox/count');
+      try {
+        fixture = TestBed.createComponent(App);
+        http
+          .expectOne('/v1/info')
+          .flush({ id: 'web-smoke', version: '0.1.0-build12' });
+        await tick();
+        const page = el(fixture);
+        const signInNow = async (open: number) => {
+          type(page.querySelector('#token'), ADMIN);
+          button(page, 'Sign In')!.click();
+          http.expectOne('/v1/whoami').flush({ kind: 'admin' });
+          await tick();
+          count().flush({ open });
+          await tick();
+        };
+        await signInNow(2);
+        expect(tab(page).getAttribute('title')).toBe('2 items wait for you');
+        await tick(REFRESH_MS - 1);
+        http.expectNone('/v1/inbox/count');
+        await tick(1);
+        const slow = count();
+        await tick(REFRESH_MS);
+        http.expectNone('/v1/inbox/count');
+        slow.flush({ open: 0 });
+        await tick();
+        expect(tab(page).classList).not.toContain('has-items');
+        await tick(REFRESH_MS);
+        count().flush({ open: 5 });
+        await tick();
+        expect(tab(page).getAttribute('title')).toBe('5 items wait for you');
+        // the server does not answer: the tab keeps what it showed
+        await tick(REFRESH_MS);
+        count().flush('down', { status: 502, statusText: 'Bad Gateway' });
+        await tick();
+        expect(tab(page).classList).toContain('has-items');
+        button(page, 'Sign Out')!.click();
+        await tick(3 * REFRESH_MS);
+        http.expectNone('/v1/inbox/count');
+        // signed in again, it starts from nothing
+        await signInNow(0);
+        expect(tab(page).classList).not.toContain('has-items');
+      } finally {
+        fixture.destroy();
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('the light/dark switch changes the page and is remembered', async () => {

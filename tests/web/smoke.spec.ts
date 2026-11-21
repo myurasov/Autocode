@@ -5193,3 +5193,68 @@ test("Inbox: a report reads Report, in grey; the Reports box hides them and is r
     await api.dispose()
   }
 })
+
+/*
+ * 1.1.0-rc2 (the owner, 2026-11-20: "also, add red-pink hilight at the top
+ * of inbox tab when it has messages for us", then "i dont see red-pink
+ * hilight on inbox tab when we have messages"). The fixture's messages to
+ * the owner wait: the Inbox tab's top 3 px are the logo's pink-red, on any
+ * tab, in both themes, and the tab is as tall as its neighbours, selected
+ * or not. With nothing waiting (the count answered for the server here) the
+ * tab looks like the others.
+ */
+test("the Inbox tab's top edge is red-pink while something waits for the owner, in both themes", async ({
+  page,
+}) => {
+  const TINT = "rgb(232, 67, 110)"
+  await signIn(page, admin)
+  const tab = (name: string) => page.getByRole("link", { name, exact: true })
+  const look = (name: string) =>
+    tab(name).evaluate((a) => {
+      const s = getComputedStyle(a)
+      return {
+        top: s.borderTopColor,
+        shadow: s.boxShadow,
+        height: Math.round(a.getBoundingClientRect().height * 10) / 10,
+      }
+    })
+  await expect(tab("Inbox")).toHaveClass(/has-items/)
+  await expect(tab("Inbox")).toHaveAttribute(
+    "title",
+    /^(1 item waits|\d+ items wait) for you$/,
+  )
+  const isDark = () =>
+    page.evaluate(() => document.documentElement.classList.contains("dark"))
+  for (let i = 0; i < 2; i++) {
+    const theme = (await isDark()) ? "dark" : "light"
+    // not selected: on the Hosts tab
+    await openTab(page, "Hosts")
+    const inbox = await look("Inbox")
+    const other = await look("Messages")
+    expect(inbox.top, theme).toBe(TINT)
+    expect(inbox.shadow, theme).toContain(`${TINT} 0px 2px 0px 0px inset`)
+    expect(other.top, theme).not.toBe(TINT)
+    expect(other.shadow, theme).toBe("none")
+    expect(inbox.height, theme).toBe(other.height)
+    // selected: as tall as another tab when that one is selected
+    await openTab(page, "Messages")
+    const selected = (await look("Messages")).height
+    await openTab(page, "Inbox")
+    const on = await look("Inbox")
+    expect(on.top, theme).toBe(TINT)
+    expect(on.height, theme).toBe(selected)
+    await page.getByRole("button", { name: "Light or dark" }).click()
+    await expect.poll(isDark).toBe(theme !== "dark")
+  }
+  // nothing waits: the tab is like the others
+  await openTab(page, "Hosts")
+  await page.route("**/v1/inbox/count", (route) =>
+    route.fulfill({ json: { open: 0 } }),
+  )
+  await page.reload()
+  await expect(tab("Hosts")).toBeVisible()
+  await expect(tab("Inbox")).not.toHaveClass(/has-items/)
+  expect((await look("Inbox")).top).toBe((await look("Messages")).top)
+  expect((await look("Inbox")).shadow).toBe("none")
+  await expect(tab("Inbox")).not.toHaveAttribute("title", /.+/)
+})

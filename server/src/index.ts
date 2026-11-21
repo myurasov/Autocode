@@ -518,6 +518,17 @@ export async function startServer(
 
   // The calling session's agent ID; a session that is not registered has no
   // wakes or messages.
+  /*
+   * What waits for the owner (1.1.0-rc2; the owner, 2026-11-20: a
+   * highlight on the Inbox tab "when it has messages for us"): open
+   * messages to the owner that are not reports, open alerts, and open asks
+   * that are the owner's to answer: sent to the owner, or handed back with
+   * a note by the agent or job that could not answer. Not a report (it
+   * needs no answer), nor an ask that an agent or a job is answering.
+   */
+  const waitingForOwner = (): number =>
+    inbox.list().filter((i) => !i.report).length +
+    asks.open().filter((k) => k.routed === "owner" || k.notes.length > 0).length
   const me = (caller: { session?: string } | undefined): string => {
     const agent = caller?.session ? agents.agentOfSession(caller.session) : ""
     if (!agent) throw notRegistered()
@@ -1372,8 +1383,19 @@ export async function startServer(
                 ? 1
                 : 0,
           ),
+          // what waits for the owner, whatever the list's filter
+          open: waitingForOwner(),
         }
       },
+    },
+    {
+      method: "GET",
+      path: "/v1/inbox/count",
+      access: ["admin"],
+      summary:
+        "how much waits for the owner (the Inbox tab's highlight): open " +
+        "messages that are not reports, alerts, and asks routed to the owner",
+      handler: () => ({ open: waitingForOwner() }),
     },
     // questions, permissions and approvals (tier 0d)
     {

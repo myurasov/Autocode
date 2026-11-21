@@ -343,6 +343,16 @@ test("the reference has reports: the mark, the Inbox's box, the setting, the com
     expect(ref, part).toContain(part)
 })
 
+// 1.1.0-rc2 (the owner, 2026-11-20: "add red-pink hilight at the top of
+// inbox tab when it has messages for us").
+test("the reference says what the Inbox tab's red-pink top edge means", () => {
+  const ref = read("reference.md")
+  expect(ref).toContain(
+    "- **The tab's top edge is red-pink** while something waits for you",
+  )
+  expect(ref).toContain("Reports do not light it")
+})
+
 // 1.0.1 (the owner, 2026-11-19: "lets implement fix for stale host
 // records"): a host's record goes by itself; the reference said that no
 // command removes one.

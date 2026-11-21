@@ -11,6 +11,7 @@ import {
   HttpParams,
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
+import { InboxCount } from './inbox-count';
 import { firstValueFrom, type Observable, TimeoutError, timeout } from 'rxjs';
 
 export type TokenKind = 'admin' | 'consumer' | 'session';
@@ -494,6 +495,8 @@ const path = (id: string) => encodeURIComponent(id);
 @Injectable({ providedIn: 'root' })
 export class Api {
   private readonly http = inject(HttpClient);
+  // what waits for the owner in the Inbox: the tab's highlight
+  private readonly waiting = inject(InboxCount);
 
   private async call<T>(request: Observable<T>): Promise<T> {
     try {
@@ -800,11 +803,24 @@ export class Api {
     let params = new HttpParams();
     if (all) params = params.set('all', '1');
     if (match.trim()) params = params.set('match', match.trim());
-    return (
-      await this.call(
-        this.http.get<{ items: InboxItem[] }>('/v1/inbox', { params }),
-      )
-    ).items;
+    const res = await this.call(
+      this.http.get<{ items: InboxItem[]; open?: number }>('/v1/inbox', {
+        params,
+      }),
+    );
+    // how much waits for the owner, whatever the filter: the Inbox tab's
+    // highlight follows the list (1.1.0-rc2)
+    if (typeof res.open === 'number') this.waiting.open.set(res.open);
+    return res.items;
+  }
+
+  // How much waits for the owner: the Inbox tab's highlight.
+  async inboxCount(): Promise<number> {
+    const open = (
+      await this.call(this.http.get<{ open: number }>('/v1/inbox/count'))
+    ).open;
+    this.waiting.open.set(open);
+    return open;
   }
 
   // Answers a message to the owner: the answer goes back to its agent.

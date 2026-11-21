@@ -332,7 +332,8 @@
       The Inbox tab collects what agents and Autocode want from you.
       <code>autocode inbox</code> lists the same items, and
       <code>autocode answer</code> answers them. Autocode sends you no
-      notification: open the Inbox tab to see what came.
+      notification: open the web UI to see what came. While something waits
+      for you, the Inbox tab's top edge is red-pink, whichever tab is open.
     </p>
     <table class="kinds">
       <thead>
@@ -1532,6 +1533,12 @@ autocode job set daily-report --host HOST --model MODEL \
         Lists messages to you, alerts, and asks: questions, permission prompts
         and approvals. How to answer each kind is under
         <a routerLink="/help" fragment="inbox">{{ sec.inbox.label }}</a>.
+      </li>
+      <li>
+        The tab's top edge is red-pink while something waits for you: a
+        message that is not a report, an alert, or an ask that is yours to
+        answer. Hover over the tab to see how many. An ask that an agent or
+        a job is answering does not light it, nor does a report.
       </li>
       <li>
         Sent To shows who was asked: you or another agent (the mode settings
