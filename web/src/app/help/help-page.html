@@ -539,6 +539,14 @@
         A run's cost counts toward the cap of the agent it counts for; see
         <a routerLink="/help" fragment="jobs">{{ sec.jobs.label }}</a>.
       </li>
+      <li>
+        What a session spent before it registered counts too. When a session
+        registers for the first time, Autocode reads its earlier steps from
+        OpenCode, those of its Subagents included, and files each one on the
+        day it ran. What it spent earlier today counts toward today's cap.
+        History shows <code>cost.before</code>. For an agent that registered
+        before v1.1.0-rc3, run <code>autocode costs account AGENT</code>.
+      </li>
     </ul>
 
     <h3 id="compaction">

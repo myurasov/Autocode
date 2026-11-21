@@ -702,6 +702,15 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (session_id, ref)
   );
   `,
+  /*
+   * 28 (1.1.0-rc3; the owner, 2026-11-21: "is it possible to account for
+   * session cost before it was first registered?"): when a session's
+   * earlier steps were filed, at its first registration. A session is
+   * accounted for once.
+   */
+  `
+  ALTER TABLE sessions ADD COLUMN accounted_at INTEGER;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

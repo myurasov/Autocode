@@ -78,6 +78,9 @@ Look
                              every agent's spend, daily cap and context;
                              --days N: the total over the last N days
   costs AGENT                one agent's spend, with its spend per day
+  costs account AGENT        count what its session spent before it
+                             registered (once; for an agent that registered
+                             before v1.1.0-rc3)
 
 Agents
   agents register AGENT --session SESSION [--description TEXT] [--force]

@@ -66,6 +66,13 @@ export interface CostView {
 }
 
 export class Costs {
+  // sessions whose earlier steps their plugin is reading now, with what it
+  // reported so far
+  private readonly accounting = new Map<
+    string,
+    { steps: number; usd: number; older: number; days: Set<string> }
+  >()
+
   constructor(
     private readonly db: Database,
     private readonly history: History,
@@ -723,6 +730,154 @@ export class Costs {
       .query("SELECT cut_at FROM agents WHERE id = ?")
       .get(agent) as any
     return !!row?.cut_at && this.now() - row.cut_at < RESUME_WAIT_MS
+  }
+
+  /*
+   * Whether a session's earlier steps were filed, or are being read now
+   * (spec, Costs and Caps: Before a session registered). A session is
+   * accounted for once.
+   */
+  accounted(session: string): boolean {
+    if (this.accounting.has(session)) return true
+    const row = this.db
+      .query("SELECT accounted_at FROM sessions WHERE id = ?")
+      .get(session) as { accounted_at: number | null } | null
+    return !!row?.accounted_at
+  }
+
+  // The session's plugin was asked: what it reports is added up for History.
+  accountingStarted(session: string) {
+    this.accounting.set(session, {
+      steps: 0,
+      usd: 0,
+      older: 0,
+      days: new Set(),
+    })
+  }
+
+  /*
+   * The plugin answered: its report is whole (the session is accounted for,
+   * and History says how much was filed), or it could not read its OpenCode
+   * (History says why; the next registration asks again).
+   */
+  accountingEnded(
+    session: string,
+    agent: string | undefined,
+    ok: boolean,
+    error: string | null,
+  ) {
+    const tally = this.accounting.get(session)
+    this.accounting.delete(session)
+    if (!ok) {
+      this.history.record("cost.before", {
+        agent,
+        session,
+        data: { error: error ?? "failed" },
+      })
+      return
+    }
+    this.db
+      .query("UPDATE sessions SET accounted_at = ? WHERE id = ?")
+      .run(this.now(), session)
+    if (tally?.steps)
+      this.history.record("cost.before", {
+        agent,
+        session,
+        data: {
+          steps: tally.steps,
+          usd: round(tally.usd),
+          days: tally.days.size,
+          older_usd: round(tally.older),
+        },
+      })
+  }
+
+  /*
+   * Steps read from OpenCode's records, [ID, time, dollars] each: a
+   * session's earlier ones, and a compaction's. Each is filed for the agent
+   * on its own day in the server's zone, once (by its ID, which a live step
+   * carries too); one older than the days kept goes to the total only; one
+   * after now counts for today. Today's count toward the cap: its warning,
+   * and its pause at once when no turn runs (else when the turn ends). The
+   * agent's context and model stay as its live steps left them, and no wake
+   * gets these steps.
+   */
+  past(
+    agent: string,
+    session: string,
+    steps: unknown,
+    // the report of an accounting (History adds these up), not a
+    // compaction's cost
+    accounting = false,
+  ): number {
+    if (!Array.isArray(steps)) return 0
+    const now = this.now()
+    const today = this.day(now)
+    const kept = this.day(now - this.keptDays() * 86_400_000)
+    const billTo = this.billTo(agent)
+    const payer = billTo ?? agent
+    const tally = accounting ? this.accounting.get(session) : undefined
+    let counted = 0
+    for (const step of steps) {
+      if (!Array.isArray(step)) continue
+      const [id, at, usd] = step
+      if (typeof id !== "string" || !id) continue
+      if (typeof at !== "number" || !Number.isFinite(at) || at < 0) continue
+      if (
+        typeof usd !== "number" ||
+        !Number.isFinite(usd) ||
+        usd < 0 ||
+        usd > MAX_STEP_USD
+      )
+        continue
+      const fresh = this.db
+        .query("INSERT OR IGNORE INTO cost_steps (step, at) VALUES (?, ?)")
+        .run(id.slice(0, 200), now).changes
+      if (!fresh) continue
+      const day = at > now ? today : this.day(at)
+      if (day >= kept) {
+        if (billTo)
+          this.db
+            .query(
+              `INSERT INTO run_costs (run_id, day, usd, steps)
+               VALUES (?, ?, ?, 1)
+               ON CONFLICT (run_id, day) DO UPDATE SET
+                 usd = usd + excluded.usd, steps = steps + 1`,
+            )
+            .run(agent, day, usd)
+        this.db
+          .query(
+            `INSERT INTO costs (agent_id, day, usd, steps) VALUES (?, ?, ?, 1)
+             ON CONFLICT (agent_id, day) DO UPDATE SET
+               usd = usd + excluded.usd, steps = steps + 1`,
+          )
+          .run(payer, day, usd)
+        tally?.days.add(day)
+      } else if (tally) tally.older += usd
+      this.db
+        .query(
+          `INSERT INTO cost_totals (agent_id, usd, steps, first_day)
+           VALUES (?, ?, 1, ?)
+           ON CONFLICT (agent_id) DO UPDATE SET usd = usd + excluded.usd,
+             steps = steps + 1, first_day = MIN(first_day, excluded.first_day)`,
+        )
+        .run(payer, usd, day)
+      if (tally) {
+        tally.steps += 1
+        tally.usd += usd
+      }
+      counted += 1
+    }
+    if (counted && !payer.startsWith("job:")) {
+      this.warn(payer)
+      if (!this.busy(payer)) this.capCheck(payer)
+    }
+    return counted
+  }
+
+  // The days whose spend is kept: history_days, at least 31.
+  private keptDays(): number {
+    return Math.max(Number(this.settings.value("history_days")) || 30, 31)
   }
 
   // The resume prompt a cut turn is due for, once.

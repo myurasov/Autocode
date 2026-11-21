@@ -1006,6 +1006,26 @@ Autocode counts each agent's spend, can cap it per day, and compacts long sessio
 - **What counts.** Each model step of an agent counts toward its spend today. The steps of its Subagents count too,
   and so do the runs it pays for (see [Whom a Run's Cost Counts For](#whom-a-runs-cost-counts-for)). A day is a day
   in the server's zone.
+- **What a session spent before it registered** counts as well. When a session registers for the first time,
+  Autocode reads its earlier steps from OpenCode, those of its Subagents included, and files each one on the day
+  it ran.
+  - What the session spent earlier today counts toward today's cap. A session that registers past its cap is
+    paused when its turn ends.
+  - Days older than Autocode keeps (`history_days`, at least 31 days) are not listed by day: they add to the total
+    only.
+  - No wake gets these steps: they show on the Costs tab, not under a wake.
+  - It happens once for a session. If the session unregisters and registers again, nothing is counted twice, and
+    what it spent while it was not registered stays out.
+  - For a session that was registered before, under any ID, only what it spent before its first registration is
+    counted: its later steps were counted as they ran. Autocode knows the first registration from History, so it
+    knows it for `history_days` (30 days).
+  - History shows `cost.before` with the steps, the dollars and the days.
+  - It cannot count a Subagent's session that was deleted in OpenCode. And it needs OpenCode's background service
+    or an `opencode serve` whose shells get Autocode's values (see
+    [A Host Is Marked "no shell values"](#a-host-is-marked-no-shell-values)): for another OpenCode, `cost.before`
+    says why nothing was counted.
+  - An agent that registered before v1.1.0-rc3 is not counted by itself. Run `autocode costs account AGENT` for
+    it: Autocode then counts what its session spent before it registered.
 - **Where you see it.** The **Costs** tab and `autocode costs` show every agent's spend today and in total, and its
   cap. They include agents that have unregistered. `autocode costs` also shows the context; in the web UI the
   context is on the Agents tab.
@@ -1325,6 +1345,7 @@ are those of `autocode --help`.
 | `autocode agents [PATTERN]` | agents: ID, status, machine, spend today, context as a share of the threshold, last activity, description |
 | `autocode costs [--match PATTERN] [--days N]` | every agent's spend today and in total, cap and what is left, context and threshold, with a totals row. Unregistered agents too. `--days N` makes the totals cover the last N days |
 | `autocode costs AGENT` | one agent's spend, cap and context, and its spend per day |
+| `autocode costs account AGENT` | count what the agent's session spent before it was first registered. For an agent that registered before v1.1.0-rc3; a later registration does it by itself (see [Spend and the Daily Cap](#spend-and-the-daily-cap)) |
 | **Agents** | |
 | `autocode agents register AGENT --session SESSION [--description TEXT] [--force]` | give a session an agent ID. `--force` takes the ID from a session that still exists |
 | `autocode agents rm AGENT` | unregister an agent. Its history stays |
@@ -1440,6 +1461,7 @@ by one kind, or by a group such as `wake.*`.
 | `lock.renewed`, `lock.released` | a hold was renewed; it was released |
 | `lock.left`, `lock.expired` | an agent left a queue; a hold ran out |
 | `cap.warned`, `cap.reached`, `cap.lifted` | the cost warning was sent; the agent was paused by its cap; that pause ended |
+| `cost.before` | what a session spent before it registered was counted. The data says the steps, the dollars and the days, and how much of it is older than the days kept; or why nothing could be counted |
 | `session.compact.noticed`, `session.compact.asked` | the agent was told that a compaction is next; the agent asked for one |
 | `session.compacted`, `session.compact.done`, `session.compact.failed` | a compaction was started; it succeeded; OpenCode could not do it, and nothing was compacted |
 | `job.set`, `job.deleted` | a job was set or deleted |

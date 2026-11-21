@@ -41,12 +41,14 @@ import {
   cancelForm,
   findLocalApi,
   listForms,
+  localGet,
   pathWith,
   replyForm,
   setEnvironment,
   shellVariables,
 } from "./localapi.ts"
 import { log } from "./log.ts"
+import { account } from "./past.ts"
 import { keptToken, SessionTokens, tokenToKeep } from "./sessions.ts"
 import { Inputs, Shells } from "./starts.ts"
 import {
@@ -534,6 +536,35 @@ export default {
                 log(`title of ${session}: ${(err as Error)?.message ?? err}`),
               )
           return { ok: true }
+        }
+        case "account": {
+          /*
+           * The session registered: its earlier steps, and its Subagents',
+           * from OpenCode's records, for the server to file on their days
+           * (spec, Costs and Caps: Before a session registered).
+           */
+          if (!api)
+            throw new Error(
+              "this OpenCode's local API is not open to its plugin, so the " +
+                "session's earlier steps cannot be read",
+            )
+          const read = await account(
+            (path) => localGet(api, path),
+            session,
+            (steps) =>
+              channel.report({
+                type: "cost.past",
+                session,
+                account: true,
+                steps,
+              }),
+            typeof p.before === "number" ? { before: p.before } : {},
+          )
+          log(
+            `account ${session}: ${read.steps} steps, $${read.usd.toFixed(2)}, ` +
+              `${read.sessions} sessions`,
+          )
+          return read
         }
         case "ping":
           return { pong: true }

@@ -409,6 +409,30 @@ export async function startServer(
         run,
       )
   }
+  /*
+   * A session's cost from before it registered (1.1.0-rc3): the first time
+   * a session becomes an agent's, its plugin is asked for its earlier steps
+   * (not a run's: its session is new); it reports them as cost.past, and so
+   * it does a compaction's cost when the compaction's turn ends.
+   */
+  hosts.onPastCost = (event) => {
+    const session = String(event.session)
+    const run = (
+      db.query("SELECT id FROM runs WHERE session_id = ?").get(session) as {
+        id: string
+      } | null
+    )?.id
+    const agent = run ?? agents.agentOfSession(session)
+    if (!agent) return
+    costs.past(agent, session, event.steps, event.account === true)
+    if (run)
+      db.query("UPDATE runs SET cost = ? WHERE id = ?").run(
+        costs.runCost(run),
+        run,
+      )
+  }
+  hosts.onAccounted = (session, ok, _result, error) =>
+    costs.accountingEnded(session, agents.agentOfSession(session), ok, error)
   hosts.onCut = (session) => {
     const agent = agents.agentOfSession(session)
     if (agent) costs.cut(agent)
@@ -519,6 +543,34 @@ export async function startServer(
     jobs.start(job, "ask", "ask", undefined, ask)?.id ?? null
   retries.onGivenUp = (agent, reason) => jobs.turnsFailed(agent, reason)
   hosts.runsOf = (host) => jobs.runSessionsOf(host)
+  /*
+   * When a session was first some agent's, as far as History still knows:
+   * its steps since then were counted as they ran, under whatever ID it had
+   * (found on the live data, 2026-11-21: a session registered under another
+   * ID before steps were told by their IDs had those days counted again).
+   */
+  const firstRegistered = (session: string): number | null =>
+    (
+      db
+        .query(
+          "SELECT MIN(at) AS at FROM history WHERE session = ? " +
+            "AND kind IN ('agent.registered', 'agent.moved')",
+        )
+        .get(session) as { at: number | null } | null
+    )?.at ?? null
+  // a session that becomes an agent's is accounted for, once (not a run's):
+  // all its earlier steps, or those before its first registration when it
+  // was registered before
+  agents.onBound = (agent, session, host) => {
+    if (!host || costs.billTo(agent) !== null || costs.accounted(session))
+      return
+    const first = firstRegistered(session)
+    hosts.enqueue(host, "account", {
+      session,
+      ...(first !== null && first < now() - 1000 ? { before: first } : {}),
+    })
+    costs.accountingStarted(session)
+  }
   hosts.onNewInstance = (host) => delivery.hostBack(host)
   history.record("server.started", { data: { id, version: VERSION } })
   locks.sweep()
@@ -1583,6 +1635,53 @@ export async function startServer(
         const id = String(params.id)
         retries.request(id, "owner")
         return { agent: agents.get(id) }
+      },
+    },
+    {
+      method: "POST",
+      path: "/v1/agents/:id/account",
+      access: ["admin"],
+      summary:
+        "count what the agent's session spent before it registered, from " +
+        "OpenCode's records (once per session; for an agent that registered " +
+        "before 1.1.0-rc3)",
+      handler: ({ params }) => {
+        const agent = agents.get(String(params.id))
+        const row = db
+          .query(
+            `SELECT a.session_id, a.registered_at, s.host_id FROM agents a
+             JOIN sessions s ON s.id = a.session_id WHERE a.id = ?`,
+          )
+          .get(agent.id) as {
+          session_id: string
+          registered_at: number
+          host_id: string
+        } | null
+        if (!row)
+          throw new AutocodeError("not_registered", `no agent ${agent.id}`, 404)
+        if (costs.billTo(agent.id) !== null)
+          throw new AutocodeError(
+            "is_run",
+            `${agent.id} is a job's run: its session has no earlier steps`,
+            409,
+          )
+        if (costs.accounted(row.session_id))
+          throw new AutocodeError(
+            "accounted",
+            `${agent.id}'s session is accounted for already, or is being ` +
+              "accounted for now: a session's earlier steps count once",
+            409,
+          )
+        // its steps since it was first registered were counted as they ran
+        hosts.enqueue(row.host_id, "account", {
+          session: row.session_id,
+          before: Math.min(
+            firstRegistered(row.session_id) ?? row.registered_at,
+            row.registered_at,
+          ),
+        })
+        costs.accountingStarted(row.session_id)
+        return { agent: agents.get(agent.id), asked: true }
       },
     },
     {

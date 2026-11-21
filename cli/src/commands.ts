@@ -435,8 +435,23 @@ const left = (k: any) => (k.left_usd === null ? "—" : dollars(k.left_usd))
  * `costs AGENT`: one agent's, with its spend per day.
  */
 export async function costs(args: Parsed): Promise<number> {
-  const [agent] = args.words
+  const [agent, target] = args.words
   const c = connect(args)
+  // costs account AGENT: what its session spent before it registered
+  if (agent === "account" && target) {
+    const res = await c.call(
+      "POST",
+      `/v1/agents/${encodeURIComponent(target)}/account`,
+    )
+    print(
+      args,
+      res,
+      () =>
+        `asked ${res.agent.id}'s OpenCode for what its session spent before ` +
+        "it registered; History says cost.before when it is counted",
+    )
+    return 0
+  }
   if (agent) {
     const res = await c.call("GET", `/v1/costs/${encodeURIComponent(agent)}`)
     const k = res.cost

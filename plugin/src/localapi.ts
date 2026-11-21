@@ -208,6 +208,24 @@ async function localCall(
     : parsed
 }
 
+// A GET whose answer comes as it is, with its `data` and its `cursor` (the
+// lists that have pages).
+export async function localGet(
+  api: LocalApi,
+  path: string,
+  timeoutMs = 30_000,
+): Promise<any> {
+  const res = await fetch(`${api.url}${path}`, {
+    headers: api.authorization ? { authorization: api.authorization } : {},
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  if (!res.ok)
+    throw new Error(
+      `OpenCode's local API answered ${res.status} to ${path.split("?")[0]}`,
+    )
+  return res.json()
+}
+
 const formPath = (session: string, form?: string) =>
   `/api/session/${encodeURIComponent(session)}/form` +
   (form ? `/${encodeURIComponent(form)}` : "")

@@ -132,6 +132,17 @@ export class Hosts {
   onHello: (host: string, body: any) => void = () => {}
   // another instance of the host said hello (its OpenCode started again)
   onNewInstance: (host: string) => void = () => {}
+  // steps read from OpenCode's records: a session's earlier ones, and a
+  // compaction's (1.1.0-rc3)
+  onPastCost: (event: any) => void = () => {}
+  // the plugin answered an `account` instruction: its report is whole, or
+  // it could not read its OpenCode
+  onAccounted: (
+    session: string,
+    ok: boolean,
+    result: any,
+    error: string | null,
+  ) => void = () => {}
   // A session's turn ended (registered or not; its forms are gone).
   onSessionTurnEnded: (session: string) => void = () => {}
   // A host whose OpenCode is older than the minimum said hello (the owner's
@@ -685,21 +696,23 @@ export class Hosts {
     for (const event of body.events) {
       if (!event || typeof event !== "object") continue
       if (event.type === "ack" && typeof event.id === "string") {
-        this.db
-          .query(
-            "UPDATE instructions SET acked_at = ?, result = ? " +
-              "WHERE id = ? AND host_id = ? AND acked_at IS NULL",
-          )
-          .run(
-            this.now(),
-            JSON.stringify({
-              ok: event.ok !== false,
-              result: event.result ?? null,
-              error: event.error ?? null,
-            }),
-            event.id,
-            id,
-          )
+        const first =
+          this.db
+            .query(
+              "UPDATE instructions SET acked_at = ?, result = ? " +
+                "WHERE id = ? AND host_id = ? AND acked_at IS NULL",
+            )
+            .run(
+              this.now(),
+              JSON.stringify({
+                ok: event.ok !== false,
+                result: event.result ?? null,
+                error: event.error ?? null,
+              }),
+              event.id,
+              id,
+            ).changes > 0
+        if (first) this.accounted(event)
       } else if (
         event.type === "turn.started" &&
         typeof event.session === "string"
@@ -739,6 +752,13 @@ export class Hosts {
         this.active(event.session)
         try {
           this.onCost(event)
+        } catch {}
+      } else if (
+        event.type === "cost.past" &&
+        typeof event.session === "string"
+      ) {
+        try {
+          this.onPastCost(event)
         } catch {}
       } else if (
         ((event.type === "ask.opened" || event.type === "ask.settled") &&
@@ -868,6 +888,24 @@ export class Hosts {
       result: stored?.result ?? null,
       error: stored?.error ?? null,
     }
+  }
+
+  // An `account` instruction was answered: the session's report is whole.
+  private accounted(event: any) {
+    const row = this.db
+      .query("SELECT type, payload FROM instructions WHERE id = ?")
+      .get(event.id) as { type: string; payload: string } | null
+    if (row?.type !== "account") return
+    try {
+      const session = JSON.parse(row.payload)?.session
+      if (typeof session === "string")
+        this.onAccounted(
+          session,
+          event.ok !== false,
+          event.result ?? null,
+          typeof event.error === "string" ? event.error : null,
+        )
+    } catch {}
   }
 
   sweep() {

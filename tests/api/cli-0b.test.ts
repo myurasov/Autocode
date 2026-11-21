@@ -677,6 +677,33 @@ describe("costs", () => {
     expect((await cli(["costs", "kaggle:none"], asAdmin())).code).toBe(1)
   })
 
+  test("costs account AGENT: asks for what its session spent before it registered, once", async () => {
+    // an agent whose plugin could not read its OpenCode when it registered
+    await registered(t, "m:1", "ses_late", "kaggle:late")
+    for (const i of await instructions(t, "m:1"))
+      if (i.type === "account")
+        await report(t, "m:1", [
+          { type: "ack", id: i.id, ok: false, error: "no local API" },
+        ])
+      else await ack(t, "m:1", i.id)
+    const res = await cli(["costs", "account", "kaggle:late"], asAdmin())
+    expect(res.code, res.stderr).toBe(0)
+    expect(res.stdout).toContain(
+      "asked kaggle:late's OpenCode for what its session spent before it " +
+        "registered",
+    )
+    const asked = (await instructions(t, "m:1")).filter(
+      (i) => i.type === "account",
+    )
+    expect(asked.map((i) => i.payload.session)).toEqual(["ses_late"])
+    const again = await cli(["costs", "account", "kaggle:late"], asAdmin())
+    expect(again.code).toBe(1)
+    expect(again.stderr).toContain("accounted for already")
+    expect(
+      (await cli(["costs", "account", "kaggle:none"], asAdmin())).code,
+    ).toBe(1)
+  })
+
   test("agents shows each agent's spend today and its context's share of the threshold", async () => {
     const res = await cli(["agents"], asAdmin())
     expect(res.stdout).toMatch(

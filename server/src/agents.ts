@@ -80,6 +80,10 @@ export class Agents {
   // What an owner's view adds (tier 0e: the agent's cost).
   extra: (agent: string) => Record<string, unknown> = () => ({})
 
+  // A session became an agent's: by a registration, or an ID moved to it.
+  onBound: (agent: string, session: string, host: string | null) => void =
+    () => {}
+
   // offline (its host gone or its session deleted), paused, waiting (an open
   // ask: tier 0d), working (a turn runs), error (its last turn failed: tier
   // 0b3), else idle.
@@ -262,6 +266,7 @@ export class Agents {
       if (!holder.deleted_at)
         this.notice(holder.host_id, holder.session_id, null)
       this.notice(fields.host, session, id)
+      this.bound(id, session, fields.host)
       return { status: 200, agent: this.ownerView(this.byId(id)) }
     }
     const now = this.now()
@@ -278,7 +283,14 @@ export class Agents {
       data: { description },
     })
     this.notice(fields.host, session, id)
+    this.bound(id, session, fields.host)
     return { status: 201, agent: this.ownerView(this.byId(id)) }
+  }
+
+  private bound(agent: string, session: string, host: string | null) {
+    try {
+      this.onBound(agent, session, host)
+    } catch {}
   }
 
   /*
