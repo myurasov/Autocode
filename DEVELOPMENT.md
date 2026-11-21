@@ -33,7 +33,7 @@ ci/dist.sh
 ```
 
 The result is `dist/autocode`: one binary with the server, the CLI, the plugin and the web UI inside, for the CPU of
-the machine that built it. The last line says which build it is, like `build 1: v1.1.0-rc2-build1`.
+the machine that built it. The last line says which build it is, like `build 1: v1.1.0-rc3-build1`.
 
 `ci/dist.sh` does five things:
 
@@ -67,7 +67,7 @@ plugin work. Its version ends in `-dev`.
 A version has two parts: the release and the build.
 
 - **The release** is `RELEASE` in `shared/src/version.ts`, and `version` in `package.json`.
-- **A numbered build** says `v<release>-build<n>`, like `v1.1.0-rc2-build57`. Only `ci/dist.sh` makes numbered builds.
+- **A numbered build** says `v<release>-build<n>`, like `v1.1.0-rc3-build57`. Only `ci/dist.sh` makes numbered builds.
 - **Any other build** says `v<release>-dev`: `bun cli/build.ts` by hand, and the binaries that the test suites
   build.
 
