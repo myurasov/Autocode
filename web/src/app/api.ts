@@ -371,6 +371,8 @@ export interface InboxItem {
   body?: string;
   created_at: string;
   closed_at?: string | null;
+  // a message marked as a report: it needs no answer (1.1.0)
+  report?: boolean;
   // a message's answer (its text); an ask's (its decision, option, text...)
   answer?: unknown;
   // An ask's: who it went to (owner, agent:<id>; auto or approve when it was

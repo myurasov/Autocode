@@ -342,7 +342,7 @@ Each tool takes an `action`.
 |---|---|
 | `autocode_me` | `register` (`id`, `description`), `unregister`, `status`, `discover` (`pattern`), `help` (`topic`), `compact`, `jobs`, `run` (`job`, `text`), `finish` (`result`), `job_set` (see [Jobs That Agents Set](#jobs-that-agents-set)), `job_delete` (`job`), `rename` (`id`) |
 | `autocode_wake` | `set` (`name`, `trigger`, `text`, `check`), `list`, `show` (`name`), `cancel` (`name`), `fire` (`agent`, `name`, `text`) |
-| `autocode_message` | `send` (`to`, `subject`, `text`, `reply_to`), `list`, `read` and `wait` (`id`, `from`, `reply_to`; wait: `seconds`), `answer` and `escalate` (`id`, `text`) |
+| `autocode_message` | `send` (`to`, `subject`, `text`, `reply_to`, `report`), `list`, `read` and `wait` (`id`, `from`, `reply_to`; wait: `seconds`), `answer` and `escalate` (`id`, `text`) |
 | `autocode_lock` | `acquire` (`name`, `ttl`, `max`, `mode`), `renew` (`name`, `ttl`), `release` (`name`), `list` (`pattern`) |
 | `autocode_approval` | `ask` (`text`, `options`, `expires`), `wait` (`id`, `seconds`) |
 
@@ -454,7 +454,7 @@ A script or a long command started in such a shell acts as the agent, with three
 |---|---|
 | `autocode me` | prints the agent's registration and status |
 | `autocode fire me WAKE [--text TEXT]` | delivers one of the agent's own wakes now. With an agent's ID in place of `me`, that agent's wake |
-| `autocode send TO TEXT... [--subject SUBJECT] [--reply-to ID]` | sends a message as the agent. `TO` may also be `owner` |
+| `autocode send TO TEXT... [--subject SUBJECT] [--reply-to ID] [--report]` | sends a message as the agent. `TO` may also be `owner`. `--report` marks one to the owner that needs no answer: see [Reports](#reports) |
 
 Everything else belongs to the tools. A long training command that wakes its agent when it ends:
 
@@ -665,6 +665,25 @@ How it arrives depends on the recipient (the rules are in [How Delivery Works](#
 - Messages arrive whole. One prompt carries up to 32,000 characters of messages; the rest come in the next one.
 - An agent that waits for a reply may simply end its turn: the reply wakes it.
 - You send with `autocode send TO TEXT...` or on the Messages tab.
+
+### Reports
+
+Most of what agents write to you needs no answer: a run ended, a result came in. An agent marks such a message as
+a report, with `report=true`, so that it does not stand between you and the messages that do need you.
+
+```
+autocode_message  action=send  to=owner  report=true  subject="Nightly run"  text="All three folds finished."
+```
+
+- **From a script:** `autocode send owner TEXT --report`.
+- **In the Inbox** a report reads **Report**, in grey, and its title starts with "Report from". The **Reports**
+  box hides and shows them; it is on at first, and the browser remembers it. You can answer or close a report
+  like any message.
+- **It closes by itself.** A report that is still open 7 days after it came is closed by the server:
+  `report_close_after`, server-wide; `0` keeps reports until you close them.
+- **Only to you.** The mark is refused unless `owner` is among the recipients. Agents that get the same message
+  get it plain.
+- **What is not a report:** a question, a blocker, a choice. The agents' guide tells agents to send those plain.
 
 ### List, Read and Wait
 
@@ -1521,11 +1540,14 @@ tab are days in the server's zone.
   saves the rule for the project.
 - **An approval:** an option, a note, then **Approve** or **Reject**. One that may expire says when.
 - **A message:** **Answer** it, or **Close** it. **An alert:** **Close** it.
+- **Reports** shows and hides the messages that agents marked as reports: they need no answer, and close by
+  themselves after 7 days. See [Reports](#reports).
 - **Close All** closes the open messages and alerts that are shown, after you confirm. Asks stay open, because an
   agent waits for each.
 - **Closed** adds the closed items; the open ones always show. The **Agent** filter shows the items of matching
   agents, and the asks sent to them.
-- The Kind is colored: message green, alert red, question sky blue, permission amber, approval violet.
+- The Kind is colored: message green, alert red, question sky blue, permission amber, approval violet. A report
+  is grey.
 
 **Messages**
 
@@ -1640,6 +1662,7 @@ clears that value again.
 | `compact_at` | agent | `50% max 500000` | compact a session past this context size (see [Compaction](#compaction)) |
 | `expire_after` | agent | `14d` | unregister an agent this long after its session's last turn |
 | `host_expire_after` | server | `1d` | forget a host this long after it was last heard from, once it is offline and nothing needs it. `0`: never (see [What the Database Keeps](#what-the-database-keeps)) |
+| `report_close_after` | server | `7d` | close a report in the Inbox this long after it came. `0`: never (see [Reports](#reports)) |
 | `history_days` | server | `30` | how many days history is kept, at least 1 (see [What the Database Keeps](#what-the-database-keeps)) |
 | `timezone` | server | the server machine's zone | the days of caps and costs, and the zone of `at` and `cron` triggers without one. A `cron` wake keeps the zone it was set with |
 | `listen` | server | `localhost,tailscale:4848` | the addresses and the port the server answers on. A change takes effect at the next start. The `--listen` flag wins over it |

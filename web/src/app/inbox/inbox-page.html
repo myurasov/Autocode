@@ -48,6 +48,16 @@
     />
     Closed
   </label>
+  <!-- messages marked as reports: they need no answer (1.1.0) -->
+  <label class="check" for="show-reports">
+    <input
+      id="show-reports"
+      type="checkbox"
+      [checked]="showReports()"
+      (change)="toggleReports($any($event.target).checked)"
+    />
+    Reports
+  </label>
 </div>
 
 @if (error()) {
@@ -74,7 +84,7 @@
           [appTime]="item.created_at"
         ></td>
         <!-- each kind its color (the owner, 2026-11-09) -->
-        <td [class]="'kind kind-' + item.kind">{{ kindText(item) }}</td>
+        <td [class]="'kind kind-' + kindOf(item)">{{ kindText(item) }}</td>
         <td class="agent id-like">
           @if (item.agent) {
             <app-agent-link [id]="item.agent" />
@@ -327,9 +337,12 @@
           {{
             !loaded()
               ? 'Loading...'
-              : match()
-                ? 'Nothing in the inbox matches ' + match() + '.'
-                : 'Nothing in the inbox.'
+              : hidden()
+                ? 'Nothing but reports, which are hidden: tick Reports to ' +
+                  'see them.'
+                : match()
+                  ? 'Nothing in the inbox matches ' + match() + '.'
+                  : 'Nothing in the inbox.'
           }}
         </td>
       </tr>

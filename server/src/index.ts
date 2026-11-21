@@ -1709,6 +1709,14 @@ export async function startServer(
     messages.trim(days)
     delivery.trim(days)
     inbox.trim(days)
+    // reports left open close by themselves (1.1.0)
+    try {
+      inbox.closeReports(
+        parseDuration(String(settings.value("report_close_after"))),
+      )
+    } catch (err) {
+      log(`reports: ${(err as Error).message}`)
+    }
     asks.trim(days)
     costs.trim(days)
     wakeStats.trim(days)

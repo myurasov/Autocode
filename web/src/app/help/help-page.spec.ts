@@ -409,6 +409,15 @@ describe('HelpPage', () => {
     expect(rows(table)[6]![1]!).toContain(
       'the same, for one fire: the wake is removed when it is fired',
     );
+    // 1.1.0 (the owner, 2026-11-20): a "report" mark for messages to you
+    expect(section(page, 'inbox')).toContain(
+      'An agent tells you what it did or found, and needs no answer.',
+    );
+    expect(section(page, 'web-inbox')).toContain(
+      'The Reports box, on at first, shows the messages that agents ' +
+        'marked as reports; untick it to hide them.',
+    );
+    expect(section(page, 'scripts')).toContain('[--report]');
     // 1.1.0 (the owner, 2026-11-20): an agent is renamed in place, and
     // unregistering keeps its unread messages to the owner
     expect(section(page, 'register')).toContain(
@@ -511,7 +520,8 @@ describe('HelpPage', () => {
     ).toEqual([
       'autocode me',
       'autocode fire me NAME [--text TEXT]',
-      'autocode send TO TEXT... [--subject S] [--reply-to ID]',
+      // 1.1.0: --report marks a message to the owner that needs no answer
+      'autocode send TO TEXT... [--subject S] [--reply-to ID] [--report]',
     ]);
     expect(text(page.querySelector('#scripts ~ pre'))).toContain(
       'autocode fire me',
@@ -588,6 +598,8 @@ describe('HelpPage', () => {
       ['timezone', "the server machine's"],
       // 1.0.1 (the owner, 2026-11-19: "fix for stale host records")
       ['host_expire_after', '1d'],
+      // 1.1.0 (the owner, 2026-11-20): reports close by themselves
+      ['report_close_after', '7d'],
       ['history_days', '30'],
       ['retry_interval', '1m'],
       ['retry_attempts', '0'],
@@ -798,6 +810,8 @@ describe('HelpPage', () => {
       expect(inbox, part).toContain(part);
     expect(rows(page.querySelector('table.kinds')).map((r) => r[0])).toEqual([
       'message',
+      // 1.1.0: a message that an agent marked as a report
+      'report',
       'alert',
       'question',
       'permission',

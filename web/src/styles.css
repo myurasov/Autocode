@@ -554,8 +554,12 @@ table.inbox .body:not(app-markdown) {
 /*
  * The Inbox's Kind in color (the owner, 2026-11-09): a message green, an
  * alert red, a question sky blue, a permission amber, an approval violet;
- * lighter shades in the dark theme.
+ * lighter shades in the dark theme. A report (1.1.0), which needs no
+ * answer, is in the grey of a note.
  */
+table.inbox td.kind-report {
+  color: var(--fg-dim);
+}
 table.inbox td.kind-message {
   color: #284;
 }

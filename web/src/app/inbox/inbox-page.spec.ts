@@ -376,6 +376,83 @@ describe('InboxPage', () => {
     confirm.mockRestore();
   });
 
+  /*
+   * 1.1.0 (the owner, 2026-11-20, from the review of real sessions: 51
+   * messages to the owner in a week, most of them status that needs no
+   * answer): a message marked as a report reads Report, in grey, and the
+   * Reports box hides and shows them.
+   */
+  describe('reports', () => {
+    const REPORT: InboxItem = {
+      ...ITEMS[0]!,
+      id: 'ib_3',
+      report: true,
+      title: 'Report from kaggle:lead: "Nightly run"',
+      body: 'All three folds finished.',
+      created_at: '2026-10-28T12:00:00.000Z',
+    };
+    const KEY = 'autocode.inbox.reports';
+    beforeEach(() => localStorage.removeItem(KEY));
+    afterEach(() => localStorage.removeItem(KEY));
+
+    it('a report reads Report in its own color; the Reports box, on at first, hides and shows them and is kept in the browser', async () => {
+      const page = await open([...ITEMS, REPORT]);
+      const box = page.querySelector('#show-reports') as HTMLInputElement;
+      expect(text(page.querySelector('label[for="show-reports"]'))).toBe(
+        'Reports',
+      );
+      expect(box.checked).toBe(true);
+      const kind = row(page, 'ib_3').querySelector('td.kind')!;
+      expect(text(kind)).toBe('Report');
+      expect(kind.classList).toContain('kind-report');
+      expect(kind.classList).not.toContain('kind-message');
+      // a plain message is a Message; a report is answered and closed alike
+      expect(text(row(page, 'ib_1').querySelector('td.kind'))).toBe('Message');
+      expect(button(row(page, 'ib_3'), 'Close')).toBeDefined();
+      // off: the reports go from the list, with no new request
+      box.checked = false;
+      box.dispatchEvent(new Event('change'));
+      await settle(fixture);
+      expect(page.querySelector('tr[data-item="ib_3"]')).toBeNull();
+      expect(page.querySelectorAll('tr[data-item]').length).toBe(2);
+      expect(localStorage.getItem(KEY)).toBe('off');
+      // Close All closes what shows: not the hidden report
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      (page.querySelector('button.close-all') as HTMLButtonElement).click();
+      expect(confirm).toHaveBeenCalledWith(
+        'Close 1 message and 1 alert?\n\n' +
+          'Questions, permissions and approvals stay open.',
+      );
+      // on again: back, and Close All counts it by its name
+      box.checked = true;
+      box.dispatchEvent(new Event('change'));
+      await settle(fixture);
+      expect(page.querySelector('tr[data-item="ib_3"]')).not.toBeNull();
+      expect(localStorage.getItem(KEY)).toBeNull();
+      (page.querySelector('button.close-all') as HTMLButtonElement).click();
+      expect(confirm).toHaveBeenLastCalledWith(
+        'Close 1 message, 1 report and 1 alert?\n\n' +
+          'Questions, permissions and approvals stay open.',
+      );
+      confirm.mockRestore();
+    });
+
+    it('a page opened with the box off starts without the reports; sorting by Kind puts them under their own name', async () => {
+      localStorage.setItem(KEY, 'off');
+      const page = await open([...ITEMS, REPORT]);
+      expect(
+        (page.querySelector('#show-reports') as HTMLInputElement).checked,
+      ).toBe(false);
+      expect(page.querySelector('tr[data-item="ib_3"]')).toBeNull();
+      // with only reports and the box off, the page says where they are
+      fixture.destroy();
+      const only = await open([REPORT]);
+      expect(text(only.querySelector('table.inbox tbody td.muted'))).toBe(
+        'Nothing but reports, which are hidden: tick Reports to see them.',
+      );
+    });
+  });
+
   // The box is "Closed" (the owner, 2026-11-09).
   it('Closed lists closed items too, with the answer given', async () => {
     const page = await open([ITEMS[1]!]);

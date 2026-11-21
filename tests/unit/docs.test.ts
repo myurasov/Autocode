@@ -330,6 +330,19 @@ test("the reference has renaming in place, and what unregistering keeps", () => 
   expect(ref).not.toContain("closes its open asks and its\nopen Inbox items")
 })
 
+// 7: a "report" mark for messages to the owner.
+test("the reference has reports: the mark, the Inbox's box, the setting, the command", () => {
+  const ref = read("reference.md")
+  for (const part of [
+    "### Reports",
+    "`report=true`",
+    "[--report]`",
+    "| `report_close_after` | server | `7d` |",
+    "**Reports**",
+  ])
+    expect(ref, part).toContain(part)
+})
+
 // 1.0.1 (the owner, 2026-11-19: "lets implement fix for stale host
 // records"): a host's record goes by itself; the reference said that no
 // command removes one.

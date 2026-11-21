@@ -678,6 +678,14 @@ export const MIGRATIONS: string[] = [
     at INTEGER NOT NULL
   );
   `,
+  /*
+   * 26 (1.1.0; the owner, 2026-11-20): a message to the owner may be marked
+   * as a report (it needs no answer); its Inbox item carries the mark.
+   */
+  `
+  ALTER TABLE messages ADD COLUMN report INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE inbox ADD COLUMN report INTEGER NOT NULL DEFAULT 0;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

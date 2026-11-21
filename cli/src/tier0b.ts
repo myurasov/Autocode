@@ -146,12 +146,15 @@ export async function send(args: Parsed): Promise<number> {
   const [to, ...words] = args.words
   const f = args.flags
   if (!to || !words.length || f.file)
-    usage("send TO TEXT... [--subject S] [--reply-to ID]")
+    usage("send TO TEXT... [--subject S] [--reply-to ID] [--report]")
+  // --report: to the owner, needing no answer (1.1.0)
+  const report = args.switches.has("report")
   const res = await connect(args).call("POST", "/v1/messages", {
     to: to.includes(",") ? to.split(",").filter(Boolean) : to,
     ...(f.subject ? { subject: f.subject } : {}),
     ...(f["reply-to"] ? { reply_to: f["reply-to"] } : {}),
     text: words.join(" "),
+    ...(report ? { report: true } : {}),
   })
   print(
     args,
@@ -159,6 +162,7 @@ export async function send(args: Parsed): Promise<number> {
     () =>
       `sent to ${res.recipients.join(", ")} ` +
       `(${res.messages.map((m: any) => m.id).join(", ")})` +
+      (report ? ", as a report" : "") +
       (res.skipped?.length
         ? `; skipped (not registered): ${res.skipped.join(", ")}`
         : ""),
@@ -262,7 +266,8 @@ export async function inbox(args: Parsed): Promise<number> {
       ? table(
           res.items.map((i: any) => [
             i.id,
-            i.kind,
+            // a message marked as a report (1.1.0)
+            i.report ? "report" : i.kind,
             i.agent ?? "",
             // where an ask went (tier 0d): owner, or agent:<id>
             String(i.routed ?? "").replace(/^agent:/, "") || "",

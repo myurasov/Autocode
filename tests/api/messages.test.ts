@@ -304,6 +304,96 @@ describe("the owner", () => {
     expect(await kinds()).toEqual([])
   })
 
+  /*
+   * 1.1.0 (the owner, 2026-11-20, from the review of real sessions: 51
+   * messages to the owner in a week, most of them status that needs no
+   * answer): a message to the owner may be marked as a report.
+   */
+  test("a report: marked in the Inbox, refused without the owner, closed by the server after report_close_after", async () => {
+    const DAY = 86_400_000
+    const sent = await as(a, "POST", "/v1/messages", {
+      to: "owner",
+      subject: "Nightly run",
+      text: "All three folds finished; scores are in runs/latest.",
+      report: true,
+    })
+    expect(sent.status).toBe(201)
+    await as(a, "POST", "/v1/messages", { to: "owner", text: "May I?" })
+    const open = async () =>
+      (await owner("GET", "/v1/inbox")).body.items.map((i: any) => [
+        i.title,
+        i.report,
+      ])
+    expect(await open()).toEqual([
+      ['Report from team:a: "Nightly run"', true],
+      ["Message from team:a", false],
+    ])
+    // the mark is the owner's copy's: an agent's copy is a plain message,
+    // and without the owner it is refused
+    const both = await as(a, "POST", "/v1/messages", {
+      to: ["owner", "team:b"],
+      text: "Done.",
+      report: true,
+    })
+    expect(both.body.recipients).toEqual(["owner", "team:b"])
+    const none = await as(a, "POST", "/v1/messages", {
+      to: "team:b",
+      text: "Done.",
+      report: true,
+    })
+    expect([none.status, none.body.error.code]).toEqual([400, "bad_request"])
+    expect(none.body.error.message).toBe(
+      "report marks a message to the owner: send it to owner",
+    )
+    expect(
+      (
+        await as(a, "POST", "/v1/messages", {
+          to: "owner",
+          text: "x",
+          report: 1,
+        })
+      ).status,
+    ).toBe(400)
+    // the setting: server-wide, a week by default
+    const view = (await owner("GET", "/v1/settings")).body
+    expect(view.defaults.report_close_after).toBe("7d")
+    expect(view.schema.report_close_after).toMatchObject({
+      kind: "duration",
+      scope: "server",
+    })
+    // six days: all still open; past seven: the reports are closed, the
+    // message that needs an answer is not
+    t.clock.advance(6 * DAY)
+    t.server.maintenance()
+    expect((await open()).length).toBe(3)
+    t.clock.advance(DAY + 1000)
+    t.server.maintenance()
+    expect(await open()).toEqual([["Message from team:a", false]])
+    const closed = (await owner("GET", "/v1/history?kind=inbox.closed")).body
+      .history
+    expect(closed.map((h: any) => h.data.why)).toEqual(["report", "report"])
+    // closed like any other: the report's message counts as processed
+    expect(
+      (await owner("GET", "/v1/messages")).body.messages.find(
+        (m: any) => m.id === sent.body.messages[0].id,
+      ),
+    ).toMatchObject({ state: "processed", report: true })
+    // 0: reports stay until the owner closes them
+    await owner("PATCH", "/v1/settings", {
+      server: { report_close_after: "0" },
+    })
+    await as(a, "POST", "/v1/messages", {
+      to: "owner",
+      text: "Kept.",
+      report: true,
+    })
+    t.clock.advance(30 * DAY)
+    t.server.maintenance()
+    expect((await open()).some(([, report]: [string, boolean]) => report)).toBe(
+      true,
+    )
+  })
+
   test("closing an inbox item; the owner lists every message", async () => {
     await as(a, "POST", "/v1/messages", { to: "owner", text: "FYI" })
     const [item] = (await owner("GET", "/v1/inbox")).body.items

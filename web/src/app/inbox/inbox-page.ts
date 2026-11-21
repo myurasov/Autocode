@@ -13,7 +13,10 @@
  * messages and alerts shown (not those behind "..."), after a confirmation;
  * asks stay open. Newest
  * first by default, sorted by a click on a heading; with Closed on, the open
- * items show past the 25 rows (the owner, 2026-11-17).
+ * items show past the 25 rows (the owner, 2026-11-17). A message marked as a
+ * report (it needs no answer) reads Report, and the Reports box, on at
+ * first and kept in the browser, hides and shows them (1.1.0; the owner,
+ * 2026-11-20).
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
@@ -35,27 +38,53 @@ import { Updated } from '../updated';
 // What each kind of item is called on the page.
 const KINDS: Record<string, string> = {
   message: 'Message',
+  report: 'Report',
   alert: 'Alert',
   question: 'Question',
   permission: 'Permission',
   approval: 'Approval',
 };
 
+// An item's kind as the page shows it: a message marked as a report is a
+// report (1.1.0).
+export function kindOf(item: InboxItem): string {
+  return item.kind === 'message' && item.report ? 'report' : item.kind;
+}
+
+// Where the Reports box is kept: 'off' when unticked, nothing when on.
+export const REPORTS_KEY = 'autocode.inbox.reports';
+
 // What Close says it closed: "the message from a:b", "the alert about a:b".
 function itemText(item: InboxItem): string {
-  if (!item.agent) return `the ${item.kind}`;
+  const kind = kindOf(item);
+  if (!item.agent) return `the ${kind}`;
   const about = item.kind === 'message' ? 'from' : 'about';
-  return `the ${item.kind} ${about} ${item.agent}`;
+  return `the ${kind} ${about} ${item.agent}`;
 }
 
 // "1 message and 2 alerts": what Close All closes.
 export function closableText(items: readonly InboxItem[]): string {
-  const n = (kind: string) => items.filter((i) => i.kind === kind).length;
+  const n = (kind: string) => items.filter((i) => kindOf(i) === kind).length;
   const part = (count: number, word: string) =>
     count ? `${count} ${word}${count === 1 ? '' : 's'}` : '';
-  return [part(n('message'), 'message'), part(n('alert'), 'alert')]
-    .filter(Boolean)
-    .join(' and ');
+  const parts = [
+    part(n('message'), 'message'),
+    part(n('report'), 'report'),
+    part(n('alert'), 'alert'),
+  ].filter(Boolean);
+  // "1 message, 1 report and 1 alert"
+  return parts.length > 1
+    ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`
+    : (parts[0] ?? '');
+}
+
+// What the browser kept under a key; nothing where it keeps nothing.
+function stored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
 // Whether an item is an ask: what an agent's turn waits for.
@@ -110,6 +139,14 @@ export class InboxPage {
   protected readonly updatedAt = signal<number | null>(null);
   protected readonly busy = signal(false);
   protected readonly showClosed = signal(false);
+  // The Reports box: on unless the browser kept it off (1.1.0).
+  protected readonly showReports = signal(stored(REPORTS_KEY) !== 'off');
+  // Reports that the box hides now.
+  protected readonly hidden = computed(() =>
+    this.showReports()
+      ? 0
+      : this.items().filter((i) => kindOf(i) === 'report').length,
+  );
   // The agent filter in the address, and as typed.
   protected readonly match = signal('');
   protected readonly pattern = signal('');
@@ -117,7 +154,7 @@ export class InboxPage {
   protected readonly sorting = new Sorting<InboxItem>('inbox', {
     columns: {
       time: { time: (i) => i.created_at },
-      kind: { text: (i) => KINDS[i.kind] ?? i.kind },
+      kind: { text: (i) => KINDS[kindOf(i)] ?? i.kind },
       agent: { text: (i) => i.agent },
     },
     by: 'time',
@@ -127,7 +164,11 @@ export class InboxPage {
   protected readonly paging = new Paged();
   protected readonly page = computed(() =>
     paged(
-      this.sorting.sort(this.items()),
+      this.sorting.sort(
+        this.showReports()
+          ? this.items()
+          : this.items().filter((i) => kindOf(i) !== 'report'),
+      ),
       this.paging.count('inbox'),
       (i) => !i.closed_at,
     ),
@@ -220,8 +261,18 @@ export class InboxPage {
     void this.refresh();
   }
 
+  // The list holds the reports either way: the box only shows or hides.
+  protected toggleReports(on: boolean): void {
+    this.showReports.set(on);
+    try {
+      if (on) localStorage.removeItem(REPORTS_KEY);
+      else localStorage.setItem(REPORTS_KEY, 'off');
+    } catch {}
+  }
+
+  protected readonly kindOf = kindOf;
   protected kindText(item: InboxItem): string {
-    return KINDS[item.kind] ?? item.kind;
+    return KINDS[kindOf(item)] ?? item.kind;
   }
 
   // An item's title; an approval's names its agent only, as its text shows

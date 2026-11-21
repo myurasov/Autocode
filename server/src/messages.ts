@@ -63,6 +63,7 @@ export interface MessageView {
   created_at: string
   processed_at: string | null
   processed_via: ProcessedVia | null
+  report: boolean
   text?: string
 }
 
@@ -79,6 +80,8 @@ export function messageView(row: any, body = false): MessageView {
     created_at: iso(row.created_at)!,
     processed_at: iso(row.processed_at),
     processed_via: row.processed_via ?? null,
+    // to the owner, marked as a report: it needs no answer (1.1.0)
+    report: !!row.report,
     ...(body ? { text: row.body } : {}),
   }
 }
@@ -172,7 +175,9 @@ export class Messages {
   send(from: string, body: any) {
     if (!body || typeof body !== "object")
       throw new AutocodeError("bad_request", "the body must be an object")
-    onlyFields(body, ["to", "subject", "text", "reply_to"])
+    onlyFields(body, ["to", "subject", "text", "reply_to", "report"])
+    if (body.report !== undefined && typeof body.report !== "boolean")
+      throw new AutocodeError("bad_request", "report is true or false")
     const subject = body.subject ?? ""
     if (
       typeof subject !== "string" ||
@@ -207,13 +212,20 @@ export class Messages {
         throw new AutocodeError("no_message", `no message ${replyTo}`, 404)
     }
     const { to, skipped, renamed } = this.recipients(body.to, from)
+    // a report (1.1.0) is the owner's copy: it needs no answer
+    const report = body.report === true
+    if (report && !to.includes("owner"))
+      throw new AutocodeError(
+        "bad_request",
+        "report marks a message to the owner: send it to owner",
+      )
     const sendId = randomId("s_")
     const toSpec = Array.isArray(body.to) ? body.to.join(",") : String(body.to)
     const now = this.now()
     const insert = this.db.prepare(
       `INSERT INTO messages (id, send_id, from_id, to_id, to_spec, subject,
-         reply_to, body, size, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         reply_to, body, size, created_at, report)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     const messages: { id: string; to: string }[] = []
     this.db.transaction(() => {
@@ -230,6 +242,7 @@ export class Messages {
           content,
           content.length,
           now,
+          report && recipient === "owner" ? 1 : 0,
         )
         messages.push({ id, to: recipient })
       }
@@ -240,8 +253,11 @@ export class Messages {
         this.inbox().open("message", {
           agent: from,
           message: m.id,
-          title: `Message from ${from}${subject ? `: "${subject}"` : ""}`,
+          title:
+            `${report ? "Report" : "Message"} from ${from}` +
+            (subject ? `: "${subject}"` : ""),
           body: content,
+          report,
         })
       else {
         this.announce(m.to, m.id)
@@ -622,6 +638,8 @@ export interface InboxItem {
   created_at: string
   closed_at: string | null
   answer: string | null
+  // a message marked as a report: it needs no answer (1.1.0)
+  report: boolean
 }
 
 export class Inbox {
@@ -634,13 +652,19 @@ export class Inbox {
 
   open(
     kind: "message" | "alert",
-    item: { agent?: string; message?: string; title: string; body?: string },
+    item: {
+      agent?: string
+      message?: string
+      title: string
+      body?: string
+      report?: boolean
+    },
   ): string {
     const id = randomId("ib_")
     this.db
       .query(
         `INSERT INTO inbox (id, kind, agent_id, message_id, title, body,
-           created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           created_at, report) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -650,6 +674,7 @@ export class Inbox {
         item.title,
         item.body ?? "",
         this.now(),
+        item.report ? 1 : 0,
       )
     this.history.record("inbox.opened", {
       agent: item.agent ?? null,
@@ -669,6 +694,7 @@ export class Inbox {
       created_at: iso(row.created_at)!,
       closed_at: iso(row.closed_at),
       answer: row.answer ?? null,
+      report: !!row.report,
     }
   }
 
@@ -730,6 +756,29 @@ export class Inbox {
     if (row.message_id) this.messages().markRead(row.message_id, "inbox")
     this.history.record("inbox.closed", { data: { id } })
     return this.view(this.db.query("SELECT * FROM inbox WHERE id = ?").get(id))
+  }
+
+  /*
+   * Reports that came `afterMs` ago or longer and are still open are closed
+   * (1.1.0: report_close_after; 0: never), read as at any close.
+   */
+  closeReports(afterMs: number) {
+    if (!(afterMs > 0)) return
+    for (const r of this.db
+      .query(
+        "SELECT id, agent_id, message_id FROM inbox WHERE report = 1 " +
+          "AND closed_at IS NULL AND created_at <= ? ORDER BY created_at",
+      )
+      .all(this.now() - afterMs) as any[]) {
+      this.db
+        .query("UPDATE inbox SET closed_at = ? WHERE id = ?")
+        .run(this.now(), r.id)
+      if (r.message_id) this.messages().markRead(r.message_id, "inbox")
+      this.history.record("inbox.closed", {
+        agent: r.agent_id ?? null,
+        data: { id: r.id, why: "report" },
+      })
+    }
   }
 
   // Closed items go with the history.

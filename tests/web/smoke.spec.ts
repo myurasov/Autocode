@@ -5087,3 +5087,109 @@ test("Hosts: a machine whose OpenCode is older than the minimum is marked, and a
     await api.dispose()
   }
 })
+
+/*
+ * 1.1.0 (the owner, 2026-11-20: "implement 1-3, 5, 6, 7"): a message to the
+ * owner that an agent marked as a report (it needs no answer) reads Report,
+ * in grey, in both themes; the Reports box, on at first, hides the reports
+ * and is remembered across a reload. An agent of the test's own.
+ */
+test("Inbox: a report reads Report, in grey; the Reports box hides them and is remembered", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 15_000 })
+  const host = "smoke:report:1"
+  const session = "ses_report1"
+  const id = "report:agent"
+  try {
+    const hello = await api.post(`/v1/hosts/${host}/hello`, {
+      headers: bearer(consumer),
+      data: {
+        instance: "i-report",
+        machine: "smoke",
+        directory: "/work/report",
+        sessions: [session],
+      },
+    })
+    expect(hello.ok(), await hello.text()).toBe(true)
+    const issued = await api.post(
+      `/v1/hosts/${host}/sessions/${session}/token`,
+      { headers: bearer(consumer), data: { instance: "i-report" } },
+    )
+    const token = (await issued.json()).token
+    const reg = await api.post("/v1/agents", {
+      headers: bearer(token),
+      data: { id, description: "for the Inbox's reports" },
+    })
+    expect([200, 201]).toContain(reg.status())
+    for (const data of [
+      {
+        to: "owner",
+        subject: "Nightly run",
+        text: "All three folds finished.",
+        report: true,
+      },
+      { to: "owner", subject: "Budget", text: "May I spend $5 more?" },
+    ]) {
+      const sent = await api.post("/v1/messages", {
+        headers: bearer(token),
+        data,
+      })
+      expect(sent.ok(), await sent.text()).toBe(true)
+    }
+
+    await signIn(page, admin)
+    await openTab(page, "Inbox")
+    await page.getByLabel("Agent", { exact: true }).fill(id)
+    const rows = page.locator("table.inbox tr[data-item]")
+    await expect(rows).toHaveCount(2)
+    const report = rows.filter({
+      hasText: 'Report from report:agent: "Nightly',
+    })
+    const plain = rows.filter({ hasText: 'Message from report:agent: "Budget' })
+    await expect(report.locator("td.kind")).toHaveText("Report")
+    await expect(plain.locator("td.kind")).toHaveText("Message")
+    // grey, not a message's green, in both themes
+    const isDark = () =>
+      page.evaluate(() => document.documentElement.classList.contains("dark"))
+    const color = (row: typeof report) =>
+      row.locator("td.kind").evaluate((td) => getComputedStyle(td).color)
+    for (let i = 0; i < 2; i++) {
+      const dark = await isDark()
+      const [grey, green] = [await color(report), await color(plain)]
+      expect(grey, dark ? "dark" : "light").not.toBe(green)
+      const [r, g, b] = grey.match(/\d+/g)!.map(Number)
+      expect(Math.max(r!, g!, b!) - Math.min(r!, g!, b!)).toBeLessThan(40)
+      await page.getByRole("button", { name: "Light or dark" }).click()
+      await expect.poll(isDark).toBe(!dark)
+    }
+    // the box: on at first; off hides the reports, and a reload keeps it
+    const box = page.getByLabel("Reports", { exact: true })
+    await expect(box).toBeChecked()
+    await box.uncheck()
+    await expect(rows).toHaveCount(1)
+    await expect(report).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByLabel("Reports", { exact: true })).not.toBeChecked()
+    await expect(page.locator("table.inbox tr[data-item]")).toHaveCount(1)
+    await page.getByLabel("Reports", { exact: true }).check()
+    await expect(report).toHaveCount(1)
+    expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+    // closed like any message
+    await report.getByRole("button", { name: "Close" }).click()
+    await expect(page.locator(".toolbar .notice")).toHaveText(
+      "Closed the report from report:agent.",
+    )
+    await expect(report).toHaveCount(0)
+  } finally {
+    await page.evaluate(() => localStorage.removeItem("autocode.inbox.reports"))
+    await api.delete(`/v1/agents/${id}`, { headers: bearer(admin) })
+    // its other message, kept open past the unregistering, is closed here
+    const left = await api.get(`/v1/inbox?match=${encodeURIComponent(id)}`, {
+      headers: bearer(admin),
+    })
+    for (const item of (await left.json()).items ?? [])
+      await api.post(`/v1/inbox/${item.id}/close`, { headers: bearer(admin) })
+    await api.dispose()
+  }
+})

@@ -283,6 +283,13 @@ approval, an escalation's reason) is read by a busy person:
 - Be direct and use plain words: say what you did, found or need;
   give names, paths and numbers, not adjectives.
 - Details the owner may want later go in a file; send its path.
+- A message that only tells the owner what you did or found, and
+  needs no answer or decision, is a report: send it with `report=true`
+  (`autocode_message action=send to=owner report=true`; from a script,
+  `autocode send owner TEXT --report`). The owner's Inbox files it as
+  a report: it can be hidden with the others, and one left open closes
+  by itself after a week. A question, a blocker or a choice is not a
+  report: send those plain, so that they stand out.
 
 <!-- topic: locks -->
 
@@ -472,8 +479,9 @@ checks and other machines, the `autocode` command:
 - `autocode me`: your registration and status;
 - `autocode fire me NAME [--text TEXT]`: deliver one of your wakes,
   as a background job's last command;
-- `autocode send TO TEXT...` [--subject S] [--reply-to ID]: a
-  message, say a job's result.
+- `autocode send TO TEXT...` [--subject S] [--reply-to ID]
+  [--report]: a message, say a job's result (`--report`: to the
+  owner, needing no answer).
 
 That is all a script has; wakes, messages and locks are the tools'.
 

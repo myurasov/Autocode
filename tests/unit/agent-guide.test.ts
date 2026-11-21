@@ -925,6 +925,47 @@ describe("writing to the owner", () => {
     expect(flat(helpText(FACTS, "owner"))).toContain("the point first")
   })
 
+  // 1.1.0 (the owner, 2026-11-20: a "report" mark for messages to the
+  // owner; 51 a week, most of them status that needs no answer)
+  test("a report: the tool sends the mark and says so; the guide says what one is", async () => {
+    const bodies: unknown[] = []
+    const call = async (_m: string, _p: string, body?: unknown) => {
+      bodies.push(body)
+      return {
+        send_id: "s_1",
+        recipients: ["owner"],
+        skipped: [],
+        messages: [{ id: "m_1", to: "owner" }],
+      }
+    }
+    expect(
+      await runMessage(
+        { action: "send", to: "owner", text: "All folds done.", report: true },
+        call,
+      ),
+    ).toBe("Sent to owner (m_1), as a report.")
+    await runMessage({ action: "send", to: "owner", text: "May I?" }, call)
+    expect(bodies).toEqual([
+      { to: "owner", text: "All folds done.", report: true },
+      { to: "owner", text: "May I?" },
+    ])
+    const report = (MESSAGE_TOOL.input.properties as any).report
+    expect(report.type).toBe("boolean")
+    expect(report.description).toContain(
+      "send to owner: true when the message needs no answer or decision",
+    )
+    expect(MESSAGE_TOOL.description).toContain("report: true for one")
+    const guide = flat(guideText(FACTS))
+    for (const part of [
+      "A message that only tells the owner what you did or found, and " +
+        "needs no answer or decision, is a report: send it with " +
+        "`report=true`",
+      "A question, a blocker or a choice is not a report",
+      "closes by itself after a week",
+    ])
+      expect(guide, part).toContain(part)
+  })
+
   test("the tools that reach the owner say it where the text is written", () => {
     const send = (MESSAGE_TOOL.input.properties.text as any).description
     expect(send).toContain("to the owner: short, the point first")

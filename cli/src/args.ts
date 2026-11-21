@@ -12,6 +12,8 @@ const SWITCHES = new Set([
   // token rotate --admin | --consumer
   "admin",
   "consumer",
+  // send owner TEXT --report
+  "report",
 ])
 
 export class CliError extends Error {

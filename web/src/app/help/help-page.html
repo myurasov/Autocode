@@ -352,6 +352,18 @@
           </td>
         </tr>
         <tr>
+          <td>report</td>
+          <td>
+            An agent tells you what it did or found, and needs no answer. It
+            is a message that the agent marked as a report.
+          </td>
+          <td>
+            Read it and click Close, or leave it: it closes by itself after 7
+            days (<code>report_close_after</code>). You can answer it like a
+            message.
+          </td>
+        </tr>
+        <tr>
           <td>alert</td>
           <td>
             Autocode tells you something: a run's result or failure, a wake
@@ -1536,6 +1548,11 @@ autocode job set daily-report --host HOST --model MODEL \
         always show, however many closed ones there are.
       </li>
       <li>
+        The Reports box, on at first, shows the messages that agents marked
+        as reports; untick it to hide them. The browser remembers it. A
+        report's Kind is grey.
+      </li>
+      <li>
         Close All closes every open message and alert shown, after you
         confirm. With an Agent filter, only that filter's items. An item that
         came after the tab last loaded stays open.
@@ -1939,6 +1956,15 @@ autocode settings --agent kaggle:lead</pre
             forget a host this long after it was last heard from, once it is
             offline and no agent, job or run needs it; <code>0</code> keeps
             every host. Server-wide only.
+          </td>
+        </tr>
+        <tr>
+          <td><code>report_close_after</code></td>
+          <td>7d</td>
+          <td>
+            close a report in the Inbox this long after it came;
+            <code>0</code> keeps reports until you close them. Server-wide
+            only.
           </td>
         </tr>
         <tr>
@@ -2700,8 +2726,11 @@ echo 'export PATH="$HOME/.autocode/bin:$PATH"' >> ~/.bashrc</pre
         example when a long command ends;
       </li>
       <li>
-        <code>autocode send TO TEXT... [--subject S] [--reply-to ID]</code>:
-        send a message.
+        <code
+          >autocode send TO TEXT... [--subject S] [--reply-to ID]
+          [--report]</code
+        >: send a message. <code>--report</code> marks one to you that needs
+        no answer.
       </li>
     </ul>
     <p>For example, a training run that wakes its agent when it ends:</p>

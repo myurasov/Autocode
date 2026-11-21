@@ -167,8 +167,9 @@ In an Agent's Shell
   fire me|AGENT WAKE [--text TEXT]
                              deliver one of this agent's wakes now, or
                              another agent's
-  send TO TEXT... [--subject SUBJECT] [--reply-to ID]
+  send TO TEXT... [--subject SUBJECT] [--reply-to ID] [--report]
                              send a message; TO may also be owner
+                             (--report: to the owner, needing no answer)
 
 Flags Everywhere
   --json                     print the data as JSON, not as a table

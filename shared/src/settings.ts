@@ -179,6 +179,14 @@ export const SETTINGS: Record<string, SettingDef> = {
     default: "1d",
     help: "forget a host this long after it went offline (0: never)",
   },
+  // 1.1.0 (the owner, 2026-11-20): a message to the owner marked as a
+  // report needs no answer; one left open closes by itself.
+  report_close_after: {
+    kind: "duration",
+    scope: "server",
+    default: "7d",
+    help: "close a report in the Inbox this long after it came (0: never)",
+  },
   history_days: {
     kind: "int",
     scope: "server",

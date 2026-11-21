@@ -741,3 +741,29 @@ describe("costs of runs", () => {
     )
   })
 })
+
+// Last here: the tests above count the server's messages and Inbox items.
+describe("a report from a script", () => {
+  // 1.1.0 (the owner, 2026-11-20): `autocode send owner TEXT --report`
+  test("send owner --report marks the message; inbox lists it as a report", async () => {
+    const sent = await cli(
+      ["send", "owner", "The", "nightly", "run", "ended.", "--report"],
+      asWorker(),
+    )
+    expect([sent.code, sent.stdout.trim()]).toEqual([
+      0,
+      expect.stringMatching(/^sent to owner \(m_\w+\), as a report$/),
+    ])
+    const inbox = await cli(["inbox"], asAdmin())
+    expect(inbox.stdout).toMatch(
+      /ib_\w+\s+report\s+kaggle:worker\s+Report from kaggle:worker/,
+    )
+    // only to the owner
+    const bad = await cli(
+      ["send", "kaggle:lead", "Done.", "--report"],
+      asWorker(),
+    )
+    expect(bad.code).toBe(1)
+    expect(bad.stderr).toContain("report marks a message to the owner")
+  })
+})

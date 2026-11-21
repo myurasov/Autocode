@@ -586,6 +586,8 @@ export interface MessageInput {
   id?: string
   from?: string
   seconds?: number
+  // to the owner: it needs no answer (1.1.0)
+  report?: boolean
 }
 
 export const MESSAGE_TOOL = {
@@ -594,7 +596,8 @@ export const MESSAGE_TOOL = {
     "Autocode messages between agents and the owner. Messages to you come " +
     "whole, in your turn's next step while it runs, else in an injected " +
     "prompt. Actions: send (to: an agent ID, a pattern like team:*, a " +
-    "comma list, or owner; subject; text; reply_to), list (what waits for " +
+    "comma list, or owner; subject; text; reply_to; report: true for one " +
+    "to the owner that needs no answer), list (what waits for " +
     "you; from, reply_to), read (take what waits now, whole: id, from, " +
     "reply_to; then it is not injected), wait (read that waits for a " +
     "message: seconds, up to max_tool_wait; costs no tokens), answer (id, " +
@@ -641,6 +644,13 @@ export const MESSAGE_TOOL = {
       seconds: {
         type: "number",
         description: "wait: at most this long (default 300)",
+      },
+      report: {
+        type: "boolean",
+        description:
+          "send to owner: true when the message needs no answer or " +
+          "decision (what you did or found): the owner's Inbox files it " +
+          "as a report",
       },
     },
     required: ["action"],
@@ -1097,6 +1107,8 @@ export async function runMessage(
         ...(input.subject ? { subject: input.subject } : {}),
         ...(input.reply_to ? { reply_to: input.reply_to } : {}),
         text: input.text,
+        // to the owner, needing no answer (1.1.0)
+        ...(input.report === true ? { report: true } : {}),
       })
       const ids = res.messages.map((m: any) => m.id).join(", ")
       const skipped: string[] = res.skipped ?? []
@@ -1105,7 +1117,8 @@ export async function runMessage(
         .map(([old, now]) => ` ${old} is ${now} now: use that ID.`)
         .join("")
       return (
-        `Sent to ${res.recipients.join(", ")} (${ids}).` +
+        `Sent to ${res.recipients.join(", ")} (${ids})` +
+        (input.report === true ? ", as a report." : ".") +
         (skipped.length
           ? ` Skipped (not registered): ${skipped.join(", ")}.`
           : "") +
