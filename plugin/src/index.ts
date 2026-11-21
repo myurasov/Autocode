@@ -48,7 +48,7 @@ import {
   shellVariables,
 } from "./localapi.ts"
 import { log } from "./log.ts"
-import { account } from "./past.ts"
+import { account, compactionSteps } from "./past.ts"
 import { keptToken, SessionTokens, tokenToKeep } from "./sessions.ts"
 import { Inputs, Shells } from "./starts.ts"
 import {
@@ -934,6 +934,34 @@ export default {
     const inputs = new Inputs()
     // the commands that run now: one that outlives its turn is its work
     const shells = new Shells()
+    // the sessions whose running turn a compaction started, with its start
+    const compacting = new Map<string, number>()
+    /*
+     * A compaction's cost (1.1.0-rc3): OpenCode ends a compaction with no
+     * session.step.ended, so its cost is read from the session's records
+     * once its turn ended, and again for a few seconds while the record has
+     * none yet. The server files it once, by the record's ID.
+     */
+    const compactionCost = async (session: string, since: number) => {
+      if (!api) return
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const found = await compactionSteps(
+            (path) => localGet(api, path, 5000),
+            session,
+            since,
+          )
+          if (found.length) {
+            channel.report({ type: "cost.past", session, steps: found })
+            return
+          }
+        } catch (err) {
+          log(`compaction cost of ${session}: ${(err as Error).message}`)
+          return
+        }
+        await Bun.sleep(1000)
+      }
+    }
     let subscribed = 0
     const watch = async () => {
       while (!events.signal.aborted) {
@@ -1042,6 +1070,15 @@ export default {
               if (outcome !== "started") await steps.get(session)
               // OpenCode's own time of the event orders them at the server
               const at = Number(event.created) || Date.now()
+              // a compaction's turn: its cost is read when the turn ends
+              if (outcome === "started") {
+                if (starter?.by === "compaction") compacting.set(session, at)
+                else compacting.delete(session)
+              } else if (compacting.has(session)) {
+                const since = compacting.get(session) as number
+                compacting.delete(session)
+                void compactionCost(session, since)
+              }
               // the turn a stopped Subagent's notice starts in a session
               // Stop All stopped: stopped too
               if (

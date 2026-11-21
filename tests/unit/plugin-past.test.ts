@@ -6,7 +6,12 @@
  * cost when its turn ends.
  */
 import { describe, expect, test } from "bun:test"
-import { account, childSessions, stepsOf } from "../../plugin/src/past.ts"
+import {
+  account,
+  childSessions,
+  compactionSteps,
+  stepsOf,
+} from "../../plugin/src/past.ts"
 
 // A message of OpenCode 2.3.0, as GET /api/session/{id}/message gives it.
 const assistant = (id: string, completed: number, cost?: number) => ({
@@ -217,5 +222,33 @@ describe("accounting for a session", () => {
     }
     const result = await account(get, "ses_top", () => {})
     expect(result).toEqual({ steps: 1, usd: 1, sessions: 1 })
+  })
+})
+
+describe("a compaction's cost", () => {
+  test("the compactions from the turn's start on that have a cost", async () => {
+    const oc = opencode({
+      ses_top: {
+        messages: [
+          compaction("msg_c1", 1000, 0.3),
+          assistant("msg_1", 5000, 1),
+          compaction("msg_c2", 60_000, 0.4),
+        ],
+      },
+    })
+    expect(await compactionSteps(oc.get, "ses_top", 60_500)).toEqual([
+      ["msg_c2", 60_000, 0.4],
+    ])
+    expect(await compactionSteps(oc.get, "ses_top", 0)).toEqual([
+      ["msg_c2", 60_000, 0.4],
+      ["msg_c1", 1000, 0.3],
+    ])
+  })
+
+  test("one that has no cost yet is none yet", async () => {
+    const oc = opencode({
+      ses_top: { messages: [compaction("msg_c1", 1000)] },
+    })
+    expect(await compactionSteps(oc.get, "ses_top", 0)).toEqual([])
   })
 })

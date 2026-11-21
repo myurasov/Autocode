@@ -141,3 +141,15 @@ export async function account(
   await flush(true)
   return { steps, usd: Math.round(usd * 1e6) / 1e6, sessions }
 }
+
+// The session's compactions from a time on that have their cost.
+export async function compactionSteps(
+  get: Get,
+  session: string,
+  since: number,
+): Promise<PastStep[]> {
+  const res = await get(
+    `/api/session/${enc(session)}/message?type=compaction&limit=5&order=desc`,
+  )
+  return stepsOf(res?.data).filter((step) => step[1] >= since - 5000)
+}

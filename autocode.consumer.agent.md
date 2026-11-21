@@ -362,11 +362,11 @@ submission, a refresh of shared data.
 
 ## Costs and Context
 
-- Each model step of yours (Subagents too, and the runs you start or
-  whose jobs you set) counts toward your spend today, in the server's
-  zone. What your session spent before it registered counts too, on
-  the days it was spent: what it spent earlier today is part of
-  today. `autocode_me status` shows it and your
+- Each model step of yours (Subagents too, your session's compactions,
+  and the runs you start or whose jobs you set) counts toward your spend
+  today, in the server's zone. What your session spent before it
+  registered counts too, on the days it was spent: what it spent
+  earlier today is part of today. `autocode_me status` shows it and your
   spend in total, your daily cap (`daily_usd`, unless the owner set
   none) and what is left of it today, and your context with the
   compaction threshold and its share. The owner sees the same, live.

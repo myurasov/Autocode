@@ -1004,8 +1004,8 @@ Autocode counts each agent's spend, can cap it per day, and compacts long sessio
 ### Spend and the Daily Cap
 
 - **What counts.** Each model step of an agent counts toward its spend today. The steps of its Subagents count too,
-  and so do the runs it pays for (see [Whom a Run's Cost Counts For](#whom-a-runs-cost-counts-for)). A day is a day
-  in the server's zone.
+  and so do the compactions of its session and the runs it pays for (see
+  [Whom a Run's Cost Counts For](#whom-a-runs-cost-counts-for)). A day is a day in the server's zone.
 - **What a session spent before it registered** counts as well. When a session registers for the first time,
   Autocode reads its earlier steps from OpenCode, those of its Subagents included, and files each one on the day
   it ran.

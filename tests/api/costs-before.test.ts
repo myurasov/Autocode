@@ -412,3 +412,18 @@ describe("earlier today counts for today", () => {
     })
   })
 })
+
+describe("a compaction's cost", () => {
+  test("reported when its turn ends: filed once, for today", async () => {
+    await registered(t, HOST, "ses_a", "team:a")
+    for (const i of await asked()) await ack(t, HOST, i.id, {})
+    await past("ses_a", [["msg_c1", now, 0.37]], false)
+    await past("ses_a", [["msg_c1", now, 0.37]], false)
+    expect(await cost("team:a")).toMatchObject({
+      today_usd: 0.37,
+      total_usd: 0.37,
+    })
+    // not the report of an accounting: History has none
+    expect(await kinds("cost.before")).toEqual([])
+  })
+})

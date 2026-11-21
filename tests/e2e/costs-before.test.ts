@@ -138,3 +138,52 @@ test("what a session spent before it registered is counted when it registers, ev
   )
   expect(again).toBe("accounted")
 }, 300_000)
+
+test("a compaction's cost is counted when its turn ends", async () => {
+  await admin("PATCH", "/v1/settings", {
+    agents: { [id]: { compact_at: "off" } },
+  })
+  const start = await cost()
+  const fake = new FakeModel(node)
+  // the agent asks for a compaction; it comes when this turn ends
+  await fake.script(
+    [
+      {
+        session,
+        tool_calls: [{ name: "autocode_me", arguments: { action: "compact" } }],
+      },
+      { session, reply: "state written" },
+    ],
+    true,
+  )
+  await oc.run(session, "compact yourself", 90_000)
+  await until(
+    async () =>
+      (
+        await admin(
+          "GET",
+          `/v1/history?kind=session.compacted&agent=${enc(id)}`,
+        )
+      ).history[0],
+    { timeoutMs: 60_000, what: "the compaction" },
+  )
+  // OpenCode's record of the compaction has its cost
+  const compactions = await until(
+    async () => {
+      const c = await recorded("compaction")
+      return c.n > 0 && c.usd > 0 ? c : undefined
+    },
+    { timeoutMs: 90_000, intervalMs: 1000, what: "the compaction's cost" },
+  )
+  await agentStatus(id, "idle", 90_000)
+  // every step of the session and its compaction, once each
+  await until(
+    async () => {
+      const steps = await recorded("assistant")
+      const total = (await cost()).total_usd
+      return Math.abs(total - (steps.usd + compactions.usd)) < 1e-6
+    },
+    { timeoutMs: 60_000, intervalMs: 1000, what: "the compaction counted" },
+  )
+  expect((await cost()).total_usd).toBeGreaterThan(start.total_usd)
+}, 300_000)
