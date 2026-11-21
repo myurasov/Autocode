@@ -148,8 +148,12 @@ Triggers (times without a zone are in the server's zone):
 More:
 
 - `list` shows your wakes, when each falls due next (in the server's
-  zone and from now; an idle wake: when, if you stay idle) and when it
-  was last set (its schedule counts from then);
+  zone and from now; an idle wake: when, if you stay idle), when it
+  was last set (its schedule counts from then), and what each cost in
+  the last 7 days: the turns its prompts started and their dollars
+  (your Subagents' steps in those turns too), how often it fell due
+  and how often its check skipped it. A wake that costs much and
+  mostly finds nothing to do belongs in a check (see Checks);
   `show` one whole; `cancel` removes a wake and any of its runs still
   waiting (also the waiting run of a one-time wake that is gone
   already).
@@ -177,14 +181,24 @@ worth waking you for. It costs no model calls.
   stderr; 2000 characters unless the owner set `check_output`) in the
   prompt. Exit 1: this run is skipped quietly (no prompt, no model
   call, and it does not count toward `min_interval`). Any other exit,
-  or running past the owner's `check_timeout` (60 s by default; then
-  the whole process group is stopped), is a failed check: the run is
-  skipped, and three failures in a row open an alert in the owner's
-  inbox.
+  or running past its time limit (the owner's `check_timeout`, 60 s by
+  default, or the wake's own; then the whole process group is
+  stopped), is a failed check: the run is skipped, and three failures
+  in a row open an alert in the owner's inbox.
 - One check at a time per wake; runs that fall due while it runs are
   the same run.
-- Keep checks fast and free of side effects: decide, don't do the
-  work. A fired wake skips its check.
+- A check may do the routine pass itself. Put the script that looks
+  at your data, files or queues in the check: it does what needs no
+  judgement, prints what you need to know and exits 0 only when
+  something needs you; else it exits 1, and that pass costs no model
+  call. Give such a check the time it needs with `check_timeout` on
+  the wake (`check_timeout=5m`; at most the owner's
+  `check_timeout_max`, 10m by default).
+- A check must be safe to run again, and while a turn of yours runs:
+  a turn can start during it (the owner writes, a message comes).
+  While a long check runs, your messages and other wakes are not
+  held back for more than the owner's `check_timeout`.
+- A fired wake skips its check.
 
 <!-- topic: recipes -->
 
@@ -203,6 +217,10 @@ worth waking you for. It costs no model calls.
   removed when the job fires it: nothing to cancel afterwards.
 - Poll cheaply: `every 10m` with a check that exits 1 when nothing
   changed.
+- A routine pass that costs nothing when nothing needs you: `every 1h`
+  with `check="./hourly.sh"` and `check_timeout=5m`. The script does
+  the pass and exits 1; when something needs your judgement it prints
+  what, and exits 0.
 - Remind me once: `in 45m` or `at 15:00`.
 - Nudge when idle: `idle 2h`, text "continue the plan in TODO.md".
 
@@ -335,7 +353,8 @@ submission, a refresh of shared data.
   after the turn that passed it: nothing is injected until the next day
   or until the owner raises the cap. Finish what matters first.
 - Each wake re-reads your whole context, so a long one costs more per
-  wake. Past `compact_at` (half the model's window, at most 500,000
+  wake. A run that its check skips costs nothing: a wake that mostly
+  finds nothing to do belongs in a check (see Checks). Past `compact_at` (half the model's window, at most 500,000
   tokens, unless the owner set another: `autocode_me status` says
   yours) your session is compacted between turns: a summary replaces
   the conversation. You are told first, even when nothing else waits

@@ -53,6 +53,7 @@ import {
   rotateOwnerToken,
   touchToken,
 } from "./tokens.ts"
+import { WakeStats } from "./wake-stats.ts"
 import { notRegistered, Wakes } from "./wakes.ts"
 import { type WebFiles, webHandler } from "./web.ts"
 
@@ -153,7 +154,13 @@ export async function startServer(
     takeoverGraceMs: options.takeoverGraceMs,
   })
   const tz = () => String(settings.value("timezone")) || "UTC"
-  const wakes = new Wakes(db, history, now, tz)
+  const wakes = new Wakes(db, history, now, tz, (agent) =>
+    parseDuration(
+      String(
+        resolveSettings(settings.layers(), agent).values.check_timeout_max,
+      ),
+    ),
+  )
   let messages: Messages
   const inbox = new Inbox(db, history, now, () => messages)
   // a failed turn's error state and its retries (tier 0b3)
@@ -309,6 +316,11 @@ export async function startServer(
       )?.busy,
   )
   delivery.costs = costs
+  // what each wake costs (1.1.0): due and skipped, its turns, their steps
+  const wakeStats = new WakeStats(db, (at) => costs.day(at), now)
+  wakes.stats = wakeStats
+  delivery.stats = wakeStats
+  hosts.onTurnStarted = (_session, cause) => wakeStats.turnStarted(cause)
   costs.instruction = (id) => hosts.instruction(id)
   hosts.onTurnEnded = (agent, outcome, error, reply, background) => {
     retries.turnEnded(agent, outcome, error)
@@ -373,7 +385,9 @@ export async function startServer(
     )?.id
     const agent = run ?? agents.agentOfSession(session)
     if (!agent) return
-    costs.step(agent, event)
+    const counted = costs.step(agent, event)
+    // an agent's own turn: the step is its prompt's wakes' too (1.1.0)
+    if (counted !== null && !run) wakeStats.step(session, counted)
     if (run)
       db.query("UPDATE runs SET cost = ? WHERE id = ?").run(
         costs.runCost(run),
@@ -408,6 +422,7 @@ export async function startServer(
     now,
     (agent) => {
       inbox.closeForAgent(agent)
+      wakeStats.forget(agent)
       locks.unregistered(agent)
       asks.unregistered(agent)
       messages.dropNotices(agent)
@@ -1675,6 +1690,7 @@ export async function startServer(
     inbox.trim(days)
     asks.trim(days)
     costs.trim(days)
+    wakeStats.trim(days)
     jobs.trim(days)
     // agents past expire_after since their last turn (tier 0e)
     for (const agent of costs.expired())

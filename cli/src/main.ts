@@ -94,6 +94,7 @@ Agents
 Wakes
   wakes [AGENT]              every wake, or one agent's
   wake set AGENT NAME --trigger TRIGGER --text TEXT [--check COMMAND]
+      [--check-timeout DURATION]
                              set or replace a wake
   wake cancel AGENT NAME     remove a wake
   fire AGENT WAKE [--text TEXT]

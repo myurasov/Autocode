@@ -226,6 +226,9 @@ describe("owner commands", () => {
         "Standup.",
         "--check",
         "test -f todo",
+        // 1.1.0: the check's own time limit
+        "--check-timeout",
+        "5m",
       ],
       asAdmin(),
     )
@@ -233,9 +236,12 @@ describe("owner commands", () => {
       'wake standup of kaggle:lead set: cron "0 9 * * 1-5" UTC; next',
     )
     const all = await cli(["wakes"], asAdmin())
+    expect(all.stdout).toMatch(/test -f todo \(up to 5m\)/)
+    // 1.1.0: what each wake cost in the last 7 days
     expect(all.stdout).toMatch(
-      /AGENT\s+NAME\s+TRIGGER\s+NEXT\s+CHECK\s+LAST SET\s+TEXT/,
+      /AGENT\s+NAME\s+TRIGGER\s+NEXT\s+CHECK\s+TURNS 7D\s+COST 7D\s+LAST SET\s+TEXT/,
     )
+    expect(all.stdout).toMatch(/\(up to 5m\)\s+0\s+\$0\.00\s+\d{4}-/)
     // when each was last set, in the machine's local time
     expect(all.stdout).toMatch(
       /kaggle:lead\s+standup\s+.*\d{4}-\d\d-\d\d \d\d:\d\d [A-Z]{3,5}\s+Standup\./,

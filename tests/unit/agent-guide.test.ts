@@ -544,6 +544,100 @@ describe("autocode_wake", () => {
     ])
   })
 
+  // 1.1.0 (the owner, 2026-11-20: a check may do the routine pass): a
+  // wake's own time limit for its check
+  test("check_timeout: set sends it and says how long the check may run; list and show say it", async () => {
+    const bodies: unknown[] = []
+    const w = wake({
+      name: "hourly",
+      trigger: "every 1h",
+      next: "2026-10-28T13:00:00.000Z",
+      due: "2026-10-28T13:00:00.000Z",
+      check: "./hourly.sh",
+      check_timeout: "5m",
+    })
+    const call = async (method: string, path: string, body?: unknown) => {
+      if (method === "PUT") {
+        bodies.push(body)
+        return { wake: w }
+      }
+      return path === "/v1/me" ? ME : { wakes: [w] }
+    }
+    const set = await runWake(
+      {
+        action: "set",
+        name: "hourly",
+        trigger: "every 1h",
+        text: "Go.",
+        check: "./hourly.sh",
+        check_timeout: "5m",
+      },
+      call,
+    )
+    expect(bodies).toEqual([
+      {
+        text: "Go.",
+        trigger: "every 1h",
+        check: "./hourly.sh",
+        check_timeout: "5m",
+      },
+    ])
+    expect(set).toContain(
+      "Before each run its check runs in your folder, for up to 5m: exit " +
+        "0 wakes you with its output, exit 1 skips that run.",
+    )
+    expect(await runWake({ action: "list" }, call)).toContain(
+      "check: ./hourly.sh (up to 5m); last set",
+    )
+    expect(await runWake({ action: "show", name: "hourly" }, call)).toContain(
+      "Check: ./hourly.sh (up to 5m; exit 0 wakes you with its output, " +
+        "exit 1 skips the run).",
+    )
+    // the tool says what it is, and whose maximum holds
+    const props = WAKE_TOOL.input.properties as any
+    expect(props.check_timeout.description).toContain(
+      "the owner's check_timeout_max, 10m by default",
+    )
+    expect(WAKE_TOOL.description).toContain("optional check, check_timeout")
+  })
+
+  // 1.1.0 (the owner, 2026-11-20: what each wake costs)
+  test("list and show say what a wake cost in the last 7 days; nothing for a wake that never ran", async () => {
+    const hourly = wake({
+      name: "hourly",
+      trigger: "every 1h",
+      next: "2026-10-28T13:00:00.000Z",
+      due: "2026-10-28T13:00:00.000Z",
+      week: { due: 118, skipped: 1, turns: 117, usd: 225.214 },
+    })
+    const quiet = wake({
+      name: "quiet",
+      trigger: "fire-only",
+      week: { due: 0, skipped: 0, turns: 0, usd: 0 },
+    })
+    const { call } = server({
+      "GET /v1/me": ME,
+      "GET /v1/me/wakes": { wakes: [hourly, quiet] },
+    })
+    const list = (await runWake({ action: "list" }, call)).split("\n")
+    expect(list[1]).toEndWith(
+      "; last 7 days: 117 turns, $225.21 (due 118, skipped 1)",
+    )
+    expect(list[3]).toBe(
+      "quiet: fire-only; runs only when fired; last set 2026-10-28 05:00 PDT",
+    )
+    expect(await runWake({ action: "show", name: "hourly" }, call)).toContain(
+      "Last 7 days: 117 turns, $225.21; it fell due 118 times, and its " +
+        "check skipped 1.",
+    )
+    expect(await runWake({ action: "show", name: "quiet" }, call)).toContain(
+      "Last 7 days: no turns.",
+    )
+    expect(WAKE_TOOL.description).toContain(
+      "list (when each falls due next, what each cost in the last 7 days)",
+    )
+  })
+
   test("show: one wake whole", async () => {
     const { call } = server({
       "GET /v1/me": ME,
@@ -564,6 +658,7 @@ describe("autocode_wake", () => {
         "Trigger: every 30m; next 2026-10-28 05:30 PDT (in 30m).",
         "Check: none.",
         "Last ran: never.",
+        "Last 7 days: no turns.",
         "Text:",
         "Line one.",
         "Line two.",
@@ -678,6 +773,34 @@ describe("the guide", () => {
       "The line above the footer says the server's time, your context " +
         "against `compact_at` and what you spent today",
       "do not call `autocode_me status` just to learn them",
+    ])
+      expect(guide).toContain(answer)
+  })
+
+  test("1.1.0: a check may do the routine pass, with its own time limit", () => {
+    for (const answer of [
+      "A check may do the routine pass itself",
+      "exits 0 only when something needs you",
+      "that pass costs no model call",
+      "`check_timeout` on the wake (`check_timeout=5m`; at most the " +
+        "owner's `check_timeout_max`, 10m by default)",
+      "safe to run again, and while a turn of yours runs",
+      // the recipe
+      "A routine pass that costs nothing when nothing needs you",
+      // and where the cost of wakes is explained
+      "A run that its check skips costs nothing",
+    ])
+      expect(guide).toContain(answer)
+    // what it said before: checks only decide
+    expect(guide).not.toContain("decide, don't do the work")
+  })
+
+  test("1.1.0: list shows what each wake cost, and what to do about a costly one", () => {
+    for (const answer of [
+      "what each cost in the last 7 days: the turns its prompts started " +
+        "and their dollars",
+      "A wake that costs much and mostly finds nothing to do belongs in " +
+        "a check",
     ])
       expect(guide).toContain(answer)
   })

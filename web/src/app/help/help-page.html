@@ -811,6 +811,16 @@
       </li>
     </ul>
     <p>
+      A check may do the routine pass itself. A wake that mostly finds
+      nothing to do costs a whole turn each time; with its script as the
+      check, a pass that finds nothing costs no model call. The script exits
+      0, with what the agent must know in its output, only when something
+      needs the agent. Such a check may need minutes: a wake can carry its
+      own time limit, at most 10 minutes (<code>check_timeout_max</code>).
+      Ask the agent for it, fill in Check Timeout in the form, or use
+      <code>--check-timeout 5m</code>.
+    </p>
+    <p>
       For example, wake an agent every 30 minutes, but only when results.csv
       has changed since the last time:
     </p>
@@ -1623,6 +1633,19 @@ autocode job set daily-report --host HOST --model MODEL \
         fixed-width font.
       </li>
       <li>
+        A check with its own time limit shows it under the check, like "up
+        to 5m".
+      </li>
+      <li>
+        Last 7 Days: what the wake cost: the dollars of the turns that its
+        prompts started, and the turns under them. Hover for how often it
+        fell due and how often its check skipped it. Not counted: turns that
+        you start, and turns that OpenCode's own notices start, like a
+        Subagent's result. A wake that costs much and mostly finds nothing to
+        do belongs in a check: see
+        <a routerLink="/help" fragment="wakes">{{ sec.wakes.label }}</a>.
+      </li>
+      <li>
         Last Set: when the wake was last set. Setting a wake again replaces
         it, and its schedule starts over.
       </li>
@@ -1631,8 +1654,8 @@ autocode job set daily-report --host HOST --model MODEL \
       </li>
       <li>
         To set a wake for any agent, click the heading Set a Wake. Fill in
-        Agent ID, Name, Trigger and Text, and Check if you want one; then
-        click Set Wake.
+        Agent ID, Name, Trigger and Text, and Check and Check Timeout if you
+        want them; then click Set Wake.
       </li>
       <li>
         Triggers and checks are under
@@ -1866,7 +1889,15 @@ autocode settings --agent kaggle:lead</pre
         <tr>
           <td><code>check_timeout</code></td>
           <td>60s</td>
-          <td>a wake's check is stopped after this long</td>
+          <td>
+            a wake's check is stopped after this long, unless the wake has
+            its own limit
+          </td>
+        </tr>
+        <tr>
+          <td><code>check_timeout_max</code></td>
+          <td>10m</td>
+          <td>the longest time a wake may ask for its own check</td>
         </tr>
         <tr>
           <td><code>check_output</code></td>
@@ -2475,16 +2506,22 @@ echo 'export PATH="$HOME/.autocode/bin:$PATH"' >> ~/.bashrc</pre
         </tr>
         <tr>
           <td><code>autocode wakes [AGENT]</code></td>
-          <td>every wake, or one agent's</td>
+          <td>
+            every wake, or one agent's, with its turns and cost in the last 7
+            days
+          </td>
         </tr>
         <tr>
           <td>
             <code
               >autocode wake set AGENT NAME --trigger T --text TEXT [--check
-              CMD]</code
+              CMD] [--check-timeout DURATION]</code
             >
           </td>
-          <td>set or replace an agent's wake</td>
+          <td>
+            set or replace an agent's wake; <code>--check-timeout</code> is
+            the check's own time limit
+          </td>
         </tr>
         <tr>
           <td><code>autocode wake cancel AGENT NAME</code></td>

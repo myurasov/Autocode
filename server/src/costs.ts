@@ -277,8 +277,9 @@ export class Costs {
     return cap === null ? share : Math.min(share, cap)
   }
 
-  // A model step of an agent's session (the plugin's cost event).
-  step(agent: string, event: any) {
+  // A model step of an agent's session (the plugin's cost event): the
+  // dollars it counted, or null for a step that did not count.
+  step(agent: string, event: any): number | null {
     const amount = Number(event.usd)
     if (
       typeof event.usd !== "number" ||
@@ -286,14 +287,14 @@ export class Costs {
       amount < 0 ||
       amount > MAX_STEP_USD
     )
-      return
+      return null
     // a step already counted (its batch sent again after a lost reply, or a
     // restart) counts once; the IDs are kept with the history
     if (typeof event.step === "string" && event.step) {
       const fresh = this.db
         .query("INSERT OR IGNORE INTO cost_steps (step, at) VALUES (?, ?)")
         .run(event.step.slice(0, 200), this.now()).changes
-      if (!fresh) return
+      if (!fresh) return null
     }
     // a Subagent's step carries no context of the agent's own session
     const context =
@@ -398,6 +399,7 @@ export class Costs {
           .run(effort || null, agent)
     }
     this.warn(payer)
+    return amount
   }
 
   // The notice at cap_warn, once a day.

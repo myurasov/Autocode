@@ -6,7 +6,9 @@
  * cancels it (after a confirmation; the result shows in the toolbar), and sets
  * a wake for any agent in a form that opens from its title; the list refreshes
  * after each. The table sorts by a click on a heading, within each agent, by
- * Last Set (newest first) by default (the owner, 2026-11-17).
+ * Last Set (newest first) by default (the owner, 2026-11-17). Last 7 Days
+ * says what each wake cost: the dollars of the turns its prompts started and
+ * the turns (1.1.0; the owner, 2026-11-20); a check shows its own time limit.
  */
 
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
@@ -14,6 +16,7 @@ import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Wake, type WakeInput } from '../api';
 import { Breaks, IdParts, TimeText } from '../breaks';
 import { FOLD_CHARS, folded, localTime } from '../format';
+import { costText } from '../jobs/jobs-page';
 import { AgentLink } from '../links';
 import { FoldRow, Folds } from '../fold';
 import { MoreRow, Paged, paged } from '../more';
@@ -25,6 +28,28 @@ type Field = 'text' | 'check';
 
 export const TRIGGER_HINT =
   'every 30m, at 09:00, cron "0 9 * * 1-5", idle 30m, fire-only';
+
+/*
+ * What a wake cost in the last 7 days (1.1.0; the owner, 2026-11-20): the
+ * dollars of the turns its prompts started, the turns, and for the tooltip
+ * how often it fell due and its check skipped it; null for a wake with
+ * nothing to show.
+ */
+export function weekOf(
+  w: Wake,
+): { usd: string; turns: string; title: string } | null {
+  const k = w.week;
+  if (!k || !(k.due || k.skipped || k.turns || k.usd)) return null;
+  const usd = costText(k.usd);
+  const turns = `${k.turns} turn${k.turns === 1 ? '' : 's'}`;
+  return {
+    usd,
+    turns,
+    title:
+      `Last 7 days: ${turns}, ${usd}. It fell due ${k.due} ` +
+      `time${k.due === 1 ? '' : 's'}; its check skipped ${k.skipped}.`,
+  };
+}
 
 // A trigger as the page shows it: a one-time one at the viewer's local time.
 export function triggerText(trigger: string): string {
@@ -57,6 +82,8 @@ export class WakesPage {
       name: { text: (w) => w.name },
       trigger: { text: (w) => w.trigger },
       next: { time: (w) => w.next ?? w.due, first: 'asc' },
+      // what it cost in the last 7 days, the costliest first (1.1.0)
+      week: { number: (w) => w.week?.usd },
       by: { text: (w) => w.set_by },
       set: { time: (w) => w.updated_at },
       fired: { time: (w) => w.last_fired_at },
@@ -89,6 +116,7 @@ export class WakesPage {
   protected readonly updatedAt = signal<number | null>(null);
   protected readonly busy = signal(false);
   protected readonly triggerText = triggerText;
+  protected readonly weekOf = weekOf;
   protected readonly triggerHint = TRIGGER_HINT;
   private inFlight = 0;
 
@@ -102,6 +130,8 @@ export class WakesPage {
     trigger: signal(''),
     text: signal(''),
     check: signal(''),
+    // the check's own time limit, like 5m (1.1.0)
+    checkTimeout: signal(''),
   };
   protected readonly setting = signal(false);
   protected readonly set = signal('');
@@ -194,13 +224,15 @@ export class WakesPage {
     const name = f.name().trim();
     const wake: WakeInput = { text: f.text(), trigger: f.trigger().trim() };
     if (f.check().trim()) wake.check = f.check().trim();
+    if (f.checkTimeout().trim()) wake.check_timeout = f.checkTimeout().trim();
     this.setting.set(true);
     this.set.set('');
     this.setError.set('');
     try {
       await this.api.setWake(agent, name, wake);
       this.set.set(`Set ${agent}'s wake ${name}.`);
-      for (const field of [f.name, f.trigger, f.text, f.check]) field.set('');
+      for (const field of [f.name, f.trigger, f.text, f.check, f.checkTimeout])
+        field.set('');
     } catch (err) {
       this.setError.set(errorText(err));
       return;

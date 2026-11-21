@@ -636,6 +636,36 @@ export const MIGRATIONS: string[] = [
     WHERE model IS NOT NULL AND model_name IS NOT NULL AND model_name != ''
     GROUP BY model;
   `,
+  /*
+   * 23 (1.1.0; the owner, 2026-11-20: "implement 1-3, 5, 6, 7", from the
+   * review of real sessions): a wake's own time limit for its check, so that
+   * a check may do the routine pass; a waiting run carries it.
+   */
+  `
+  ALTER TABLE wakes ADD COLUMN check_timeout_ms INTEGER;
+  ALTER TABLE queue ADD COLUMN check_timeout_ms INTEGER;
+  `,
+  /*
+   * 24 (1.1.0; the owner, 2026-11-20): what each wake costs. The prompt
+   * that started a session's turn (an injection's ID; none for a turn the
+   * owner or OpenCode started), and per agent, wake name and day: how often
+   * the wake fell due, how often its check skipped it, the turns its
+   * prompts started, and those turns' steps and dollars.
+   */
+  `
+  ALTER TABLE sessions ADD COLUMN turn_cause TEXT;
+  CREATE TABLE wake_stats (
+    agent_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    day TEXT NOT NULL,
+    due INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    turns INTEGER NOT NULL DEFAULT 0,
+    usd REAL NOT NULL DEFAULT 0,
+    steps INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (agent_id, name, day)
+  );
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

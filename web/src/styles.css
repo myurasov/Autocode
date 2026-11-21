@@ -917,6 +917,27 @@ table.wakes td.check code {
   overflow-wrap: anywhere;
 }
 /*
+ * What a wake cost in the last 7 days (1.1.0): the dollars at the right, the
+ * turns under them; a check's own time limit under the check.
+ */
+table.wakes td.week,
+table.wakes th.num {
+  text-align: right;
+}
+table.wakes td.week .turns,
+table.wakes td.check .limit {
+  display: block;
+  white-space: nowrap;
+}
+/*
+ * The text is what one reads: it gets a fair share of the table. Without
+ * it, a text that may break anywhere was squeezed to a few words a line by
+ * the columns that do not wrap (seen live with ten columns, 1.1.0).
+ */
+table.wakes td.text {
+  width: 28%;
+}
+/*
  * A long text (a wake's text or check, a message's text) folded to its first
  * 200 characters: a click anywhere in its cell (or Enter on it) shows it
  * whole, the next folds it (the owner, 2026-11-03). The cell reads as

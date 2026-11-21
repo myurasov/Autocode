@@ -115,6 +115,9 @@ export class Hosts {
   onCost: (event: any) => void = () => {}
   // A session showed life: its turn started or ended, or it ran a step.
   onActivity: (session: string) => void = () => {}
+  // A session's turn started: from which prompt of Autocode's (an
+  // injection's ID), or null for the owner's or OpenCode's own (1.1.0).
+  onTurnStarted: (session: string, cause: string | null) => void = () => {}
   onCut: (session: string) => void = () => {}
   // A host said hello (the loader alerts again after a new outage), with
   // the plugin's body (its pending forms and requests, per session).
@@ -441,12 +444,42 @@ export class Hosts {
 
   private turnStarted(session: string, at?: unknown) {
     if (!this.fresh(session, at, "started")) return
-    this.db
+    /*
+     * The prompt that started this turn (1.1.0: what each wake costs): a
+     * turn that starts while a prompt of Autocode's is on its way is that
+     * prompt's, the one handed over at inject_pending_at. A prompt that
+     * went into a running turn started none.
+     */
+    const pending = (
+      this.db
+        .query(
+          "SELECT inject_pending_at FROM sessions " +
+            "WHERE id = ? AND deleted_at IS NULL",
+        )
+        .get(session) as { inject_pending_at: number | null } | null
+    )?.inject_pending_at
+    const cause = pending
+      ? ((
+          this.db
+            .query(
+              "SELECT id FROM injections WHERE session_id = ? " +
+                "AND created_at = ? AND reasons NOT LIKE '%\"steer\":true%' " +
+                "ORDER BY id DESC LIMIT 1",
+            )
+            .get(session, pending) as { id: string } | null
+        )?.id ?? null)
+      : null
+    const res = this.db
       .query(
         "UPDATE sessions SET busy = 1, turn_started_at = ?, " +
-          "inject_pending_at = NULL WHERE id = ? AND deleted_at IS NULL",
+          "inject_pending_at = NULL, turn_cause = ? " +
+          "WHERE id = ? AND deleted_at IS NULL",
       )
-      .run(this.now(), session)
+      .run(this.now(), cause, session)
+    if (!res.changes) return
+    try {
+      this.onTurnStarted(session, cause)
+    } catch {}
   }
 
   private turnEnded(

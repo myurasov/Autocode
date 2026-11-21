@@ -545,10 +545,50 @@ What its exit code means:
 | 0 | The agent is woken. The start of the check's output is quoted in the prompt: stdout, then stderr, up to `check_output` characters (2000) |
 | 1 | The wake is skipped quietly this time: no prompt, no model call. It does not count toward `min_interval` |
 | any other | A failed check: the wake is skipped this time. Three failures in a row open an alert in your Inbox |
-| none, after `check_timeout` (60 s) | The check and the commands it started are stopped. It counts as a failed check |
+| none, after its time limit | The check and the commands it started are stopped. It counts as a failed check. The limit is `check_timeout` (60 s), or the wake's own |
 
 - One check runs at a time per wake. If the wake falls due again meanwhile, the two count as one.
-- Keep checks fast and free of side effects: a check decides, it does not do the work.
+- **A check may do the routine pass.** A wake that mostly finds nothing to do costs a whole turn each time. Put
+  its script in the check instead: the script does what needs no judgement and exits 1, and it exits 0, with what
+  the agent must know in its output, only when something needs the agent. A pass that ends with 1 costs no model
+  call.
+- **Its own time limit.** Such a check may need minutes. A wake can carry its own limit: `check_timeout=5m` in
+  `autocode_wake action=set`, or `--check-timeout 5m`. The most a wake may ask for is `check_timeout_max`, 10
+  minutes unless you set another, for an agent, a pattern or the server. A wake without its own limit gets
+  `check_timeout`.
+- **A check must be safe to run again, and while a turn runs.** A turn can start during a long check: you write
+  to the agent, or a message comes. Messages and other wakes wait for a running check no longer than
+  `check_timeout`; the check's own wake comes after that turn.
+
+```
+autocode_wake  action=set  name=hourly  trigger="every 1h"  text="The hourly pass found work: read its output."
+               check=./hourly.sh  check_timeout=5m
+```
+
+### What a Wake Costs
+
+Each time a wake's prompt starts a turn, the agent's model reads its whole context again. Autocode counts what
+that comes to, per wake, for the last 7 days: today and the six days before.
+
+| Number | What it counts |
+|---|---|
+| due | how often the wake fell due, by its schedule or by idle time. A fire is not counted here |
+| skipped | how often its check skipped it, with exit 1. A skipped run costs nothing |
+| turns | the turns that its prompts started |
+| dollars | the model steps of those turns, the agent's Subagents' steps too |
+
+Where it shows: `autocode_wake action=list` and `action=show` for the agent; `autocode wakes` and the Wakes tab's
+**Last 7 Days** for you.
+
+- **A prompt with several wakes** divides each step's cost among them equally. Messages in the same prompt take
+  no share.
+- **Not counted:** a turn that you start in the session. A turn that OpenCode's own notice starts, like a
+  Subagent's result or a background command that ended: it often follows a wake's turn, so the real cost of a
+  wake can be higher. A job's runs: see the Jobs and Costs tabs. Compactions.
+- **The numbers stay with the agent and the wake's name.** Setting the wake again keeps them. They go when the
+  agent unregisters, and after `history_days`, though never in less than 31 days.
+- **What to do about a costly wake.** If most of its turns find nothing to do, move the routine pass into its
+  check: see [Checks](#checks).
 
 ### Recipes
 
@@ -1202,8 +1242,8 @@ are those of `autocode --help`.
 | `autocode stop-all` | pause every agent and interrupt every running turn, Subagents' too |
 | `autocode resume-all` | end the pauses that `stop-all` made. Agents that you paused yourself stay paused |
 | **Wakes** | |
-| `autocode wakes [AGENT]` | every wake, or one agent's: agent, name, trigger, next, check, last set, text |
-| `autocode wake set AGENT NAME --trigger TRIGGER --text TEXT [--check COMMAND]` | set or replace a wake |
+| `autocode wakes [AGENT]` | every wake, or one agent's: agent, name, trigger, next, check, turns and cost in the last 7 days, last set, text |
+| `autocode wake set AGENT NAME --trigger TRIGGER --text TEXT [--check COMMAND] [--check-timeout DURATION]` | set or replace a wake. `--check-timeout`: the check's own time limit, at most `check_timeout_max` |
 | `autocode wake cancel AGENT NAME` | remove a wake |
 | `autocode fire AGENT WAKE [--text TEXT]` | deliver a wake now. It skips its check. The prompt says that the owner fired it |
 | **Messages and Inbox** | |
@@ -1472,8 +1512,12 @@ tab are days in the server's zone.
 **Wakes**
 
 - Every agent's wakes: trigger, next run, text and check, who set it, **Last Set**, last fired. The schedule counts
-  from Last Set. Click a long text or check to see it whole.
-- **Fire**, **Cancel**, and **Set a Wake** for any agent.
+  from Last Set. Click a long text or check to see it whole. A check with its own time limit shows it: "up to 5m".
+- **Last 7 Days** is what the wake cost: the dollars of the turns that its prompts started, and the turns under
+  them. Hover for how often it fell due and how often its check skipped it. The heading sorts, the costliest
+  first. See [What a Wake Costs](#what-a-wake-costs).
+- **Fire**, **Cancel**, and **Set a Wake** for any agent. **Check Timeout** in the form is the check's own time
+  limit, like `5m`.
 
 **Jobs**
 
@@ -1545,7 +1589,8 @@ clears that value again.
 | Setting | Scope | Default | What it does |
 |---|---|---|---|
 | `min_interval` | agent | `1m` | at most one prompt per session this often |
-| `check_timeout` | agent | `60s` | a wake's check is stopped after this long |
+| `check_timeout` | agent | `60s` | a wake's check is stopped after this long, unless the wake has its own limit |
+| `check_timeout_max` | agent | `10m` | the longest time a wake may ask for its own check (`check_timeout` on the wake) |
 | `check_output` | agent | `2000` | how many characters of a check's output go into the prompt |
 | `max_tool_wait` | agent | `5m` | the longest a tool waits inside a turn: `autocode_message action=wait`, `autocode_approval action=wait` |
 | `question_mode` | agent | `ask` | where questions go: `ask`, `auto`, `agent:<id>` or `job:<name>` (see [Where Each Ask Goes](#where-each-ask-goes)) |

@@ -66,15 +66,32 @@
       [value]="form.text()"
       (input)="form.text.set($any($event.target).value)"
     ></textarea>
-    <label for="wake-check">Check</label>
-    <input
-      id="wake-check"
-      type="text"
-      spellcheck="false"
-      placeholder="optional: a command; exit 0 wakes, 1 skips"
-      [value]="form.check()"
-      (input)="form.check.set($any($event.target).value)"
-    />
+    <!-- the check, and how long it may run (1.1.0: a check may do the
+         routine pass) -->
+    <div class="add-row check-row">
+      <div class="wide">
+        <label for="wake-check">Check</label>
+        <input
+          id="wake-check"
+          type="text"
+          spellcheck="false"
+          placeholder="optional: a command; exit 0 wakes, 1 skips"
+          [value]="form.check()"
+          (input)="form.check.set($any($event.target).value)"
+        />
+      </div>
+      <div>
+        <label for="wake-check-timeout">Check Timeout</label>
+        <input
+          id="wake-check-timeout"
+          type="text"
+          spellcheck="false"
+          placeholder="optional: like 5m"
+          [value]="form.checkTimeout()"
+          (input)="form.checkTimeout.set($any($event.target).value)"
+        />
+      </div>
+    </div>
     <div class="buttons">
       <button type="button" [disabled]="!canSet()" (click)="setWake()">
         Set Wake
@@ -98,6 +115,8 @@
       <th appSort="next" [sorting]="sorting">Next</th>
       <th>Text</th>
       <th>Check</th>
+      <!-- "7 Days" stays together: the heading wraps to two lines at most -->
+      <th class="num" appSort="week" [sorting]="sorting">Last 7&nbsp;Days</th>
       <th appSort="by" [sorting]="sorting">Set By</th>
       <th appSort="set" [sorting]="sorting">Last Set</th>
       <th appSort="fired" [sorting]="sorting">Last Fired</th>
@@ -110,7 +129,7 @@
            (the owner, 2026-11-09) -->
       <tr
         app-fold
-        [columns]="9"
+        [columns]="10"
         [folded]="folds.folded(g.agent)"
         [count]="g.wakes.length"
         (toggle)="folds.toggle(g.agent)"
@@ -175,7 +194,22 @@
             } @else {
               <code class="whole" [appBreaks]="w.check"></code>
             }
+            <!-- its own time limit (1.1.0) -->
+            @if (w.check && w.check_timeout) {
+              <span class="limit muted">up to {{ w.check_timeout }}</span>
+            }
           </td>
+          <!-- What it cost in the last 7 days (1.1.0; the owner,
+               2026-11-20): the dollars of the turns its prompts started,
+               the turns under them. -->
+          @if (weekOf(w); as k) {
+            <td class="num week" [attr.title]="k.title">
+              <span class="usd">{{ k.usd }}</span>
+              <span class="turns muted">{{ k.turns }}</span>
+            </td>
+          } @else {
+            <td class="num week muted">—</td>
+          }
           <td class="by id-like">
             @if (w.set_by === 'owner') {
               <span appId="owner"></span>
@@ -218,7 +252,7 @@
       @if (groupRows(g.agent, g.wakes).left; as left) {
         <tr
           app-more
-          [columns]="9"
+          [columns]="10"
           [left]="left"
           (more)="paging.more(g.agent)"
         ></tr>
@@ -227,7 +261,7 @@
   } @empty {
     <tbody>
       <tr>
-        <td class="muted" colspan="9">
+        <td class="muted" colspan="10">
           {{ loaded() ? 'No wakes yet.' : 'Loading...' }}
         </td>
       </tr>

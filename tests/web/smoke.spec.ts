@@ -421,6 +421,7 @@ test("admin: Inbox, Messages and Wakes show the fixture's rows", async ({
     "Next",
     "Text",
     "Check",
+    "Last 7 Days",
     "Set By",
     "Last Set",
     "Last Fired",
@@ -1926,7 +1927,7 @@ test("Wakes: no End in the Set a Wake form or the table", async ({ page }) => {
   await expect(page.locator("table.wakes td.end")).toHaveCount(0)
   await expect(page.locator("table.wakes tr.group th").first()).toHaveAttribute(
     "colspan",
-    "9",
+    "10",
   )
   const form = page.locator("details.panel")
   await form.locator("summary", { hasText: "Set a Wake" }).click()
@@ -1936,6 +1937,7 @@ test("Wakes: no End in the Set a Wake form or the table", async ({ page }) => {
     "Trigger",
     "Text",
     "Check",
+    "Check Timeout",
   ])
   await expect(page.getByLabel("End", { exact: true })).toHaveCount(0)
   expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
@@ -4475,6 +4477,149 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
   } finally {
     for (const id of ids)
       await api.delete(`/v1/agents/${id}`, { headers: bearer(admin) })
+    await api.dispose()
+  }
+})
+
+/*
+ * 1.1.0 (the owner, 2026-11-20: "implement 1-3, 5, 6, 7", from the review of
+ * real sessions): what each wake costs, and a check that may run for
+ * minutes. An agent of the test's own: its wake is set in the form with a
+ * Check Timeout, fired, and the turn its prompt starts costs $1.25 in two
+ * steps; Last 7 Days says so, sorts, and the page still fits 1280 px.
+ */
+test("Wakes: Last 7 Days says what a wake cost; a check shows its own time limit", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 15_000 })
+  const host = "smoke:week:1"
+  const session = "ses_week1"
+  const id = "week:agent"
+  const events = (list: unknown[]) =>
+    api.post(`/v1/hosts/${host}/events`, {
+      headers: bearer(consumer),
+      data: { instance: "i-week", events: list },
+    })
+  try {
+    const hello = await api.post(`/v1/hosts/${host}/hello`, {
+      headers: bearer(consumer),
+      data: {
+        instance: "i-week",
+        machine: "smoke",
+        directory: "/work/week",
+        sessions: [session],
+      },
+    })
+    expect(hello.ok(), await hello.text()).toBe(true)
+    const issued = await api.post(
+      `/v1/hosts/${host}/sessions/${session}/token`,
+      { headers: bearer(consumer), data: { instance: "i-week" } },
+    )
+    const reg = await api.post("/v1/agents", {
+      headers: bearer((await issued.json()).token),
+      data: { id, description: "for the Wakes tab's Last 7 Days" },
+    })
+    expect([200, 201]).toContain(reg.status())
+
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await signIn(page, admin)
+    await openTab(page, "Wakes")
+    const form = page.locator("details.panel")
+    await form.locator("summary", { hasText: "Set a Wake" }).click()
+    await page.getByLabel("Agent ID", { exact: true }).fill(id)
+    await page.getByLabel("Name", { exact: true }).fill("hourly")
+    await page.getByLabel("Trigger", { exact: true }).fill("fire-only")
+    await page.getByLabel("Text", { exact: true }).fill("The hourly pass.")
+    await page.getByLabel("Check", { exact: true }).fill("./hourly.sh")
+    await page.getByLabel("Check Timeout", { exact: true }).fill("5m")
+    // the check and its time limit share one row of the form
+    const boxes = await Promise.all(
+      ["Check", "Check Timeout"].map((l) =>
+        page.getByLabel(l, { exact: true }).boundingBox(),
+      ),
+    )
+    expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2)
+    await form.getByRole("button", { name: "Set Wake" }).click()
+    await expect(form.locator(".notice")).toHaveText(`Set ${id}'s wake hourly.`)
+    const wake = page.locator(
+      `table.wakes tbody[data-agent="${id}"] tr[data-wake="hourly"]`,
+    )
+    await expect(wake.locator("td.check code")).toHaveText("./hourly.sh")
+    await expect(wake.locator("td.check .limit")).toHaveText("up to 5m")
+    await expect(wake.locator("td.week")).toHaveText("—")
+
+    // fired: the plugin's part is played here: the prompt is taken, its
+    // turn starts, runs two steps and ends
+    await wake.getByRole("button", { name: "Fire" }).click()
+    let prompt: any
+    await expect
+      .poll(
+        async () => {
+          const next = await api.get(
+            `/v1/hosts/${host}/next?wait=0&instance=i-week`,
+            { headers: bearer(consumer) },
+          )
+          prompt = ((await next.json()).instructions ?? []).find(
+            (i: any) => i.type === "inject",
+          )
+          return prompt?.payload?.text ?? ""
+        },
+        { timeout: 20_000 },
+      )
+      .toContain('[autocode] wake "hourly" fired by the owner')
+    const done = await events([
+      { type: "ack", id: prompt.id, ok: true, result: null },
+      { type: "turn.started", session },
+      { type: "cost", session, usd: 1, context: 1000, step: "week-1" },
+      { type: "cost", session, usd: 0.25, context: 1200, step: "week-2" },
+      { type: "turn.ended", session, outcome: "succeeded" },
+    ])
+    expect(done.ok(), await done.text()).toBe(true)
+
+    const week = wake.locator("td.week")
+    await expect(week.locator(".usd")).toHaveText("$1.25", { timeout: 15_000 })
+    await expect(week.locator(".turns")).toHaveText("1 turn")
+    await expect(week).toHaveAttribute(
+      "title",
+      "Last 7 days: 1 turn, $1.25. It fell due 0 times; its check skipped 0.",
+    )
+    // the dollars at the right, the turns under them, in the grey of a note
+    const right = await week.evaluate((td) => getComputedStyle(td).textAlign)
+    expect(right).toBe("right")
+    const [usd, turns] = await Promise.all(
+      [".usd", ".turns"].map((s) => week.locator(s).boundingBox()),
+    )
+    expect(turns!.y).toBeGreaterThan(usd!.y + 5)
+    // the heading takes two lines at most ("7 Days" stays together), and
+    // a text gets a fair share of the table, not a few words a line
+    const head = page.locator("table.wakes thead th", {
+      hasText: "Last 7 Days",
+    })
+    const lines = await head.evaluate((th) => {
+      const style = getComputedStyle(th)
+      const inner =
+        th.getBoundingClientRect().height -
+        Number.parseFloat(style.paddingTop) -
+        Number.parseFloat(style.paddingBottom)
+      return inner / Number.parseFloat(style.lineHeight)
+    })
+    expect(lines).toBeLessThan(2.5)
+    const textWidth = await wake
+      .locator("td.text")
+      .evaluate((td) => td.getBoundingClientRect().width)
+    expect(textWidth).toBeGreaterThan(250)
+    // the heading sorts, and the page fits
+    await expect(
+      page.locator("table.wakes thead th", { hasText: "Last 7 Days" }),
+    ).toHaveCount(1)
+    await page
+      .locator("table.wakes thead th", { hasText: "Last 7 Days" })
+      .getByRole("button")
+      .click()
+    await expect(week.locator(".usd")).toHaveText("$1.25")
+    expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+  } finally {
+    await api.delete(`/v1/agents/${id}`, { headers: bearer(admin) })
     await api.dispose()
   }
 })

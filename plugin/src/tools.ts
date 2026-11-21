@@ -489,6 +489,7 @@ export interface WakeInput {
   text?: string
   trigger?: string
   check?: string
+  check_timeout?: string
   agent?: string
 }
 
@@ -498,8 +499,9 @@ export const WAKE_TOOL = {
     "Autocode wakes: a prompt Autocode types into your session later (a " +
     "user message starting with [autocode]), only while the session is " +
     "idle (never into a running turn) and at most once per min_interval. " +
-    "Actions: set (name, trigger, text; optional check; the same name " +
-    "replaces the wake), list (when each falls due next), show (name), " +
+    "Actions: set (name, trigger, text; optional check, check_timeout; " +
+    "the same name replaces the wake), list (when each falls due next, " +
+    "what each cost in the last 7 days), show (name), " +
     "cancel (name), fire (agent, name, text: deliver now, skipping the " +
     "check). Triggers: every 30m [from 09:00]; in 45m (once); at 09:00 or " +
     'at 2026-11-30 18:00 (once); cron "*/30 8-16 * * 1-5" [zone]; idle 30m ' +
@@ -540,7 +542,16 @@ export const WAKE_TOOL = {
           "set, optional: a shell command run in your folder when the wake " +
           "is due; exit 0 wakes you with its output, exit 1 skips the run " +
           "(no model call), other exits fail; time limit: the owner's " +
-          "check_timeout, 60 s by default",
+          "check_timeout, 60 s by default, or this wake's check_timeout. " +
+          "It may do the routine pass itself and wake you only when " +
+          "something needs you",
+      },
+      check_timeout: {
+        type: "string",
+        description:
+          "set, optional: how long this wake's check may run, like 5m (for " +
+          "a check that does the routine pass); at most the owner's " +
+          "check_timeout_max, 10m by default",
       },
       agent: {
         type: "string",
@@ -830,6 +841,21 @@ function costLine(k: any): string {
   return line
 }
 
+/*
+ * What a wake cost in the last 7 days (1.1.0): the turns its prompts
+ * started and their dollars, and how often it fell due and its check
+ * skipped it; "" for a wake with nothing to say yet.
+ */
+function weekOf(w: any): { turns: string; counts: string } | null {
+  const k = w?.week
+  if (!k || !(k.due || k.skipped || k.turns || k.usd)) return null
+  const n = Number(k.turns) || 0
+  return {
+    turns: `${n} turn${n === 1 ? "" : "s"}, ${dollars(k.usd)}`,
+    counts: `due ${Number(k.due) || 0}, skipped ${Number(k.skipped) || 0}`,
+  }
+}
+
 function setBy(w: any, me: any): string {
   if (w.set_by === me?.agent?.id) return "you"
   return w.set_by === "owner" ? "the owner" : `agent ${w.set_by}`
@@ -872,8 +898,9 @@ function setText(w: any, me: any): string {
   } else if (w.next) parts.push(`Next run ${when(w.next, c)}.`)
   if (w.check)
     parts.push(
-      "Before each run its check runs in your folder: exit 0 wakes you " +
-        "with its output, exit 1 skips that run.",
+      "Before each run its check runs in your folder" +
+        (w.check_timeout ? `, for up to ${w.check_timeout}` : "") +
+        ": exit 0 wakes you with its output, exit 1 skips that run.",
     )
   const every = me?.settings?.min_interval
   parts.push(
@@ -892,6 +919,7 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
         text: input.text,
         trigger: input.trigger,
         ...(input.check ? { check: input.check } : {}),
+        ...(input.check_timeout ? { check_timeout: input.check_timeout } : {}),
       })
       // the wake is set: a failed status call only shortens the text
       const me = await call("GET", "/v1/me").catch(() => undefined)
@@ -916,14 +944,21 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
             `${localTime(Date.parse(w.updated_at), c.tz)}.`,
           `Trigger: ${shownTrigger(w.trigger, c)}; ${timing(w, c, working)}.`,
           w.check
-            ? `Check: ${w.check} (exit 0 wakes you with its output, exit 1 ` +
-              "skips the run)."
+            ? `Check: ${w.check} (` +
+              (w.check_timeout ? `up to ${w.check_timeout}; ` : "") +
+              "exit 0 wakes you with its output, exit 1 skips the run)."
             : "Check: none.",
           "Last ran: " +
             (w.last_fired_at
               ? localTime(Date.parse(w.last_fired_at), c.tz)
               : "never") +
             ".",
+          ((k) =>
+            k
+              ? `Last 7 days: ${k.turns}; it fell due ` +
+                `${Number(w.week.due) || 0} times, and its check skipped ` +
+                `${Number(w.week.skipped) || 0}.`
+              : "Last 7 days: no turns.")(weekOf(w)),
           "Text:",
           w.text,
         ].join("\n")
@@ -933,7 +968,11 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
       const lines = [`Server time ${localTime(c.now, c.tz)} (${c.tz}).`]
       for (const w of res.wakes) {
         const parts = [timing(w, c, working)]
-        if (w.check) parts.push(`check: ${w.check}`)
+        if (w.check)
+          parts.push(
+            `check: ${w.check}` +
+              (w.check_timeout ? ` (up to ${w.check_timeout})` : ""),
+          )
         // when it was last set (its schedule counts from then), and by whom
         // when not by you
         const by = setBy(w, me)
@@ -943,6 +982,9 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
         )
         if (w.last_fired_at)
           parts.push(`last ran ${localTime(Date.parse(w.last_fired_at), c.tz)}`)
+        // what it cost (1.1.0): its turns and their dollars
+        const week = weekOf(w)
+        if (week) parts.push(`last 7 days: ${week.turns} (${week.counts})`)
         lines.push(
           `${w.name}: ${shownTrigger(w.trigger, c)}; ${parts.join("; ")}`,
         )

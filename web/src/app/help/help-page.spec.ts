@@ -364,6 +364,20 @@ describe('HelpPage', () => {
     // so nothing says that Fire delivers "now"
     expect(page.textContent).not.toMatch(/delivers? (a|the) wake now/);
     expect(section(page, 'web-wakes')).toContain('Fire makes the wake due now');
+    // 1.1.0 (the owner, 2026-11-20): what each wake costs, and a check's own
+    // time limit
+    expect(section(page, 'web-wakes')).toContain(
+      'Last 7 Days: what the wake cost: the dollars of the turns that its ' +
+        'prompts started, and the turns under them.',
+    );
+    expect(section(page, 'web-wakes')).toContain(
+      'A wake that costs much and mostly finds nothing to do belongs in a ' +
+        'check',
+    );
+    expect(section(page, 'web-wakes')).toContain(
+      'Agent ID, Name, Trigger and Text, and Check and Check Timeout if ' +
+        'you want them',
+    );
     // an offline agent's wakes wait, like a paused one's
     expect(wakes).toContain(
       'a wake waits while the agent works, waits for an answer, is paused or ' +
@@ -395,6 +409,16 @@ describe('HelpPage', () => {
     expect(rows(table)[6]![1]!).toContain(
       'the same, for one fire: the wake is removed when it is fired',
     );
+    // 1.1.0 (the owner, 2026-11-20): a check may do the routine pass,
+    // with its own time limit
+    expect(section(page, 'wakes')).toContain(
+      'A check may do the routine pass itself.',
+    );
+    expect(section(page, 'wakes')).toContain(
+      'a wake can carry its own time limit, at most 10 minutes ' +
+        '(check_timeout_max)',
+    );
+    expect(section(page, 'commands')).toContain('[--check-timeout DURATION]');
     // 1.1.0 (the owner, 2026-11-20): what ends every prompt
     expect(section(page, 'wakes')).toContain(
       "Every prompt from Autocode ends with two lines: the server's time, " +
@@ -540,6 +564,8 @@ describe('HelpPage', () => {
     expect(settings.map((r) => r.slice(0, 2))).toEqual([
       ['min_interval', '1m'],
       ['check_timeout', '60s'],
+      // 1.1.0 (the owner, 2026-11-20): a check may do the routine pass
+      ['check_timeout_max', '10m'],
       ['check_output', '2000'],
       ['max_tool_wait', '5m'],
       ['timezone', "the server machine's"],

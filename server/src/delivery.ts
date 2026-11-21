@@ -35,6 +35,7 @@ import type { Loader } from "./loader.ts"
 import type { Inbox, Messages } from "./messages.ts"
 import type { Retries, RetryNote } from "./retries.ts"
 import type { SettingsStore } from "./settings-store.ts"
+import type { WakeStats } from "./wake-stats.ts"
 import type { WakeItem, Wakes } from "./wakes.ts"
 
 // How long a sent check may go unanswered beyond its own limit.
@@ -133,6 +134,9 @@ export class Delivery {
     resumed(agent: string): void
   }
 
+  // What each wake costs (1.1.0): a check's skips are counted.
+  stats?: WakeStats
+
   private values(agent: string) {
     return resolveSettings(this.settings.layers(), agent).values
   }
@@ -155,15 +159,16 @@ export class Delivery {
     if (!first) {
       this.db
         .query(
-          `INSERT INTO queue (agent_id, kind, wake, text, check_cmd, fired_by,
-             extra, trigger, created_at)
-           VALUES (?, 'wake', ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO queue (agent_id, kind, wake, text, check_cmd,
+             check_timeout_ms, fired_by, extra, trigger, created_at)
+           VALUES (?, 'wake', ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           agent,
           item.wake,
           item.text,
           item.check ?? null,
+          item.check ? (item.check_timeout_ms ?? null) : null,
           item.fired_by ?? null,
           item.extra ?? null,
           item.trigger ?? null,
@@ -178,7 +183,8 @@ export class Delivery {
     } else
       this.db
         .query(
-          `UPDATE queue SET wake = ?, text = ?, check_cmd = ?, fired_by = ?,
+          `UPDATE queue SET wake = ?, text = ?, check_cmd = ?,
+             check_timeout_ms = ?, fired_by = ?,
              extra = ?, check_instruction = ?, check_sent_at = ?,
              check_output = ?, trigger = ? WHERE id = ?`,
         )
@@ -186,6 +192,7 @@ export class Delivery {
           item.wake,
           item.text,
           firedBy ? null : (item.check ?? null),
+          firedBy || !item.check ? null : (item.check_timeout_ms ?? null),
           firedBy,
           extra,
           firedBy ? null : first.check_instruction,
@@ -595,12 +602,13 @@ export class Delivery {
       if (items.length) this.inject(row, items)
       return
     }
-    // checks still run: what does not wait for them goes once a message has
-    // waited as long as a check may take
+    // checks still run: what does not wait for them (a message, a fired
+    // wake, a wake without a check or whose check passed) goes once one of
+    // them has waited as long as the owner's check_timeout. Not a wake's
+    // own, longer one (1.1.0): a check that does the routine pass for
+    // minutes never holds the rest back; its result comes after that turn
     const ready = items.filter((i) => !i.check_cmd)
-    if (
-      ready.some((i) => i.kind === "message" && now - i.created_at >= timeout)
-    )
+    if (ready.some((i) => now - i.created_at >= timeout))
       this.inject(row, ready)
   }
 
@@ -661,14 +669,20 @@ export class Delivery {
       )
       .all(row.id) as any[]
     const limit = Number(values.check_output) || 0
+    // a wake's own limit (1.1.0), at most the owner's check_timeout_max as
+    // it is now; without one, the owner's check_timeout
+    const max = parseDuration(String(values.check_timeout_max))
     let running = false
     for (const item of items) {
+      const own = item.check_timeout_ms
+        ? Math.min(item.check_timeout_ms, max)
+        : timeout
       if (!item.check_instruction) {
         const id = this.hosts.enqueue(row.host_id, "check", {
           session: row.session_id,
           directory: row.directory,
           command: item.check_cmd,
-          timeout_ms: timeout,
+          timeout_ms: own,
           output_limit: limit,
         })
         this.db
@@ -686,7 +700,7 @@ export class Delivery {
         this.hosts.sentAt(item.check_instruction) ??
         item.check_sent_at ??
         this.now()
-      const late = this.now() - since > timeout + CHECK_GRACE_MS
+      const late = this.now() - since > own + CHECK_GRACE_MS
       if (state && !state.acked && !late) {
         running = true
         continue
@@ -707,6 +721,7 @@ export class Delivery {
       this.db.query("DELETE FROM queue WHERE id = ?").run(item.id)
       if (exit === 1) {
         this.wakes.checkRan(row.id, item.wake)
+        this.stats?.skipped(row.id, item.wake)
         this.history.record("wake.skipped", {
           agent: row.id,
           data: { name: item.wake },

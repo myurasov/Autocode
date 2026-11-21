@@ -10,18 +10,23 @@ import type { Database } from "bun:sqlite"
 import {
   AutocodeError,
   checkId,
+  formatDuration,
   formatTrigger,
   nextRun,
   onlyFields,
+  parseDuration,
   parseTrigger,
   type Trigger,
 } from "@autocode/shared"
 import type { History } from "./history.ts"
+import type { WakeStats, WakeWeek } from "./wake-stats.ts"
 
 export interface WakeItem {
   wake: string
   text: string
   check?: string | null
+  // the wake's own time limit for its check, in ms (1.1.0)
+  check_timeout_ms?: number | null
   fired_by?: string | null
   extra?: string | null
   // the wake's trigger (stored JSON), so its prompt can say what it was
@@ -36,6 +41,8 @@ export interface WakeView {
   text: string
   trigger: string
   check: string | null
+  // its check's own time limit ("5m"), or null: the owner's check_timeout
+  check_timeout: string | null
   next: string | null
   // when it falls due next: its next run, or for an idle wake the time it
   // will if the session stays idle (none while a turn runs)
@@ -45,6 +52,8 @@ export interface WakeView {
   updated_at: string
   last_fired_at: string | null
   check_failures: number
+  // its last 7 days: due, skipped by its check, turns and dollars (1.1.0)
+  week: WakeWeek
 }
 
 const MAX_TEXT = 32_000
@@ -92,14 +101,52 @@ export class Wakes {
     private readonly history: History,
     private readonly now: () => number,
     private readonly timezone: () => string,
+    // the longest a wake of this agent may ask for its check, in ms (the
+    // owner's check_timeout_max)
+    private readonly checkMax: (agent: string) => number = () => 600_000,
   ) {}
+
+  /*
+   * A wake's own time limit for its check (1.1.0): a duration of at least
+   * 1s and at most the owner's check_timeout_max; it needs a check.
+   */
+  private checkTimeout(agent: string, body: any): number | null {
+    const input = body.check_timeout
+    if (input === undefined || input === null) return null
+    if (!body.check)
+      throw new AutocodeError(
+        "bad_request",
+        "a check_timeout needs a check: it is that check's time limit",
+      )
+    let ms = Number.NaN
+    try {
+      if (typeof input === "string" && input.trim()) ms = parseDuration(input)
+    } catch {}
+    if (!(ms >= 1000))
+      throw new AutocodeError(
+        "bad_request",
+        "a check_timeout is a duration of at least 1s, like 90s or 5m " +
+          `(got ${JSON.stringify(input)})`,
+      )
+    const max = this.checkMax(agent)
+    if (ms > max)
+      throw new AutocodeError(
+        "bad_request",
+        `a check may run ${formatDuration(max)} at most here (the owner's ` +
+          `check_timeout_max); got ${formatDuration(ms)}`,
+      )
+    return ms
+  }
+
+  // What each wake costs (1.1.0): set by the server once it exists.
+  stats?: WakeStats
 
   private agentExists(agent: string) {
     if (!this.db.query("SELECT 1 FROM agents WHERE id = ?").get(agent))
       throw new AutocodeError("not_registered", `no agent ${agent}`, 404)
   }
 
-  private view(row: any): WakeView {
+  private view(row: any, week = this.stats?.week(row.agent_id)): WakeView {
     const trigger = JSON.parse(row.trigger) as Trigger
     const due =
       trigger.kind === "idle" ? idleDue(row, trigger).due : row.next_at
@@ -109,6 +156,9 @@ export class Wakes {
       text: row.text,
       trigger: formatTrigger(trigger),
       check: row.check_cmd ?? null,
+      check_timeout: row.check_timeout_ms
+        ? formatDuration(row.check_timeout_ms)
+        : null,
       next: iso(row.next_at),
       due: iso(due ?? null),
       set_by: row.set_by,
@@ -116,6 +166,12 @@ export class Wakes {
       updated_at: iso(row.updated_at)!,
       last_fired_at: iso(row.last_fired_at),
       check_failures: row.check_failures,
+      week: week?.(row.agent_id, row.name) ?? {
+        due: 0,
+        skipped: 0,
+        turns: 0,
+        usd: 0,
+      },
     }
   }
 
@@ -129,7 +185,7 @@ export class Wakes {
     const name = checkId(nameInput, "wake name")
     if (!body || typeof body !== "object")
       throw new AutocodeError("bad_request", "the body must be an object")
-    onlyFields(body, ["text", "trigger", "check"])
+    onlyFields(body, ["text", "trigger", "check", "check_timeout"])
     const { text, check } = body
     if (typeof text !== "string" || !text.trim() || text.length > MAX_TEXT)
       throw new AutocodeError(
@@ -145,6 +201,7 @@ export class Wakes {
         "bad_request",
         `a check must be a command of 1 to ${MAX_CHECK} characters`,
       )
+    const checkTimeout = this.checkTimeout(agent, body)
     const now = this.now()
     const tz = this.timezone()
     if (typeof body.trigger !== "string")
@@ -160,11 +217,12 @@ export class Wakes {
     this.db
       .query(
         `INSERT INTO wakes (agent_id, name, text, trigger, check_cmd,
-           anchor, next_at, set_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           check_timeout_ms, anchor, next_at, set_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (agent_id, name) DO UPDATE SET
            text = excluded.text, trigger = excluded.trigger,
            check_cmd = excluded.check_cmd,
+           check_timeout_ms = excluded.check_timeout_ms,
            anchor = excluded.anchor, next_at = excluded.next_at,
            set_by = excluded.set_by, updated_at = excluded.updated_at,
            idle_fired_for = NULL, idle_last_at = NULL, check_failures = 0`,
@@ -175,6 +233,7 @@ export class Wakes {
         text,
         JSON.stringify(trigger),
         check ?? null,
+        checkTimeout,
         now,
         next,
         by,
@@ -215,7 +274,8 @@ export class Wakes {
           .query(`${WITH_SESSION} WHERE w.agent_id = ? ORDER BY w.name`)
           .all(agent)
       : this.db.query(`${WITH_SESSION} ORDER BY w.agent_id, w.name`).all()
-    return (rows as any[]).map((r) => this.view(r))
+    const week = this.stats?.week(agent)
+    return (rows as any[]).map((r) => this.view(r, week))
   }
 
   // An agent's wakes in short: how many, and the one due first.
@@ -355,8 +415,10 @@ export class Wakes {
       wake: row.name,
       text: row.text,
       check: row.check_cmd ?? null,
+      check_timeout_ms: row.check_timeout_ms ?? null,
       trigger: row.trigger,
     })
+    this.stats?.due(row.agent_id, row.name)
     this.history.record("wake.due", {
       agent: row.agent_id,
       data: { name: row.name },

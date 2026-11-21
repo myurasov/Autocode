@@ -289,6 +289,31 @@ test("the reference and the README show a prompt's status line", () => {
   )
 })
 
+// 1: a wake's own time limit for its check.
+test("the reference has a wake's own check timeout: the tool, the command, the setting", () => {
+  const ref = read("reference.md")
+  for (const part of [
+    "| `check_timeout_max` | agent | `10m` |",
+    "[--check COMMAND] [--check-timeout DURATION]`",
+    "check_timeout=5m",
+    "A check may do the routine pass",
+  ])
+    expect(ref, part).toContain(part)
+})
+
+// 2: what each wake costs.
+test("the reference says what each wake costs, where it shows and what is not counted", () => {
+  const ref = read("reference.md")
+  for (const part of [
+    "### What a Wake Costs",
+    "**Last 7 Days**",
+    "| `autocode wakes [AGENT]` | every wake, or one agent's: agent, name, trigger, next, check, turns and cost in the last 7 days, last set, text |",
+    "A turn that OpenCode's own notice starts",
+    "divides each step's cost among them equally",
+  ])
+    expect(ref, part).toContain(part)
+})
+
 // 1.0.1 (the owner, 2026-11-19: "lets implement fix for stale host
 // records"): a host's record goes by itself; the reference said that no
 // command removes one.

@@ -53,11 +53,26 @@ function wakeTable(wakes: any[]): string {
       w.name,
       w.trigger,
       local(w.next),
-      w.check ?? "",
+      // with its own time limit, when it has one (1.1.0)
+      (w.check ?? "") + (w.check_timeout ? ` (up to ${w.check_timeout})` : ""),
+      // what it cost in the last 7 days (1.1.0): the turns its prompts
+      // started, and their dollars
+      String(w.week?.turns ?? ""),
+      w.week ? `$${Number(w.week.usd).toFixed(2)}` : "",
       local(w.updated_at),
       String(w.text).split("\n")[0] ?? "",
     ]),
-    ["AGENT", "NAME", "TRIGGER", "NEXT", "CHECK", "LAST SET", "TEXT"],
+    [
+      "AGENT",
+      "NAME",
+      "TRIGGER",
+      "NEXT",
+      "CHECK",
+      "TURNS 7D",
+      "COST 7D",
+      "LAST SET",
+      "TEXT",
+    ],
   )
 }
 
@@ -79,7 +94,7 @@ export async function wake(args: Parsed): Promise<number> {
     if (!who || !name || !f.trigger || !f.text)
       usage(
         "wake set AGENT NAME --trigger TRIGGER --text TEXT " +
-          "[--check COMMAND]",
+          "[--check COMMAND] [--check-timeout DURATION]",
       )
     const res = await connect(args).call(
       "PUT",
@@ -88,6 +103,7 @@ export async function wake(args: Parsed): Promise<number> {
         text: f.text,
         trigger: f.trigger,
         ...(f.check ? { check: f.check } : {}),
+        ...(f["check-timeout"] ? { check_timeout: f["check-timeout"] } : {}),
       },
     )
     const w = res.wake

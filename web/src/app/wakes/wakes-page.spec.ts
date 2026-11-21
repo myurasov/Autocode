@@ -32,6 +32,9 @@ const BASE = {
   created_at: '2026-10-28T09:00:00.000Z',
   updated_at: '2026-10-28T09:00:00.000Z',
   check_failures: 0,
+  // its own check timeout, and its last 7 days (1.1.0): none, nothing
+  check_timeout: null,
+  week: { due: 0, skipped: 0, turns: 0, usd: 0 },
 };
 
 const WAKES: Wake[] = [
@@ -42,6 +45,10 @@ const WAKES: Wake[] = [
     text: 'Report your progress.\nThen go on.',
     trigger: 'every 30m',
     check: 'test -f /tmp/go',
+    // 1.1.0: a check that does the routine pass, with its own time limit;
+    // what the wake cost in the last 7 days
+    check_timeout: '5m',
+    week: { due: 118, skipped: 1, turns: 117, usd: 225.214 },
     next: '2026-10-28T12:00:00.000Z',
     set_by: 'owner',
     last_fired_at: '2026-10-28T11:30:00.000Z',
@@ -129,6 +136,7 @@ describe('WakesPage', () => {
       'Next',
       'Text',
       'Check',
+      'Last 7 Days',
       'Set By',
       'Last Set',
       'Last Fired',
@@ -165,7 +173,24 @@ describe('WakesPage', () => {
     expect(short.textContent).toBe('Report your progress.\nThen go on.');
     expect(short.querySelector('.more')).toBeNull();
     expect(short.getAttribute('title')).toBeNull();
-    expect(cell(standup, 'check')).toBe('test -f /tmp/go');
+    // its check, and under it how long it may run (1.1.0)
+    expect(standup.querySelector('td.check code')!.textContent).toBe(
+      'test -f /tmp/go',
+    );
+    expect(text(standup.querySelector('td.check .limit'))).toBe('up to 5m');
+    /*
+     * 1.1.0 (the owner, 2026-11-20: what each wake costs): the dollars of
+     * the turns its prompts started in the last 7 days, the turns under
+     * them, and how often it fell due and was skipped in the tooltip.
+     */
+    const week = standup.querySelector('td.week')!;
+    expect(text(week.querySelector('.usd'))).toBe('$225.21');
+    expect(text(week.querySelector('.turns'))).toBe('117 turns');
+    expect(week.classList).toContain('num');
+    expect(week.getAttribute('title')).toBe(
+      'Last 7 days: 117 turns, $225.21. It fell due 118 times; its check ' +
+        'skipped 1.',
+    );
     // A wake has no end (the owner, 2026-11-07).
     expect(standup.querySelector('td.end')).toBeNull();
     expect(cell(standup, 'by')).toBe('owner');
@@ -190,6 +215,10 @@ describe('WakesPage', () => {
     const ping = row(page, 'alpha:one', 'ping');
     expect(cell(ping, 'next')).toBe('—');
     expect(cell(ping, 'check')).toBe('—');
+    expect(ping.querySelector('td.check .limit')).toBeNull();
+    // a wake that never fell due or ran
+    expect(cell(ping, 'week')).toBe('—');
+    expect(ping.querySelector('td.week')!.getAttribute('title')).toBeNull();
     expect(cell(ping, 'fired')).toBe('—');
     expect(cell(ping, 'text')).toBe('Ping.');
     expect(parts(ping.querySelector('td.by code'))).toEqual(['alpha:', 'one']);
@@ -206,7 +235,7 @@ describe('WakesPage', () => {
     expect(parts(standup.querySelector('td.by'))).toEqual(['owner']);
     expect(
       groups[1]!.querySelector('tr.group th')!.getAttribute('colspan'),
-    ).toBe('9');
+    ).toBe('10');
     expect(parts(groups[1]!.querySelector('tr.group th'))).toEqual([
       'kaggle:',
       'lead',
@@ -321,12 +350,25 @@ describe('WakesPage', () => {
   });
 
   // The owner, 2026-11-17: sorting by a heading; newest first by date.
-  it('sorts within each agent, by Last Set (newest first) by default; Name, Trigger, Next, Set By and the times sort', async () => {
+  it('sorts within each agent, by Last Set (newest first) by default; Name, Trigger, Next, Last 7 Days, Set By and the times sort', async () => {
     const at = (h: number) => new Date(Date.UTC(2026, 10, 1, h)).toISOString();
+    const cost = (usd: number) => ({ due: 1, skipped: 0, turns: 1, usd });
     const page = await open([
-      { ...WAKES[0]!, name: 'b', updated_at: at(1), next: at(30) },
-      { ...WAKES[0]!, name: 'a', updated_at: at(9), next: at(10) },
-      { ...WAKES[0]!, name: 'c', updated_at: at(5), next: null },
+      {
+        ...WAKES[0]!,
+        name: 'b',
+        updated_at: at(1),
+        next: at(30),
+        week: cost(9),
+      },
+      {
+        ...WAKES[0]!,
+        name: 'a',
+        updated_at: at(9),
+        next: at(10),
+        week: cost(1),
+      },
+      { ...WAKES[0]!, name: 'c', updated_at: at(5), next: null, week: cost(5) },
     ]);
     const order = () =>
       [...page.querySelectorAll('table.wakes tr[data-wake]')].map((r) =>
@@ -336,12 +378,26 @@ describe('WakesPage', () => {
     const heads = [...page.querySelectorAll('table.wakes thead th')];
     expect(
       heads.filter((h) => h.querySelector('button.sort')).map((h) => text(h)),
-    ).toEqual(['Name', 'Trigger', 'Next', 'Set By', 'Last Set', 'Last Fired']);
+    ).toEqual([
+      'Name',
+      'Trigger',
+      'Next',
+      'Last 7 Days',
+      'Set By',
+      'Last Set',
+      'Last Fired',
+    ]);
     const next = heads.find((h) => text(h) === 'Next')!;
     // the soonest first is what one wants of Next: a click puts it so
     (next.querySelector('button.sort') as HTMLButtonElement).click();
     await settle(fixture);
     expect(order()).toEqual(['a', 'b', 'c']);
+    // 1.1.0: the costliest wake first
+    const week = heads.find((h) => text(h) === 'Last 7 Days')!;
+    expect(week.classList).toContain('num');
+    (week.querySelector('button.sort') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(order()).toEqual(['b', 'c', 'a']);
   });
 
   it('says when there are no wakes yet', async () => {
@@ -433,7 +489,13 @@ describe('WakesPage', () => {
       'Trigger',
       'Text',
       'Check',
+      // 1.1.0: the check's own time limit
+      'Check Timeout',
     ]);
+    expect(
+      (page.querySelector('#wake-check-timeout') as HTMLInputElement)
+        .placeholder,
+    ).toBe('optional: like 5m');
     expect(page.querySelector('#wake-end')).toBeNull();
     const set = () => button(form, 'Set Wake')!;
     expect(set().disabled).toBe(true);
@@ -469,6 +531,7 @@ describe('WakesPage', () => {
     type(page.querySelector('#wake-trigger'), 'idle 30m');
     type(page.querySelector('#wake-text'), 'Go on.');
     type(page.querySelector('#wake-check'), 'test -f go');
+    type(page.querySelector('#wake-check-timeout'), ' 5m ');
     await settle(fixture);
     set().click();
     const full = http.expectOne('/v1/agents/kaggle%3Aworker/wakes/until');
@@ -476,6 +539,7 @@ describe('WakesPage', () => {
       text: 'Go on.',
       trigger: 'idle 30m',
       check: 'test -f go',
+      check_timeout: '5m',
     });
     full.flush({ wake: WAKES[0] });
     await settle(fixture);

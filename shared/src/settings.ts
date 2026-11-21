@@ -117,6 +117,14 @@ export const SETTINGS: Record<string, SettingDef> = {
     default: "60s",
     help: "a wake's check is stopped after this long",
   },
+  // 1.1.0 (the owner, 2026-11-20): a wake may ask for more time for its own
+  // check (a check that does the routine pass), up to this.
+  check_timeout_max: {
+    kind: "duration",
+    scope: "agent",
+    default: "10m",
+    help: "the longest time a wake may ask for its own check",
+  },
   check_output: {
     kind: "int",
     scope: "agent",

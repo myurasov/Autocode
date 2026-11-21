@@ -472,6 +472,134 @@ describe("checks", () => {
   })
 })
 
+/*
+ * 1.1.0 (the owner, 2026-11-20, from the review of real sessions: hourly
+ * wakes whose turns ran a script and found nothing; the script could not be
+ * the check, which stops after 60 s): a wake may ask for more time for its
+ * own check, up to the owner's check_timeout_max.
+ */
+describe("a wake's own check timeout", () => {
+  const set = (name: string, body: Record<string, unknown>) =>
+    as(a, "PUT", `/v1/me/wakes/${name}`, {
+      text: "Work.",
+      trigger: "every 1m",
+      check: "./hourly.sh",
+      ...body,
+    })
+  const failed = async () =>
+    (await owner("GET", "/v1/history?kind=wake.check_failed")).body.history
+      .length
+
+  test("check_timeout on a wake: its check gets that long; without it the owner's check_timeout", async () => {
+    const long = await set("long", { check_timeout: "5m" })
+    expect([long.status, long.body.wake.check_timeout]).toEqual([201, "5m"])
+    const plain = await set("plain", {})
+    expect(plain.body.wake.check_timeout).toBeNull()
+    t.clock.advance(MIN)
+    t.server.tick()
+    const checks = await waiting("check")
+    expect(
+      checks.map((c) => c.payload.timeout_ms).sort((x, y) => x - y),
+    ).toEqual([60_000, 300_000])
+    // setting it again without one takes it away
+    expect((await set("long", {})).body.wake.check_timeout).toBeNull()
+  })
+
+  test("refused: more than check_timeout_max (10m unless the owner set another), less than 1s, no duration, or no check", async () => {
+    const over = await set("w", { check_timeout: "11m" })
+    expect([over.status, over.body.error.code]).toEqual([400, "bad_request"])
+    expect(over.body.error.message).toBe(
+      "a check may run 10m at most here (the owner's check_timeout_max); " +
+        "got 11m",
+    )
+    for (const bad of ["soon", "0s", "500ms", 5, ""])
+      expect((await set("w", { check_timeout: bad })).status, String(bad)).toBe(
+        400,
+      )
+    const none = await as(a, "PUT", "/v1/me/wakes/w", {
+      text: "Work.",
+      trigger: "every 1m",
+      check_timeout: "5m",
+    })
+    expect(none.status).toBe(400)
+    expect(none.body.error.message).toContain("a check_timeout needs a check")
+    expect((await as(a, "GET", "/v1/me/wakes")).body.wakes).toEqual([])
+    // the owner gives this agent more
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { check_timeout_max: "30m" } },
+    })
+    expect((await set("w", { check_timeout: "25m" })).status).toBe(201)
+    // and takes it back: the wake stays, its check gets the maximum
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { check_timeout_max: "2m" } },
+    })
+    t.clock.advance(MIN)
+    t.server.tick()
+    const [check] = await waiting("check")
+    expect(check.payload.timeout_ms).toBe(120_000)
+    const view = (await owner("GET", "/v1/settings")).body
+    expect(view.defaults.check_timeout_max).toBe("10m")
+    expect(view.schema.check_timeout_max).toMatchObject({
+      kind: "duration",
+      scope: "agent",
+    })
+  })
+
+  test("a long check is not given up after the owner's check_timeout; past its own limit it fails", async () => {
+    await set("long", { check_timeout: "5m" })
+    t.clock.advance(MIN)
+    t.server.tick()
+    const [check] = await waiting("check")
+    // four minutes without an answer: still running
+    t.clock.advance(4 * MIN)
+    t.server.tick()
+    expect(await failed()).toBe(0)
+    // it answers within its five minutes: the agent is woken
+    await ack(t, HOST, check.id, { exit: 0, output: "2 runs ended" })
+    const [prompt] = await tick()
+    expect(prompt.payload.text).toContain("Its check said:\n> 2 runs ended")
+    await turn()
+    // the next one never answers: given up two minutes past its own limit
+    t.clock.advance(MIN)
+    t.server.tick()
+    expect((await waiting("check")).length).toBe(1)
+    t.clock.advance(6 * MIN)
+    t.server.tick()
+    expect(await failed()).toBe(0)
+    t.clock.advance(2 * MIN)
+    t.server.tick()
+    expect(await failed()).toBe(1)
+  })
+
+  test("while a long check runs, a fired wake waits only the owner's check_timeout; the check's result comes after that turn", async () => {
+    await set("long", { check_timeout: "5m" })
+    await as(a, "PUT", "/v1/me/wakes/job-done", {
+      text: "The job ended.",
+      trigger: "fire-only once",
+    })
+    t.clock.advance(MIN)
+    t.server.tick()
+    const [check] = await waiting("check")
+    await as(a, "POST", "/v1/agents/team:a/wakes/job-done/fire")
+    // half a minute: it waits for the check, to come in one prompt
+    t.clock.advance(MIN / 2)
+    expect(await tick()).toEqual([])
+    // a minute: it comes alone
+    t.clock.advance(MIN / 2)
+    const [first] = await tick()
+    expect(first.payload.text).toStartWith(
+      '[autocode] wake "job-done" fired by team:a\n',
+    )
+    expect(first.payload.text).not.toContain('Wake "long"')
+    // the check ends during that turn; its wake comes after it
+    await ack(t, HOST, check.id, { exit: 0, output: "1 run ended" })
+    await turn()
+    t.clock.advance(MIN)
+    const [second] = await tick()
+    expect(second.payload.text).toContain("Its check said:\n> 1 run ended")
+  })
+})
+
 describe("idle wakes", () => {
   const due = async () =>
     (await owner("GET", "/v1/history?kind=wake.due&agent=team:a")).body.history

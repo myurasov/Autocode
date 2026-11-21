@@ -294,6 +294,11 @@ export interface Wake {
   updated_at: string;
   last_fired_at: string | null;
   check_failures: number;
+  // its check's own time limit ("5m"), or null: check_timeout (1.1.0)
+  check_timeout?: string | null;
+  // its last 7 days (1.1.0): how often it fell due, how often its check
+  // skipped it, the turns its prompts started and their dollars
+  week?: { due: number; skipped: number; turns: number; usd: number };
 }
 
 // A wake as set: it has no end (the owner, 2026-11-07).
@@ -301,6 +306,7 @@ export interface WakeInput {
   text: string;
   trigger: string;
   check?: string;
+  check_timeout?: string;
 }
 
 // A message: always text (the owner, 2026-11-07).
