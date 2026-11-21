@@ -58,7 +58,7 @@ Tailscale encrypts it, and on a plain LAN the tokens travel unencrypted.
    ci/dist.sh
    ```
 
-   It worked if the last line names the build, like `build 1: v1.1.0-rc1-build1`. The binary is `dist/autocode`, for
+   It worked if the last line names the build, like `build 1: v1.1.0-rc2-build1`. The binary is `dist/autocode`, for
    this machine's CPU. For another CPU, or for a Mac, run `AUTOCODE_TARGETS=all ci/dist.sh`: it also makes
    `dist/autocode-linux-x64`, `dist/autocode-linux-arm64` and `dist/autocode-darwin-arm64`.
 
@@ -120,7 +120,7 @@ Tailscale encrypts it, and on a plain LAN the tokens travel unencrypted.
 
 | Run | It worked if |
 |---|---|
-| `autocode info` | it prints `server home, autocode v1.1.0-rc1-build1, for OpenCode v2.3.0 or later, at ...`, with your build's number |
+| `autocode info` | it prints `server home, autocode v1.1.0-rc2-build1, for OpenCode v2.3.0 or later, at ...`, with your build's number |
 | `systemctl --user status autocode` on `machine-a` | it says `active (running)` |
 | `autocode hosts`, after OpenCode has opened a project folder | that machine and folder are listed, with `yes` under ONLINE and the plugin's version under PLUGIN |
 | in an OpenCode session: "what is your Autocode status?" | the agent calls `autocode_me` and answers; it is not registered at first |
