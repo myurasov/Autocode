@@ -242,6 +242,7 @@ An agent that wakes itself every 30 minutes.
    Wake "tick" (every 30m; next 2026-11-17 14:30 PST):
    Append the current date and time to wake.log.
 
+   Server time 2026-11-17 14:02 PST. Context: 14,210 tokens, 14.2% of compact_at (100,000). Cost today: $0.04 (no daily cap).
    — From Autocode, not the owner. Your wakes: autocode_wake list. How Autocode works: autocode_me action=help.
    ```
 

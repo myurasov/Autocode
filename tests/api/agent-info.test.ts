@@ -176,6 +176,12 @@ describe("what an injected prompt says", () => {
       "— From Autocode, not the owner. Your wakes: autocode_wake list. " +
         "How Autocode works: autocode_me action=help.",
     )
+    // 1.1.0 (the owner, 2026-11-20): the line before it says the server's
+    // time and today's spend; the context once a step has reported one
+    expect(lines.slice(-3, -1)).toEqual([
+      "",
+      "Server time 2026-10-28 05:30 PDT. Cost today: $0.00 (no daily cap).",
+    ])
   })
 
   test("one-shot, idle, fire-only and cron wakes say what they are", async () => {

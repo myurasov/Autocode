@@ -158,6 +158,74 @@ describe("an agent's spend and context", () => {
 })
 
 // The owner, 2026-11-08: each agent's model, from its last step.
+/*
+ * 1.1.0 (the owner, 2026-11-20, from the review of real sessions: agents
+ * called autocode_me status in 176 of 235 hourly turns to learn these): the
+ * line before a prompt's footer says the server's time, the context against
+ * compact_at and today's spend against the cap.
+ */
+describe("a prompt's status line", () => {
+  // The line before the footer of the prompt a fired wake brings.
+  async function line(): Promise<string> {
+    await owner("POST", "/v1/agents/team:a/wakes/w/fire")
+    t.clock.advance(2000)
+    t.server.tick()
+    const [prompt] = (await instructions(t, HOST)).filter(
+      (i) => i.type === "inject",
+    )
+    await ack(t, HOST, prompt.id, { ok: true })
+    await report(t, HOST, [
+      { type: "turn.started", session: "ses_a" },
+      { type: "turn.ended", session: "ses_a", outcome: "succeeded" },
+    ])
+    const lines: string[] = prompt.payload.text.split("\n")
+    expect(lines.at(-1)).toStartWith("— From Autocode, not the owner.")
+    return lines.at(-2)!
+  }
+
+  test("the time, the context with its share of compact_at, the spend and the cap", async () => {
+    await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "fire-only" })
+    // nothing known yet: the time and the spend
+    expect(await line()).toBe(
+      "Server time 2026-10-28 05:00 PDT. Cost today: $0.00 (no daily cap).",
+    )
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { daily_usd: 1000, compact_at: 500_000 } },
+    })
+    await report(t, HOST, [step(41.2, 331_204)])
+    expect(await line()).toBe(
+      "Server time 2026-10-28 05:00 PDT. Context: 331,204 tokens, 66.2% " +
+        "of compact_at (500,000). Cost today: $41.20 of your daily cap of " +
+        "$1000.00.",
+    )
+    // the same numbers as the agent's status
+    expect((await as(a, "GET", "/v1/me")).body.cost).toMatchObject({
+      today_usd: 41.2,
+      context: 331_204,
+      compact_at: 500_000,
+      context_share: 66.2,
+    })
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { daily_usd: "off", compact_at: "off" } },
+    })
+    expect(await line()).toBe(
+      "Server time 2026-10-28 05:00 PDT. Context: 331,204 tokens " +
+        "(compact_at off). Cost today: $41.20 (no daily cap).",
+    )
+  })
+
+  test("a message's prompt and a notice have it too", async () => {
+    await owner("POST", "/v1/messages", { to: "team:a", text: "Hello." })
+    t.server.tick()
+    const [prompt] = (await instructions(t, HOST)).filter(
+      (i) => i.type === "inject",
+    )
+    expect(prompt.payload.text.split("\n").at(-2)).toBe(
+      "Server time 2026-10-28 05:00 PDT. Cost today: $0.00 (no daily cap).",
+    )
+  })
+})
+
 describe("an agent's model", () => {
   test("the last step's model is the agent's, on its view, /v1/me and /v1/costs", async () => {
     expect((await owner("GET", "/v1/agents/team:a")).body.agent.model).toBe(

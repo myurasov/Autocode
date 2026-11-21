@@ -29,6 +29,11 @@ const MIN = 60_000
 const FOOTER =
   "— From Autocode, not the owner. Your wakes: autocode_wake list. " +
   "How Autocode works: autocode_me action=help."
+// The two lines that end a prompt (1.1.0): the server's time and the
+// agent's spend at that time of day, then the footer.
+const footer = (time: string) =>
+  `Server time 2026-10-28 ${time} PDT. Cost today: $0.00 (no daily cap).\n` +
+  FOOTER
 
 const as = (token: string, method: string, path: string, body?: unknown) =>
   call(t.url, token, method, path, body)
@@ -110,7 +115,7 @@ describe("the error state", () => {
       "[autocode] retry 1\n\n" +
         "Your last turn failed: provider.internal (at 2026-10-28 05:00 " +
         "PDT). Continue where you left off.\n\n" +
-        FOOTER,
+        footer("05:01"),
     ])
     expect((await agent()).error).toMatchObject({
       retries: 1,

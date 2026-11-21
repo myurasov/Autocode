@@ -5,7 +5,9 @@
  * per min_interval, only while the session is idle, its host online and the
  * agent not paused; each injection one prompt with the [autocode] header, in
  * which what agents wrote is quoted, each wake says what kind it is and when
- * it runs next, and a footer says where the prompt comes from. Notices (lock
+ * it runs next, and a footer says where the prompt comes from; the line
+ * before it says the server's time, the agent's context and today's spend
+ * (1.1.0). Notices (lock
  * grants and expiries: messages from autocode) say what they are in the header
  * and are Autocode's own text, not quoted (tier 0c). Messages come whole, in
  * their order, up to 32,000 characters a prompt (Phase 1). Past compact_at an
@@ -26,7 +28,7 @@ import {
   resolveSettings,
   type Trigger,
 } from "@autocode/shared"
-import type { CompactDue } from "./costs.ts"
+import type { CompactDue, CostView } from "./costs.ts"
 import type { History } from "./history.ts"
 import { type Hosts, refusedAsOld } from "./hosts.ts"
 import type { Loader } from "./loader.ts"
@@ -56,6 +58,36 @@ export function promptId(now: number): string {
 export const FOOTER =
   "— From Autocode, not the owner. Your wakes: autocode_wake list. " +
   "How Autocode works: autocode_me action=help."
+
+/*
+ * The line before the footer (1.1.0; the owner, 2026-11-20: agents called
+ * autocode_me status in most hourly turns to learn these, each call a step
+ * that re-reads the whole context): the server's time in its zone, the
+ * agent's context against compact_at once a step has reported one, and
+ * today's spend against the daily cap. In status's own words.
+ */
+export function statusLine(now: number, tz: string, cost?: CostView): string {
+  const n = (x: number) => x.toLocaleString("en-US")
+  const usd = (x: number) => `$${x.toFixed(2)}`
+  const parts = [`Server time ${localTime(now, tz)}.`]
+  if (!cost) return parts[0]!
+  if (cost.context !== null) {
+    const share =
+      cost.compact_at === null
+        ? " (compact_at off)"
+        : cost.context_share === null
+          ? ""
+          : `, ${cost.context_share}% of compact_at (${n(cost.compact_at)})`
+    parts.push(`Context: ${n(cost.context)} tokens${share}.`)
+  }
+  parts.push(
+    `Cost today: ${usd(cost.today_usd)}` +
+      (cost.daily_usd === "off"
+        ? " (no daily cap)."
+        : ` of your daily cap of ${usd(Number(cost.daily_usd))}.`),
+  )
+  return parts.join(" ")
+}
 
 const who = (id: string) =>
   id === "owner" ? "the owner" : id === "autocode" ? "Autocode" : `agent ${id}`
@@ -95,6 +127,8 @@ export class Delivery {
     compactNotice(due: CompactDue): { header: string; text: string }
     compactNoticed(agent: string, due: CompactDue, steer?: boolean): void
     injected(agent: string): void
+    // the agent's spend and context, for a prompt's status line (1.1.0)
+    view(agent: string): CostView
     resumeNote(agent: string): { header: string; text: string } | null
     resumed(agent: string): void
   }
@@ -830,7 +864,8 @@ export class Delivery {
         ? "These came while your turn runs: take them into account, then " +
           "go on with your work.\n\n"
         : "") +
-      `${sections.join("\n\n")}\n\n${FOOTER}`
+      `${sections.join("\n\n")}\n\n` +
+      `${statusLine(this.now(), tz, this.costs?.view(row.id))}\n${FOOTER}`
     const now = this.now()
     const id = promptId(now)
     const instruction = this.hosts.enqueue(row.host_id, "inject", {

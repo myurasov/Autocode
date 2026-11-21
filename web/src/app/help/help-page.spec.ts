@@ -395,6 +395,12 @@ describe('HelpPage', () => {
     expect(rows(table)[6]![1]!).toContain(
       'the same, for one fire: the wake is removed when it is fired',
     );
+    // 1.1.0 (the owner, 2026-11-20): what ends every prompt
+    expect(section(page, 'wakes')).toContain(
+      "Every prompt from Autocode ends with two lines: the server's time, " +
+        "the agent's context and what it spent today; then that the " +
+        'prompt comes from Autocode, not from you.',
+    );
     const idle = rows(table)[4]![1]!;
     expect(idle).toContain('end of its last turn');
     // never from before the wake was set

@@ -26,6 +26,11 @@ const MIN = 60_000
 const FOOTER =
   "— From Autocode, not the owner. Your wakes: autocode_wake list. " +
   "How Autocode works: autocode_me action=help."
+// The two lines that end a prompt (1.1.0): the server's time and the
+// agent's spend at that time of day, then the footer.
+const footer = (time: string) =>
+  `Server time 2026-10-28 ${time} PDT. Cost today: $0.00 (no daily cap).\n` +
+  FOOTER
 
 const owner = (method: string, path: string, body?: unknown) =>
   call(t.url, t.admin, method, path, body)
@@ -154,7 +159,7 @@ describe("notices", () => {
         "of 10m counts from the grant. Renew it before then " +
         "(autocode_lock action=renew name=gpu-0); release it when you are " +
         "done (action=release).\n\n" +
-        FOOTER,
+        footer("05:00"),
     )
     expect(sent.ses_a).toBeUndefined()
     // it is a message from autocode, carried whole: read
@@ -184,7 +189,7 @@ describe("notices", () => {
         'Your hold on lock "gpu-0" ran out at 2026-10-28 05:02 PDT (its ' +
         "ttl was 2m) and was freed; another agent may hold it now. " +
         "Acquire it again if you still need it.\n\n" +
-        FOOTER,
+        footer("05:02"),
     )
     expect(sent.ses_b).toStartWith('[autocode] lock "gpu-0" granted\n\n')
     expect(await holders("gpu-0")).toEqual(["team:b"])
@@ -248,7 +253,7 @@ describe("the owner and the agent", () => {
         'The owner released your hold on lock "gpu-0" at 2026-10-28 05:00 ' +
         "PDT; another agent may hold it now. Acquire it again if you still " +
         "need it.\n\n" +
-        FOOTER,
+        footer("05:00"),
     )
     expect(sent.ses_b).toStartWith('[autocode] lock "gpu-0" granted')
     expect((await kinds("lock.released"))[0].data).toMatchObject({
@@ -311,7 +316,7 @@ describe("review findings", () => {
         'The owner took you out of the queue of lock "gpu-0" at 2026-10-28 ' +
         "05:00 PDT; it will not be granted to you. Acquire it again if you " +
         "still need it.\n\n" +
-        FOOTER,
+        footer("05:00"),
     )
   })
 

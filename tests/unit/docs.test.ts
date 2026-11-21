@@ -268,6 +268,27 @@ test("the reference has the one-shot fire-only wake: the trigger, the example an
     expect(ref, part).toContain(part)
 })
 
+// 3: the status line before a prompt's footer.
+test("the reference and the README show a prompt's status line", () => {
+  const ref = read("reference.md")
+  // the line as the server writes it, above the footer
+  const line =
+    "Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of " +
+    "compact_at (100,000). Cost today: $3.10 (no daily cap).\n" +
+    "— From Autocode, not the owner."
+  expect(ref).toContain(line)
+  expect(ref).toContain(
+    "| Status line | the server's time in its zone; the agent's context " +
+      "and its share of `compact_at`, once a step has reported one; " +
+      "today's spend, and the daily cap where the agent has one.",
+  )
+  expect(read("README.md")).toContain(
+    "Server time 2026-11-17 14:02 PST. Context: 14,210 tokens, 14.2% of " +
+      "compact_at (100,000). Cost today: $0.04 (no daily cap).\n" +
+      "   — From Autocode, not the owner.",
+  )
+})
+
 // 1.0.1 (the owner, 2026-11-19: "lets implement fix for stale host
 // records"): a host's record goes by itself; the reference said that no
 // command removes one.
