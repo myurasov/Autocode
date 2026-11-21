@@ -1673,10 +1673,13 @@ autocode job set daily-report --host HOST --model MODEL \
       <li>
         Last 7 Days: what the wake cost: the dollars of the turns that its
         prompts started, and the turns under them. Hover for how often it
-        fell due and how often its check skipped it. Not counted: turns that
-        you start, and turns that OpenCode's own notices start, like a
-        Subagent's result. A wake that costs much and mostly finds nothing to
-        do belongs in a check: see
+        fell due and how often its check skipped it. A Subagent or a
+        background command that a wake's turn starts stays with that wake:
+        its steps, and the turn that OpenCode starts by itself when its
+        result comes or the command finishes, count for that wake, also when
+        other wakes' turns ran meanwhile. Not counted: turns that you start.
+        A wake that costs much and mostly finds nothing to do belongs in a
+        check: see
         <a routerLink="/help" fragment="wakes">{{ sec.wakes.label }}</a>.
       </li>
       <li>

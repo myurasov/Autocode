@@ -13,6 +13,9 @@ export function costEvent(
   session: string,
   data: any,
   model: { model?: string; limit?: number; effort?: string; name?: string },
+  // the session the step ran in, when it is a Subagent's (1.1.0-rc2: its
+  // steps count for the wake whose turn started it)
+  own?: string,
 ) {
   const usd = Number(data?.cost)
   if (typeof data?.cost !== "number" || !Number.isFinite(usd) || usd < 0)
@@ -25,6 +28,7 @@ export function costEvent(
   return {
     type: "cost",
     session,
+    ...(own && own !== session ? { sub: own } : {}),
     // the step's message, so a step sent twice counts once
     ...(typeof data?.assistantMessageID === "string"
       ? { step: data.assistantMessageID }

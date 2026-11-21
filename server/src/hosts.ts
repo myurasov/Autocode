@@ -116,8 +116,16 @@ export class Hosts {
   // A session showed life: its turn started or ended, or it ran a step.
   onActivity: (session: string) => void = () => {}
   // A session's turn started: from which prompt of Autocode's (an
-  // injection's ID), or null for the owner's or OpenCode's own (1.1.0).
+  // injection's ID; for a turn that OpenCode's own notice started, the
+  // prompt of the turn before it), or null for the owner's (1.1.0).
   onTurnStarted: (session: string, cause: string | null) => void = () => {}
+  // Work that outlives its turn (1.1.0-rc2, exact attribution): the plugin
+  // reported one, and the prompt of the turn that started a known one
+  // (null: no prompt's turn did; undefined: not known).
+  onWorkStarted: (session: unknown, ref: unknown, parent: unknown) => void =
+    () => {}
+  workCause: (session: string, ref: unknown) => string | null | undefined =
+    () => undefined
   onCut: (session: string) => void = () => {}
   // A host said hello (the loader alerts again after a new outage), with
   // the plugin's body (its pending forms and requests, per session).
@@ -442,7 +450,12 @@ export class Hosts {
     } catch {}
   }
 
-  private turnStarted(session: string, at?: unknown) {
+  private turnStarted(
+    session: string,
+    at?: unknown,
+    by?: unknown,
+    ref?: unknown,
+  ) {
     if (!this.fresh(session, at, "started")) return
     /*
      * The prompt that started this turn (1.1.0: what each wake costs): a
@@ -450,15 +463,17 @@ export class Hosts {
      * prompt's, the one handed over at inject_pending_at. A prompt that
      * went into a running turn started none.
      */
-    const pending = (
-      this.db
-        .query(
-          "SELECT inject_pending_at FROM sessions " +
-            "WHERE id = ? AND deleted_at IS NULL",
-        )
-        .get(session) as { inject_pending_at: number | null } | null
-    )?.inject_pending_at
-    const cause = pending
+    const before = this.db
+      .query(
+        "SELECT inject_pending_at, turn_cause FROM sessions " +
+          "WHERE id = ? AND deleted_at IS NULL",
+      )
+      .get(session) as {
+      inject_pending_at: number | null
+      turn_cause: string | null
+    } | null
+    const pending = before?.inject_pending_at
+    const prompted = pending
       ? ((
           this.db
             .query(
@@ -469,6 +484,29 @@ export class Hosts {
             .get(session, pending) as { id: string } | null
         )?.id ?? null)
       : null
+    /*
+     * A turn that OpenCode's own notice started (1.1.0-rc2; the plugin's
+     * `by`: a Subagent's result, a background shell's end) is work that the
+     * turn before it began: it keeps that turn's prompt, and counts for
+     * the same wakes. A turn the owner started, a compaction, and a turn
+     * whose start the plugin does not explain have none. A notice names its
+     * work (`ref`: a command, a Subagent): where the turn that started that
+     * work is known, the notice's turn is that turn's (exact attribution),
+     * nobody's for work that the owner's turn started; else it keeps the
+     * prompt of the turn before it.
+     */
+    let worked: string | null | undefined
+    if (by === "notice" && ref !== undefined)
+      try {
+        worked = this.workCause(session, ref)
+      } catch {}
+    const cause =
+      prompted ??
+      (by === "notice"
+        ? worked !== undefined
+          ? worked
+          : (before?.turn_cause ?? null)
+        : null)
     const res = this.db
       .query(
         "UPDATE sessions SET busy = 1, turn_started_at = ?, " +
@@ -660,7 +698,11 @@ export class Hosts {
         typeof event.session === "string"
       ) {
         this.active(event.session)
-        this.turnStarted(event.session, event.at)
+        this.turnStarted(event.session, event.at, event.by, event.ref)
+      } else if (event.type === "work.started") {
+        try {
+          this.onWorkStarted(event.session, event.ref, event.parent)
+        } catch {}
       } else if (
         event.type === "turn.ended" &&
         typeof event.session === "string"

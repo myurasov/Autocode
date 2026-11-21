@@ -374,6 +374,21 @@ describe('HelpPage', () => {
       'A wake that costs much and mostly finds nothing to do belongs in a ' +
         'check',
     );
+    // 1.1.0-rc2 (the owner, 2026-11-20: "can we fix that?"): the turns
+    // that OpenCode starts by itself after a wake's turn count for it
+    // exact attribution (the owner, 2026-11-21: "ok, lets build it!")
+    expect(section(page, 'web-wakes')).toContain(
+      "A Subagent or a background command that a wake's turn starts stays " +
+        'with that wake: its steps, and the turn that OpenCode starts by ' +
+        'itself when its result comes or the command finishes, count for ' +
+        "that wake, also when other wakes' turns ran meanwhile.",
+    );
+    expect(section(page, 'web-wakes')).toContain(
+      'Not counted: turns that you start.',
+    );
+    expect(section(page, 'web-wakes')).not.toContain(
+      "turns that OpenCode's own notices start, like",
+    );
     expect(section(page, 'web-wakes')).toContain(
       'Agent ID, Name, Trigger and Text, and Check and Check Timeout if ' +
         'you want them',

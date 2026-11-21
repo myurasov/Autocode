@@ -605,17 +605,23 @@ that comes to, per wake, for the last 7 days: today and the six days before.
 |---|---|
 | due | how often the wake fell due, by its schedule or by idle time. A fire is not counted here |
 | skipped | how often its check skipped it, with exit 1. A skipped run costs nothing |
-| turns | the turns that its prompts started |
-| dollars | the model steps of those turns, the agent's Subagents' steps too |
+| turns | the turns that its prompts started, and the turns that OpenCode started by itself for work they began |
+| dollars | the model steps of those turns, and of the Subagents they started, however long those work |
 
 Where it shows: `autocode_wake action=list` and `action=show` for the agent; `autocode wakes` and the Wakes tab's
 **Last 7 Days** for you.
 
 - **A prompt with several wakes** divides each step's cost among them equally. Messages in the same prompt take
   no share.
-- **Not counted:** a turn that you start in the session. A turn that OpenCode's own notice starts, like a
-  Subagent's result or a background command that ended: it often follows a wake's turn, so the real cost of a
-  wake can be higher. A job's runs: see the Jobs and Costs tabs. Compactions.
+- **Work that outlives its turn stays with its wake.** A wake's turn may start a Subagent or a background
+  command and end. When the Subagent's result comes or the command finishes, OpenCode starts a turn by itself:
+  that turn is one more turn of the wake that started the work, also when other wakes' turns ran meanwhile. A
+  Subagent's own steps count for that wake too, however long it works. With several wakes in the prompt, the
+  shares stay the same.
+- **Not counted:** a turn that you start in the session, and the work it starts. A job's runs: see the Jobs and
+  Costs tabs. Compactions.
+- **Where the start of some work is not known,** because the plugin was loaded after it began, its turn counts
+  for the wake of the turn before it.
 - **The numbers stay with the agent and the wake's name.** Setting the wake again keeps them. They go when the
   agent unregisters, and after `history_days`, though never in less than 31 days.
 - **What to do about a costly wake.** If most of its turns find nothing to do, move the routine pass into its

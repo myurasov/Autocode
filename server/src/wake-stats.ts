@@ -5,11 +5,15 @@
  * it, the turns its prompts started, and those turns' steps and dollars. A
  * session's turn is its prompt's (sessions.turn_cause, an injection's ID)
  * from its start until the session's next turn starts; a prompt with
- * several wakes divides a step's cost among them equally.
+ * several wakes divides a step's cost among them equally. A turn that
+ * OpenCode's own notice starts (a Subagent's result, a background shell's
+ * end) keeps the prompt of the turn before it: one more turn of the same
+ * wakes (1.1.0-rc2; the owner, 2026-11-20: "can we fix that?").
  */
 
 import type { Database } from "bun:sqlite"
 import { dayBefore } from "./costs.ts"
+import type { TurnWork } from "./turn-work.ts"
 
 // A wake's last 7 days: today and the six days before, the server's days.
 export interface WakeWeek {
@@ -30,6 +34,9 @@ export class WakeStats {
     private readonly day: (at?: number) => string,
     private readonly now: () => number,
   ) {}
+
+  // The work that outlives its turn (exact attribution): set by the server.
+  work?: TurnWork
 
   private add(
     agent: string,
@@ -73,7 +80,8 @@ export class WakeStats {
     }
   }
 
-  // A turn started from a prompt of Autocode's: a turn of each of its wakes.
+  // A turn started from a prompt of Autocode's, or after such a turn from
+  // OpenCode's own notice: a turn of each of that prompt's wakes.
   turnStarted(injection: string | null) {
     const cause = injection ? this.cause(injection) : null
     for (const name of cause?.wakes ?? []) this.add(cause!.agent, name, "turns")
@@ -82,12 +90,18 @@ export class WakeStats {
   /*
    * A model step of a session, counted once by the caller: it belongs to
    * the wakes of the prompt that started the session's last turn, in equal
-   * shares. A turn the owner or OpenCode started has no such prompt.
+   * shares. A turn the owner started has no such prompt.
    */
-  step(session: string, usd: number) {
-    const row = this.db
-      .query("SELECT turn_cause FROM sessions WHERE id = ?")
-      .get(session) as { turn_cause: string | null } | null
+  step(session: string, usd: number, sub?: unknown) {
+    // a Subagent's step (`sub`, its own session) is its work's: the prompt
+    // of the turn that started the Subagent, whatever turn runs now
+    const own = sub === undefined ? undefined : this.work?.causeOf(session, sub)
+    const row =
+      own !== undefined
+        ? { turn_cause: own }
+        : (this.db
+            .query("SELECT turn_cause FROM sessions WHERE id = ?")
+            .get(session) as { turn_cause: string | null } | null)
     const cause = row?.turn_cause ? this.cause(row.turn_cause) : null
     if (!cause) return
     for (const name of cause.wakes)

@@ -686,6 +686,22 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE messages ADD COLUMN report INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE inbox ADD COLUMN report INTEGER NOT NULL DEFAULT 0;
   `,
+  /*
+   * 27 (1.1.0-rc2; the owner, 2026-11-21: "ok, lets build it!"): exact
+   * attribution of a wake's cost. The work that outlives its turn (a
+   * background command, a Subagent), by its session and a ref, with the
+   * prompt that had started the session's turn then (an injection's ID;
+   * none for work that the owner's turn started).
+   */
+  `
+  CREATE TABLE turn_work (
+    session_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    cause TEXT,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (session_id, ref)
+  );
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

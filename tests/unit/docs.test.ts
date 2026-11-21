@@ -308,7 +308,14 @@ test("the reference says what each wake costs, where it shows and what is not co
     "### What a Wake Costs",
     "**Last 7 Days**",
     "| `autocode wakes [AGENT]` | every wake, or one agent's: agent, name, trigger, next, check, turns and cost in the last 7 days, last set, text |",
-    "A turn that OpenCode's own notice starts",
+    // 1.1.0-rc2 (the owner, 2026-11-20: "can we fix that?"): such a turn
+    // counts for the wake before it
+    "| turns | the turns that its prompts started, and the turns that OpenCode started by itself for work they began |",
+    // exact attribution (the owner, 2026-11-21: "ok, lets build it!")
+    "| dollars | the model steps of those turns, and of the Subagents they started, however long those work |",
+    "- **Work that outlives its turn stays with its wake.**",
+    "also when other wakes' turns ran meanwhile",
+    "- **Not counted:** a turn that you start in the session, and the work it starts.",
     "divides each step's cost among them equally",
   ])
     expect(ref, part).toContain(part)

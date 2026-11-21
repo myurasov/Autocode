@@ -59,6 +59,23 @@ describe("cost events", () => {
     ).toBe(false)
   })
 
+  // 1.1.0-rc2, exact attribution (the owner, 2026-11-21): a Subagent's
+  // step says its own session, so that it counts for the wake whose turn
+  // started the Subagent
+  test("a Subagent's step says its own session; the session's own step says none", () => {
+    const data = { cost: 0.5, tokens: { input: 10 }, assistantMessageID: "m1" }
+    expect(costEvent("ses_root", data, {}, "ses_child")).toMatchObject({
+      type: "cost",
+      session: "ses_root",
+      sub: "ses_child",
+      usd: 0.5,
+    })
+    expect(costEvent("ses_root", data, {}, "ses_root")).not.toHaveProperty(
+      "sub",
+    )
+    expect(costEvent("ses_root", data, {})).not.toHaveProperty("sub")
+  })
+
   test("a step without a cost or tokens is none", () => {
     expect(costEvent("ses_a", { ...STEP.data, cost: "x" }, {})).toBeUndefined()
     expect(

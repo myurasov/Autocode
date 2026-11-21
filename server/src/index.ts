@@ -54,6 +54,7 @@ import {
   rotateOwnerToken,
   touchToken,
 } from "./tokens.ts"
+import { TurnWork } from "./turn-work.ts"
 import { WakeStats } from "./wake-stats.ts"
 import { notRegistered, Wakes } from "./wakes.ts"
 import { type WebFiles, webHandler } from "./web.ts"
@@ -322,6 +323,13 @@ export async function startServer(
   wakes.stats = wakeStats
   delivery.stats = wakeStats
   hosts.onTurnStarted = (_session, cause) => wakeStats.turnStarted(cause)
+  // the work that outlives its turn (1.1.0-rc2, exact attribution): a
+  // notice's turn and a Subagent's steps go by the turn that started it
+  const turnWork = new TurnWork(db, now)
+  wakeStats.work = turnWork
+  hosts.onWorkStarted = (session, ref, parent) =>
+    turnWork.started(session, ref, parent)
+  hosts.workCause = (session, ref) => turnWork.causeOf(session, ref)
   costs.instruction = (id) => hosts.instruction(id)
   hosts.onTurnEnded = (agent, outcome, error, reply, background) => {
     retries.turnEnded(agent, outcome, error)
@@ -388,7 +396,7 @@ export async function startServer(
     if (!agent) return
     const counted = costs.step(agent, event)
     // an agent's own turn: the step is its prompt's wakes' too (1.1.0)
-    if (counted !== null && !run) wakeStats.step(session, counted)
+    if (counted !== null && !run) wakeStats.step(session, counted, event.sub)
     if (run)
       db.query("UPDATE runs SET cost = ? WHERE id = ?").run(
         costs.runCost(run),
@@ -424,6 +432,7 @@ export async function startServer(
     (agent) => {
       inbox.closeForAgent(agent)
       wakeStats.forget(agent)
+      turnWork.forget(agent)
       locks.unregistered(agent)
       asks.unregistered(agent)
       messages.dropNotices(agent)
@@ -1742,6 +1751,7 @@ export async function startServer(
     asks.trim(days)
     costs.trim(days)
     wakeStats.trim(days)
+    turnWork.trim(days)
     trimAliases(db, now() - days * 86_400_000)
     jobs.trim(days)
     // agents past expire_after since their last turn (tier 0e)

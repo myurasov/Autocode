@@ -48,6 +48,7 @@ import {
 } from "./localapi.ts"
 import { log } from "./log.ts"
 import { keptToken, SessionTokens, tokenToKeep } from "./sessions.ts"
+import { Inputs, Shells } from "./starts.ts"
 import {
   APPROVAL_TOOL,
   type ApprovalInput,
@@ -79,6 +80,17 @@ const ASK_EVENTS = [
   "permission.asked",
   "permission.replied",
 ] as const
+
+// OpenCode's events of a session's inputs: what starts a turn (1.1.0-rc2).
+const INBOX_EVENTS = [
+  "session.inbox.enqueued",
+  "session.inbox.delivered",
+  "session.inbox.cancelled",
+] as const
+
+// OpenCode's events of commands: every shell's start and end (1.1.0-rc2:
+// the ones that outlive their turn are that turn's work).
+const SHELL_EVENTS = ["shell.created", "shell.exited"] as const
 
 const TURN_EVENTS = {
   "session.execution.started": "started",
@@ -768,7 +780,7 @@ export default {
         return undefined
       })
       if (!read) {
-        const bare = costEvent(session, data, {})
+        const bare = costEvent(session, data, {}, raw)
         if (!bare) return
         if (session !== raw) bare.context = undefined as any
         channel.report(bare)
@@ -802,12 +814,17 @@ export default {
           name = typeof m.name === "string" ? m.name.trim() : listed?.name
         }
       }
-      const report = costEvent(session, data, {
-        ...(ref?.id ? { model: `${ref.providerID}/${ref.id}` } : {}),
-        ...(limit ? { limit } : {}),
-        ...(name === undefined ? {} : { name }),
-        ...(effort === undefined ? {} : { effort }),
-      })
+      const report = costEvent(
+        session,
+        data,
+        {
+          ...(ref?.id ? { model: `${ref.providerID}/${ref.id}` } : {}),
+          ...(limit ? { limit } : {}),
+          ...(name === undefined ? {} : { name }),
+          ...(effort === undefined ? {} : { effort }),
+        },
+        raw,
+      )
       if (!report) return
       // a Subagent's context is not its parent's
       if (session !== raw) report.context = undefined as any
@@ -873,16 +890,26 @@ export default {
     }
     // the step reports of each session, chained in order
     const steps = new Map<string, Promise<void>>()
+    // the inputs that wait in each session: what starts a turn (1.1.0-rc2)
+    const inputs = new Inputs()
+    // the commands that run now: one that outlives its turn is its work
+    const shells = new Shells()
     let subscribed = 0
     const watch = async () => {
       while (!events.signal.aborted) {
         if (subscribed++) void reportActive()
+        // a new stream: inputs announced or delivered meanwhile, and
+        // commands started or ended, were missed
+        inputs.clear()
+        shells.clear()
         try {
           const types = [
             "session.created",
             "session.deleted",
             ...Object.keys(TURN_EVENTS),
             ...ASK_EVENTS,
+            ...INBOX_EVENTS,
+            ...SHELL_EVENTS,
             "session.step.ended",
           ]
           for await (const event of ctx.event.subscribe({
@@ -905,10 +932,34 @@ export default {
               })
               continue
             }
+            if (event.type === "shell.created") {
+              // every command, in the foreground too: this folder's
+              // top-level sessions' are followed until they end
+              const of = data?.info?.metadata?.sessionID
+              if (typeof of === "string" && mine.has(of))
+                shells.created(data.info.id, of)
+              continue
+            }
+            if (event.type === "shell.exited") {
+              if (typeof data?.id === "string") shells.exited(data.id)
+              continue
+            }
             if (typeof data?.sessionID !== "string") continue
             const session = data.sessionID as string
+            if ((INBOX_EVENTS as readonly string[]).includes(event.type)) {
+              // this folder's sessions' inputs: announced, then delivered
+              // into a turn or cancelled
+              if (typeof data.inboxID !== "string" || !ours(event, session))
+                continue
+              if (event.type === "session.inbox.enqueued")
+                inputs.enqueued(session, data.inboxID, data.item)
+              else inputs.settled(session, data.inboxID)
+              continue
+            }
             if (event.type === "session.deleted") {
               working.forget(session)
+              inputs.forget(session)
+              shells.forget(session)
               channel.report({ type: "session.deleted", session })
               // its token is dead: no need to keep it
               void tokens.drop(session)
@@ -916,14 +967,37 @@ export default {
               if (!data.parentID && data.location?.directory === directory) {
                 mine.add(session)
                 channel.report({ type: "session.created", session, directory })
+              } else if (
+                typeof data.parentID === "string" &&
+                (mine.has(data.parentID) ||
+                  data.location?.directory === directory)
+              ) {
+                // a Subagent: work of the turn that runs now in its
+                // top-level session (1.1.0-rc2); one that a Subagent
+                // started names that one, whose work it is part of
+                const top = mine.has(data.parentID)
+                  ? data.parentID
+                  : await tokens.root(session).catch(() => "")
+                if (top && top !== session && mine.has(top))
+                  channel.report({
+                    type: "work.started",
+                    session: top,
+                    ref: session,
+                    ...(top === data.parentID ? {} : { parent: data.parentID }),
+                  })
               }
             } else if (event.type in TURN_EVENTS) {
               if (!ours(event, session)) continue
+              const outcome =
+                TURN_EVENTS[event.type as keyof typeof TURN_EVENTS]
+              // what started it: the input that waits now, before its
+              // delivery is read ("user": a typed prompt; "notice":
+              // OpenCode's own, a Subagent's result or a shell's end)
+              const starter =
+                outcome === "started" ? inputs.starter(session) : undefined
               // a Subagent's turn is part of its session's turn
               if ((await tokens.root(session).catch(() => session)) !== session)
                 continue
-              const outcome =
-                TURN_EVENTS[event.type as keyof typeof TURN_EVENTS]
               // the turn's steps are reported first (their cost counts)
               if (outcome !== "started") await steps.get(session)
               // OpenCode's own time of the event orders them at the server
@@ -953,9 +1027,13 @@ export default {
                         .catch(() => []),
                     )
                   : null
+              // the commands that still run outlive this turn: its work
+              if (outcome !== "started")
+                for (const ref of shells.take(session))
+                  channel.report({ type: "work.started", session, ref })
               channel.report(
                 outcome === "started"
-                  ? { type: "turn.started", session, at }
+                  ? { type: "turn.started", session, at, ...(starter ?? {}) }
                   : {
                       type: "turn.ended",
                       session,

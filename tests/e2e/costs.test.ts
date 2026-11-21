@@ -191,6 +191,224 @@ describe("a Subagent's cost", () => {
 })
 
 /*
+ * 1.1.0-rc2 (the owner, 2026-11-20, on being told that a wake's cost left
+ * out the turns that OpenCode's own notices start: "can we fix that?"). On
+ * real OpenCode: a fired wake's turn starts a Subagent and ends; the
+ * Subagent's result starts a second turn by itself (OpenCode's own notice,
+ * no prompt of Autocode's). Both turns are the wake's, with every step's
+ * dollars: the plugin said what started the second turn.
+ */
+describe("a wake's cost with a turn that OpenCode's own notice starts", () => {
+  test("the turn a Subagent's result starts is the wake's too: two turns, every step's dollars", async () => {
+    const own = await readySession(oc)
+    const sub = `e2e:${run}:notice`
+    await callTool(oc, own.id, "autocode_me", { action: "register", id: sub })
+    try {
+      const marker = `NOTICE-${run}`
+      const fake = new FakeModel(node)
+      // the same five scripted steps as above (the agent's call, its
+      // "launched", the Subagent's two, the agent's last), by their text
+      await fake.script(
+        [
+          {
+            match: "<subagent sessionID",
+            usage: { prompt_tokens: 1_000, completion_tokens: 12_000 },
+            reply: "parent done",
+          },
+          {
+            match: "is working in the background",
+            usage: { prompt_tokens: 1_000, completion_tokens: 5_000 },
+            reply: "launched",
+          },
+          {
+            match: `${marker} child work`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 150_000 },
+            tool_calls: [
+              {
+                name: "shell",
+                arguments: { command: "echo child", description: "say" },
+              },
+            ],
+          },
+          {
+            match: `${marker} child work`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 175_000 },
+            reply: "child done",
+          },
+          {
+            match: `wake work ${marker}`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 10_000 },
+            tool_calls: [
+              {
+                name: "subagent",
+                arguments: {
+                  agent: "general",
+                  description: "costly child",
+                  prompt: `${marker} child work`,
+                },
+              },
+            ],
+          },
+        ],
+        true,
+      )
+      // the wake: its prompt starts the first turn
+      await admin("PUT", `/v1/agents/${enc(sub)}/wakes/pass`, {
+        text: `wake work ${marker}`,
+        trigger: "fire-only",
+      })
+      const week = async () =>
+        (await admin("GET", "/v1/wakes")).wakes.find(
+          (w: any) => w.agent === sub && w.name === "pass",
+        )?.week
+      expect(await week()).toEqual({ due: 0, skipped: 0, turns: 0, usd: 0 })
+      await admin("POST", `/v1/agents/${enc(sub)}/wakes/pass/fire`)
+      // the agent's $0.021 and $0.011, the Subagent's $0.301 and $0.351 in
+      // the background, then, in the turn its result starts, $0.025
+      const expected = 0.021 + 0.011 + 0.301 + 0.351 + 0.025
+      const after = await until(
+        async () => {
+          const k = await week()
+          return k && k.usd >= expected - 1e-6 ? k : undefined
+        },
+        {
+          timeoutMs: 120_000,
+          intervalMs: 500,
+          what: `the wake's two turns and their cost (now: ${JSON.stringify(
+            await week(),
+          )})`,
+        },
+      )
+      // two turns: the wake's own, and the one the Subagent's result
+      // started; a session title's request costs a little more
+      expect(after.turns).toBe(2)
+      expect(after.usd).toBeLessThan(expected + 0.01)
+      expect(after.due).toBe(0)
+    } finally {
+      await admin("DELETE", `/v1/agents/${enc(sub)}`).catch(() => {})
+    }
+  }, 240_000)
+})
+
+/*
+ * 1.1.0-rc2, exact attribution (the owner, 2026-11-21: "ok, lets build
+ * it!", after a measurement: over a week, $527 of $1,806 wake dollars on one
+ * machine were filed under another wake than the one that began the work).
+ * On real OpenCode: one wake's turn starts a Subagent that works for 20
+ * seconds; another wake's turn runs meanwhile. The Subagent's later step and
+ * the turn its result starts are the first wake's, not the second's: the
+ * plugin reported the Subagent as that turn's work, said which session each
+ * step ran in, and named the Subagent in the notice's turn.
+ */
+describe("a wake's cost when another wake's turn runs before its Subagent is done", () => {
+  test("the Subagent's later step and its result's turn count for the wake that started it", async () => {
+    const own = await readySession(oc)
+    const sub = `e2e:${run}:tags`
+    await callTool(oc, own.id, "autocode_me", { action: "register", id: sub })
+    try {
+      const marker = `TAGS-${run}`
+      const fake = new FakeModel(node)
+      // by their text, in this order (a request takes the first step whose
+      // text it holds; each step is taken once): the result's turn, the
+      // "launched" step, the other wake's turn, the Subagent's two steps
+      // (its command sleeps 20 s), the first wake's call
+      await fake.script(
+        [
+          {
+            match: "<subagent sessionID",
+            usage: { prompt_tokens: 1_000, completion_tokens: 12_000 },
+            reply: "parent done",
+          },
+          {
+            match: "is working in the background",
+            usage: { prompt_tokens: 1_000, completion_tokens: 5_000 },
+            reply: "launched",
+          },
+          {
+            match: `other work ${marker}`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 3_000 },
+            reply: "other done",
+          },
+          {
+            match: `${marker} child work`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 150_000 },
+            tool_calls: [
+              {
+                name: "shell",
+                arguments: {
+                  command: "sleep 20; echo child",
+                  description: "work a while",
+                },
+              },
+            ],
+          },
+          {
+            match: `${marker} child work`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 175_000 },
+            reply: "child done",
+          },
+          {
+            match: `wake work ${marker}`,
+            usage: { prompt_tokens: 1_000, completion_tokens: 10_000 },
+            tool_calls: [
+              {
+                name: "subagent",
+                arguments: {
+                  agent: "general",
+                  description: "long child",
+                  prompt: `${marker} child work`,
+                },
+              },
+            ],
+          },
+        ],
+        true,
+      )
+      for (const [name, text] of [
+        ["pass", `wake work ${marker}`],
+        ["other", `other work ${marker}`],
+      ])
+        await admin("PUT", `/v1/agents/${enc(sub)}/wakes/${name}`, {
+          text,
+          trigger: "fire-only",
+        })
+      const week = async (name: string) =>
+        (await admin("GET", "/v1/wakes")).wakes.find(
+          (w: any) => w.agent === sub && w.name === name,
+        )?.week
+      const reached = (name: string, usd: number, what: string) =>
+        until(
+          async () => {
+            const k = await week(name)
+            return k && k.usd >= usd - 1e-6 ? k : undefined
+          },
+          { timeoutMs: 120_000, intervalMs: 300, what },
+        )
+      // the first wake: its call ($0.021), "launched" ($0.011), and the
+      // Subagent's first step ($0.301), whose command then sleeps
+      await admin("POST", `/v1/agents/${enc(sub)}/wakes/pass/fire`)
+      await reached("pass", 0.021 + 0.011 + 0.301, "the first wake's turn")
+      // the other wake's turn runs while the Subagent still works: $0.007
+      await admin("POST", `/v1/agents/${enc(sub)}/wakes/other/fire`)
+      await reached("other", 0.007, "the other wake's turn")
+      // the Subagent's last step ($0.351) and the turn its result starts
+      // ($0.025) are the first wake's
+      const expected = 0.021 + 0.011 + 0.301 + 0.351 + 0.025
+      const pass = await reached("pass", expected, "the Subagent's end")
+      expect(pass.turns).toBe(2)
+      expect(pass.usd).toBeLessThan(expected + 0.01)
+      // the other wake has its own turn only (a session title's request
+      // costs a little more)
+      const other = await week("other")
+      expect(other.turns).toBe(1)
+      expect(other.usd).toBeLessThan(0.007 + 0.01)
+    } finally {
+      await admin("DELETE", `/v1/agents/${enc(sub)}`).catch(() => {})
+    }
+  }, 240_000)
+})
+
+/*
  * The owner, 2026-11-17: "add col in agents tab for model effort": an agent's
  * effort is its session's model variant, as OpenCode keeps it; an agent
  * whose session has none shows none.

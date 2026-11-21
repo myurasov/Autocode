@@ -837,6 +837,11 @@ describe("the guide", () => {
     for (const answer of [
       "what each cost in the last 7 days: the turns its prompts started " +
         "and their dollars",
+      // 1.1.0-rc2: the turns that OpenCode's own notices start count too
+      "and the turns that followed by themselves when a Subagent's " +
+        "result or a background command's end came",
+      // exact attribution (the owner, 2026-11-21)
+      "each counts for the wake whose turn started that work",
       "A wake that costs much and mostly finds nothing to do belongs in " +
         "a check",
     ])

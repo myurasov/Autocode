@@ -53,7 +53,27 @@ const step = (usd: number, session = "ses_a") => ({
   model: "fake/main",
   step: `st_${++steps}`,
 })
-const started = (session = "ses_a") => ({ type: "turn.started", session })
+// `by`: what started the turn, as the plugin says it (1.1.0-rc2): "user" (a
+// typed prompt: the owner's or Autocode's), "notice" (OpenCode's own: a
+// Subagent's result, a background shell's end), "compaction"; an older
+// plugin says nothing.
+// `ref`: the work a notice belongs to (a command's or a Subagent's ID).
+const started = (session = "ses_a", by?: string, ref?: string) => ({
+  type: "turn.started",
+  session,
+  ...(by ? { by } : {}),
+  ...(ref ? { ref } : {}),
+})
+// Work that outlives its turn: a background command, or a Subagent (whose
+// own Subagent names it as its parent).
+const work = (ref: string, parent?: string, session = "ses_a") => ({
+  type: "work.started",
+  session,
+  ref,
+  ...(parent ? { parent } : {}),
+})
+// A Subagent's step: the top-level session's, with the Subagent's own.
+const subStep = (usd: number, sub: string) => ({ ...step(usd), sub })
 const ended = (session = "ses_a") => ({
   type: "turn.ended",
   session,
@@ -119,7 +139,7 @@ describe("what each wake costs", () => {
     expect((await as(a, "GET", "/v1/me")).body.cost.today_usd).toBe(1)
   })
 
-  test("a turn the owner or OpenCode started is nobody's; a prompt into a running turn starts none", async () => {
+  test("a turn the owner started is nobody's; a prompt into a running turn starts none", async () => {
     await as(a, "PUT", "/v1/me/wakes/hourly", {
       text: "The hourly pass.",
       trigger: "every 1h",
@@ -128,7 +148,7 @@ describe("what each wake costs", () => {
     await tick()
     await report(t, HOST, [started(), step(1), ended()])
     // the owner writes in the TUI: a turn with no prompt of Autocode's
-    await report(t, HOST, [started(), step(2)])
+    await report(t, HOST, [started("ses_a", "user"), step(2)])
     // a message goes into that running turn: it starts no turn
     await owner("POST", "/v1/messages", { to: "team:a", text: "Hello." })
     t.server.tick()
@@ -145,6 +165,297 @@ describe("what each wake costs", () => {
       usd: 1,
     })
     expect((await as(a, "GET", "/v1/me")).body.cost.today_usd).toBe(7)
+  })
+
+  /*
+   * 1.1.0-rc2 (the owner, 2026-11-20, on being told that a wake's cost left
+   * out the turns that OpenCode's own notices start: "can we fix that?").
+   * Such a turn is work that the turn before it began: a Subagent's result,
+   * a background shell that ended.
+   */
+  test("a turn that OpenCode's own notice starts is a turn of the wake before it: its dollars, and the turn; a notice after it too", async () => {
+    await as(a, "PUT", "/v1/me/wakes/hourly", {
+      text: "The hourly pass.",
+      trigger: "every 1h",
+    })
+    t.clock.advance(60 * MIN)
+    await tick()
+    // the wake's turn starts a Subagent and ends; the Subagent's steps
+    await report(t, HOST, [
+      started("ses_a", "user"),
+      step(1),
+      ended(),
+      step(0.25),
+    ])
+    // its result starts a turn; that turn starts a shell, whose end starts
+    // one more
+    await report(t, HOST, [started("ses_a", "notice"), step(0.5), ended()])
+    expect(await week("hourly")).toEqual({
+      due: 1,
+      skipped: 0,
+      turns: 2,
+      usd: 1.75,
+    })
+    await report(t, HOST, [started("ses_a", "notice"), step(0.125), ended()])
+    expect(await week("hourly")).toEqual({
+      due: 1,
+      skipped: 0,
+      turns: 3,
+      usd: 1.875,
+    })
+    expect((await as(a, "GET", "/v1/me")).body.cost.today_usd).toBe(1.875)
+  })
+
+  test("the owner's turn ends that: a notice after it is nobody's; so is a compaction, and a turn whose start the plugin does not explain", async () => {
+    await as(a, "PUT", "/v1/me/wakes/hourly", {
+      text: "The hourly pass.",
+      trigger: "every 1h",
+    })
+    t.clock.advance(60 * MIN)
+    await tick()
+    await report(t, HOST, [started("ses_a", "user"), step(1), ended()])
+    // the owner writes; the shell that turn started ends later
+    await report(t, HOST, [started("ses_a", "user"), step(2), ended()])
+    await report(t, HOST, [started("ses_a", "notice"), step(4), ended()])
+    expect(await week("hourly")).toEqual({
+      due: 1,
+      skipped: 0,
+      turns: 1,
+      usd: 1,
+    })
+    // the wake again, then OpenCode's own compaction: not the wake's, and a
+    // notice after it neither
+    t.clock.advance(60 * MIN)
+    await tick()
+    await report(t, HOST, [started("ses_a", "user"), step(1), ended()])
+    await report(t, HOST, [started("ses_a", "compaction"), step(8), ended()])
+    await report(t, HOST, [started("ses_a", "notice"), step(16), ended()])
+    // the wake once more, then a turn that an older plugin reports: no word
+    // on what started it
+    t.clock.advance(60 * MIN)
+    await tick()
+    await report(t, HOST, [started("ses_a", "user"), step(1), ended()])
+    await report(t, HOST, [started(), step(32), ended()])
+    expect(await week("hourly")).toEqual({
+      due: 3,
+      skipped: 0,
+      turns: 3,
+      usd: 3,
+    })
+  })
+
+  test("a notice's turn after a prompt with two wakes divides its cost between them as that prompt's turn did", async () => {
+    await owner("PATCH", "/v1/settings", { server: { min_interval: "1h" } })
+    for (const name of ["one", "two"])
+      await as(a, "PUT", `/v1/me/wakes/${name}`, {
+        text: name,
+        trigger: "fire-only",
+      })
+    await owner("POST", "/v1/agents/team:a/wakes/one/fire")
+    await owner("POST", "/v1/agents/team:a/wakes/two/fire")
+    t.clock.advance(60 * MIN)
+    expect((await tick()).length).toBe(1)
+    await report(t, HOST, [started("ses_a", "user"), step(1), ended()])
+    await report(t, HOST, [started("ses_a", "notice"), step(0.5), ended()])
+    for (const name of ["one", "two"])
+      expect(await week(name)).toEqual({
+        due: 0,
+        skipped: 0,
+        turns: 2,
+        usd: 0.75,
+      })
+  })
+
+  test("a notice's turn while a prompt of Autocode's is on its way is that prompt's", async () => {
+    for (const name of ["one", "two"])
+      await as(a, "PUT", `/v1/me/wakes/${name}`, {
+        text: name,
+        trigger: "fire-only",
+      })
+    await owner("POST", "/v1/agents/team:a/wakes/one/fire")
+    await tick()
+    await report(t, HOST, [started("ses_a", "user"), step(1), ended()])
+    // the second wake's prompt is handed over; a shell's end starts the turn
+    // first, and the prompt joins it
+    await owner("POST", "/v1/agents/team:a/wakes/two/fire")
+    t.clock.advance(MIN)
+    expect((await tick()).length).toBe(1)
+    await report(t, HOST, [started("ses_a", "notice"), step(0.5), ended()])
+    expect((await week("one")).usd).toBe(1)
+    expect(await week("two")).toEqual({
+      due: 0,
+      skipped: 0,
+      turns: 1,
+      usd: 0.5,
+    })
+  })
+
+  /*
+   * 1.1.0-rc2, exact attribution (the owner, 2026-11-21: "ok, lets build
+   * it!", after a measurement: over a week, $527 of $1,806 wake dollars on
+   * one machine were filed under another wake than the one that began the
+   * work). A background command or a Subagent is work of the turn that
+   * started it, however many other turns run before it ends.
+   */
+  describe("work that outlives its turn", () => {
+    // Two wakes, each fired alone: the prompt of `name` starts a turn.
+    async function wakeTurn(name: string, events: unknown[]) {
+      await owner("POST", `/v1/agents/team:a/wakes/${name}/fire`)
+      t.clock.advance(MIN)
+      expect((await tick()).length).toBe(1)
+      await report(t, HOST, [started("ses_a", "user"), ...events, ended()])
+    }
+    const usd = async (name: string) => (await week(name)).usd
+    const turns = async (name: string) => (await week(name)).turns
+
+    beforeEach(async () => {
+      for (const name of ["one", "two"])
+        await as(a, "PUT", `/v1/me/wakes/${name}`, {
+          text: name,
+          trigger: "fire-only",
+        })
+    })
+
+    test("a command's notice is a turn of the wake whose turn started the command, not of the wake before it", async () => {
+      // one's turn starts a command that still runs when the turn ends
+      await wakeTurn("one", [step(1), work("sh_1")])
+      // two's turn runs meanwhile
+      await wakeTurn("two", [step(2)])
+      // the command ends: its notice starts a turn
+      await report(t, HOST, [
+        started("ses_a", "notice", "sh_1"),
+        step(0.5),
+        ended(),
+      ])
+      expect([await usd("one"), await turns("one")]).toEqual([1.5, 2])
+      expect([await usd("two"), await turns("two")]).toEqual([2, 1])
+      // that turn started a command of its own: one's too, after two's turn
+      await report(t, HOST, [
+        started("ses_a", "notice", "sh_1"),
+        work("sh_2"),
+        ended(),
+      ])
+      await wakeTurn("two", [step(2)])
+      await report(t, HOST, [
+        started("ses_a", "notice", "sh_2"),
+        step(0.25),
+        ended(),
+      ])
+      expect([await usd("one"), await turns("one")]).toEqual([1.75, 4])
+      expect([await usd("two"), await turns("two")]).toEqual([4, 2])
+    })
+
+    test("a Subagent's steps and its result's turn are its wake's, however long it works; its own Subagent's too", async () => {
+      await wakeTurn("one", [
+        step(1),
+        work("ses_child"),
+        subStep(0.5, "ses_child"),
+      ])
+      // two's turn starts while the Subagent works on; the Subagent starts
+      // one of its own
+      await owner("POST", "/v1/agents/team:a/wakes/two/fire")
+      t.clock.advance(MIN)
+      await tick()
+      await report(t, HOST, [
+        started("ses_a", "user"),
+        step(2),
+        subStep(0.25, "ses_child"),
+        work("ses_grandchild", "ses_child"),
+        subStep(0.125, "ses_grandchild"),
+        ended(),
+        subStep(0.0625, "ses_child"),
+      ])
+      expect(await usd("one")).toBe(1.9375)
+      expect(await usd("two")).toBe(2)
+      // its result starts a turn: one's
+      await report(t, HOST, [
+        started("ses_a", "notice", "ses_child"),
+        step(0.5),
+        ended(),
+      ])
+      expect([await usd("one"), await turns("one")]).toEqual([2.4375, 2])
+      expect([await usd("two"), await turns("two")]).toEqual([2, 1])
+      // every dollar once
+      expect((await as(a, "GET", "/v1/me")).body.cost.today_usd).toBe(4.4375)
+    })
+
+    test("work that the owner's turn started is nobody's, also after a wake's turn; work that is not known goes by the turn before", async () => {
+      // the owner writes; that turn starts a command and a Subagent
+      await report(t, HOST, [
+        started("ses_a", "user"),
+        step(8),
+        work("sh_own"),
+        work("ses_own"),
+        ended(),
+      ])
+      await wakeTurn("two", [step(2), subStep(16, "ses_own")])
+      await report(t, HOST, [
+        started("ses_a", "notice", "sh_own"),
+        step(32),
+        ended(),
+      ])
+      expect([await usd("two"), await turns("two")]).toEqual([2, 1])
+      // a notice and a step whose work was never reported (the plugin was
+      // loaded later): as without name tags, the wake of the turn before
+      await wakeTurn("two", [step(1)])
+      await report(t, HOST, [
+        started("ses_a", "notice", "sh_unknown"),
+        step(0.5),
+        subStep(0.25, "ses_unknown"),
+        ended(),
+      ])
+      expect([await usd("two"), await turns("two")]).toEqual([3.75, 3])
+      expect(await usd("one")).toBe(0)
+    })
+
+    test("the first report of a work stands; unregistering forgets the agent's; old ones go with the history", async () => {
+      const rows = () =>
+        t.server.db
+          .query(
+            "SELECT ref, cause IS NOT NULL AS caused FROM turn_work ORDER BY ref",
+          )
+          .all() as { ref: string; caused: number }[]
+      await wakeTurn("one", [step(1), work("sh_1")])
+      // reported again in the owner's turn (a batch sent twice): still one's
+      await report(t, HOST, [
+        started("ses_a", "user"),
+        work("sh_1"),
+        work("sh_o"),
+        ended(),
+      ])
+      expect(rows()).toEqual([
+        { ref: "sh_1", caused: 1 },
+        { ref: "sh_o", caused: 0 },
+      ])
+      // bad reports are not kept
+      await report(t, HOST, [
+        { type: "work.started", session: "ses_a" },
+        { type: "work.started", session: "ses_a", ref: 7 },
+        { type: "work.started", session: "ses_a", ref: "x".repeat(300) },
+        { type: "work.started", session: "ses_none", ref: "sh_2" },
+      ])
+      expect(rows().length).toBe(2)
+      // one from long ago goes with the wakes' numbers (history_days, 31
+      // days at least); the others stay
+      t.server.db
+        .query(
+          "INSERT INTO turn_work (session_id, ref, cause, at) " +
+            "VALUES ('ses_a', 'sh_old', NULL, 0)",
+        )
+        .run()
+      expect(rows().length).toBe(3)
+      t.server.maintenance()
+      expect(rows().map((r) => r.ref)).toEqual(["sh_1", "sh_o"])
+      // unregistering: the agent's records go, and its session's last turn
+      // is nobody's
+      await as(a, "DELETE", "/v1/me")
+      expect(rows()).toEqual([])
+      expect(
+        t.server.db
+          .query("SELECT turn_cause FROM sessions WHERE id = 'ses_a'")
+          .get(),
+      ).toEqual({ turn_cause: null })
+    })
   })
 
   test("a check's skips are counted, and cost nothing", async () => {

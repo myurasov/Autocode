@@ -161,8 +161,11 @@ More:
   zone and from now; an idle wake: when, if you stay idle), when it
   was last set (its schedule counts from then), and what each cost in
   the last 7 days: the turns its prompts started and their dollars
-  (your Subagents' steps in those turns too), how often it fell due
-  and how often its check skipped it. A wake that costs much and
+  (your Subagents' steps too, however long they work, and the turns
+  that followed by themselves when a Subagent's result or a background
+  command's end came: each counts for the wake whose turn started that
+  work), how often it fell due and how often its check skipped it. A
+  wake that costs much and
   mostly finds nothing to do belongs in a check (see Checks);
   `show` one whole; `cancel` removes a wake and any of its runs still
   waiting (also the waiting run of a one-time wake that is gone
