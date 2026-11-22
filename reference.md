@@ -373,7 +373,9 @@ In plain words, to an agent: "Register with Autocode as `kaggle:lead`."
 - **One ID per session.** A session that already has an ID is refused another (`session_has_id`).
 - **Registering again** with the same ID from the same session changes nothing. That makes it safe after a
   compaction.
-- **A taken ID** is refused (`id_taken`) while the session that holds it exists.
+- **A taken ID** is refused (`id_taken`). An agent can never take an ID that is registered, also when the session
+  that held it is gone. Only you can move an ID to another session, with its wakes, settings and spend: `autocode
+  agents register ID --session SES`, and with `--force` when the old session still exists.
 - **The session's title.** On registration the plugin sets the session's title to `@` and the ID, like
   `@kaggle:lead`, so that you find it in OpenCode's session list. A run of a job keeps its own title.
 - **A Subagent** acts for the agent that started it. It has no ID of its own.
@@ -428,8 +430,9 @@ The agent stays what it is: the same session, status and context. Everything tha
 
 - the agent stays registered and shows `offline`;
 - its open asks close, and its locks are released;
-- its wakes stay. The next session that registers the same ID takes over the ID and its wakes;
-- if no session does, the agent expires as in point 3 above.
+- its wakes stay. No other session can register its ID. To go on with the agent in a new session, move the ID
+  there: `autocode agents register ID --session SES` (the new session's refused registration prints the command);
+- if you do not, the agent expires as in point 3 above.
 
 ### Shell Values and Scripts
 
@@ -1479,7 +1482,7 @@ A refused call names a code. The CLI prints `refused (CODE): reason`; a tool ans
 | `forbidden` | this kind of token may not do that. Most owner commands need the admin token |
 | `opencode_too_old` | the machine's OpenCode is older than 2.3.0 |
 | `not_registered` | no agent has that ID, or the calling session is not registered |
-| `id_taken` | another session that still exists holds the ID. For a rename: another agent holds it |
+| `id_taken` | the ID is registered already, to another session. For your `agents register`: that session still exists, so add `--force`. For a rename: another agent holds it |
 | `session_has_id` | the session is already registered under another ID |
 | `reserved_id` | the ID is reserved: `owner`, `autocode`, or one that starts with `job:` |
 | `job_exists` | a rename would give one of the agent's jobs the name of a job that exists. Delete or rename one of the two |
@@ -2289,7 +2292,7 @@ Read the STATE column. [Message States](#message-states) says what each state me
 
 | Status | Check |
 |---|---|
-| `offline` | Its host is offline: see [A Host Is Offline Though OpenCode Runs](#a-host-is-offline-though-opencode-runs). Or its session was deleted in OpenCode: register the ID again from a new session, which takes over its wakes |
+| `offline` | Its host is offline: see [A Host Is Offline Though OpenCode Runs](#a-host-is-offline-though-opencode-runs). Or its session was deleted in OpenCode: move the ID and its wakes to a new session with `autocode agents register ID --session SES` |
 | `waiting` | It has an open ask. `autocode inbox` shows it; TO says whether it went to another agent. Answer it. Its wakes and messages wait until then |
 | `error` | Its last turn failed: `autocode agents AGENT --json` shows the error, and [A Failed Turn](#a-failed-turn) what Autocode does. If the error is not retried, fix the cause, then **Retry** or `autocode retry AGENT`. If it is retried without end, set `retry_attempts`, or pause the agent |
 | `paused` by `cap` | It passed `daily_usd` today. It stays paused until the next day, until you raise the cap with `autocode settings set daily_usd 20 --agent AGENT`, or until you resume it |
@@ -2302,7 +2305,7 @@ Read the STATE column. [Message States](#message-states) says what each state me
 | An agent seems to ignore Autocode | Ask it to load the `autocode` skill, or to call `autocode_me action=help` |
 | A run failed | Its Inbox alert says why: `time limit`, `run cap`, `the session could not start`, or the error of its failed turn. Its session is kept until you delete it: see [How a Run Ends](#how-a-run-ends). A scheduled run that falls due while another is running is not a failure: it is `skipped` |
 | An agent or a run spends too much | See [Stop an Agent That Overspends](#stop-an-agent-that-overspends). No command interrupts the turn of one agent, or stops one run by its ID |
-| Registering says `id_taken` | Another session that still exists holds the ID. Unregister it there, delete that session, or move the ID: `autocode agents register ID --session SES --force` |
+| Registering says `id_taken` | The ID is registered already, to another session. Choose another ID, unregister the agent that holds it, or move the ID to the new session: `autocode agents register ID --session SES` (with `--force` when the old session still exists) |
 | A tool says `session_gone` | The session was deleted in OpenCode. A deleted session never gets a token again: use a new session |
 | A session's context grows without end | Is `compact_at` `off` for it? `autocode settings --agent AGENT` shows it. Otherwise look in History: `session.compact.failed` says that OpenCode could not compact it, and why |
 | OpenCode was restarted under a turn | Nothing to do if it is back: see [OpenCode Restarts and Unloaded Folders](#opencode-restarts-and-unloaded-folders) |

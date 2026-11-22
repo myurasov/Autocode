@@ -37,6 +37,10 @@ it, and Autocode can wake it later by typing a prompt into it.
   session; `unregister` frees it and removes your wakes. Subagents act
   for their top-level session. When you register, the session's title
   becomes `@` and your ID (like `@myproject:lead`).
+- An ID that is registered already is refused (`id_taken`), also when
+  the session that held it is gone. Do not try other IDs to get around
+  it: tell the owner, who can move the ID to your session with the
+  command that the refusal prints.
 - `status` shows your registration, the server's time and zone, how
   Autocode delivers to you, your wakes, how many messages wait for
   you, and your spend and context; `discover` finds agents by pattern
@@ -393,8 +397,8 @@ submission, a refresh of shared data.
   only in the conversation.
 - You are unregistered `expire_after` (14 days unless the owner set
   another) after your session's last turn. If your session is deleted,
-  your ID stays listed, offline, until then, and another session may
-  register it.
+  your ID stays listed, offline, until then. No other session can
+  register it; only the owner can move it to another session.
 
 <!-- topic: jobs -->
 

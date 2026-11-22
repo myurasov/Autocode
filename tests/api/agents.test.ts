@@ -79,26 +79,64 @@ describe("registration", () => {
     const res = await register(t, two, "kaggle:lead")
     expect(res.status).toBe(409)
     expect(res.body.error.code).toBe("id_taken")
+    // it says who holds the ID, and what the owner would run to move it
+    expect(res.body.error.message).toBe(
+      "kaggle:lead is registered already, to another session (ses_1). " +
+        "Choose another ID. Only the owner can move it to this session: " +
+        "autocode agents register kaggle:lead --session ses_2 --force",
+    )
     expect(await kinds(t)).toContain("agent.refused")
   })
 
-  test("the ID moves to the new session once the old session is gone", async () => {
+  // The owner, 2026-11-22: an agent never takes an ID that is registered.
+  test("the same ID from another session is refused also once the old session is gone; the owner moves it", async () => {
     const t = await start()
     const one = await sessionToken(t, "m:1", "ses_1")
     const two = await sessionToken(t, "m:1", "ses_2")
     await register(t, one, "kaggle:lead", "kept")
+    await call(t.url, one, "PUT", "/v1/me/wakes/tick", {
+      text: "Tick.",
+      trigger: "every 30m",
+    })
     await call(t.url, t.consumer, "POST", "/v1/hosts/m:1/events", {
       instance: "inst-m:1",
       events: [{ type: "session.deleted", session: "ses_1" }],
     })
     const res = await register(t, two, "kaggle:lead")
-    expect(res.status).toBe(200)
-    expect(res.body.agent).toMatchObject({
+    expect(res.status).toBe(409)
+    expect(res.body.error.code).toBe("id_taken")
+    expect(res.body.error.message).toBe(
+      "kaggle:lead is registered already; the session that held it " +
+        "(ses_1) is gone. Choose another ID. Only the owner can move it " +
+        "to this session: autocode agents register kaggle:lead " +
+        "--session ses_2",
+    )
+    expect(await kinds(t)).toContain("agent.refused")
+    expect(await kinds(t)).not.toContain("agent.moved")
+    // the session is no agent, and the ID is where it was
+    expect((await call(t.url, two, "GET", "/v1/me")).body.registered).toBe(
+      false,
+    )
+    const still = await call(t.url, t.admin, "GET", "/v1/agents/kaggle:lead")
+    expect(still.body.agent).toMatchObject({
+      session: "ses_1",
+      status: "offline",
+    })
+    // the owner moves it, without force: nothing lives that it is taken from
+    const moved = await call(t.url, t.admin, "POST", "/v1/agents", {
+      id: "kaggle:lead",
+      session: "ses_2",
+    })
+    expect(moved.status).toBe(200)
+    expect(moved.body.agent).toMatchObject({
       id: "kaggle:lead",
       session: "ses_2",
       description: "kept",
     })
     expect(await kinds(t)).toContain("agent.moved")
+    // and its wakes came along
+    const wakes = await call(t.url, two, "GET", "/v1/me/wakes")
+    expect(wakes.body.wakes.map((w: any) => w.name)).toEqual(["tick"])
   })
 
   test("a session that already holds another ID is refused until it unregisters", async () => {
@@ -416,7 +454,7 @@ describe("changing an agent", () => {
 })
 
 describe("deleted sessions", () => {
-  test("a late token request for a deleted session is refused, so the session stays gone and its ID can move", async () => {
+  test("a late token request for a deleted session is refused, so the session stays gone and the owner can move its ID", async () => {
     const t = await start()
     const gone = await sessionToken(t, "m:1", "ses_gone")
     expect((await register(t, gone, "a:mover")).status).toBe(201)
@@ -434,8 +472,12 @@ describe("deleted sessions", () => {
     )
     expect(late.status).toBe(410)
     expect(late.body.error.code).toBe("session_gone")
-    const next = await sessionToken(t, "m:1", "ses_next")
-    expect((await register(t, next, "a:mover")).status).toBe(200)
+    await sessionToken(t, "m:1", "ses_next")
+    const moved = await call(t.url, t.admin, "POST", "/v1/agents", {
+      id: "a:mover",
+      session: "ses_next",
+    })
+    expect(moved.status).toBe(200)
   })
 
   test("an agent whose session was deleted shows offline", async () => {

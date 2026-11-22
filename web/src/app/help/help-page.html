@@ -741,7 +741,9 @@
       <li>
         An ID stays with its session until the agent or you unregister it. If
         the session is deleted in OpenCode, the agent stays listed, as
-        offline, and another session can register under the ID.
+        offline. No other session can register under an ID that is
+        registered: only you move it to another session, with
+        <code>autocode agents register ID --session SES</code>.
       </li>
       <li>
         When it registers, the session's title becomes &#64; and its ID, like
@@ -2253,9 +2255,11 @@ systemctl --user start autocode</pre
         <tr>
           <td>Registering says <code>id_taken</code></td>
           <td>
-            The ID belongs to another session that still exists: unregister it
-            there, delete that session, or move the ID with
-            <code>autocode agents register ID --session SES --force</code>.
+            The ID is registered already, to another session: choose another
+            ID, unregister the agent that holds it, or move the ID to the new
+            session with
+            <code>autocode agents register ID --session SES</code> (with
+            <code>--force</code> when the old session still exists).
           </td>
         </tr>
         <tr>

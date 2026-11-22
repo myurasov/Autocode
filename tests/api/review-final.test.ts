@@ -22,6 +22,7 @@ import {
   instructions,
   registered,
   report,
+  sessionToken,
   type TestServer,
   testServer,
 } from "../helpers/server.ts"
@@ -126,7 +127,12 @@ describe("final review", () => {
       )
       .run()
     await report(t, HOST, [{ type: "session.deleted", session: "ses_a" }])
-    const a2 = await registered(t, HOST, "ses_new", "team:a")
+    // the owner moves the ID: an agent cannot take a registered one
+    const a2 = await sessionToken(t, HOST, "ses_new")
+    expect(
+      (await owner("POST", "/v1/agents", { id: "team:a", session: "ses_new" }))
+        .status,
+    ).toBe(200)
     for (const i of await instructions(t, HOST)) await ack(t, HOST, i.id)
     const k = (await owner("GET", "/v1/costs/team:a")).body.cost
     expect(k.context).toBeNull()

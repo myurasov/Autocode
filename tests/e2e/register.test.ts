@@ -139,7 +139,8 @@ describe("registration through autocode_me", () => {
     ).toStartWith("Not registered")
   })
 
-  test("a deleted session's ID moves to the next session that registers it", async () => {
+  // The owner, 2026-11-22: an agent never takes an ID that is registered.
+  test("a deleted session's ID is not taken by the next session that registers it; the owner moves it", async () => {
     const oc = new OpenCode(nodes[0]!)
     const first = await readySession(oc)
     const id = `e2e:${run}:mover`
@@ -154,11 +155,23 @@ describe("registration through autocode_me", () => {
         ),
       { timeoutMs: 15_000, what: "the server to hear of the deletion" },
     )
-    expect(
-      await callTool(oc, second.id, "autocode_me", { action: "register", id }),
-    ).toContain(`Registered as ${id}`)
+    const out = await callTool(oc, second.id, "autocode_me", {
+      action: "register",
+      id,
+    })
+    expect(out).toStartWith("error (id_taken):")
+    expect(out).toContain(
+      `autocode agents register ${id} --session ${second.id}`,
+    )
+    expect((await admin("GET", `/v1/agents/${id}`)).agent.session).toBe(
+      first.id,
+    )
+    await admin("POST", "/v1/agents", { id, session: second.id })
     expect((await admin("GET", `/v1/agents/${id}`)).agent.session).toBe(
       second.id,
     )
+    expect(
+      await callTool(oc, second.id, "autocode_me", { action: "status" }),
+    ).toStartWith(`Registered as ${id}`)
   })
 })

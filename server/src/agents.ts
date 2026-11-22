@@ -23,9 +23,9 @@ import { type Caller, revokeSessionTokens } from "./tokens.ts"
 /*
  * Registration binds an agent ID to one top-level OpenCode session. Rules, for
  * an ID and a session: a new ID is registered; the same ID from the same
- * session is accepted again; the same ID from another session moves only when
- * the old session is gone (or the owner forces it); a session that holds
- * another ID is refused.
+ * session is accepted again; the same ID from another session is refused,
+ * and only the owner moves it there (by force when the old session still
+ * exists); a session that holds another ID is refused.
  */
 
 const SELECT = `
@@ -238,15 +238,31 @@ export class Agents {
       )
     }
     if (holder) {
-      if (!holder.deleted_at && !force) {
+      /*
+       * An agent never takes an ID that is registered, also when the
+       * session that held it is gone (the owner, 2026-11-22; until then
+       * such an ID moved to the next session that registered it). Only
+       * the owner moves an ID, and away from a live session only by force.
+       */
+      const gone = !!holder.deleted_at
+      if (caller.kind !== "admin" || (!gone && !force)) {
         this.history.record("agent.refused", {
           ...fields,
           data: { reason: "id_taken", by: holder.session_id },
         })
+        const move = `autocode agents register ${id} --session ${session}`
         throw new AutocodeError(
           "id_taken",
-          `${id} belongs to another session that is still there ` +
-            `(${holder.session_id}); the owner can force the move`,
+          caller.kind === "admin"
+            ? `${id} belongs to another session that is still there ` +
+                `(${holder.session_id}); the owner can force the move`
+            : gone
+              ? `${id} is registered already; the session that held it ` +
+                `(${holder.session_id}) is gone. Choose another ID. Only ` +
+                `the owner can move it to this session: ${move}`
+              : `${id} is registered already, to another session ` +
+                `(${holder.session_id}). Choose another ID. Only the ` +
+                `owner can move it to this session: ${move} --force`,
           409,
         )
       }
