@@ -13,6 +13,8 @@ import {
   nextRun,
   parseCron,
   parseTrigger,
+  periodic,
+  triggerEnd,
   wallTime,
   zonedInstant,
 } from "@autocode/shared"
@@ -171,6 +173,172 @@ describe("parseTrigger", () => {
       expect(formatTrigger(t)).toBe(text)
       expect(parseTrigger(formatTrigger(t), opts)).toEqual(t)
     }
+  })
+})
+
+/*
+ * 1.1.0-rc5: an end on a periodic trigger (asked for by a project, whose
+ * owner grants a wake for a period: "daily until the permit is issued,
+ * March 1 at the latest"). `until <time>` as the last words of every, cron
+ * and idle ... repeat.
+ */
+describe("an end on a periodic trigger (until)", () => {
+  test("a date alone means through that day: the end is the midnight after it, in the zone", () => {
+    expect(parseTrigger("every 1d until 2027-03-01", opts)).toEqual({
+      kind: "every",
+      every_ms: 86_400_000,
+      until: "2027-03-02T08:00:00.000Z",
+    })
+    expect(parseTrigger("idle 30m repeat until 2027-03-01", opts)).toEqual({
+      kind: "idle",
+      idle_ms: 1_800_000,
+      repeat: true,
+      until: "2027-03-02T08:00:00.000Z",
+    })
+    // the last day of a month, and of a year
+    expect(parseTrigger("every 1d until 2026-11-30", opts)).toMatchObject({
+      until: "2026-12-01T08:00:00.000Z",
+    })
+    expect(parseTrigger("every 1d until 2026-12-31", opts)).toMatchObject({
+      until: "2027-01-01T08:00:00.000Z",
+    })
+  })
+
+  test("a date and a time, an ISO time, or the next HH:MM is that instant", () => {
+    expect(
+      parseTrigger("every 2h from 09:00 until 2027-03-01 18:00", opts),
+    ).toEqual({
+      kind: "every",
+      every_ms: 7_200_000,
+      from: "09:00",
+      until: "2027-03-02T02:00:00.000Z",
+    })
+    expect(
+      parseTrigger("every 1d until 2027-03-01T12:00:00Z", opts),
+    ).toMatchObject({ until: "2027-03-01T12:00:00.000Z" })
+    // 18:00 today (it is 09:00), and tomorrow's 08:00
+    expect(parseTrigger("every 30m until 18:00", opts)).toMatchObject({
+      until: "2026-11-03T02:00:00.000Z",
+    })
+    expect(parseTrigger("every 30m until 08:00", opts)).toMatchObject({
+      until: "2026-11-03T16:00:00.000Z",
+    })
+  })
+
+  test("a cron trigger's end is wall time in the cron's own zone", () => {
+    expect(parseTrigger('cron "0 9 * * 1-5" until 2027-03-01', opts)).toEqual({
+      kind: "cron",
+      cron: "0 9 * * 1-5",
+      tz: LA,
+      until: "2027-03-02T08:00:00.000Z",
+    })
+    // the midnight after 1 March in Berlin (UTC+1 then)
+    expect(
+      parseTrigger('cron "0 9 * * *" Europe/Berlin until 2027-03-01', opts),
+    ).toEqual({
+      kind: "cron",
+      cron: "0 9 * * *",
+      tz: "Europe/Berlin",
+      until: "2027-03-01T23:00:00.000Z",
+    })
+    expect(
+      parseTrigger(
+        'cron "0 9 * * *" Europe/Berlin until 2027-03-01 09:30',
+        opts,
+      ),
+    ).toMatchObject({ until: "2027-03-01T08:30:00.000Z" })
+  })
+
+  test("only a periodic trigger takes one, and the refusal says so", () => {
+    for (const bad of [
+      "in 45m until 2027-03-01",
+      "at 09:00 until 10:00",
+      "at 2027-02-01 09:00 until 2027-03-01",
+      "idle 30m until 2027-03-01",
+      "fire-only until 2027-03-01",
+      "fire-only once until 2027-03-01",
+    ])
+      expect(() => parseTrigger(bad, opts), bad).toThrow(
+        /only a periodic trigger takes an end \(until\): every, cron or idle \.\.\. repeat/,
+      )
+    expect(periodic(parseTrigger("every 30m", opts))).toBe(true)
+    expect(periodic(parseTrigger('cron "0 9 * * *"', opts))).toBe(true)
+    expect(periodic(parseTrigger("idle 30m repeat", opts))).toBe(true)
+    for (const once of [
+      "in 45m",
+      "at 18:00",
+      "idle 30m",
+      "fire-only",
+      "fire-only once",
+    ])
+      expect(periodic(parseTrigger(once, opts)), once).toBe(false)
+  })
+
+  test("refuses an end it cannot read, and one that has passed", () => {
+    for (const bad of [
+      "every 1d until",
+      "every 1d until tomorrow",
+      "every 1d until 2027-02-30",
+      "every 1d until 2027-03-01 25:00",
+      "every 1d until 2027-03-01 until 2027-04-01",
+      "every 1d from 09:00 extra until 2027-03-01",
+      "until 2027-03-01",
+      'cron "0 9 * * *" until',
+    ])
+      expect(() => parseTrigger(bad, opts), bad).toThrow(/trigger/)
+    for (const past of [
+      "every 1d until 2026-11-01",
+      "every 1d until 2026-11-02 09:00",
+      "every 1d until 2026-11-02T17:00:00Z",
+    ])
+      expect(() => parseTrigger(past, opts), past).toThrow(
+        /the end \(until\) has passed already/,
+      )
+    // the day that is today has not ended
+    expect(parseTrigger("every 1h until 2026-11-02", opts)).toMatchObject({
+      until: "2026-11-03T08:00:00.000Z",
+    })
+    // what a trigger looks like names the end
+    expect(() => parseTrigger("sometimes", opts)).toThrow(/\[until /)
+  })
+
+  test("formats with its end, as text it reads again; a reader's own time format", () => {
+    for (const text of [
+      "every 1d until 2027-03-02T08:00:00.000Z",
+      "every 2h from 09:00 until 2027-03-02T02:00:00.000Z",
+      `cron "0 9 * * 1-5" ${LA} until 2027-03-02T08:00:00.000Z`,
+      "idle 2h repeat until 2027-03-02T08:00:00.000Z",
+    ]) {
+      const t = parseTrigger(text, opts)
+      expect(formatTrigger(t)).toBe(text)
+      expect(parseTrigger(formatTrigger(t), opts)).toEqual(t)
+    }
+    const t = parseTrigger("every 1d until 2027-03-01", opts)
+    expect(formatTrigger(t, (iso) => localTime(Date.parse(iso), LA))).toBe(
+      "every 1d until 2027-03-02 00:00 PST",
+    )
+    expect(triggerEnd(t)).toBe(at("2027-03-02T08:00:00Z"))
+    expect(triggerEnd(parseTrigger("every 1d", opts))).toBeNull()
+  })
+
+  test("no run at the end or after it", () => {
+    const set = opts.now
+    // daily at 09:00 PST, through 4 November
+    const day = parseTrigger("every 1d until 2026-11-04", opts)
+    const o = { tz: LA, anchor: set }
+    expect(iso(nextRun(day, set, o))).toBe("2026-11-03T17:00:00.000Z")
+    expect(iso(nextRun(day, at("2026-11-03T17:00:00Z"), o))).toBe(
+      "2026-11-04T17:00:00.000Z",
+    )
+    expect(nextRun(day, at("2026-11-04T17:00:00Z"), o)).toBeNull()
+    // a run at the end itself does not happen
+    const exact = parseTrigger("every 1d until 2026-11-04T17:00:00Z", opts)
+    expect(iso(nextRun(exact, set, o))).toBe("2026-11-03T17:00:00.000Z")
+    expect(nextRun(exact, at("2026-11-03T17:00:00Z"), o)).toBeNull()
+    // cron: weekdays at 9:00, through Tuesday
+    const cron = parseTrigger('cron "0 9 * * 1-5" until 2026-11-03', opts)
+    expect(iso(nextRun(cron, set, { tz: LA }))).toBe("2026-11-03T17:00:00.000Z")
+    expect(nextRun(cron, at("2026-11-03T17:00:00Z"), { tz: LA })).toBeNull()
   })
 })
 

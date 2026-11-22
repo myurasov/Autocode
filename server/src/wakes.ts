@@ -1,9 +1,10 @@
 /*
- * Wakes (spec, Wakes): each agent's named wakes with their trigger, text,
- * optional check (no end date: the owner, 2026-11-07); setting, listing,
- * cancelling and firing them;
- * when each falls due next; and, on each scheduler tick, the wakes that fell
- * due (by time, or by idle time), handed to the injection queue.
+ * Wakes (spec, Wakes): each agent's named wakes with their trigger, text
+ * and optional check; setting, listing, cancelling and firing them; when
+ * each falls due next; and, on each scheduler tick, the wakes that fell due
+ * (by time, or by idle time), handed to the injection queue. A periodic
+ * trigger may end (`until`, 1.1.0-rc5): at its end the wake is removed and
+ * its agent told.
  */
 
 import type { Database } from "bun:sqlite"
@@ -12,11 +13,13 @@ import {
   checkId,
   formatDuration,
   formatTrigger,
+  localTime,
   nextRun,
   onlyFields,
   parseDuration,
   parseTrigger,
   type Trigger,
+  triggerEnd,
 } from "@autocode/shared"
 import type { History } from "./history.ts"
 import { aliasOf } from "./rename.ts"
@@ -74,7 +77,8 @@ const WITH_SESSION = `
  * from the later of the session's idle start (the end of its last turn, or its
  * registration) and the time the wake was set; once per idle stretch, or with
  * repeat again each duration after it last fell due. Null while a turn runs,
- * or once a wake without repeat has fallen due in this stretch.
+ * once a wake without repeat has fallen due in this stretch, or when that
+ * time is not before the wake's end.
  */
 export function idleDue(
   row: any,
@@ -85,7 +89,9 @@ export function idleDue(
   const sameStretch = row.idle_fired_for === since
   if (!trigger.repeat && sameStretch) return { due: null, since }
   const last = sameStretch && row.idle_last_at ? row.idle_last_at : since
-  return { due: last + trigger.idle_ms, since }
+  const due = last + trigger.idle_ms
+  const end = triggerEnd(trigger)
+  return { due: end !== null && due >= end ? null : due, since }
 }
 
 export function notRegistered(): AutocodeError {
@@ -141,6 +147,9 @@ export class Wakes {
 
   // What each wake costs (1.1.0): set by the server once it exists.
   stats?: WakeStats
+
+  // Tells an agent something of Autocode's own (a wake that ended).
+  notify: (agent: string, subject: string, text: string) => void = () => {}
 
   private agentExists(agent: string) {
     if (!this.db.query("SELECT 1 FROM agents WHERE id = ?").get(agent))
@@ -211,6 +220,17 @@ export class Wakes {
     const next = nextRun(trigger, now, { tz, anchor: now })
     if (trigger.kind === "at" && next === null)
       throw new AutocodeError("bad_trigger", "that time has passed already")
+    // a wake with an end must have a run before it (1.1.0-rc5)
+    const end = triggerEnd(trigger)
+    if (
+      end !== null &&
+      (trigger.kind === "idle" ? now + trigger.idle_ms >= end : next === null)
+    )
+      throw new AutocodeError(
+        "bad_trigger",
+        "the wake would never run: its first run would not come before " +
+          `its end (${localTime(end, tz)})`,
+      )
     const before = this.db
       .query("SELECT created_at FROM wakes WHERE agent_id = ? AND name = ?")
       .get(agent, name) as any
@@ -218,13 +238,15 @@ export class Wakes {
     this.db
       .query(
         `INSERT INTO wakes (agent_id, name, text, trigger, check_cmd,
-           check_timeout_ms, anchor, next_at, set_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           check_timeout_ms, anchor, next_at, end_at, set_by, created_at,
+           updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (agent_id, name) DO UPDATE SET
            text = excluded.text, trigger = excluded.trigger,
            check_cmd = excluded.check_cmd,
            check_timeout_ms = excluded.check_timeout_ms,
            anchor = excluded.anchor, next_at = excluded.next_at,
+           end_at = excluded.end_at,
            set_by = excluded.set_by, updated_at = excluded.updated_at,
            idle_fired_for = NULL, idle_last_at = NULL, check_failures = 0`,
       )
@@ -237,6 +259,7 @@ export class Wakes {
         checkTimeout,
         now,
         next,
+        end,
         by,
         now,
         now,
@@ -378,10 +401,51 @@ export class Wakes {
     return { fired: name, agent }
   }
 
+  /*
+   * Wakes whose end has come (1.1.0-rc5) are removed, and their agents
+   * told. A run that fell due before and still waits is delivered. This
+   * comes before the due wakes, so that a server that was down across an
+   * end delivers no late run.
+   */
+  private ended(now: number, tz: string) {
+    for (const row of this.db
+      .query(
+        "SELECT * FROM wakes WHERE end_at IS NOT NULL AND end_at <= ? " +
+          "ORDER BY end_at, agent_id, name",
+      )
+      .all(now) as any[])
+      try {
+        this.db
+          .query("DELETE FROM wakes WHERE agent_id = ? AND name = ?")
+          .run(row.agent_id, row.name)
+        const trigger = JSON.parse(row.trigger) as Trigger
+        this.history.record("wake.ended", {
+          agent: row.agent_id,
+          data: { name: row.name, trigger: formatTrigger(trigger) },
+        })
+        const shown = formatTrigger(trigger, (iso) =>
+          localTime(Date.parse(iso), tz),
+        )
+        this.notify(
+          row.agent_id,
+          `wake "${row.name}" ended`,
+          `Your wake "${row.name}" (${shown}) reached its end and was ` +
+            "removed. If it is still needed, set it again (autocode_wake " +
+            "action=set).",
+        )
+      } catch (err) {
+        this.history.record("scheduler.error", {
+          agent: row.agent_id,
+          data: { wake: row.name, error: (err as Error).message },
+        })
+      }
+  }
+
   // The scheduler's part: due wakes are queued (a one-time one then goes).
   tick(enqueue: Enqueue) {
     const now = this.now()
     const tz = this.timezone()
+    this.ended(now, tz)
     // one bad wake never stops the others
     for (const row of this.db
       .query(

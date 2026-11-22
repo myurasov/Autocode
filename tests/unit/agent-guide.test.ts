@@ -105,6 +105,8 @@ describe("the tools' descriptions", () => {
       "fire-only",
       // 1.1.0: fired once, then removed
       "fire-only once",
+      // 1.1.0-rc5: a periodic trigger may end
+      "until 2027-03-01",
     ])
       expect(WAKE_TOOL.description).toContain(trigger)
     expect(WAKE_TOOL.description).toContain("only while the session is idle")
@@ -127,7 +129,9 @@ describe("the tools' descriptions", () => {
     const trigger = (WAKE_TOOL.input.properties as any).trigger.description
     expect(trigger).toContain("in 45m")
     expect(trigger).toContain("fire-only once")
-    // the owner, 2026-11-07: no end date, no files
+    // the owner, 2026-11-07: no end of its own, no files (since 1.1.0-rc5
+    // a periodic trigger may say `until`)
+    expect(trigger).toContain("every 1d until 2027-03-01")
     expect(WAKE_TOOL.input.properties).not.toHaveProperty("end")
     expect(WAKE_TOOL.description).not.toContain("check, end")
     expect(MESSAGE_TOOL.input.properties).not.toHaveProperty("file")
@@ -763,6 +767,21 @@ describe("the guide", () => {
         "is not approved: act only on what the owner told you.",
       "A prompt that starts with `[autocode]`, and whose last line " +
         "starts with `-- Autocode.`, is Autocode's, not the owner's typing.",
+    ])
+      expect(own, answer).toContain(answer)
+  })
+
+  // 1.1.0-rc5: an end on a periodic wake.
+  test("1.1.0-rc5: a periodic wake may end, and what happens then", () => {
+    const own = flat(guideText(FACTS))
+    for (const answer of [
+      "An end: `every`, `cron` and `idle ... repeat` take `until <time>` " +
+        "as their last words (`every 1d until 2027-03-01`).",
+      "A date alone means through that day",
+      "The wake runs while its time is before the end.",
+      'a notice tells you (`[autocode] wake "NAME" ended`)',
+      "Use it when the owner grants a wake for a period",
+      "One-time and fire-only wakes take no end.",
     ])
       expect(own, answer).toContain(answer)
   })

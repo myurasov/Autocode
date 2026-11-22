@@ -824,13 +824,19 @@ export class Delivery {
     const stored = live?.trigger ?? item.trigger
     if (!stored) return ""
     const t = JSON.parse(stored) as Trigger
+    // a trigger's end in the server's zone, like the times beside it
+    const shown = (trigger: Trigger) =>
+      formatTrigger(trigger, (iso) => localTime(Date.parse(iso), tz))
     switch (t.kind) {
       case "every":
       case "cron": {
+        // one with an end (1.1.0-rc5) says when no run is left before it
         const next = live?.next_at
           ? `; next ${localTime(live.next_at, tz)}`
-          : ""
-        return `(${formatTrigger(t)}${next})`
+          : t.until
+            ? "; no run left before its end"
+            : ""
+        return `(${shown(t)}${next})`
       }
       case "at":
         return live?.next_at
@@ -838,9 +844,9 @@ export class Delivery {
           : "(once, this was its only run)"
       case "idle":
         return t.repeat
-          ? `(${formatTrigger(t)}; again after ${formatDuration(t.idle_ms)} ` +
+          ? `(${shown(t)}; again after ${formatDuration(t.idle_ms)} ` +
               `more idle)`
-          : `(${formatTrigger(t)}; once per idle stretch)`
+          : `(${shown(t)}; once per idle stretch)`
       case "fire-only":
         // a one-shot one went when it was fired (1.1.0)
         return t.once

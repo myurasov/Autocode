@@ -861,6 +861,19 @@
             its prompt still comes. For a command that ends once.
           </td>
         </tr>
+        <tr>
+          <td>
+            <code>every 1d until 2027-03-01</code><br /><code
+              >cron "0 9 * * 1-5" until 2027-03-01 18:00</code
+            >
+          </td>
+          <td>
+            with an end, for <code>every</code>, <code>cron</code> and
+            <code>idle ... repeat</code>. A date alone means through that
+            day. The wake runs while its time is before the end; at the end
+            it is removed, and its agent is told.
+          </td>
+        </tr>
       </tbody>
     </table>
     <p>

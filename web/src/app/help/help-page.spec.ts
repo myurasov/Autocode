@@ -429,7 +429,17 @@ describe('HelpPage', () => {
       ['fire-only'],
       // 1.1.0 (the owner, 2026-11-20): fired once, then removed
       ['fire-only once'],
+      // 1.1.0-rc5: a periodic trigger may end
+      [
+        'every 1d until 2027-03-01',
+        'cron "0 9 * * 1-5" until 2027-03-01 18:00',
+      ],
     ]);
+    expect(rows(table)[7]![1]!).toBe(
+      'with an end, for every, cron and idle ... repeat. A date alone ' +
+        'means through that day. The wake runs while its time is before ' +
+        'the end; at the end it is removed, and its agent is told.',
+    );
     expect(rows(table)[6]![1]!).toContain(
       'the same, for one fire: the wake is removed when it is fired',
     );

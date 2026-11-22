@@ -29,6 +29,7 @@ import {
   parsePattern,
   parseTrigger,
   type Trigger,
+  triggerEnd,
 } from "@autocode/shared"
 import { promptId } from "./delivery.ts"
 import type { History } from "./history.ts"
@@ -236,6 +237,12 @@ export class Jobs {
       throw new AutocodeError(
         "bad_trigger",
         "a job's trigger is every, at, cron or fire-only",
+      )
+    // an end is a wake's (1.1.0-rc5): a job runs until it is deleted
+    if (triggerEnd(trigger) !== null)
+      throw new AutocodeError(
+        "bad_trigger",
+        "a job's trigger takes no end (until): delete the job instead",
       )
     // as for a wake: such a job would never run
     if (

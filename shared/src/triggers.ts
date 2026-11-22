@@ -10,6 +10,10 @@
  *   idle <duration> [repeat]          after the session is idle that long
  *   fire-only [once]                  only when fired; with once, the wake
  *                                     is removed when it is fired
+ * A periodic trigger (every, cron, idle ... repeat) may end (1.1.0-rc5):
+ *   ... until <time>                  a date alone (through that day), a date
+ *                                     and a time, an ISO time, or the next
+ *                                     HH:MM; no run at the end or after it
  */
 
 import {
@@ -22,16 +26,32 @@ import {
 import { formatDuration, parseDuration } from "./durations.ts"
 import { AutocodeError } from "./errors.ts"
 
+// `until`: the end of a periodic trigger, an ISO time (1.1.0-rc5).
 export type Trigger =
-  | { kind: "every"; every_ms: number; from?: string }
+  | { kind: "every"; every_ms: number; from?: string; until?: string }
   | { kind: "at"; at: string }
-  | { kind: "cron"; cron: string; tz: string }
-  | { kind: "idle"; idle_ms: number; repeat: boolean }
+  | { kind: "cron"; cron: string; tz: string; until?: string }
+  | { kind: "idle"; idle_ms: number; repeat: boolean; until?: string }
   | { kind: "fire-only"; once?: true }
 
 const HELP =
   "a trigger looks like every 30m [from 09:00], in 45m, at 09:00, " +
-  'cron "0 9 * * 1-5" [zone], idle 30m [repeat] or fire-only [once]'
+  'cron "0 9 * * 1-5" [zone], idle 30m [repeat] or fire-only [once]; ' +
+  "every, cron and idle ... repeat may end: ... [until 2027-03-01]"
+
+// A trigger that runs again and again by itself: what may carry an end, and
+// what wake_mode is about.
+export function periodic(t: Trigger): boolean {
+  return (
+    t.kind === "every" || t.kind === "cron" || (t.kind === "idle" && t.repeat)
+  )
+}
+
+// When a trigger ends, or null: it runs while its time is before that.
+export function triggerEnd(t: Trigger): number | null {
+  const until = (t as { until?: string }).until
+  return until ? Date.parse(until) : null
+}
 
 function bad(text: string, why?: string): AutocodeError {
   return new AutocodeError(
@@ -101,19 +121,89 @@ function instant(text: string, tz: string, whole: string): number {
   )
 }
 
+// The next HH:MM in the zone, strictly after `now`.
+function nextClock(
+  c: { hour: number; minute: number },
+  tz: string,
+  now: number,
+): number {
+  const w = wallTime(now, tz)
+  const t = zonedInstant(w.year, w.month, w.day, c.hour, c.minute, tz)
+  if (t > now) return t
+  const next = new Date(Date.UTC(w.year, w.month - 1, w.day + 1))
+  return zonedInstant(
+    next.getUTCFullYear(),
+    next.getUTCMonth() + 1,
+    next.getUTCDate(),
+    c.hour,
+    c.minute,
+    tz,
+  )
+}
+
+/*
+ * The end of a periodic trigger: a date alone means through that day (the
+ * midnight after it), in the zone; else a time as `at` reads one.
+ */
+function endTime(when: string, tz: string, now: number, whole: string): number {
+  const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(when)
+  if (date) {
+    // the day must exist
+    instant(`${when} 00:00`, tz, whole)
+    const next = new Date(
+      Date.UTC(Number(date[1]), Number(date[2]) - 1, Number(date[3]) + 1),
+    )
+    return zonedInstant(
+      next.getUTCFullYear(),
+      next.getUTCMonth() + 1,
+      next.getUTCDate(),
+      0,
+      0,
+      tz,
+    )
+  }
+  const c = clock(when)
+  return c ? nextClock(c, tz, now) : instant(when, tz, whole)
+}
+
 export function parseTrigger(
   input: string,
   opts: { tz: string; now: number },
 ): Trigger {
   const text = String(input ?? "").trim()
+  // the end of a periodic trigger, its last words
+  const ended = /^(.*?)\s+until(?:\s+(.*))?$/.exec(text)
+  if (!ended) return parseBase(text, text, opts)
+  const t = parseBase((ended[1] ?? "").trim(), text, opts)
+  if (!periodic(t))
+    throw bad(
+      text,
+      "only a periodic trigger takes an end (until): every, cron or " +
+        "idle ... repeat",
+    )
+  const when = (ended[2] ?? "").trim()
+  if (!when) throw bad(text, "until needs a time, like 2027-03-01")
+  // a cron trigger's end is wall time in the cron's own zone
+  const tz = t.kind === "cron" ? t.tz : opts.tz
+  const end = endTime(when, tz, opts.now, text)
+  if (end <= opts.now) throw bad(text, "the end (until) has passed already")
+  return { ...t, until: new Date(end).toISOString() } as Trigger
+}
+
+// A trigger without its end; `whole` is the text as written, for errors.
+function parseBase(
+  text: string,
+  whole: string,
+  opts: { tz: string; now: number },
+): Trigger {
   const [word, ...rest] = text.split(/\s+/)
   switch (word) {
     case "every": {
       const [d, fromWord, from, ...extra] = rest
-      const every_ms = duration(d, text)
+      const every_ms = duration(d, whole)
       if (fromWord === undefined) return { kind: "every", every_ms }
       if (fromWord !== "from" || !from || extra.length || !clock(from))
-        throw bad(text)
+        throw bad(whole)
       const c = clock(from)!
       const hh = String(c.hour).padStart(2, "0")
       const mm = String(c.minute).padStart(2, "0")
@@ -121,79 +211,80 @@ export function parseTrigger(
     }
     case "in": {
       const [d, ...extra] = rest
-      const ms = duration(d, text)
-      if (extra.length) throw bad(text)
+      const ms = duration(d, whole)
+      if (extra.length) throw bad(whole)
       return { kind: "at", at: new Date(opts.now + ms).toISOString() }
     }
     case "at": {
       const when = rest.join(" ")
       const c = clock(when)
       if (c) {
-        const w = wallTime(opts.now, opts.tz)
-        let t = zonedInstant(w.year, w.month, w.day, c.hour, c.minute, opts.tz)
-        if (t <= opts.now) {
-          const next = new Date(Date.UTC(w.year, w.month - 1, w.day + 1))
-          t = zonedInstant(
-            next.getUTCFullYear(),
-            next.getUTCMonth() + 1,
-            next.getUTCDate(),
-            c.hour,
-            c.minute,
-            opts.tz,
-          )
-        }
+        const t = nextClock(c, opts.tz, opts.now)
         return { kind: "at", at: new Date(t).toISOString() }
       }
       return {
         kind: "at",
-        at: new Date(instant(when, opts.tz, text)).toISOString(),
+        at: new Date(instant(when, opts.tz, whole)).toISOString(),
       }
     }
     case "cron": {
       const m = /^cron\s+(["'])(.+?)\1(?:\s+(\S+))?$/.exec(text)
-      if (!m) throw bad(text, "put the cron fields in quotes")
+      if (!m) throw bad(whole, "put the cron fields in quotes")
       const cron = (m[2] ?? "").trim().split(/\s+/).join(" ")
       const tz = m[3] ?? opts.tz
       try {
         parseCron(cron)
       } catch (err) {
-        throw bad(text, (err as Error).message)
+        throw bad(whole, (err as Error).message)
       }
-      if (!isTimeZone(tz)) throw bad(text, `unknown time zone ${tz}`)
+      if (!isTimeZone(tz)) throw bad(whole, `unknown time zone ${tz}`)
       return { kind: "cron", cron, tz }
     }
     case "idle": {
       const [d, repeat, ...extra] = rest
-      const idle_ms = duration(d, text)
+      const idle_ms = duration(d, whole)
       if (extra.length || (repeat !== undefined && repeat !== "repeat"))
-        throw bad(text)
+        throw bad(whole)
       return { kind: "idle", idle_ms, repeat: repeat === "repeat" }
     }
     case "fire-only": {
       // once: removed when it is fired (1.1.0)
       const [once, ...extra] = rest
       if (once === undefined) return { kind: "fire-only" }
-      if (once !== "once" || extra.length) throw bad(text)
+      if (once !== "once" || extra.length) throw bad(whole)
       return { kind: "fire-only", once: true }
     }
     default:
-      throw bad(text)
+      throw bad(whole)
   }
 }
 
-export function formatTrigger(t: Trigger): string {
+/*
+ * A trigger as text. Its end is written as the ISO time, which parseTrigger
+ * reads again; `time` writes it another way for a reader (the server's zone
+ * in a prompt).
+ */
+export function formatTrigger(
+  t: Trigger,
+  time: (iso: string) => string = (iso) => iso,
+): string {
+  const end = (until?: string) => (until ? ` until ${time(until)}` : "")
   switch (t.kind) {
     case "every":
       return (
         `every ${formatDuration(t.every_ms)}` +
-        (t.from ? ` from ${t.from}` : "")
+        (t.from ? ` from ${t.from}` : "") +
+        end(t.until)
       )
     case "at":
       return `at ${t.at}`
     case "cron":
-      return `cron "${t.cron}" ${t.tz}`
+      return `cron "${t.cron}" ${t.tz}${end(t.until)}`
     case "idle":
-      return `idle ${formatDuration(t.idle_ms)}${t.repeat ? " repeat" : ""}`
+      return (
+        `idle ${formatDuration(t.idle_ms)}${t.repeat ? " repeat" : ""}` +
+        end(t.until)
+      )
     case "fire-only":
       return t.once ? "fire-only once" : "fire-only"
   }
@@ -203,9 +294,19 @@ export function formatTrigger(t: Trigger): string {
  * When a trigger runs next, strictly after `after`; null for idle and
  * fire-only (they have no time of their own) and for a past `at`. `anchor` is
  * when the wake was set: `every` steps from it (or from its `from` time on that
- * day).
+ * day). A trigger with an end has no run at the end or after it.
  */
 export function nextRun(
+  t: Trigger,
+  after: number,
+  opts: { tz: string; anchor?: number },
+): number | null {
+  const next = nextOf(t, after, opts)
+  const end = triggerEnd(t)
+  return next !== null && end !== null && next >= end ? null : next
+}
+
+function nextOf(
   t: Trigger,
   after: number,
   opts: { tz: string; anchor?: number },

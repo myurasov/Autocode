@@ -51,10 +51,13 @@ export function weekOf(
   };
 }
 
-// A trigger as the page shows it: a one-time one at the viewer's local time.
+// A trigger as the page shows it: a one-time one, and a periodic one's end
+// (1.1.0-rc5), at the viewer's local time.
 export function triggerText(trigger: string): string {
   const at = /^at (\d{4}-\d\d-\d\dT\S+)$/.exec(trigger);
-  return at ? `at ${localTime(at[1])}` : trigger;
+  if (at) return `at ${localTime(at[1])}`;
+  const end = / until (\d{4}-\d\d-\d\dT\S+)$/.exec(trigger)?.[1];
+  return end ? trigger.slice(0, -end.length) + localTime(end) : trigger;
 }
 
 @Component({

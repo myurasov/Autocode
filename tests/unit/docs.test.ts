@@ -338,6 +338,29 @@ test("the reference has the stricter registration and an agent's own close", () 
     expect(ref, part).toContain(part)
 })
 
+// 1.1.0-rc5: an end on a periodic wake (asked for by a project).
+test("the reference has the end of a periodic wake: the triggers, the rules and the notice", () => {
+  const ref = read("reference.md")
+  for (const part of [
+    "| `every 1d until 2027-03-01` | as `every 1d`, through 1 March 2027. " +
+      "Then the wake is removed |",
+    '| `cron "0 9 * * 1-5" until 2027-03-01 18:00` |',
+    "| `idle 30m repeat until 18:00` |",
+    "- **An end.** `every`, `cron` and `idle ... repeat` take " +
+      "`until <time>` as their last words.",
+    "A date alone means through that day.",
+    "The wake runs while its time is before the end: a run at the end " +
+      "itself does not happen.",
+    '`[autocode] wake "daily" ended`',
+    "A job's trigger takes no end.",
+    "| `wake.ended` | a wake reached the end of its trigger (`until`) and " +
+      "was removed |",
+    "- a wake of the agent's reached its end and was removed;",
+  ])
+    expect(ref, part).toContain(part)
+  expect(ref).not.toContain("A wake has no end date")
+})
+
 // 1: a wake's own time limit for its check.
 test("the reference has a wake's own check timeout: the tool, the command, the setting", () => {
   const ref = read("reference.md")

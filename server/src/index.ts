@@ -321,6 +321,7 @@ export async function startServer(
   // what each wake costs (1.1.0): due and skipped, its turns, their steps
   const wakeStats = new WakeStats(db, (at) => costs.day(at), now)
   wakes.stats = wakeStats
+  wakes.notify = (agent, subject, text) => messages.notice(agent, subject, text)
   delivery.stats = wakeStats
   hosts.onTurnStarted = (session, cause) => {
     wakeStats.turnStarted(cause)

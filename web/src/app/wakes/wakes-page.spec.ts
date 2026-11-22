@@ -347,6 +347,15 @@ describe('WakesPage', () => {
     );
     expect(triggerText('every 30m from 09:00')).toBe('every 30m from 09:00');
     expect(triggerText('idle 30m repeat')).toBe('idle 30m repeat');
+    // 1.1.0-rc5: a periodic trigger's end, at its local time too
+    expect(triggerText('every 1d until 2027-03-02T08:00:00.000Z')).toBe(
+      `every 1d until ${localTime('2027-03-02T08:00:00.000Z')}`,
+    );
+    expect(
+      triggerText('cron "0 9 * * 1-5" UTC until 2027-03-02T08:00:00.000Z'),
+    ).toBe(
+      `cron "0 9 * * 1-5" UTC until ${localTime('2027-03-02T08:00:00.000Z')}`,
+    );
   });
 
   // The owner, 2026-11-17: sorting by a heading; newest first by date.

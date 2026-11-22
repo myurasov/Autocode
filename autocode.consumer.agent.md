@@ -161,6 +161,14 @@ Triggers (times without a zone are in the server's zone):
 - `fire-only once`: the same, for one fire: the wake is removed when
   it is fired, and its run is still delivered. Use it for a job that
   ends once; a plain `fire-only` wake stays until you cancel it.
+- An end: `every`, `cron` and `idle ... repeat` take `until <time>`
+  as their last words (`every 1d until 2027-03-01`). A date alone
+  means through that day; a date and a time, an ISO time, or `HH:MM`
+  (the next one) is that instant; a cron trigger's end is in the
+  cron's zone. The wake runs while its time is before the end. At the
+  end it is removed, and a notice tells you (`[autocode] wake "NAME"
+  ended`). Use it when the owner grants a wake for a period. One-time
+  and fire-only wakes take no end.
 
 More:
 

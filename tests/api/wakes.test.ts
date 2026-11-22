@@ -285,8 +285,9 @@ describe("delivery", () => {
     expect((await as(a, "GET", "/v1/me/wakes")).body.wakes).toEqual([])
   })
 
-  // The owner, 2026-11-07: a wake has no end date; cancel it instead.
-  test("a wake takes no end date", async () => {
+  // The owner, 2026-11-07: a wake has no `end` of its own. Since 1.1.0-rc5
+  // a periodic trigger may say `until` (wake-end.test.ts).
+  test("a wake takes no end field", async () => {
     const res = await as(a, "PUT", "/v1/me/wakes/w", {
       text: "Go.",
       trigger: "every 10m",

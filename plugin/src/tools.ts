@@ -548,9 +548,11 @@ export const WAKE_TOOL = {
     'at 2026-11-30 18:00 (once); cron "*/30 8-16 * * 1-5" [zone]; idle 30m ' +
     "[repeat] (after that long idle, counted from your last turn's end); " +
     "fire-only (a job you start fires it by ending with: autocode fire me " +
-    "NAME); fire-only once (the same, removed once it is fired). Times are " +
-    "in the server's zone (see autocode_me status). " +
-    "Exact rules: autocode_me action=help topic=wakes.",
+    "NAME); fire-only once (the same, removed once it is fired). every, " +
+    "cron and idle ... repeat may end: add until 2027-03-01 (through that " +
+    "day) or until 2027-03-01 18:00; at its end the wake is removed and a " +
+    "notice tells you. Times are in the server's zone (see autocode_me " +
+    "status). Exact rules: autocode_me action=help topic=wakes.",
   input: {
     type: "object",
     properties: {
@@ -575,7 +577,8 @@ export const WAKE_TOOL = {
         description:
           "set: when it runs: every 30m | every 2h from 09:00 | in 45m | " +
           'at 09:00 | at 2026-11-30 18:00 | cron "0 9 * * 1-5" [zone] | ' +
-          "idle 30m | idle 30m repeat | fire-only | fire-only once",
+          "idle 30m | idle 30m repeat | fire-only | fire-only once; with " +
+          "an end: every 1d until 2027-03-01",
       },
       check: {
         type: "string",
@@ -827,13 +830,23 @@ function preview(text: string): string {
   return flat.length > PREVIEW ? `${flat.slice(0, PREVIEW)}…` : flat
 }
 
-const idleOf = (trigger: string) => /^idle (\S+)( repeat)?$/.exec(trigger)
+const idleOf = (trigger: string) =>
+  /^idle (\S+)( repeat)?(?: until \S+)?$/.exec(trigger)
 
-// A trigger as an agent reads it: a one-time `at` in the server's zone (the
-// server stores it in UTC; `in 45m` becomes one).
+// The end of a periodic trigger (1.1.0-rc5), as the server writes it.
+const endOf = (trigger: string) =>
+  / until (\d{4}-\d\d-\d\dT[\d:.]+Z)$/.exec(trigger)?.[1]
+
+// A trigger as an agent reads it: a one-time `at`, and a periodic trigger's
+// end, in the server's zone (the server stores them in UTC; `in 45m`
+// becomes an `at`).
 function shownTrigger(trigger: string, c: Clock): string {
   const at = /^at (\d{4}-\d\d-\d\dT[\d:.]+Z)$/.exec(trigger)
-  return at ? `at ${localTime(Date.parse(at[1]!), c.tz)}` : trigger
+  if (at) return `at ${localTime(Date.parse(at[1]!), c.tz)}`
+  const end = endOf(trigger)
+  return end
+    ? trigger.slice(0, -end.length) + localTime(Date.parse(end), c.tz)
+    : trigger
 }
 
 // A turn of the agent's runs now (`busy`; a waiting or paused agent may be
@@ -847,16 +860,19 @@ function timing(w: any, c: Clock, working: boolean): string {
   if (trigger === "fire-only once")
     return "runs once, when fired, then it is removed"
   const idle = idleOf(trigger)
+  // one with an end has no run at the end or after it
+  const left = "no run left before its end"
   if (idle) {
     if (w.due) return `due ${when(w.due, c)} if you stay idle`
     if (working) return `due ${idle[1]} after this turn ends`
+    if (endOf(trigger)) return left
     return (
       "ran in this idle stretch; due again " +
       `${idle[1]} after your next turn ends`
     )
   }
   if (w.next) return `next ${when(w.next, c)}`
-  return "no run ahead"
+  return endOf(trigger) ? left : "no run ahead"
 }
 
 const dollars = (n: unknown) => `$${Number(n).toFixed(2)}`
@@ -957,6 +973,12 @@ function setText(w: any, me: any): string {
         : `It falls due once per idle stretch: ${counted}.`,
     )
   } else if (w.next) parts.push(`Next run ${when(w.next, c)}.`)
+  const end = endOf(trigger)
+  if (end)
+    parts.push(
+      `It ends ${localTime(Date.parse(end), c.tz)}: then it is removed, ` +
+        "and a notice tells you.",
+    )
   if (w.check)
     parts.push(
       "Before each run its check runs in your folder" +

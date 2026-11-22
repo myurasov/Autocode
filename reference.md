@@ -530,6 +530,9 @@ autocode_wake  action=fire  agent=kaggle:worker-1  name=new-fold  text="Folds v3
 | `idle 30m repeat` | as `idle 30m`, then again every 30 minutes for as long as the session stays idle |
 | `fire-only` | never by itself: only when fired, by the agent, another agent, the owner or a script |
 | `fire-only once` | the same, for one fire: the wake is removed when it is fired, and its prompt still comes. For a command that ends once |
+| `every 1d until 2027-03-01` | as `every 1d`, through 1 March 2027. Then the wake is removed |
+| `cron "0 9 * * 1-5" until 2027-03-01 18:00` | as that `cron`, until that local time |
+| `idle 30m repeat until 18:00` | as `idle 30m repeat`, until the next 18:00 |
 
 - **Zone.** Times without a zone are in the server's zone: the `timezone` setting. `autocode_me action=status` shows
   it.
@@ -543,6 +546,16 @@ autocode_wake  action=fire  agent=kaggle:worker-1  name=new-fold  text="Folds v3
   starts when a turn ends.
 - **`idle ... repeat`.** After the first time, it falls due again each time that long has passed since it last fell
   due. A time at which its check skipped it counts too.
+- **An end.** `every`, `cron` and `idle ... repeat` take `until <time>` as their last words. Use it for a wake that
+  is granted for a period.
+  - **The time.** A date alone means through that day. A date and a time, or an ISO time with its own zone, is
+    that instant. `HH:MM` alone is the next such time. The end of a `cron` trigger is read in the cron's own zone.
+  - **Runs.** The wake runs while its time is before the end: a run at the end itself does not happen. Lists show
+    "no run left before its end" once that is so.
+  - **At the end** the wake is removed, and its agent is told by a notice: `[autocode] wake "daily" ended`. A run
+    that fell due before the end and still waits is delivered.
+  - **Refused:** an end on a one-time or `fire-only` wake, an end that has passed, and a wake whose first run
+    would not come before its end. A job's trigger takes no end.
 
 ### List, Cancel and Fire
 
@@ -550,13 +563,15 @@ autocode_wake  action=fire  agent=kaggle:worker-1  name=new-fold  text="Folds v3
   time from now. When it was last set: its schedule counts from then. And who set it. For an idle wake, "next" is
   when it falls due if the session stays idle. **`show`** prints one wake whole.
 - **`cancel`** removes a wake, and what of it still waits to be delivered: also the waiting prompt of a one-time
-  wake that is gone already (`in`, `at`, `fire-only once`). A wake has no end date: cancel it when it is no longer
-  needed. Unregistering removes all of an agent's wakes.
+  wake that is gone already (`in`, `at`, `fire-only once`). A periodic wake runs until it is cancelled, or until
+  its end if its trigger has one (`until`): cancel a wake when it is no longer needed. Unregistering removes all of
+  an agent's wakes.
 - **`fire`** delivers a wake now. Any agent may fire any agent's wake. A fired wake skips its check. It still waits
   for an idle session and for `min_interval`. The prompt says who fired it, and quotes the extra text as theirs.
 - **Merging.** A wake that falls due several times before it can be delivered arrives once. Different wakes never
   merge, even with the same text, and neither do messages.
-- **After a server outage,** a wake that fell due meanwhile is delivered once.
+- **After a server outage,** a wake that fell due meanwhile is delivered once. A wake whose end passed meanwhile is
+  removed without a late run.
 - **You** set, cancel and fire any agent's wakes: `autocode wake set`, `autocode wake cancel`, `autocode fire`, or
   the Wakes tab.
 
@@ -732,6 +747,7 @@ not quoted. The first line says what the notice is:
 - a lock was granted, expired, or released by the owner; or the agent was taken out of a lock's queue;
 - an ask was sent to this agent to answer;
 - the agent's own approval was answered;
+- a wake of the agent's reached its end and was removed;
 - a cost warning;
 - the result or the failure of a run;
 - the session's compaction is done, or a compaction that the agent asked for failed.
@@ -1475,6 +1491,7 @@ by one kind, or by a group such as `wake.*`.
 | `wake.due`, `wake.fired` | a wake fell due; somebody fired a wake |
 | `wake.skipped`, `wake.check_failed` | a wake's check exited 1; it failed or ran too long |
 | `wake.merged` | a wake fell due again while it still waited: the two became one |
+| `wake.ended` | a wake reached the end of its trigger (`until`) and was removed |
 | `injection.sent` | Autocode typed a prompt, or put messages into a running turn |
 | `injection.failed`, `injection.no_turn` | a prompt did not reach its session; it reached OpenCode, but no turn started |
 | `message.sent`, `message.dropped` | a message was sent; a waiting message was dropped, because its agent unregistered |
