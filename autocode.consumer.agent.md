@@ -185,6 +185,18 @@ More:
   `show` one whole; `cancel` removes a wake and any of its runs still
   waiting (also the waiting run of a one-time wake that is gone
   already).
+- The owner may gate periodic wakes (`every`, `cron`, `idle ...
+  repeat`) with the `wake_mode` setting; `autocode_me status` says so
+  when they are not free. With `ask`, `set` does not set the wake: it
+  asks the owner, with the wake's exact terms, and the wake is set
+  once the owner approves (a notice tells you: `approval "Wake NAME"
+  approved`). Go on with your work meanwhile: a wake of that name
+  that exists stays as it is, `list` shows what waits, and you take a
+  proposal back with `autocode_approval action=close`. Setting a wake
+  again with the terms it has asks nothing. With `off`, a periodic
+  wake is refused. One-time wakes stay free in both, but do not
+  rebuild a periodic wake from one-time ones to get around the
+  setting: ask the owner.
 - `fire` delivers a wake now (any agent's, by name; still only while
   that session is idle and after its `min_interval`). A fired wake
   skips its check; the prompt says who fired it, and your text is

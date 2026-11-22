@@ -711,6 +711,15 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE sessions ADD COLUMN accounted_at INTEGER;
   `,
+  /*
+   * 29 (1.1.0-rc5; asked for by a project, wake_mode): a periodic wake an
+   * agent set that waits for the owner's approval, kept with its ask
+   * (asks.wake_def), as a job's is (job_def). It does not make the agent
+   * wait.
+   */
+  `
+  ALTER TABLE asks ADD COLUMN wake_def TEXT;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

@@ -672,12 +672,36 @@ describe('HelpPage', () => {
       ['approval_mode', 'ask'],
       // rc2 and rc3 (the owner, 2026-11-09)
       ['job_mode', 'ask'],
+      // 1.1.0-rc5: periodic wakes that agents set
+      ['wake_mode', 'approve'],
       ['filter_recovery', 'retry compact'],
       ['compact_at', '50% max 500000'],
       ['daily_usd', 'off'],
       ['cap_warn', '90%'],
       ['expire_after', '14d'],
     ]);
+    expect(settings.find((r) => r[0] === 'wake_mode')![2]).toBe(
+      'periodic wakes an agent sets (every, cron, idle ... repeat): set at ' +
+        'once (approve), you approve them first (ask), or refused (off)',
+    );
+    // 1.1.0-rc5: 0 means never
+    expect(settings.find((r) => r[0] === 'expire_after')![2]).toBe(
+      "unregister an agent this long after its session's last turn (0: " +
+        'never); an agent that you or Stop All paused is kept',
+    );
+    expect(section(page, 'wakes')).toContain(
+      'With wake_mode ask, a periodic wake that an agent sets for itself ' +
+        '(every, cron, idle ... repeat) is not set at once: an approval ' +
+        "comes to your Inbox with the wake's exact terms, and the wake is " +
+        'set once you approve it. With off such a wake is refused. ' +
+        'One-time wakes, and the wakes you set yourself, are never asked ' +
+        'for. The default, approve, sets every wake at once.',
+    );
+    // (two code words side by side keep the space between them: the page
+    // said "job_modeask" before 1.1.0-rc5)
+    expect(section(page, 'jobs')).toContain(
+      'With job_mode ask (the default) an approval',
+    );
     for (const mode of ['question_mode', 'permission_mode', 'approval_mode']) {
       const does = settings.find((r) => r[0] === mode)![2];
       expect(does, mode).toContain('agent:<id>');

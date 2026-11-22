@@ -361,6 +361,38 @@ test("the reference has the end of a periodic wake: the triggers, the rules and 
   expect(ref).not.toContain("A wake has no end date")
 })
 
+// 1.1.0-rc5: wake_mode, and expire_after 0 (asked for by a project).
+test("the reference has wake_mode, and expire_after 0 for never", () => {
+  // on one line: the texts' line breaks are not what is checked here
+  const ref = read("reference.md").replace(/\s+/g, " ")
+  for (const part of [
+    "### Your Approval of Periodic Wakes",
+    "`wake_mode` setting decides, per agent or pattern, what happens to " +
+      "the periodic wakes that an agent sets for itself: `every`, `cron` " +
+      "and `idle ... repeat`.",
+    "- `approve`, the default: the wake is set at once.",
+    "- `ask`: an approval lands in your Inbox, `Wake NAME, set by AGENT`, " +
+      "with the wake's exact terms",
+    "- `off`: the wake is refused.",
+    "autocode settings set wake_mode ask --match 'kaggle:worker-*'",
+    '`[autocode] approval "Wake digest" approved`',
+    "- **Changing a wake** asks again.",
+    "Setting a wake again with the terms that it has now asks nothing",
+    "- **What stays free:** one-time wakes (`in`, `at`, `idle` without " +
+      "`repeat`, `fire-only`, `fire-only once`), cancelling and firing.",
+    "- **Your own wakes** for an agent are never asked for",
+    "| `wake_mode` | agent | `approve` | periodic wakes that an agent sets " +
+      "(`every`, `cron`, `idle ... repeat`): set at once (`approve`), you " +
+      "approve first (`ask`), or refused (`off`)",
+    "| `expire_after` | agent | `14d` | unregister an agent this long " +
+      "after its session's last turn. `0`: never |",
+    "With `expire_after` `0` an agent never expires",
+    "A rule applies to every agent whose ID matches it, also to one that " +
+      "registers after the rule was set;",
+  ])
+    expect(ref, part).toContain(part)
+})
+
 // 1: a wake's own time limit for its check.
 test("the reference has a wake's own check timeout: the tool, the command, the setting", () => {
   const ref = read("reference.md")

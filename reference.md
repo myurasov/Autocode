@@ -388,7 +388,8 @@ An agent is unregistered in one of four ways:
 1. It calls `autocode_me action=unregister`.
 2. You unregister it: **Unregister** on the Agents tab, or `autocode agents rm AGENT`.
 3. `expire_after` (14 days) passes after its session's last turn. An agent paused by you or by Stop All does not
-   expire, and neither does one with an open ask.
+   expire, and neither does one with an open ask. With `expire_after` `0` an agent never expires: for agents that
+   stay idle for months and wake only on a message (`autocode settings set expire_after 0 --match 'PATTERN'`).
 4. It is a run of a job, and the run ends.
 
 Unregistering removes the agent's wakes and the jobs that it set, releases its locks, closes its open asks and
@@ -574,6 +575,33 @@ autocode_wake  action=fire  agent=kaggle:worker-1  name=new-fold  text="Folds v3
   removed without a late run.
 - **You** set, cancel and fire any agent's wakes: `autocode wake set`, `autocode wake cancel`, `autocode fire`, or
   the Wakes tab.
+
+### Your Approval of Periodic Wakes
+
+A periodic wake costs a turn each time it falls due, and a turn reads the session's whole context again. The
+`wake_mode` setting decides, per agent or pattern, what happens to the periodic wakes that an agent sets for
+itself: `every`, `cron` and `idle ... repeat`.
+
+- `approve`, the default: the wake is set at once.
+- `ask`: an approval lands in your Inbox, `Wake NAME, set by AGENT`, with the wake's exact terms: its trigger with
+  its end, its check and the check's time limit, its text, and for a change the trigger that it has now. The wake
+  is set only once you approve it, and its schedule counts from then.
+- `off`: the wake is refused.
+
+```sh
+autocode settings set wake_mode ask --match 'kaggle:worker-*'
+```
+
+- **Meanwhile** the agent goes on with its work: a proposed wake does not make it `waiting`. It is told by a notice,
+  `[autocode] approval "Wake digest" approved`. A new proposal of the same wake replaces the old one, and the agent
+  can take its proposal back (`autocode_approval action=close`). `autocode_wake action=list` shows the agent
+  which of its wakes wait for you, and `autocode_me action=status` says how its periodic wakes are gated.
+- **Changing a wake** asks again. The wake stays as it was until you approve. Setting a wake again with the terms
+  that it has now asks nothing: there is nothing new to decide, and agents set their wakes again when they start.
+- **What stays free:** one-time wakes (`in`, `at`, `idle` without `repeat`, `fire-only`, `fire-only once`),
+  cancelling and firing. The guide tells agents not to rebuild a periodic wake from one-time ones.
+- **Your own wakes** for an agent are never asked for: the Wakes tab's form and `autocode wake set`.
+- **An end that passed** before you approved: the wake is not set, and the notice says why.
 
 ### Checks
 
@@ -1035,7 +1063,8 @@ the machine is on again, Autocode brings the agents back by itself. Nobody has t
 - **A quick reboot.** The server takes a host for connected until 65 seconds after it last heard from it. After a
   reboot that is quicker than that, it starts OpenCode once those seconds have passed.
 - **A long outage.** An agent is unregistered when its last turn ended longer ago than `expire_after` (14 days by
-  default), and the time that the machine was off counts. Raise `expire_after` for agents that must outlast that.
+  default), and the time that the machine was off counts. Raise `expire_after` for agents that must outlast that,
+  or set it to `0`: never.
 - **What the last moments can lose.** The database is never left damaged by a cut. What the server wrote in the
   last second or so before the cut can be missing: a prompt may then be typed again, and a cost may not be counted.
 - **Machines other than the server's.** After their own power cut, start OpenCode there yourself, or open one of
@@ -1735,7 +1764,8 @@ Settings tab.
 Autocode uses the first of these that exists for an agent:
 
 1. the agent's own value, set with `--agent ID`;
-2. the first pattern rule that matches its ID, set with `--match PATTERN`. A new rule goes last;
+2. the first pattern rule that matches its ID, set with `--match PATTERN`. A new rule goes last. A rule applies to
+   every agent whose ID matches it, also to one that registers after the rule was set;
 3. the server-wide value;
 4. the built-in default.
 
@@ -1766,13 +1796,14 @@ clears that value again.
 | `permission_mode` | agent | `ask` | where permission prompts go: `ask`, `approve`, `agent:<id>` or `job:<name>` |
 | `approval_mode` | agent | `ask` | where approvals go: `ask`, `approve`, `agent:<id>` or `job:<name>` |
 | `job_mode` | agent | `ask` | jobs that an agent sets: you approve first (`ask`), set at once (`approve`), or refused (`off`) |
+| `wake_mode` | agent | `approve` | periodic wakes that an agent sets (`every`, `cron`, `idle ... repeat`): set at once (`approve`), you approve first (`ask`), or refused (`off`) (see [Your Approval of Periodic Wakes](#your-approval-of-periodic-wakes)) |
 | `filter_recovery` | agent | `retry compact` | after a blocked reply: `retry compact`, `retry` or `off` (see [A Blocked Reply](#a-blocked-reply)) |
 | `retry_interval` | agent | `1m` | the wait after a failed turn before a retry prompt, and between retries |
 | `retry_attempts` | agent | `0` | the most retries in a row before Autocode stops and tells you. 0: no limit |
 | `daily_usd` | agent | `off` | the agent's cost cap per day, in dollars: `12.50` or `$12.50`, or `off` |
 | `cap_warn` | agent | `90%` | warn the agent at this share of its cap |
 | `compact_at` | agent | `50% max 500000` | compact a session past this context size (see [Compaction](#compaction)) |
-| `expire_after` | agent | `14d` | unregister an agent this long after its session's last turn |
+| `expire_after` | agent | `14d` | unregister an agent this long after its session's last turn. `0`: never |
 | `host_expire_after` | server | `1d` | forget a host this long after it was last heard from, once it is offline and nothing needs it. `0`: never (see [What the Database Keeps](#what-the-database-keeps)) |
 | `report_close_after` | server | `7d` | close a report in the Inbox this long after it came. `0`: never (see [Reports](#reports)) |
 | `history_days` | server | `30` | how many days history is kept, at least 1 (see [What the Database Keeps](#what-the-database-keeps)) |

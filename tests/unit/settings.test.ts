@@ -30,6 +30,8 @@ describe("settings", () => {
     // jobs set by agents: an approval of the owner first (the owner,
     // 2026-11-09, rc2)
     expect(d.job_mode).toBe("ask")
+    // periodic wakes set by agents: at once, as before (1.1.0-rc5)
+    expect(d.wake_mode).toBe("approve")
     expect(d.compact_at).toBe("50% max 500000")
     expect(d.check_timeout).toBe("60s")
     expect(d.check_output).toBe(2000)
@@ -226,4 +228,34 @@ test("job_mode takes ask, approve or off, and nothing else", () => {
       "expected one of ask, approve, off",
     )
   expect(SETTINGS.job_mode?.scope).toBe("agent")
+})
+
+// 1.1.0-rc5 (asked for by a project): wake_mode, per agent and pattern,
+// for the periodic wakes an agent sets: approve (at once, the default), ask
+// (an approval of the owner) or off.
+test("wake_mode takes ask, approve or off, and nothing else", () => {
+  for (const v of ["ask", "approve", "off"])
+    expect(normalizeSetting("wake_mode", v)).toBe(v)
+  for (const v of ["agent:team:lead", "job:mail", "auto", ""])
+    expect(() => normalizeSetting("wake_mode", v), v).toThrow(
+      "expected one of ask, approve, off",
+    )
+  expect(SETTINGS.wake_mode?.scope).toBe("agent")
+  expect(SETTINGS.wake_mode?.help).toBe(
+    "periodic wakes an agent sets (every, cron, idle ... repeat): an " +
+      "approval of the owner first (ask), set at once (approve), or " +
+      "refused (off)",
+  )
+})
+
+// 1.1.0-rc5 (asked for by a project): 0 means never, as for a host's
+// record and a report; the help says so.
+test("expire_after takes 0 for never, and its help says so", () => {
+  expect(normalizeSetting("expire_after", "0")).toBe(
+    normalizeSetting("host_expire_after", "0"),
+  )
+  expect(SETTINGS.expire_after?.help).toBe(
+    "unregister an agent this long after its session's last turn " +
+      "(0: never)",
+  )
 })

@@ -126,6 +126,81 @@ export class Asks {
   startJob: (job: string, ask: string) => string | null = () => null
   // an approved job of an agent's (the owner, 2026-11-09): it is set
   setJob: (def: unknown, agent: string) => void = () => {}
+  // an approved periodic wake of an agent's (wake_mode, 1.1.0-rc5)
+  setWake: (def: unknown, agent: string) => void = () => {}
+
+  /*
+   * A periodic wake an agent set, for the owner to approve (wake_mode ask,
+   * 1.1.0-rc5): an approval in the owner's Inbox with the wake's exact
+   * terms, kept with it; the wake is set once the owner approves. Like a
+   * job's proposal it goes to the owner alone, never expires and does not
+   * make the agent wait. A new proposal of the same wake replaces an open
+   * one.
+   */
+  proposeWake(
+    agent: string,
+    session: string,
+    change: boolean,
+    lines: string[],
+    def: { name: string; text: string },
+  ): AskView {
+    const name = def.name
+    for (const old of this.db
+      .query(
+        "SELECT * FROM asks WHERE agent_id = ? AND state = 'open' " +
+          "AND wake_def IS NOT NULL",
+      )
+      .all(agent) as any[])
+      if (JSON.parse(old.wake_def).name === name)
+        this.finish(old, "gone", null, null, true)
+    const text = [
+      `${agent} asks to ${change ? "change" : "set"} the wake ${name}:`,
+      ...lines,
+      "",
+      "Its text:",
+      ...def.text.split("\n").map((l) => `> ${l}`),
+    ].join("\n")
+    const id = randomId()
+    this.db
+      .query(
+        `INSERT INTO asks (id, kind, agent_id, session_id, title, body,
+           routed, created_at, wake_def)
+         VALUES (?, 'approval', ?, ?, ?, ?, 'owner', ?, ?)`,
+      )
+      .run(
+        id,
+        agent,
+        session,
+        `Wake ${name}, set by ${agent}`,
+        JSON.stringify({ text, options: [], wake: name }),
+        this.now(),
+        JSON.stringify(def),
+      )
+    this.history.record("ask.opened", {
+      agent,
+      session,
+      data: { id, kind: "approval", routed: "owner", wake: name },
+    })
+    return this.approvalView(this.row(id))
+  }
+
+  // An agent's wakes that wait for the owner's word, oldest first.
+  proposedWakes(
+    agent: string,
+  ): { name: string; trigger: string; approval: string }[] {
+    return (
+      this.db
+        .query(
+          "SELECT id, wake_def FROM asks WHERE agent_id = ? " +
+            "AND state = 'open' AND wake_def IS NOT NULL " +
+            "ORDER BY created_at, rowid",
+        )
+        .all(agent) as any[]
+    ).map((r) => {
+      const def = JSON.parse(r.wake_def)
+      return { name: def.name, trigger: def.trigger, approval: r.id }
+    })
+  }
 
   /*
    * A job an agent set, for the owner to approve (the owner, 2026-11-09:
@@ -490,8 +565,9 @@ export class Asks {
       } catch {}
     return {
       ...this.approvalView(this.row(id)),
-      // a job the agent asked to set, which is not set now
+      // a job or a wake the agent asked to set, which is not set now
       ...(body.job ? { job: body.job } : {}),
+      ...(body.wake ? { wake: body.wake } : {}),
     }
   }
 
@@ -900,6 +976,21 @@ export class Asks {
           }
         }
       }
+      // an agent's periodic wake, approved: set now, counted from now
+      if (row.wake_def && state === "answered") {
+        const a = done.answer ? JSON.parse(done.answer) : null
+        if (a?.decision === "approve") {
+          const def = JSON.parse(row.wake_def)
+          try {
+            this.setWake(def, row.agent_id)
+            setNote = `The wake ${def.name} is set.`
+          } catch (err) {
+            setNote =
+              `The wake ${def.name} could not be set: ` +
+              `${(err as Error).message}`
+          }
+        }
+      }
       if (by !== "auto" && !quiet) this.tellApproval(done, setNote)
     }
   }
@@ -921,7 +1012,11 @@ export class Asks {
           ? `agent ${row.answered_by}`
           : "nobody"
     // a job's approval is named by its job (the owner, 2026-11-09)
-    const named = body.job ? `Job ${body.job}` : body.text
+    const named = body.job
+      ? `Job ${body.job}`
+      : body.wake
+        ? `Wake ${body.wake}`
+        : body.text
     const parts = [
       v.state === "expired"
         ? `Your approval "${short(named, 80)}" expired unanswered: ` +
@@ -1161,7 +1256,7 @@ export class Asks {
       this.db
         .query(
           "SELECT * FROM asks WHERE agent_id = ? AND state = 'open' " +
-            "AND job_def IS NULL ORDER BY created_at",
+            "AND job_def IS NULL AND wake_def IS NULL ORDER BY created_at",
         )
         .all(agent) as any[]
     ).map((r) => this.view(r))

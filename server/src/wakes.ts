@@ -39,6 +39,15 @@ export interface WakeItem {
 
 export type Enqueue = (agent: string, item: WakeItem) => void
 
+// A wake's checked terms (what `check` gives and `store` takes).
+export interface WakeDef {
+  name: string
+  text: string
+  trigger: Trigger
+  check: string | null
+  check_timeout_ms: number | null
+}
+
 export interface WakeView {
   agent: string
   name: string
@@ -185,12 +194,12 @@ export class Wakes {
     }
   }
 
-  set(
-    agent: string,
-    nameInput: unknown,
-    body: any,
-    by: string,
-  ): { status: number; wake: WakeView } {
+  /*
+   * A wake's terms, checked (nothing is stored): its name, text, trigger,
+   * check and the check's time limit. What `set` and a proposal under
+   * wake_mode share.
+   */
+  check(agent: string, nameInput: unknown, body: any): WakeDef {
     this.agentExists(agent)
     const name = checkId(nameInput, "wake name")
     if (!body || typeof body !== "object")
@@ -231,6 +240,86 @@ export class Wakes {
         "the wake would never run: its first run would not come before " +
           `its end (${localTime(end, tz)})`,
       )
+    return {
+      name,
+      text,
+      trigger,
+      check: check ?? null,
+      check_timeout_ms: checkTimeout,
+    }
+  }
+
+  set(
+    agent: string,
+    nameInput: unknown,
+    body: any,
+    by: string,
+  ): { status: number; wake: WakeView } {
+    return this.store(agent, this.check(agent, nameInput, body), by)
+  }
+
+  // Whether a wake that exists has exactly these terms (wake_mode: setting
+  // it again as it is asks the owner nothing).
+  sameTerms(agent: string, def: WakeDef): boolean {
+    const row = this.row(agent, def.name)
+    return (
+      !!row &&
+      formatTrigger(JSON.parse(row.trigger)) === formatTrigger(def.trigger) &&
+      row.text === def.text &&
+      (row.check_cmd ?? null) === def.check &&
+      (row.check_timeout_ms ?? null) === def.check_timeout_ms
+    )
+  }
+
+  /*
+   * A wake's terms as a body that `set` reads again, for a proposal that
+   * waits for the owner (wake_mode ask): the trigger in its own text, with
+   * its end as an instant, so that what is set later is what was shown.
+   */
+  proposal(def: WakeDef): Record<string, string> {
+    return {
+      name: def.name,
+      text: def.text,
+      trigger: formatTrigger(def.trigger),
+      ...(def.check ? { check: def.check } : {}),
+      ...(def.check_timeout_ms
+        ? { check_timeout: formatDuration(def.check_timeout_ms) }
+        : {}),
+    }
+  }
+
+  // Its terms as lines for the owner, times in the server's zone.
+  describe(agent: string, def: WakeDef): string[] {
+    const tz = this.timezone()
+    const shown = (t: Trigger) =>
+      formatTrigger(t, (iso) => localTime(Date.parse(iso), tz))
+    const now = this.row(agent, def.name)
+    return [
+      `- trigger: ${shown(def.trigger)}`,
+      ...(def.check
+        ? [
+            `- check: ${def.check}` +
+              (def.check_timeout_ms
+                ? ` (up to ${formatDuration(def.check_timeout_ms)})`
+                : ""),
+          ]
+        : []),
+      ...(now ? [`- now: ${shown(JSON.parse(now.trigger))}`] : []),
+    ]
+  }
+
+  // Stores a checked wake: it counts from now.
+  store(
+    agent: string,
+    def: WakeDef,
+    by: string,
+  ): { status: number; wake: WakeView } {
+    const { name, text, trigger, check } = def
+    const checkTimeout = def.check_timeout_ms
+    const now = this.now()
+    const tz = this.timezone()
+    const next = nextRun(trigger, now, { tz, anchor: now })
+    const end = triggerEnd(trigger)
     const before = this.db
       .query("SELECT created_at FROM wakes WHERE agent_id = ? AND name = ?")
       .get(agent, name) as any
@@ -273,7 +362,10 @@ export class Wakes {
       this.db.query("RELEASE wake_set").run()
       throw err instanceof AutocodeError
         ? err
-        : new AutocodeError("bad_trigger", `bad trigger: ${body.trigger}`)
+        : new AutocodeError(
+            "bad_trigger",
+            `bad trigger: ${formatTrigger(trigger)}`,
+          )
     }
     this.db.query("RELEASE wake_set").run()
     this.history.record("wake.set", {

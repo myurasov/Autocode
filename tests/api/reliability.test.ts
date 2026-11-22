@@ -553,6 +553,39 @@ describe("expiry", () => {
     expect((await owner("GET", "/v1/agents/team:a")).status).toBe(404)
   })
 
+  /*
+   * 1.1.0-rc5 (asked for by a project, whose project agents sit idle for
+   * months and wake only on a message): 0 means never. A rule for a
+   * pattern holds for an agent that registers after the rule was set.
+   */
+  test("expire_after 0: the agent never expires, also by a rule set before it registered", async () => {
+    await owner("PATCH", "/v1/settings", {
+      rules: [{ match: "late:*", settings: { expire_after: "0" } }],
+      agents: { "team:a": { expire_after: "0" } },
+    })
+    await registered(t, HOST, "ses_late", "late:one")
+    const resolved = (await owner("GET", "/v1/settings?agent=late:one")).body
+    expect(resolved.values.expire_after).toBe("0s")
+    expect(resolved.sources.expire_after).toBe("rule 1 (late:*)")
+    // an agent beside them, with the default of 14 days
+    await registered(t, HOST, "ses_b", "team:b")
+    await turnEnds()
+    await turnEnds("ses_late")
+    await turnEnds("ses_b")
+    t.clock.advance(400 * DAY)
+    await hello(t, HOST)
+    t.server.maintenance()
+    expect((await owner("GET", "/v1/agents/team:a")).status).toBe(200)
+    expect((await owner("GET", "/v1/agents/late:one")).status).toBe(200)
+    expect((await owner("GET", "/v1/agents/team:b")).status).toBe(404)
+    // and a message still reaches it
+    const sent = await owner("POST", "/v1/messages", {
+      to: "late:one",
+      text: "Wake up.",
+    })
+    expect(sent.status).toBe(201)
+  })
+
   // The third review before 1.1.0-rc4: the same for an ID that is new.
   test("an ID registered to a session whose last turn is long past does not expire at once", async () => {
     await owner("PATCH", "/v1/settings", {

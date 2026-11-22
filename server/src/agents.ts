@@ -45,7 +45,8 @@ const SELECT = `
          s.deleted_at, s.busy,
          s.idle_since, s.last_outcome, h.machine, h.online,
          EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
-                 AND k.state = 'open' AND k.job_def IS NULL) AS asking
+                 AND k.state = 'open' AND k.job_def IS NULL
+                 AND k.wake_def IS NULL) AS asking
   FROM agents a
   JOIN sessions s ON s.id = a.session_id
   JOIN hosts h ON h.id = s.host_id`

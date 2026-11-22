@@ -786,6 +786,26 @@ describe("the guide", () => {
       expect(own, answer).toContain(answer)
   })
 
+  // 1.1.0-rc5: wake_mode.
+  test("1.1.0-rc5: the owner may gate periodic wakes, and what to do then", () => {
+    const own = flat(guideText(FACTS))
+    for (const answer of [
+      "The owner may gate periodic wakes (`every`, `cron`, `idle ... " +
+        "repeat`) with the `wake_mode` setting; `autocode_me status` says " +
+        "so when they are not free.",
+      "With `ask`, `set` does not set the wake: it asks the owner, with " +
+        "the wake's exact terms, and the wake is set once the owner " +
+        'approves (a notice tells you: `approval "Wake NAME" approved`).',
+      "a wake of that name that exists stays as it is",
+      "take a proposal back with `autocode_approval action=close`",
+      "Setting a wake again with the terms it has asks nothing.",
+      "With `off`, a periodic wake is refused.",
+      "do not rebuild a periodic wake from one-time ones to get around " +
+        "the setting: ask the owner.",
+    ])
+      expect(own, answer).toContain(answer)
+  })
+
   // The questions an update-loop agent could not answer (2026-11-02).
   test("answers how idle wakes count, repeat after a skip, merging, and a check's environment", () => {
     for (const answer of [

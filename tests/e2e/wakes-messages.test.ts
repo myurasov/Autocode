@@ -3,7 +3,9 @@
  * sessions with the [autocode] header, fired or on a schedule; a check that
  * exits 1 skips its wake without a model call, and one that exits 0 puts its
  * output in the prompt; waiting wakes merge; messages go between agents on
- * different machines and to and from the owner; turn status follows real turns.
+ * different machines and to and from the owner; turn status follows real turns;
+ * a wake with an end ends by itself, and under wake_mode ask a periodic wake
+ * is set once the owner approves it (1.1.0-rc5).
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { admin, callTool, readySession } from "../helpers/autocode.ts"
@@ -100,6 +102,70 @@ describe("wakes on real sessions", () => {
     await promptWith(a, `Tick for ${a.id}.`, 30_000)
     await wake(a, { action: "cancel", name: "tick" })
   })
+
+  /*
+   * 1.1.0-rc5 (asked for by a project): a periodic wake may end, and the
+   * owner may approve each periodic wake first (wake_mode ask).
+   */
+  test("a wake with an end runs, then ends by itself and says so", async () => {
+    const a = agents[1]!
+    const end = new Date(Date.now() + 9000).toISOString()
+    const set = await wake(a, {
+      action: "set",
+      name: "short",
+      trigger: `every 2s until ${end}`,
+      text: `Short for ${a.id}.`,
+    })
+    expect(set).toContain('Wake "short" set: every 2s until ')
+    expect(set).toContain("It ends ")
+    await promptWith(a, `Short for ${a.id}.`, 30_000)
+    const told = await promptWith(a, 'Your wake "short" (every 2s until')
+    expect(told).toContain("reached its end and was removed")
+    expect(await wake(a, { action: "list" })).not.toContain("short:")
+    expect(
+      (await admin("GET", `/v1/history?kind=wake.ended&agent=${a.id}`)).history
+        .length,
+    ).toBe(1)
+  }, 240_000)
+
+  test("wake_mode ask: a periodic wake is set once the owner approves it; a one-time wake is free", async () => {
+    const a = agents[1]!
+    await admin("PATCH", "/v1/settings", {
+      agents: { [a.id]: { wake_mode: "ask" } },
+    })
+    try {
+      const asked = await wake(a, {
+        action: "set",
+        name: "gated",
+        trigger: "every 3s",
+        text: `Gated for ${a.id}.`,
+      })
+      expect(asked).toStartWith('Wake "gated" is not set yet')
+      const id = /\((ask_\w+)\)/.exec(asked)![1]!
+      expect(await wake(a, { action: "list" })).toContain(
+        `Waiting for the owner's approval: gated (every 3s; approval ${id})`,
+      )
+      expect(
+        await callTool(a.oc, a.session, "autocode_me", { action: "status" }),
+      ).toContain("the owner approves each one first (wake_mode ask)")
+      expect(
+        await wake(a, {
+          action: "set",
+          name: "once",
+          trigger: "in 1h",
+          text: "Once.",
+        }),
+      ).toStartWith('Wake "once" set')
+      await admin("POST", `/v1/asks/${id}/answer`, { decision: "approve" })
+      const notice = await promptWith(a, 'approval "Wake gated" approved')
+      expect(notice).toContain("The wake gated is set.")
+      await promptWith(a, `Gated for ${a.id}.`, 30_000)
+      await wake(a, { action: "cancel", name: "gated" })
+      await wake(a, { action: "cancel", name: "once" })
+    } finally {
+      await admin("PATCH", "/v1/settings", { agents: { [a.id]: null } })
+    }
+  }, 240_000)
 
   test("a check that exits 1 skips the wake without a model call; exit 0 brings its output", async () => {
     const a = agents[0]!

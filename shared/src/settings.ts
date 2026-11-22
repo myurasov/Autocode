@@ -103,6 +103,19 @@ export const SETTINGS: Record<string, SettingDef> = {
       "jobs an agent sets: an approval of the owner first (ask), set at once " +
       "(approve), or refused (off)",
   },
+  // 1.1.0-rc5 (asked for by a project; the owner, 2026-11-22, tabled only
+  // the push notice of that list): whether an agent may set periodic wakes
+  // for itself. One-time wakes and the owner's own setting are free.
+  wake_mode: {
+    kind: "enum",
+    scope: "agent",
+    default: "approve",
+    values: ["ask", "approve", "off"],
+    help:
+      "periodic wakes an agent sets (every, cron, idle ... repeat): an " +
+      "approval of the owner first (ask), set at once (approve), or " +
+      "refused (off)",
+  },
   compact_at: {
     kind: "compact",
     scope: "agent",
@@ -169,7 +182,9 @@ export const SETTINGS: Record<string, SettingDef> = {
     kind: "duration",
     scope: "agent",
     default: "14d",
-    help: "unregister an agent this long after its session's last turn",
+    help:
+      "unregister an agent this long after its session's last turn " +
+      "(0: never)",
   },
   // 1.0.1 (the owner, 2026-11-19: "fix for stale host records"): a server
   // held 299 host records, 4 online.

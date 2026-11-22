@@ -20,6 +20,7 @@ import {
   parseDuration,
   parseListen,
   parsePattern,
+  periodic,
   resolveSettings,
   shownVersion,
   VERSION,
@@ -540,6 +541,11 @@ export async function startServer(
   })
   asks.jobIdle = (job) => jobs.idle(job)
   asks.setJob = (def, agent) => jobs.store(def as JobDef, agent)
+  // an approved wake counts from the approval, with the terms it showed
+  asks.setWake = (def, agent) => {
+    const { name, ...terms } = def as Record<string, string>
+    wakes.set(agent, name, terms, agent)
+  }
   asks.startJob = (job, ask) =>
     jobs.start(job, "ask", "ask", undefined, ask)?.id ?? null
   retries.onGivenUp = (agent, reason) => jobs.turnsFailed(agent, reason)
@@ -900,6 +906,8 @@ export async function startServer(
             max_tool_wait: value("max_tool_wait"),
             retry_interval: value("retry_interval"),
             retry_attempts: value("retry_attempts"),
+            // how the agent's periodic wakes are gated (1.1.0-rc5)
+            wake_mode: value("wake_mode"),
           },
           ...(agent
             ? {
@@ -1269,17 +1277,63 @@ export async function startServer(
       method: "GET",
       path: "/v1/me/wakes",
       access: ["session"],
-      summary: "the calling agent's wakes",
-      handler: ({ caller }) => ({ wakes: wakes.list(me(caller)) }),
+      summary:
+        "the calling agent's wakes, and those that wait for the owner's " +
+        "approval (proposed: wake_mode ask)",
+      handler: ({ caller }) => {
+        const agent = me(caller)
+        return {
+          wakes: wakes.list(agent),
+          proposed: asks.proposedWakes(agent),
+        }
+      },
     },
     {
       method: "PUT",
       path: "/v1/me/wakes/:name",
       access: ["session"],
-      summary: "set (or replace) one of the calling agent's wakes",
+      summary:
+        "set (or replace) one of the calling agent's wakes: 200 or 201 " +
+        "set, or 202 asked (a periodic wake under wake_mode ask: the owner " +
+        "approves first)",
+      /*
+       * wake_mode (1.1.0-rc5; asked for by a project): the periodic wakes
+       * an agent sets for itself (every, cron, idle ... repeat) may need
+       * the owner's approval (ask) or be refused (off). The terms are
+       * checked first. Setting a wake again with the terms it has asks
+       * nothing. One-time wakes are free.
+       */
       handler: async ({ caller, params, body }) => {
         const agent = me(caller)
-        const res = wakes.set(agent, params.name, await body(), agent)
+        const def = wakes.check(agent, params.name, await body())
+        const mode = String(
+          resolveSettings(settings.layers(), agent).values.wake_mode ??
+            "approve",
+        )
+        if (mode !== "approve" && periodic(def.trigger)) {
+          if (mode === "off")
+            throw new AutocodeError(
+              "forbidden",
+              "you cannot set periodic wakes (every, cron, idle ... " +
+                "repeat): wake_mode is off (the owner's setting); one-time " +
+                "wakes (in, at, idle without repeat, fire-only) stay free",
+              403,
+            )
+          if (!wakes.sameTerms(agent, def)) {
+            const approval = asks.proposeWake(
+              agent,
+              caller!.session!,
+              !!wakes.row(agent, def.name),
+              wakes.describe(agent, def),
+              wakes.proposal(def) as { name: string; text: string },
+            )
+            return json(
+              { state: "asked", name: def.name, approval: approval.id },
+              202,
+            )
+          }
+        }
+        const res = wakes.store(agent, def, agent)
         return json({ wake: res.wake }, res.status)
       },
     },

@@ -538,7 +538,8 @@ export class Delivery {
                 h.machine, h.directory AS host_directory, h.process_kind,
                 h.opencode_version, h.instance,
                 EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
-                        AND k.state = 'open' AND k.job_def IS NULL) AS asking
+                        AND k.state = 'open' AND k.job_def IS NULL
+                        AND k.wake_def IS NULL) AS asking
          FROM agents a JOIN sessions s ON s.id = a.session_id
          JOIN hosts h ON h.id = s.host_id WHERE a.id = ?`,
       )

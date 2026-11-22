@@ -356,6 +356,15 @@ export async function runMe(
               : `Wakes: ${w.count}; none due at a known time. ` +
                 "See autocode_wake list.",
         )
+      // how its periodic wakes are gated, unless they are free (wake_mode,
+      // 1.1.0-rc5)
+      if (set?.wake_mode === "ask" || set?.wake_mode === "off")
+        lines.push(
+          "Periodic wakes (every, cron, idle ... repeat): " +
+            (set.wake_mode === "ask"
+              ? "the owner approves each one first (wake_mode ask)."
+              : "you cannot set them (wake_mode off)."),
+        )
       // how many messages wait (for a prompt, a steer or a read)
       if (me.waiting !== undefined)
         lines.push(
@@ -541,7 +550,8 @@ export const WAKE_TOOL = {
     "user message starting with [autocode]), only while the session is " +
     "idle (never into a running turn) and at most once per min_interval. " +
     "Actions: set (name, trigger, text; optional check, check_timeout; " +
-    "the same name replaces the wake), list (when each falls due next, " +
+    "the same name replaces the wake; the owner may have to approve a " +
+    "periodic one first), list (when each falls due next, " +
     "what each cost in the last 7 days), show (name), " +
     "cancel (name), fire (agent, name, text: deliver now, skipping the " +
     "check). Triggers: every 30m [from 09:00]; in 45m (once); at 09:00 or " +
@@ -1004,6 +1014,16 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
         ...(input.check ? { check: input.check } : {}),
         ...(input.check_timeout ? { check_timeout: input.check_timeout } : {}),
       })
+      // a periodic wake that the owner approves first (wake_mode ask)
+      if (res.state === "asked")
+        return (
+          `Wake "${res.name}" is not set yet: a periodic wake needs the ` +
+          `owner's approval here (${res.approval}). It is set once ` +
+          "approved, counted from then, and a notice tells you (approval " +
+          `"Wake ${res.name}" approved or rejected). Until then a wake of ` +
+          "that name stays as it is. Go on with your work, and do not " +
+          "rebuild it from one-time wakes."
+        )
       // the wake is set: a failed status call only shortens the text
       const me = await call("GET", "/v1/me").catch(() => undefined)
       return setText(res.wake, me)
@@ -1014,9 +1034,28 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
       const res = await call("GET", "/v1/me/wakes")
       const c = clockOf(me)
       const working = inTurn(me)
+      // its periodic wakes that wait for the owner (wake_mode ask)
+      const proposed: any[] = res.proposed ?? []
+      const waiting = proposed.length
+        ? "Waiting for the owner's approval: " +
+          proposed
+            .map(
+              (p) =>
+                `${p.name} (${shownTrigger(String(p.trigger), c)}; ` +
+                `approval ${p.approval})`,
+            )
+            .join("; ") +
+          ". Each is set once approved."
+        : ""
       if (input.action === "show") {
         if (!input.name) return "error: show needs the wake's name"
         const w = res.wakes.find((x: any) => x.name === input.name)
+        const asked = proposed.find((p) => p.name === input.name)
+        if (!w && asked)
+          return (
+            `error: you have no wake "${input.name}" yet: it waits for ` +
+            `the owner's approval (${asked.approval})`
+          )
         if (!w)
           return (
             `error: you have no wake "${input.name}" ` +
@@ -1047,7 +1086,9 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
         ].join("\n")
       }
       if (!res.wakes.length)
-        return "No wakes. Set one with autocode_wake action=set."
+        return waiting
+          ? `No wakes. ${waiting}`
+          : "No wakes. Set one with autocode_wake action=set."
       const lines = [`Server time ${localTime(c.now, c.tz)} (${c.tz}).`]
       for (const w of res.wakes) {
         const parts = [timing(w, c, working)]
@@ -1073,6 +1114,7 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
         )
         lines.push(`  ${preview(w.text)}`)
       }
+      if (waiting) lines.push(waiting)
       return lines.join("\n")
     }
     case "cancel": {
@@ -1266,10 +1308,15 @@ async function closeOwn(
     return "error: close needs text: why it no longer matters, in a line"
   const res = await call("POST", "/v1/me/inbox/close", { id, text: why })
   const item = res.item
-  // a job it asked to set never made it wait
+  // a job or a wake it asked to set never made it wait
   if (item.kind === "approval" && item.job)
     return (
       `Closed approval ${item.id}: the job ${item.job} is not set. ` +
+      "Closed is not approved."
+    )
+  if (item.kind === "approval" && item.wake)
+    return (
+      `Closed approval ${item.id}: the wake ${item.wake} is not set. ` +
       "Closed is not approved."
     )
   if (item.kind === "approval")
