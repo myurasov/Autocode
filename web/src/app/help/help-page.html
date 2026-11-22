@@ -461,6 +461,14 @@
         A message or an alert holds nothing up: the agent goes on. Close it
         when you have read it.
       </li>
+      <li>
+        An agent may close what it put here itself, once it no longer needs
+        you: a message, a report or an approval of its own, as when you
+        answered it in the session. History says which agent closed what,
+        and why (<code>inbox.closed</code>, <code>ask.closed</code>). An
+        agent cannot close alerts, questions or permission prompts, nor
+        another agent's items.
+      </li>
     </ul>
     <p>
       An ask can go to another agent or to a job instead of you; see
@@ -1649,7 +1657,8 @@ autocode job set daily-report --host HOST --model MODEL \
           <li><code>read</code>: the recipient took it with read;</li>
           <li><code>wait</code>: the recipient took it with wait;</li>
           <li>
-            <code>inbox</code>: you answered or closed it in the Inbox.
+            <code>inbox</code>: you answered or closed it in the Inbox, or
+            the agent that sent it closed it there.
           </li>
         </ul>
       </li>

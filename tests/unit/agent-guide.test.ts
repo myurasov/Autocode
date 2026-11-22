@@ -136,7 +136,7 @@ describe("the tools' descriptions", () => {
 
   // The owner, 2026-11-09: list, read and wait back; messages steer into a
   // running turn.
-  test("autocode_message: send, list, read, wait, answer and escalate", () => {
+  test("autocode_message: send, list, read, wait, answer, escalate and close", () => {
     expect((MESSAGE_TOOL.input.properties.action as any).enum).toEqual([
       "send",
       "list",
@@ -144,6 +144,7 @@ describe("the tools' descriptions", () => {
       "wait",
       "answer",
       "escalate",
+      "close",
     ])
     for (const key of ["id", "from", "reply_to", "seconds"])
       expect(MESSAGE_TOOL.input.properties).toHaveProperty(key)
@@ -731,6 +732,39 @@ describe("the guide", () => {
             `\`${action}\`|action=${action}\\b|${tool.name} ${action}\\b`,
           ),
         )
+  })
+
+  // 1.1.0-rc4 (the owner, 2026-11-22).
+  test("1.1.0-rc4: a registered ID is never taken; an agent closes its own Inbox items", () => {
+    const own = flat(guideText(FACTS))
+    for (const answer of [
+      "An ID that is registered already is refused (`id_taken`), also " +
+        "when the session that held it is gone. Do not try other IDs to " +
+        "get around it: tell the owner",
+      "No other session can register it; only the owner can move it to " +
+        "another session.",
+      "Close what no longer needs the owner. A message, a report or an " +
+        "approval of yours that is still open in the Inbox, once the owner " +
+        "answered in the session, the matter was overtaken, or a newer " +
+        "report replaces it (say in the newer one what still matters of " +
+        "the old): `autocode_message action=close id=<the message's ID> " +
+        "text=<why>`",
+      "The reason is required: the owner sees in History what you closed " +
+        "and why.",
+      "Do not close an item only because it is old: the owner may not " +
+        "have read it yet.",
+      "A job you asked to set is taken back the same way, by the " +
+        "approval's ID that `job_set` gave.",
+      "what you have open in the owner's Inbox, and your spend and context",
+      "Questions and permission prompts close by themselves, and alerts " +
+        "are the owner's to close.",
+      "`autocode_approval action=close id=... text=<why>`. You stop " +
+        "waiting at once, and your wakes and messages come again. Closed " +
+        "is not approved: act only on what the owner told you.",
+      "A prompt that starts with `[autocode]`, and whose last line " +
+        "starts with `-- Autocode.`, is Autocode's, not the owner's typing.",
+    ])
+      expect(own, answer).toContain(answer)
   })
 
   // The questions an update-loop agent could not answer (2026-11-02).

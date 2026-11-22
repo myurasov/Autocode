@@ -99,7 +99,8 @@ export function isAsk(item: InboxItem): boolean {
  */
 export function askAnswerText(item: InboxItem): string {
   const answer = item.answer as Record<string, unknown> | null | undefined;
-  if (!answer) return '';
+  // closed without an answer: askClosedText says by whom
+  if (!answer || item.state === 'gone') return '';
   let what: string;
   if (item.kind === 'question') {
     if (typeof answer['cancel'] === 'string')
@@ -117,6 +118,19 @@ export function askAnswerText(item: InboxItem): string {
   if (item.by === 'auto') return `${what} (at once)`;
   if (item.by === 'owner') return `${what} (by the owner)`;
   return item.by ? `${what} (by ${item.by})` : what;
+}
+
+/*
+ * Who closed an ask that got no answer, and why when they said: the owner,
+ * or the agent that had asked for the approval (1.1.0-rc4).
+ */
+export function askClosedText(item: InboxItem): string {
+  if (item.state !== 'gone' || !item.by) return '';
+  const why = (item.answer as Record<string, unknown> | null | undefined)?.[
+    'text'
+  ];
+  const who = item.by === 'owner' ? 'the owner' : item.by;
+  return `Closed by ${who}${why ? `: ${why}` : ''}`;
 }
 
 @Component({
@@ -183,6 +197,7 @@ export class InboxPage {
   protected readonly localTime = localTime;
   protected readonly isAsk = isAsk;
   protected readonly askAnswerText = askAnswerText;
+  protected readonly askClosedText = askClosedText;
   private inFlight = 0;
   private readonly latest = new Latest();
   // The Agent filter the list on show was loaded with (null: none yet).

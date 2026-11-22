@@ -53,7 +53,8 @@ export const ME_TOOL = {
     "message each other. Use the autocode_* tools, not the autocode CLI " +
     "(that is for scripts). Actions: register (id, description), " +
     "unregister, status (your registration, the server's time and zone, " +
-    "your wakes, messages waiting, locks, open asks, spend and context), " +
+    "your wakes, messages waiting, locks, open asks, what you have open " +
+    "in the owner's Inbox, spend and context), " +
     "discover " +
     "(pattern), help (topic: the exact rules for wakes, checks, delivery, " +
     "messages, writing to the owner, locks, asks, costs, jobs, prompts, " +
@@ -371,8 +372,34 @@ export async function runMe(
         lines.push(
           `Waiting on: ${me.asks
             .map((a: any) => `${a.kind} ${a.id} (${a.title})`)
-            .join("; ")}. Your wakes and messages wait until they close.`,
+            .join("; ")}. Your wakes and messages wait until they close.` +
+            (me.asks.some((a: any) => a.kind === "approval")
+              ? " An approval that no longer matters: autocode_approval " +
+                "action=close id=ID."
+              : ""),
         )
+      // its open messages and reports in the owner's Inbox, to close what
+      // no longer matters (1.1.0-rc4)
+      if (me.inbox?.length) {
+        const shown = me.inbox.slice(0, OPEN_SHOWN).map((i: any) => {
+          const subject = /: "(.*)"$/s.exec(String(i.title))?.[1]
+          const cut =
+            subject && subject.length > SUBJECT_SHOWN
+              ? `${subject.slice(0, SUBJECT_SHOWN - 1)}…`
+              : subject
+          return (
+            `${i.kind} ${i.id}${cut ? ` "${cut}"` : ""} (sent ` +
+            `${localTime(Date.parse(i.created_at), c.tz)})`
+          )
+        })
+        const more = me.inbox.length - shown.length
+        lines.push(
+          `Open in the owner's Inbox: ${shown.join("; ")}` +
+            `${more > 0 ? `; and ${more} more` : ""}. One that no longer ` +
+            "matters (the owner answered in the session, things changed): " +
+            "autocode_message action=close id=ID.",
+        )
+      }
       const l = me.locks
       if (l && (l.held.length || l.queued.length)) {
         const until = (iso: string) =>
@@ -578,7 +605,7 @@ export const WAKE_TOOL = {
 }
 
 export interface MessageInput {
-  action: "send" | "list" | "read" | "wait" | "answer" | "escalate"
+  action: "send" | "list" | "read" | "wait" | "answer" | "escalate" | "close"
   to?: string
   subject?: string
   text?: string
@@ -602,13 +629,17 @@ export const MESSAGE_TOOL = {
     "reply_to; then it is not injected), wait (read that waits for a " +
     "message: seconds, up to max_tool_wait; costs no tokens), answer (id, " +
     "text: answer a question, permission or approval another agent sent " +
-    "you), escalate (id, text: say why you cannot; the owner takes it).",
+    "you), escalate (id, text: say why you cannot; the owner takes it), " +
+    "close (id, text: close what you put in the owner's Inbox once it no " +
+    "longer matters, as when the owner answered in the session: a message " +
+    "or report you sent, or an approval you asked for; text: why, " +
+    "required).",
   input: {
     type: "object",
     properties: {
       action: {
         type: "string",
-        enum: ["send", "list", "read", "wait", "answer", "escalate"],
+        enum: ["send", "list", "read", "wait", "answer", "escalate", "close"],
       },
       to: {
         type: "string",
@@ -622,7 +653,8 @@ export const MESSAGE_TOOL = {
         description:
           "send: the message (at most 32,000 characters; to the owner: " +
           "short, the point first, plain words); answer: the answer; " +
-          "escalate: why you cannot answer, in a line or two",
+          "escalate: why you cannot answer, in a line or two; close: why " +
+          "it no longer matters, in a line",
       },
       reply_to: {
         type: "string",
@@ -633,7 +665,9 @@ export const MESSAGE_TOOL = {
       id: {
         type: "string",
         description:
-          "read, wait: one message's ID; answer, escalate: the ask's ID",
+          "read, wait: one message's ID; answer, escalate: the ask's ID; " +
+          "close: the ID of a message you sent to the owner, or of an " +
+          "approval you asked for",
       },
       from: {
         type: "string",
@@ -723,7 +757,7 @@ export const LOCK_TOOL = {
 }
 
 export interface ApprovalInput {
-  action: "ask" | "wait"
+  action: "ask" | "wait" | "close"
   text?: string
   options?: string
   expires?: string
@@ -738,18 +772,21 @@ export const APPROVAL_TOOL = {
     "something that must not be left to you: a payment, a trade, a " +
     "deployment, deleting data. Actions: ask (text; options: a comma list; " +
     "expires: like 1h, then it counts as rejected), wait (id; seconds: " +
-    "hold this call until it is answered, up to max_tool_wait). The answer " +
+    "hold this call until it is answered, up to max_tool_wait), close (id; " +
+    "text: why, required: take back one that no longer matters, as when " +
+    "the owner answered in the session; closed is not approved). The answer " +
     'also comes as a notice: [autocode] approval "..." approved or ' +
     "rejected. Until then your wakes and messages wait. Write it short and " +
     "plain: what, why, the options.",
   input: {
     type: "object",
     properties: {
-      action: { type: "string", enum: ["ask", "wait"] },
+      action: { type: "string", enum: ["ask", "wait", "close"] },
       text: {
         type: "string",
         description:
-          "ask: what to approve, the point first, in a sentence or two",
+          "ask: what to approve, the point first, in a sentence or two; " +
+          "close: why it no longer matters, in a line",
       },
       options: {
         type: "string",
@@ -761,7 +798,7 @@ export const APPROVAL_TOOL = {
           "ask, optional: how long it may wait, like 1h or 2d; then it is " +
           "rejected",
       },
-      id: { type: "string", description: "wait: the approval's ID" },
+      id: { type: "string", description: "wait, close: the approval's ID" },
       seconds: {
         type: "number",
         description: "wait: at most this long (default 300)",
@@ -1172,12 +1209,57 @@ export async function runMessage(
       })
       return `Handed ${input.id} to the owner, with your reason.`
     }
+    case "close":
+      return closeOwn(input.id, input.text, call)
     default:
       return (
-        "error: autocode_message has send, list, read, wait, answer and " +
-        "escalate"
+        "error: autocode_message has send, list, read, wait, answer, " +
+        "escalate and close"
       )
   }
+}
+
+// How many of its open Inbox items an agent's status names, and how much
+// of each one's subject.
+const OPEN_SHOWN = 5
+const SUBJECT_SHOWN = 60
+
+/*
+ * Closes what the agent itself put into the owner's Inbox and that no longer
+ * matters (1.1.0-rc4; the owner, 2026-11-22): a message or report it sent,
+ * or an approval it asked for. The same call from both tools.
+ */
+async function closeOwn(
+  id: string | undefined,
+  why: string | undefined,
+  call: Call,
+): Promise<string> {
+  if (!id)
+    return (
+      "error: close needs the id of a message you sent to the owner, or " +
+      "of an approval you asked for"
+    )
+  // the owner reads it in History: there must be one
+  if (!why?.trim())
+    return "error: close needs text: why it no longer matters, in a line"
+  const res = await call("POST", "/v1/me/inbox/close", { id, text: why })
+  const item = res.item
+  // a job it asked to set never made it wait
+  if (item.kind === "approval" && item.job)
+    return (
+      `Closed approval ${item.id}: the job ${item.job} is not set. ` +
+      "Closed is not approved."
+    )
+  if (item.kind === "approval")
+    return (
+      `Closed approval ${item.id}: you no longer wait for it, and your ` +
+      "wakes and messages come again. Closed is not approved: act only " +
+      "on what the owner told you."
+    )
+  return (
+    `Closed your ${item.report ? "report" : "message"} ` +
+    `${item.message_id ?? item.id} in the owner's Inbox.`
+  )
 }
 
 // Who holds a lock, for its text.
@@ -1288,9 +1370,11 @@ function approvalLine(a: any): string {
       ? " by the owner"
       : a.by === "auto"
         ? " (by the setting approval_mode=approve)"
-        : a.by
-          ? ` by agent ${a.by}`
-          : ""
+        : a.by && a.by === a.agent
+          ? " by you"
+          : a.by
+            ? ` by agent ${a.by}`
+            : ""
   const state =
     a.state === "expired"
       ? "expired: it counts as rejected"
@@ -1356,7 +1440,9 @@ export async function runApproval(
         )
       return `Approval ${a.id}: ${approvalLine(a)}`
     }
+    case "close":
+      return closeOwn(input.id, input.text, call)
     default:
-      return "error: action must be ask or wait"
+      return "error: action must be ask, wait or close"
   }
 }

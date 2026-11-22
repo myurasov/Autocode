@@ -309,6 +309,35 @@ test("the reference and the README show a prompt's status line", () => {
   )
 })
 
+// 1.1.0-rc4 (the owner, 2026-11-22): an agent never takes a registered ID,
+// and closes what it put into the Inbox itself.
+test("the reference has the stricter registration and an agent's own close", () => {
+  const ref = read("reference.md")
+  for (const part of [
+    "- **A taken ID** is refused (`id_taken`). An agent can never take an " +
+      "ID that is registered, also when the session\n  that held it is gone.",
+    "`autocode agents register ID --session SES`, and with `--force` when " +
+      "the old session still exists.",
+    "- its wakes stay. No other session can register its ID.",
+    "**Closing what no longer matters.** An agent can close what it put " +
+      "into your Inbox itself, once it no longer needs\nyou",
+    'autocode_message   action=close  id=m_7c...  text="the owner ' +
+      'answered in the session"',
+    'autocode_approval  action=close  id=ask_42   text="the plan changed"',
+    "- **What it cannot:** another agent's items, and what was sent " +
+      "under its ID before it registered; alerts, which\n  are Autocode's " +
+      "word to you",
+    "- **A reason is required** (`text`, at most 500 characters). " +
+      "**History says who and why:**",
+    "`answer` and `escalate` (`id`, `text`), `close` (`id`, `text`) |",
+    "`wait` (`id`, `seconds`), `close` (`id`, `text`) |",
+    "- **`action=close`** takes back an approval that no longer matters",
+    "A closed approval is not an approved one.",
+    "For an agent's `close`: no item of its own has that ID |",
+  ])
+    expect(ref, part).toContain(part)
+})
+
 // 1: a wake's own time limit for its check.
 test("the reference has a wake's own check timeout: the tool, the command, the setting", () => {
   const ref = read("reference.md")

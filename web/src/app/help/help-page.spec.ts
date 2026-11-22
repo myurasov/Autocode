@@ -485,6 +485,21 @@ describe('HelpPage', () => {
         "the agent's context and what it spent today; then Autocode's " +
         'name and where the agent gets help.',
     );
+    // 1.1.0-rc4 (the owner, 2026-11-22): an agent closes its own items
+    expect(section(page, 'inbox')).toContain(
+      'An agent may close what it put here itself, once it no longer ' +
+        'needs you: a message, a report or an approval of its own, as ' +
+        'when you answered it in the session. History says which agent ' +
+        'closed what, and why (inbox.closed, ask.closed). An agent cannot ' +
+        "close alerts, questions or permission prompts, nor another agent's " +
+        'items.',
+    );
+    // and never takes an ID that is registered
+    expect(section(page, 'register')).toContain(
+      'No other session can register under an ID that is registered: only ' +
+        'you move it to another session, with autocode agents register ID ' +
+        '--session SES (and --force while the old session still exists).',
+    );
     const idle = rows(table)[4]![1]!;
     expect(idle).toContain('end of its last turn');
     // never from before the wake was set

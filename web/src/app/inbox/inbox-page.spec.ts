@@ -1091,6 +1091,15 @@ describe('InboxPage', () => {
           by: 'auto',
         }),
         closed(a1!, { id: 'ask_a2', state: 'expired', answer: null, by: null }),
+        // 1.1.0-rc4: closed by the agent that asked, with its reason; and
+        // by the owner
+        closed(a1!, {
+          id: 'ask_a3',
+          state: 'gone',
+          answer: { text: 'the plan changed' },
+          by: 'team:lead',
+        }),
+        closed(a1!, { id: 'ask_a4', state: 'gone', answer: null, by: 'owner' }),
       ]);
       const answer = (id: string) =>
         text(row(page, id).querySelector('.answer'));
@@ -1110,6 +1119,9 @@ describe('InboxPage', () => {
       expect(answer('ask_q3')).toBe(
         'Answer: dismissed: Use your judgement. (at once)',
       );
+      // closed is not answered
+      expect(answer('ask_a3')).toBe('Closed by team:lead: the plan changed');
+      expect(answer('ask_a4')).toBe('Closed by the owner');
       expect(text(row(page, 'ask_q3').querySelector('td.sent-to'))).toBe(
         'answered at once',
       );

@@ -875,7 +875,8 @@ export async function startServer(
       summary:
         "the calling session's registration and status, the server's time " +
         "and zone, the delivery settings, its wakes, how many messages " +
-        "wait for it, its spend and context",
+        "wait for it, its spend and context, its open asks, and what it " +
+        "has open in the owner's Inbox",
       handler: ({ caller }) => {
         const res: any = agents.me(caller!.session!)
         const agent: string | undefined = res.registered
@@ -906,6 +907,9 @@ export async function startServer(
                 waiting: messages.waiting(agent),
                 locks: locks.of(agent),
                 asks: asks.of(agent),
+                // its open messages and reports in the owner's Inbox, which
+                // it may close once they no longer matter (1.1.0-rc4)
+                inbox: inbox.of(agent),
                 cost: costs.view(agent),
               }
             : {}),
@@ -1539,6 +1543,56 @@ export async function startServer(
             seconds * 1000,
             req.signal,
           ),
+        }
+      },
+    },
+    /*
+     * The owner, 2026-11-22: "i want autocode agents to be able to close
+     * messages/questions/etc in inbox when they become irrelevant (eg when i
+     * answered in prompt or things changed/etc)".
+     */
+    {
+      method: "POST",
+      path: "/v1/me/inbox/close",
+      access: ["session"],
+      summary:
+        "the calling agent closes an open item of its own in the owner's " +
+        "Inbox that no longer matters {id, text: why}: a message or report " +
+        "it sent (the message's ID or the item's), or an approval it asked " +
+        "for (it stops waiting; closed is not approved); text is required " +
+        "and goes to the history",
+      handler: async ({ caller, body }) => {
+        const agent = me(caller)
+        const b = await body()
+        if (!b || typeof b !== "object" || Array.isArray(b))
+          throw new AutocodeError("bad_request", "the body must be an object")
+        onlyFields(b, ["id", "text"])
+        if (typeof b.id !== "string" || !b.id.trim() || b.id.length > 255)
+          throw new AutocodeError(
+            "bad_request",
+            "close needs the id of a message you sent to the owner, or of " +
+              "an approval you asked for",
+          )
+        // the reason, on one line: what the owner reads in History
+        const why =
+          typeof b.text === "string"
+            ? b.text.split(/\s+/).filter(Boolean).join(" ")
+            : ""
+        if (!why)
+          throw new AutocodeError(
+            "bad_request",
+            "close needs text: why the item no longer matters, in a line",
+          )
+        if (why.length > 500)
+          throw new AutocodeError(
+            "bad_request",
+            "text (why) is at most 500 characters",
+          )
+        const id = b.id.trim()
+        return {
+          item: id.startsWith("ask_")
+            ? asks.closeOwn(agent, id, why)
+            : inbox.closeOwn(agent, id, why),
         }
       },
     },

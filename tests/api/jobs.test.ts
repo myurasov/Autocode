@@ -615,6 +615,42 @@ describe("asks answered by a job's run", () => {
     )
   })
 
+  /*
+   * The third review before 1.1.0-rc4: the asker closed its approval before
+   * the run that was started for it had a session. The run's prompt still
+   * asked for an answer, and the notice for it was lost.
+   */
+  test("job:<name> approval closed by its asker before the run starts: the run's prompt says so and asks for no answer", async () => {
+    await owner("PUT", "/v1/jobs/approver", { ...JOB, prompt: "Review it." })
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:lead": { approval_mode: "job:approver" } },
+    })
+    const asked = await as(lead, "POST", "/v1/me/approvals", {
+      text: "Deploy v2?",
+    })
+    const id = asked.body.approval.id
+    const closed = await as(lead, "POST", "/v1/me/inbox/close", {
+      id,
+      text: "the owner said go",
+    })
+    expect(closed.status).toBe(200)
+    const { prompt } = await started("approver")
+    const text: string = prompt.payload.text
+    expect(text).toContain("Review it.")
+    expect(text).toContain(
+      `The approval ${id} of team:lead that this run was started for was ` +
+        "closed by team:lead and needs no answer any more: say so in your " +
+        "result.\nIt asked:\n> Deploy v2?\nThe reason given:\n> the owner " +
+        "said go",
+    )
+    expect(text).not.toContain("action=answer")
+    // and nothing waits for an ID that was no agent's yet
+    const mine = (
+      await owner("GET", "/v1/messages?agent=approver:2026-10-28T12:00")
+    ).body.messages
+    expect(mine.filter((m: any) => m.state === "queued")).toEqual([])
+  })
+
   test("job:<name>: the run escalates; the reason is on the owner's item, and the owner answers", async () => {
     await owner("PUT", "/v1/jobs/answerer", JOB)
     await owner("PATCH", "/v1/settings", {

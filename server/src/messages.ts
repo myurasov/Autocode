@@ -628,6 +628,17 @@ export class Messages {
   }
 }
 
+/*
+ * An agent's own messages and reports in the Inbox (two parameters, both
+ * the agent's ID): those it sent since it registered. What an earlier
+ * holder of the ID left there is not its own: it did not write it and has
+ * no memory of it (the second review before 1.1.0-rc4). A rename and the
+ * owner's move keep the registration, so those items follow.
+ */
+const OWN =
+  "kind = 'message' AND agent_id = ? AND created_at >= " +
+  "(SELECT registered_at FROM agents WHERE id = ?)"
+
 export interface InboxItem {
   id: string
   kind: "message" | "alert" | "question" | "permission" | "approval"
@@ -756,6 +767,72 @@ export class Inbox {
     if (row.message_id) this.messages().markRead(row.message_id, "inbox")
     this.history.record("inbox.closed", { data: { id } })
     return this.view(this.db.query("SELECT * FROM inbox WHERE id = ?").get(id))
+  }
+
+  /*
+   * An agent closes a message or a report of its own that no longer matters
+   * (1.1.0-rc4; the owner, 2026-11-22: "when i answered in prompt or things
+   * changed"), by the message's ID or the item's. Nothing of another
+   * agent's, and no alert: those are Autocode's word to the owner. The
+   * history says who closed it and why, so nothing leaves the Inbox without
+   * a trace.
+   */
+  closeOwn(agent: string, id: string, why: string): InboxItem {
+    const row = this.db
+      .query(`SELECT * FROM inbox WHERE ${OWN} AND (id = ? OR message_id = ?)`)
+      .get(agent, agent, id, id) as any
+    // one answer for "none" and "another agent's"
+    if (!row)
+      throw new AutocodeError(
+        "no_item",
+        `no item of yours has the ID ${id}`,
+        404,
+      )
+    if (row.closed_at)
+      throw new AutocodeError(
+        "closed",
+        `${id} was answered or closed already`,
+        409,
+      )
+    this.db
+      .query("UPDATE inbox SET closed_at = ? WHERE id = ?")
+      .run(this.now(), row.id)
+    if (row.message_id) this.messages().markRead(row.message_id, "inbox")
+    this.history.record("inbox.closed", {
+      agent,
+      data: {
+        id: row.id,
+        by: agent,
+        ...(why ? { why } : {}),
+        title: row.title,
+      },
+    })
+    return this.view(
+      this.db.query("SELECT * FROM inbox WHERE id = ?").get(row.id),
+    )
+  }
+
+  // What an agent has open in the owner's Inbox: its messages and reports,
+  // oldest first, each by its message's ID.
+  of(agent: string): {
+    id: string
+    kind: "message" | "report"
+    title: string
+    created_at: string
+  }[] {
+    return (
+      this.db
+        .query(
+          `SELECT * FROM inbox WHERE ${OWN} AND closed_at IS NULL ` +
+            "ORDER BY created_at, rowid",
+        )
+        .all(agent, agent) as any[]
+    ).map((r) => ({
+      id: r.message_id ?? r.id,
+      kind: r.report ? "report" : "message",
+      title: r.title,
+      created_at: iso(r.created_at)!,
+    }))
   }
 
   /*

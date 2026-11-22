@@ -139,7 +139,12 @@
             @if (item.kind === 'approval') {
               <div class="ask-text">{{ item.text }}</div>
             }
-            @if (askAnswerText(item); as answer) {
+            @if (askClosedText(item); as closed) {
+              <!-- Closed without an answer: by whom, and why. -->
+              <div class="answer">
+                <span class="body">{{ closed }}</span>
+              </div>
+            } @else if (askAnswerText(item); as answer) {
               <div class="answer">
                 <span class="muted">Answer: </span>
                 <app-markdown class="body" [text]="answer" />

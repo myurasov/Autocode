@@ -343,9 +343,9 @@ Each tool takes an `action`.
 |---|---|
 | `autocode_me` | `register` (`id`, `description`), `unregister`, `status`, `discover` (`pattern`), `help` (`topic`), `compact`, `jobs`, `run` (`job`, `text`), `finish` (`result`), `job_set` (see [Jobs That Agents Set](#jobs-that-agents-set)), `job_delete` (`job`), `rename` (`id`) |
 | `autocode_wake` | `set` (`name`, `trigger`, `text`, `check`), `list`, `show` (`name`), `cancel` (`name`), `fire` (`agent`, `name`, `text`) |
-| `autocode_message` | `send` (`to`, `subject`, `text`, `reply_to`, `report`), `list`, `read` and `wait` (`id`, `from`, `reply_to`; wait: `seconds`), `answer` and `escalate` (`id`, `text`) |
+| `autocode_message` | `send` (`to`, `subject`, `text`, `reply_to`, `report`), `list`, `read` and `wait` (`id`, `from`, `reply_to`; wait: `seconds`), `answer` and `escalate` (`id`, `text`), `close` (`id`, `text`) |
 | `autocode_lock` | `acquire` (`name`, `ttl`, `max`, `mode`), `renew` (`name`, `ttl`), `release` (`name`), `list` (`pattern`) |
-| `autocode_approval` | `ask` (`text`, `options`, `expires`), `wait` (`id`, `seconds`) |
+| `autocode_approval` | `ask` (`text`, `options`, `expires`), `wait` (`id`, `seconds`), `close` (`id`, `text`) |
 
 OpenCode's own question tool and its permission prompts also reach you through Autocode.
 
@@ -756,6 +756,29 @@ autocode_message  action=send  to=owner  subject="Decision: fold 3"  text="Spend
 If no answer by 18:00: I stop after fold 2."
 ```
 
+**Closing what no longer matters.** An agent can close what it put into your Inbox itself, once it no longer needs
+you: you answered in the session, the matter was overtaken, a report is out of date.
+
+```
+autocode_message   action=close  id=m_7c...  text="the owner answered in the session"
+autocode_approval  action=close  id=ask_42   text="the plan changed"
+```
+
+- **What it can close:** a message or a report that it sent to you, by the message's ID, and an approval that it
+  asked for, a job that it asked to set included. Both tools take both.
+- **What it cannot:** another agent's items, and what was sent under its ID before it registered; alerts, which
+  are Autocode's word to you; questions and permission prompts, which close by themselves when they are answered
+  in OpenCode or their turn ends. One exception: an agent that takes a used ID by a rename counts what is still
+  open under that ID as its own.
+- **A reason is required** (`text`, at most 500 characters). **History says who and why:** `inbox.closed` and
+  `ask.closed` carry `by` (the agent), `why` and the item's title. So nothing leaves your Inbox without a trace.
+  On the Inbox tab, with Closed on, an approval that its agent closed reads "Closed by" the agent, with the reason;
+  a closed message does not say who closed it: History does.
+- An agent that an approval was sent to is told that it was closed and needs no answer. A job's run that was
+  started for it reads the same in its prompt.
+- `autocode_me action=status` shows an agent the messages and reports it has open in your Inbox. The guide tells
+  agents not to close an item only because it is old.
+
 ## Locks and Semaphores
 
 A lock is shared by every agent on the server, on any machine. It is a mutex (`max=1`, the default) or a semaphore
@@ -855,6 +878,8 @@ autocode_approval  action=wait  id=ask_42  seconds=240
 - **The answer** comes as a notice, `[autocode] approval "..." approved`. It carries approved or rejected, the
   option, and your note.
 - **`action=wait`** holds the call until the answer comes, at most `max_tool_wait`.
+- **`action=close`** takes back an approval that no longer matters, as when you answered in the session itself. The
+  agent stops waiting at once, and its wakes and messages come again. A closed approval is not an approved one.
 - Agents act only on what was approved.
 
 ### Answering for Another Agent
@@ -1454,11 +1479,11 @@ by one kind, or by a group such as `wake.*`.
 | `injection.failed`, `injection.no_turn` | a prompt did not reach its session; it reached OpenCode, but no turn started |
 | `message.sent`, `message.dropped` | a message was sent; a waiting message was dropped, because its agent unregistered |
 | `message.read` | an agent took a message with `read` or `wait`, or its Inbox item was answered or closed; the data says which. A message that arrived in a prompt or in a running turn is in `injection.sent` |
-| `inbox.opened`, `inbox.answered`, `inbox.closed` | an Inbox item was opened, answered or closed |
+| `inbox.opened`, `inbox.answered`, `inbox.closed` | an Inbox item was opened, answered or closed. `inbox.closed` has `by` and `why` when an agent closed its own item, and `why` when Autocode did (`report`, `recovered`) |
 | `ask.opened`, `ask.sent` | an agent asked a question, met a permission prompt or asked for an approval; the ask was sent to another agent, or to a run of a job |
 | `ask.answered`, `ask.escalated` | an ask was answered; an agent handed it to the owner |
 | `ask.settled` | an ask was answered in OpenCode itself, for example in the TUI |
-| `ask.expired`, `ask.closed` | an approval expired; the owner closed an ask |
+| `ask.expired`, `ask.closed` | an approval expired; an ask was closed by the owner, or an approval by the agent that asked for it (`by`, `why`) |
 | `ask.gone`, `ask.reopened` | an ask ended without an answer, because its turn or its session ended; an answer did not reach OpenCode, and the ask is open again |
 | `lock.acquired`, `lock.queued` | an agent got a lock; it joined a queue |
 | `lock.renewed`, `lock.released` | a hold was renewed; it was released |
@@ -1500,7 +1525,7 @@ A refused call names a code. The CLI prints `refused (CODE): reason`; a tool ans
 | `lock_busy` | `mode=try`: the lock is held. The reason says by whom |
 | `lock_capacity` | the lock exists with another `max` |
 | `not_held`, `no_lock` | the agent does not hold that lock; there is no such lock |
-| `no_wake`, `no_ask`, `no_approval`, `no_item` | there is no wake of that name for the agent; no ask, approval or Inbox item with that ID |
+| `no_wake`, `no_ask`, `no_approval`, `no_item` | there is no wake of that name for the agent; no ask, approval or Inbox item with that ID. For an agent's `close`: no item of its own has that ID |
 | `ask_closed`, `closed` | the ask or the Inbox item was already answered or closed |
 | `not_in_error` | `retry`: the agent is not in `error` |
 | `no_job`, `no_run` | there is no job or run of that name |

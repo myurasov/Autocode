@@ -4,7 +4,8 @@
  * owner's answer goes back into the turn; a permission prompt (shell set to
  * ask by the session's own rules) is answered once by the owner, and with
  * permission_mode approve at once; a question sent to another agent is
- * answered by it with autocode_message; an approval is asked and approved.
+ * answered by it with autocode_message; an approval is asked and approved;
+ * an agent closes its own approval and its own message to the owner.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { admin, callTool, readySession } from "../helpers/autocode.ts"
@@ -243,5 +244,77 @@ describe("asks across machines", () => {
         seconds: 1,
       }),
     ).toBe(`Approval ${id}: approved by the owner. Option: tonight.`)
+  }, 240_000)
+
+  /*
+   * 1.1.0-rc4 (the owner, 2026-11-22: "i want autocode agents to be able to
+   * close messages/questions/etc in inbox when they become irrelevant"):
+   * an agent closes what it put into the owner's Inbox itself.
+   */
+  test("an agent closes its own approval and its own message to the owner; status lists what is open", async () => {
+    const [a] = agents as [Agent]
+    const asked = await callTool(a.oc, a.session, "autocode_approval", {
+      action: "ask",
+      text: `Pay ${run}?`,
+    })
+    const id = /Approval (ask_\w+)/.exec(asked)![1]!
+    expect(
+      await callTool(a.oc, a.session, "autocode_me", { action: "status" }),
+    ).toContain(`Waiting on: approval ${id}`)
+    expect(
+      await callTool(a.oc, a.session, "autocode_approval", {
+        action: "close",
+        id,
+        text: "the owner answered in the session",
+      }),
+    ).toStartWith(`Closed approval ${id}: you no longer wait for it`)
+    const open = async () => (await admin("GET", "/v1/inbox")).items
+    expect((await open()).some((i: any) => i.id === id)).toBe(false)
+    expect(
+      (await admin("GET", "/v1/history?kind=ask.closed")).history[0],
+    ).toMatchObject({
+      agent: a.id,
+      data: { id, by: a.id, why: "the owner answered in the session" },
+    })
+    // a message to the owner, closed by the ID that send gave
+    const sent = await callTool(a.oc, a.session, "autocode_message", {
+      action: "send",
+      to: "owner",
+      subject: "fold",
+      text: `Which fold ${run}?`,
+    })
+    const message = /\((m_\w+)\)/.exec(sent)![1]!
+    const status = await callTool(a.oc, a.session, "autocode_me", {
+      action: "status",
+    })
+    expect(status).toContain(`message ${message} "fold"`)
+    expect(status).not.toContain("Waiting on")
+    expect(
+      await callTool(a.oc, a.session, "autocode_message", {
+        action: "close",
+        id: message,
+        text: "overtaken",
+      }),
+    ).toBe(`Closed your message ${message} in the owner's Inbox.`)
+    expect((await open()).some((i: any) => i.message_id === message)).toBe(
+      false,
+    )
+    expect(
+      (await admin("GET", "/v1/history?kind=inbox.closed")).history[0].data,
+    ).toMatchObject({ by: a.id, why: "overtaken" })
+    // closed is closed, and a close without a reason is no call at all
+    expect(
+      await callTool(a.oc, a.session, "autocode_message", {
+        action: "close",
+        id: message,
+        text: "again",
+      }),
+    ).toStartWith("error (closed):")
+    expect(
+      await callTool(a.oc, a.session, "autocode_message", {
+        action: "close",
+        id: message,
+      }),
+    ).toBe("error: close needs text: why it no longer matters, in a line")
   }, 240_000)
 })

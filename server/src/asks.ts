@@ -438,6 +438,64 @@ export class Asks {
   }
 
   /*
+   * The asking agent closes its own approval that no longer matters
+   * (1.1.0-rc4; the owner, 2026-11-22: "when i answered in prompt or things
+   * changed"): it stops waiting, gets no notice, and a wait on it returns.
+   * Closed is not approved. A question or a permission is not closed this
+   * way: its form lives in OpenCode, which settles it.
+   */
+  closeOwn(agent: string, id: string, why: string): AskView {
+    const row = this.row(id)
+    // one answer for "none" and "another agent's"
+    if (!row || row.agent_id !== agent)
+      throw new AutocodeError(
+        "no_item",
+        `no item of yours has the ID ${id}`,
+        404,
+      )
+    if (row.kind !== "approval")
+      throw new AutocodeError(
+        "bad_request",
+        `a ${row.kind} closes by itself: when it is answered in OpenCode, ` +
+          "when its turn ends, or when OpenCode no longer has it",
+      )
+    if (row.state !== "open")
+      throw new AutocodeError(
+        "ask_closed",
+        `approval ${id} was answered or closed already`,
+        409,
+      )
+    this.finish(row, "gone", { text: why }, agent, true)
+    this.history.record("ask.closed", {
+      agent,
+      data: { id, by: agent, why, title: row.title },
+    })
+    /*
+     * The agent, or the job's run, that the approval was sent to must not
+     * spend a turn on it: it is told (the second review before 1.1.0-rc4).
+     * A run that has no session yet is no agent yet: its prompt says it
+     * (askText).
+     */
+    const body = JSON.parse(row.body)
+    const sentTo = String(row.routed).startsWith("agent:")
+      ? String(row.routed).slice("agent:".length)
+      : ""
+    if (sentTo && this.registered(sentTo))
+      try {
+        this.notify({
+          agent: sentTo,
+          subject: `approval for ${agent} closed`,
+          text: this.closedText(this.row(id)),
+        })
+      } catch {}
+    return {
+      ...this.approvalView(this.row(id)),
+      // a job the agent asked to set, which is not set now
+      ...(body.job ? { job: body.job } : {}),
+    }
+  }
+
+  /*
    * A turn of the session ended: its own questions and permissions are gone
    * (a form lives only while its tool call runs); approvals stay. A
    * Subagent's stay too (form_session: OpenCode 2.3 runs Subagents in the
@@ -508,10 +566,47 @@ export class Asks {
       this.db.query("UPDATE asks SET routed = 'owner' WHERE id = ?").run(row.id)
   }
 
-  // What an ask says to whoever answers it (a run's prompt part).
+  /*
+   * What an ask says to whoever answers it (a run's prompt part). One that
+   * closed before the run got its prompt says so, and asks for no answer
+   * (the third review before 1.1.0-rc4).
+   */
   askText(id: string): string | null {
     const row = this.row(id)
-    return row ? this.describe(row).text : null
+    if (!row) return null
+    return row.state === "open"
+      ? this.describe(row).text
+      : this.closedText(row, " that this run was started for", true)
+  }
+
+  /*
+   * That an ask is closed and needs no answer: for the agent, or the job's
+   * run, that it was sent to. What the asker wrote is quoted, like
+   * anything others wrote.
+   */
+  private closedText(row: any, what = "", run = false): string {
+    const who =
+      row.answered_by === "owner" ? "the owner" : (row.answered_by ?? null)
+    const how =
+      row.state === "expired"
+        ? "expired"
+        : row.state === "answered"
+          ? `was answered${who ? ` by ${who}` : ""}`
+          : who
+            ? `was closed by ${who}`
+            : "is closed"
+    const lines = [
+      `The ${row.kind} ${row.id} of ${row.agent_id}${what} ${how} and ` +
+        `needs no answer any more${run ? ": say so in your result" : ""}.`,
+    ]
+    if (row.kind === "approval") {
+      const body = JSON.parse(row.body)
+      lines.push("It asked:", `> ${short(body.text, 200)}`)
+      const why = row.answer ? JSON.parse(row.answer)?.text : null
+      if (row.state === "gone" && why)
+        lines.push("The reason given:", `> ${short(why, 500)}`)
+    }
+    return lines.join("\n")
   }
 
   // OpenCode settled a form or a permission (the TUI, or our own answer).
@@ -865,9 +960,9 @@ export class Asks {
       throw new AutocodeError(
         "ask_closed",
         row.answered_by
-          ? `ask ${id} is already answered by ${
-              row.answered_by === "owner" ? "the owner" : row.answered_by
-            }`
+          ? `ask ${id} ${
+              row.state === "gone" ? "was closed" : "is already answered"
+            } by ${row.answered_by === "owner" ? "the owner" : row.answered_by}`
           : `ask ${id} is closed (${row.state})`,
         409,
       )

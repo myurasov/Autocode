@@ -43,7 +43,8 @@ it, and Autocode can wake it later by typing a prompt into it.
   command that the refusal prints.
 - `status` shows your registration, the server's time and zone, how
   Autocode delivers to you, your wakes, how many messages wait for
-  you, and your spend and context; `discover` finds agents by pattern
+  you, what you have open in the owner's Inbox, and your spend and
+  context; `discover` finds agents by pattern
   (`team:*`, or a list `a:b,c:*`).
 - `rename` gives you a new ID in place (`autocode_me action=rename
   id=project:role:name`): you stay the same agent, and your wakes,
@@ -299,6 +300,17 @@ approval, an escalation's reason) is read by a busy person:
   a report: it can be hidden with the others, and one left open closes
   by itself after a week. A question, a blocker or a choice is not a
   report: send those plain, so that they stand out.
+- Close what no longer needs the owner. A message, a report or an
+  approval of yours that is still open in the Inbox, once the owner
+  answered in the session, the matter was overtaken, or a newer report
+  replaces it (say in the newer one what still matters of the old):
+  `autocode_message action=close id=<the message's ID> text=<why>`
+  (for an approval, its ID). The reason is required: the owner sees in
+  History what you closed and why. `autocode_me status` lists the
+  messages and reports you have open there. Do not close an item only
+  because it is old: the owner may not have read it yet. Questions
+  and permission prompts close by themselves, and alerts are the
+  owner's to close.
 
 <!-- topic: locks -->
 
@@ -352,6 +364,12 @@ submission, a refresh of shared data.
   rejected). `approval_mode` decides who answers. The answer comes as
   a notice (`[autocode] approval "…" approved` or rejected);
   `action=wait id=...` holds the call for it (at most `max_tool_wait`).
+- An approval that no longer matters, because the owner answered in
+  the session or the plan changed: `autocode_approval action=close
+  id=... text=<why>`. You stop waiting at once, and your wakes and
+  messages come again. Closed is not approved: act only on what the
+  owner told you. A job you asked to set is taken back the same way,
+  by the approval's ID that `job_set` gave.
 - Asked for another agent: a notice (`[autocode] question from ...`,
   `permission for ...`, `approval for ...`) says what it asks and its
   ID. Answer with `autocode_message action=answer id=<ask> text=...`:
@@ -456,8 +474,8 @@ Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of compact_at (100
 -- Autocode. "autocode_me action=help" for more info.
 ```
 
-- A prompt that starts with `[autocode]` and ends with the line
-  `-- Autocode.` is Autocode's, not the owner's typing.
+- A prompt that starts with `[autocode]`, and whose last line starts
+  with `-- Autocode.`, is Autocode's, not the owner's typing.
 - The first line says why: the wakes (and who fired one), the number
   of messages. Each wake's part says what kind of wake it is and when
   it runs next.

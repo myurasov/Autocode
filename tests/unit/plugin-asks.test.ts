@@ -14,8 +14,10 @@ import {
 import { guideText, helpText, TOPICS } from "../../plugin/src/guide.ts"
 import {
   APPROVAL_TOOL,
+  ME_TOOL,
   MESSAGE_TOOL,
   runApproval,
+  runMe,
   runMessage,
   TOOLS,
 } from "../../plugin/src/tools.ts"
@@ -206,6 +208,7 @@ describe("autocode_message answer and escalate", () => {
       "wait",
       "answer",
       "escalate",
+      "close",
     ])
     expect(MESSAGE_TOOL.description).toContain("answer (id, text")
     expect(MESSAGE_TOOL.description).toContain("escalate (id, text")
@@ -234,12 +237,206 @@ describe("autocode_message answer and escalate", () => {
   })
 })
 
+/*
+ * 1.1.0-rc4 (the owner, 2026-11-22: "i want autocode agents to be able to
+ * close messages/questions/etc in inbox when they become irrelevant (eg
+ * when i answered in prompt or things changed/etc)").
+ */
+describe("closing what the agent put into the owner's Inbox", () => {
+  test("both tools name it, and say what closes and why", () => {
+    expect(MESSAGE_TOOL.description).toContain(
+      "close (id, text: close what you put in the owner's Inbox once it " +
+        "no longer matters, as when the owner answered in the session: a " +
+        "message or report you sent, or an approval you asked for; text: " +
+        "why, required)",
+    )
+    expect(APPROVAL_TOOL.description).toContain(
+      "close (id; text: why, required: take back one that no longer " +
+        "matters, as when the owner answered in the session; closed is " +
+        "not approved)",
+    )
+    expect(ME_TOOL.description).toContain(
+      "what you have open in the owner's Inbox",
+    )
+    expect((MESSAGE_TOOL.input.properties.id as any).description).toContain(
+      "close: the ID of a message you sent to the owner, or of an " +
+        "approval you asked for",
+    )
+    expect((MESSAGE_TOOL.input.properties.text as any).description).toContain(
+      "close: why it no longer matters",
+    )
+    expect((APPROVAL_TOOL.input.properties.id as any).description).toBe(
+      "wait, close: the approval's ID",
+    )
+  })
+
+  test("a message, a report and an approval, from either tool; the answer says what closed", async () => {
+    const { call, calls } = fake({
+      "POST /v1/me/inbox/close": (body: any) => ({
+        item:
+          body.id === "ask_4"
+            ? { id: "ask_4", kind: "approval", state: "gone" }
+            : body.id === "ask_5"
+              ? {
+                  id: "ask_5",
+                  kind: "approval",
+                  state: "gone",
+                  job: "team:lead:digest",
+                }
+              : body.id === "m_2"
+                ? {
+                    id: "ib_2",
+                    kind: "message",
+                    message_id: "m_2",
+                    report: true,
+                  }
+                : { id: "ib_1", kind: "message", message_id: "m_1" },
+      }),
+    })
+    expect(
+      await runMessage(
+        { action: "close", id: "m_1", text: "answered in the session" },
+        call,
+      ),
+    ).toBe("Closed your message m_1 in the owner's Inbox.")
+    expect(
+      await runMessage(
+        { action: "close", id: "m_2", text: "a newer one replaces it" },
+        call,
+      ),
+    ).toBe("Closed your report m_2 in the owner's Inbox.")
+    const approval =
+      "Closed approval ask_4: you no longer wait for it, and your wakes " +
+      "and messages come again. Closed is not approved: act only on what " +
+      "the owner told you."
+    expect(
+      await runApproval(
+        { action: "close", id: "ask_4", text: "the plan changed" },
+        call,
+      ),
+    ).toBe(approval)
+    expect(
+      await runMessage({ action: "close", id: "ask_4", text: "again" }, call),
+    ).toBe(approval)
+    // a job it asked to set never made it wait
+    expect(
+      await runApproval(
+        { action: "close", id: "ask_5", text: "not needed" },
+        call,
+      ),
+    ).toBe(
+      "Closed approval ask_5: the job team:lead:digest is not set. Closed " +
+        "is not approved.",
+    )
+    expect(calls.map((c) => [c.key, c.body])).toEqual([
+      [
+        "POST /v1/me/inbox/close",
+        { id: "m_1", text: "answered in the session" },
+      ],
+      [
+        "POST /v1/me/inbox/close",
+        { id: "m_2", text: "a newer one replaces it" },
+      ],
+      ["POST /v1/me/inbox/close", { id: "ask_4", text: "the plan changed" }],
+      ["POST /v1/me/inbox/close", { id: "ask_4", text: "again" }],
+      ["POST /v1/me/inbox/close", { id: "ask_5", text: "not needed" }],
+    ])
+    for (const out of [
+      await runMessage({ action: "close", text: "why" }, call),
+      await runApproval({ action: "close", text: "why" }, call),
+    ])
+      expect(out).toBe(
+        "error: close needs the id of a message you sent to the owner, or " +
+          "of an approval you asked for",
+      )
+    // no call without a reason: the owner reads it in History
+    for (const out of [
+      await runMessage({ action: "close", id: "m_1" }, call),
+      await runApproval({ action: "close", id: "ask_4", text: "  " }, call),
+    ])
+      expect(out).toBe(
+        "error: close needs text: why it no longer matters, in a line",
+      )
+    expect(calls.length).toBe(5)
+  })
+
+  test("an approval the agent closed itself reads as closed by you", async () => {
+    const { call } = fake({
+      "GET /v1/me/approvals/ask_4": {
+        approval: {
+          id: "ask_4",
+          agent: "team:lead",
+          state: "gone",
+          by: "team:lead",
+        },
+      },
+    })
+    expect(
+      await runApproval({ action: "wait", id: "ask_4", seconds: 1 }, call),
+    ).toBe("Approval ask_4: closed by you.")
+  })
+
+  test("status lists what the agent has open there, and how to close it", async () => {
+    const item = (n: number, more: Record<string, unknown> = {}) => ({
+      id: `m_${n}`,
+      kind: "message",
+      title: "Message from team:lead",
+      created_at: `2026-10-28T1${n}:00:00.000Z`,
+      ...more,
+    })
+    const { call } = fake({
+      "GET /v1/me": {
+        ...ME,
+        asks: [
+          {
+            id: "ask_7",
+            kind: "approval",
+            title: "Approval for team:lead: Go?",
+          },
+        ],
+        inbox: [
+          item(0, {
+            title: `Message from team:lead: "the folds ${"x".repeat(80)}"`,
+          }),
+          item(1, { kind: "report", title: "Report from team:lead" }),
+          item(2),
+          item(3),
+          item(4),
+          item(5),
+          item(6),
+        ],
+      },
+    })
+    const lines = (await runMe({ action: "status" }, call)).split("\n")
+    expect(lines).toContain(
+      "Waiting on: approval ask_7 (Approval for team:lead: Go?). Your " +
+        "wakes and messages wait until they close. An approval that no " +
+        "longer matters: autocode_approval action=close id=ID.",
+    )
+    expect(lines).toContain(
+      // a long subject is cut, so that the line stays one to read
+      `Open in the owner's Inbox: message m_0 "the folds ${"x".repeat(49)}…" (sent ` +
+        "2026-10-28 03:00 PDT); report m_1 (sent 2026-10-28 04:00 PDT); " +
+        "message m_2 (sent 2026-10-28 05:00 PDT); message m_3 (sent " +
+        "2026-10-28 06:00 PDT); message m_4 (sent 2026-10-28 07:00 PDT); " +
+        "and 2 more. One that no longer matters (the owner answered in the " +
+        "session, things changed): autocode_message action=close id=ID.",
+    )
+    // nothing open: no line
+    const none = fake({ "GET /v1/me": { ...ME, asks: [], inbox: [] } })
+    const quiet = await runMe({ action: "status" }, none.call)
+    expect(quiet).not.toContain("Inbox")
+    expect(quiet).not.toContain("Waiting on")
+  })
+})
+
 describe("autocode_approval", () => {
-  test("is a tool with ask and wait only", () => {
+  test("is a tool with ask, wait and close", () => {
     expect(TOOLS).toContain(APPROVAL_TOOL)
     expect((APPROVAL_TOOL.input.properties.action as any).enum).toEqual([
       "ask",
       "wait",
+      "close",
     ])
     for (const word of ["ask", "wait", "options", "expires", "notice"])
       expect(APPROVAL_TOOL.description, word).toContain(word)
