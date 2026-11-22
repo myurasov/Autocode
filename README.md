@@ -243,7 +243,7 @@ An agent that wakes itself every 30 minutes.
    Append the current date and time to wake.log.
 
    Server time 2026-11-17 14:02 PST. Context: 14,210 tokens, 14.2% of compact_at (100,000). Cost today: $0.04 (no daily cap).
-   — Autocode. "autocode_me action=help" for more info.
+   -- Autocode. "autocode_me action=help" for more info.
    ```
 
    Check: `cat wake.log` in that folder shows one line. At the time that `autocode wakes demo:lead` gives under

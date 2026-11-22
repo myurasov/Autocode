@@ -295,7 +295,7 @@ test("the reference and the README show a prompt's status line", () => {
   const line =
     "Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of " +
     "compact_at (100,000). Cost today: $3.10 (no daily cap).\n" +
-    '— Autocode. "autocode_me action=help" for more info.\n'
+    '-- Autocode. "autocode_me action=help" for more info.\n'
   expect(ref).toContain(line)
   expect(ref).toContain(
     "| Status line | the server's time in its zone; the agent's context " +
@@ -305,7 +305,7 @@ test("the reference and the README show a prompt's status line", () => {
   expect(read("README.md")).toContain(
     "Server time 2026-11-17 14:02 PST. Context: 14,210 tokens, 14.2% of " +
       "compact_at (100,000). Cost today: $0.04 (no daily cap).\n" +
-      '   — Autocode. "autocode_me action=help" for more info.\n',
+      '   -- Autocode. "autocode_me action=help" for more info.\n',
   )
 })
 

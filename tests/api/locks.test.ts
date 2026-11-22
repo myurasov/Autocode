@@ -23,7 +23,7 @@ let b: string
 let c: string
 const HOST = "m:1"
 const MIN = 60_000
-const FOOTER = '— Autocode. "autocode_me action=help" for more info.'
+const FOOTER = '-- Autocode. "autocode_me action=help" for more info.'
 // The two lines that end a prompt (1.1.0): the server's time and the
 // agent's spend at that time of day, then the footer.
 const footer = (time: string) =>

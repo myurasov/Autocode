@@ -1244,7 +1244,7 @@ Message m_123 from agent kaggle:worker-1, subject "results":
 > Done: 0.91.
 
 Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of compact_at (100,000). Cost today: $3.10 (no daily cap).
-— Autocode. "autocode_me action=help" for more info.
+-- Autocode. "autocode_me action=help" for more info.
 ```
 
 | Part | What it holds |

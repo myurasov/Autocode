@@ -174,7 +174,7 @@ describe("what an injected prompt says", () => {
     const lines = text.split("\n")
     // the owner, 2026-11-22: one short line; the header says the rest
     expect(lines.at(-1)).toBe(
-      '— Autocode. "autocode_me action=help" for more info.',
+      '-- Autocode. "autocode_me action=help" for more info.',
     )
     // 1.1.0 (the owner, 2026-11-20): the line before it says the server's
     // time and today's spend; the context once a step has reported one

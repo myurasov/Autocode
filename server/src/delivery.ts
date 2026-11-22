@@ -58,9 +58,10 @@ export function promptId(now: number): string {
 /*
  * The last line of every injection (tier 0b2). One short line since the
  * owner's word of 2026-11-22: the header already says that the prompt is
- * Autocode's, and each wake's part names its next run.
+ * Autocode's, and each wake's part names its next run. It starts with two
+ * hyphens, by the owner's word too ("two dashes, not ndash not mdash").
  */
-export const FOOTER = '— Autocode. "autocode_me action=help" for more info.'
+export const FOOTER = '-- Autocode. "autocode_me action=help" for more info.'
 
 /*
  * The line before the footer (1.1.0; the owner, 2026-11-20: agents called
