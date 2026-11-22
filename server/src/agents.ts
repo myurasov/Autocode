@@ -20,6 +20,12 @@ import { dropAlias, renameAgent } from "./rename.ts"
 import { type ErrorView, errorView } from "./retries.ts"
 import { type Caller, revokeSessionTokens } from "./tokens.ts"
 
+// What a session does when the ID it asks for is registered: not another
+// ID, which would make a second agent beside the one that has the wakes.
+const TELL =
+  "Do not take another ID in its place: tell the owner, who can move it " +
+  "to this session"
+
 /*
  * Registration binds an agent ID to one top-level OpenCode session. Rules, for
  * an ID and a session: a new ID is registered; the same ID from the same
@@ -258,11 +264,9 @@ export class Agents {
                 `(${holder.session_id}); the owner can force the move`
             : gone
               ? `${id} is registered already; the session that held it ` +
-                `(${holder.session_id}) is gone. Choose another ID. Only ` +
-                `the owner can move it to this session: ${move}`
+                `(${holder.session_id}) is gone. ${TELL}: ${move}`
               : `${id} is registered already, to another session ` +
-                `(${holder.session_id}). Choose another ID. Only the ` +
-                `owner can move it to this session: ${move} --force`,
+                `(${holder.session_id}). ${TELL}: ${move} --force`,
           409,
         )
       }

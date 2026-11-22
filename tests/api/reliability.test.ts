@@ -530,6 +530,27 @@ describe("expiry", () => {
       .history
     expect(h[0]).toMatchObject({ agent: "team:a" })
   })
+
+  /*
+   * The review before 1.1.0-rc4: such an agent stayed for good (its session
+   * counted as busy for ever), and since rc4 no other session takes its ID.
+   */
+  test("an agent whose session was deleted while its turn ran expires too", async () => {
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { expire_after: "2d" } },
+    })
+    await report(t, HOST, [{ type: "turn.started", session: "ses_a" }])
+    await report(t, HOST, [{ type: "session.deleted", session: "ses_a" }])
+    // the end of that turn, when it comes at all, comes too late to count
+    await turnEnds()
+    t.clock.advance(DAY)
+    t.server.maintenance()
+    expect((await owner("GET", "/v1/agents/team:a")).status).toBe(200)
+    t.clock.advance(DAY + MIN)
+    await hello(t, HOST)
+    t.server.maintenance()
+    expect((await owner("GET", "/v1/agents/team:a")).status).toBe(404)
+  })
 })
 
 // The adversarial review of 0e (2026-11-07).
@@ -633,7 +654,7 @@ describe("review of 0e", () => {
     expect(JSON.stringify(v)).not.toContain("keep_failed")
   })
 
-  test("a deleted session's agent stays (offline, its ID may move) but its locks go", async () => {
+  test("a deleted session's agent stays (offline, only the owner moves its ID) but its locks go", async () => {
     await as(a, "POST", "/v1/locks/gpu/acquire", { ttl: "1h" })
     await report(t, HOST, [{ type: "session.deleted", session: "ses_a" }])
     expect((await agent()).status).toBe("offline")

@@ -374,8 +374,8 @@ In plain words, to an agent: "Register with Autocode as `kaggle:lead`."
 - **Registering again** with the same ID from the same session changes nothing. That makes it safe after a
   compaction.
 - **A taken ID** is refused (`id_taken`). An agent can never take an ID that is registered, also when the session
-  that held it is gone. Only you can move an ID to another session, with its wakes, settings and spend: `autocode
-  agents register ID --session SES`, and with `--force` when the old session still exists.
+  that held it is gone. Only you can move an ID to another session, with its wakes, settings and spend:
+  `autocode agents register ID --session SES`, and with `--force` when the old session still exists.
 - **The session's title.** On registration the plugin sets the session's title to `@` and the ID, like
   `@kaggle:lead`, so that you find it in OpenCode's session list. A run of a job keeps its own title.
 - **A Subagent** acts for the agent that started it. It has no ID of its own.

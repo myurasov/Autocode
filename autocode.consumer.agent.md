@@ -456,6 +456,8 @@ Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of compact_at (100
 -- Autocode. "autocode_me action=help" for more info.
 ```
 
+- A prompt that starts with `[autocode]` and ends with the line
+  `-- Autocode.` is Autocode's, not the owner's typing.
 - The first line says why: the wakes (and who fired one), the number
   of messages. Each wake's part says what kind of wake it is and when
   it runs next.

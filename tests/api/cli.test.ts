@@ -297,6 +297,28 @@ describe("autocode CLI", () => {
     )
   })
 
+  test("the owner moves the ID of a session that is gone, without --force", async () => {
+    const token = await sessionToken(t, "m:1", "ses_old")
+    await call(t.url, token, "POST", "/v1/agents", { id: "kaggle:mover" })
+    await call(t.url, t.consumer, "POST", "/v1/hosts/m:1/events", {
+      events: [{ type: "session.deleted", session: "ses_old" }],
+    })
+    const next = await sessionToken(t, "m:1", "ses_new")
+    const refused = await call(t.url, next, "POST", "/v1/agents", {
+      id: "kaggle:mover",
+    })
+    expect(refused.status).toBe(409)
+    // the command that the refusal prints, word for word
+    const printed = String(refused.body.error.message).split(": ").at(-1)!
+    expect(printed).toBe(
+      "autocode agents register kaggle:mover --session ses_new",
+    )
+    const moved = await cli(printed.split(" ").slice(1), asAdmin())
+    expect(moved.code).toBe(0)
+    expect(moved.stdout).toContain("kaggle:mover is now ses_new")
+    await cli(["agents", "rm", "kaggle:mover"], asAdmin())
+  })
+
   test("the owner rotates a token and unregisters an agent", async () => {
     expect(
       (await cli(["token", "rotate", "cosa:updater"], asAdmin())).code,

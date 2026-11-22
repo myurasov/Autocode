@@ -36,6 +36,12 @@ const register = (
     ...(description === undefined ? {} : { description }),
   })
 
+// The history's entries of one kind, newest first.
+async function history(t: TestServer, kind: string): Promise<any[]> {
+  return (await call(t.url, t.admin, "GET", `/v1/history?kind=${kind}`)).body
+    .history
+}
+
 async function kinds(t: TestServer): Promise<string[]> {
   return (
     await call(t.url, t.admin, "GET", "/v1/history?limit=200")
@@ -82,10 +88,16 @@ describe("registration", () => {
     // it says who holds the ID, and what the owner would run to move it
     expect(res.body.error.message).toBe(
       "kaggle:lead is registered already, to another session (ses_1). " +
-        "Choose another ID. Only the owner can move it to this session: " +
-        "autocode agents register kaggle:lead --session ses_2 --force",
+        "Do not take another ID in its place: tell the owner, who can " +
+        "move it to this session: autocode agents register kaggle:lead " +
+        "--session ses_2 --force",
     )
     expect(await kinds(t)).toContain("agent.refused")
+    expect((await history(t, "agent.refused"))[0]).toMatchObject({
+      agent: "kaggle:lead",
+      session: "ses_2",
+      data: { reason: "id_taken", by: "ses_1" },
+    })
   })
 
   // The owner, 2026-11-22: an agent never takes an ID that is registered.
@@ -107,9 +119,9 @@ describe("registration", () => {
     expect(res.body.error.code).toBe("id_taken")
     expect(res.body.error.message).toBe(
       "kaggle:lead is registered already; the session that held it " +
-        "(ses_1) is gone. Choose another ID. Only the owner can move it " +
-        "to this session: autocode agents register kaggle:lead " +
-        "--session ses_2",
+        "(ses_1) is gone. Do not take another ID in its place: tell the " +
+        "owner, who can move it to this session: autocode agents register " +
+        "kaggle:lead --session ses_2",
     )
     expect(await kinds(t)).toContain("agent.refused")
     expect(await kinds(t)).not.toContain("agent.moved")
@@ -133,7 +145,11 @@ describe("registration", () => {
       session: "ses_2",
       description: "kept",
     })
-    expect(await kinds(t)).toContain("agent.moved")
+    expect((await history(t, "agent.moved"))[0]).toMatchObject({
+      agent: "kaggle:lead",
+      session: "ses_2",
+      data: { from: "ses_1", forced: false },
+    })
     // and its wakes came along
     const wakes = await call(t.url, two, "GET", "/v1/me/wakes")
     expect(wakes.body.wakes.map((w: any) => w.name)).toEqual(["tick"])
@@ -160,6 +176,11 @@ describe("registration", () => {
       session: "ses_2",
     })
     expect(refused.status).toBe(409)
+    // (a job's run that finds its ID taken fails with these words too)
+    expect(refused.body.error.message).toBe(
+      "kaggle:lead belongs to another session that is still there " +
+        "(ses_1); the owner can force the move",
+    )
     const forced = await call(t.url, t.admin, "POST", "/v1/agents", {
       id: "kaggle:lead",
       session: "ses_2",
@@ -167,6 +188,9 @@ describe("registration", () => {
     })
     expect(forced.status).toBe(200)
     expect(forced.body.agent.session).toBe("ses_2")
+    expect((await history(t, "agent.moved"))[0]).toMatchObject({
+      data: { from: "ses_1", forced: true },
+    })
     expect((await call(t.url, one, "GET", "/v1/me")).body.registered).toBe(
       false,
     )

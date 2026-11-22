@@ -624,8 +624,9 @@ export async function startServer(
 
   /*
    * A deleted session: its asks close and its agent's locks go (no turn of
-   * it can release them); the agent stays, offline, so its ID can move to
-   * a new session with its wakes (spec, Registration), until expire_after.
+   * it can release them); the agent stays, offline, so the owner can move
+   * its ID to a new session with its wakes (spec, Registration), until
+   * expire_after.
    */
   const sessionDeleted = (session: string) => {
     asks.gone(session)

@@ -793,9 +793,20 @@ export class Hosts {
           .query("SELECT id FROM sessions WHERE id = ? AND deleted_at IS NULL")
           .get(event.session)
         if (!session) continue
+        /*
+         * No turn of it runs any more, whatever was running: the end of
+         * that turn is not taken from a deleted session, so without this
+         * its agent would count as busy for ever and never expire (the
+         * review before 1.1.0-rc4).
+         */
         this.db
-          .query("UPDATE sessions SET deleted_at = ? WHERE id = ?")
-          .run(this.now(), event.session)
+          .query(
+            `UPDATE sessions SET deleted_at = ?, inject_pending_at = NULL,
+               idle_since = CASE WHEN busy = 1 THEN ? ELSE idle_since END,
+               busy = 0
+             WHERE id = ?`,
+          )
+          .run(this.now(), this.now(), event.session)
         revokeSessionTokens(this.db, event.session, this.now())
         onSessionDeleted(event.session)
       }
