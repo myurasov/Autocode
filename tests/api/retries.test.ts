@@ -26,9 +26,7 @@ let b: string
 const HOST = "m:1"
 const SEC = 1000
 const MIN = 60_000
-const FOOTER =
-  "— From Autocode, not the owner. Your wakes: autocode_wake list. " +
-  "How Autocode works: autocode_me action=help."
+const FOOTER = '— Autocode. "autocode_me action=help" for more info.'
 // The two lines that end a prompt (1.1.0): the server's time and the
 // agent's spend at that time of day, then the footer.
 const footer = (time: string) =>

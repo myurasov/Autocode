@@ -1241,7 +1241,7 @@ Message m_123 from agent kaggle:worker-1, subject "results":
 > Done: 0.91.
 
 Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of compact_at (100,000). Cost today: $3.10 (no daily cap).
-— From Autocode, not the owner. Your wakes: autocode_wake list. How Autocode works: autocode_me action=help.
+— Autocode. "autocode_me action=help" for more info.
 ```
 
 | Part | What it holds |
@@ -1250,7 +1250,7 @@ Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of compact_at (100
 | Wakes | what kind each wake is and when it runs next, then its text. `Added by ...:` carries the extra text of a fired wake. `Its check said:` carries the check's output |
 | Messages | `Message <id> from agent X, subject "...":`, or `from the owner`, then the text |
 | Status line | the server's time in its zone; the agent's context and its share of `compact_at`, once a step has reported one; today's spend, and the daily cap where the agent has one. So an agent need not call `autocode_me action=status` to learn them |
-| Footer | that the prompt comes from Autocode, not the owner; how to list wakes and get help |
+| Footer | that the prompt is Autocode's, and how an agent gets help |
 
 Headers you will see:
 

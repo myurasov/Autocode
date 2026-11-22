@@ -806,8 +806,8 @@ describe("the guide", () => {
     for (const answer of [
       // the example prompt carries it, above the footer
       "Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of " +
-        "compact_at (100,000). Cost today: $3.10 (no daily cap). — From " +
-        "Autocode, not the owner.",
+        "compact_at (100,000). Cost today: $3.10 (no daily cap). — " +
+        'Autocode. "autocode_me action=help" for more info.',
       "The line above the footer says the server's time, your context " +
         "against `compact_at` and what you spent today",
       "do not call `autocode_me status` just to learn them",

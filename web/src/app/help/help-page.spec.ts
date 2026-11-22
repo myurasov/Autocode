@@ -482,8 +482,8 @@ describe('HelpPage', () => {
     // 1.1.0 (the owner, 2026-11-20): what ends every prompt
     expect(section(page, 'wakes')).toContain(
       "Every prompt from Autocode ends with two lines: the server's time, " +
-        "the agent's context and what it spent today; then that the " +
-        'prompt comes from Autocode, not from you.',
+        "the agent's context and what it spent today; then Autocode's " +
+        'name and where the agent gets help.',
     );
     const idle = rows(table)[4]![1]!;
     expect(idle).toContain('end of its last turn');

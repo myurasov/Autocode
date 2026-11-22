@@ -55,10 +55,12 @@ export function promptId(now: number): string {
   return `msg_${time}${random}`
 }
 
-// The last line of every injection (tier 0b2).
-export const FOOTER =
-  "— From Autocode, not the owner. Your wakes: autocode_wake list. " +
-  "How Autocode works: autocode_me action=help."
+/*
+ * The last line of every injection (tier 0b2). One short line since the
+ * owner's word of 2026-11-22: the header already says that the prompt is
+ * Autocode's, and each wake's part names its next run.
+ */
+export const FOOTER = '— Autocode. "autocode_me action=help" for more info.'
 
 /*
  * The line before the footer (1.1.0; the owner, 2026-11-20: agents called

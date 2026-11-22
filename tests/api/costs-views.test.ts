@@ -179,7 +179,7 @@ describe("a prompt's status line", () => {
       { type: "turn.ended", session: "ses_a", outcome: "succeeded" },
     ])
     const lines: string[] = prompt.payload.text.split("\n")
-    expect(lines.at(-1)).toStartWith("— From Autocode, not the owner.")
+    expect(lines.at(-1)).toStartWith("— Autocode. ")
     return lines.at(-2)!
   }
 

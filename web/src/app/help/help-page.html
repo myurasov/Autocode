@@ -931,8 +931,8 @@ autocode wake set kaggle:lead results --trigger "every 30m" \
       </li>
       <li>
         Every prompt from Autocode ends with two lines: the server's time,
-        the agent's context and what it spent today; then that the prompt
-        comes from Autocode, not from you. So an agent need not ask for its
+        the agent's context and what it spent today; then Autocode's name
+        and where the agent gets help. So an agent need not ask for its
         status to learn them.
       </li>
     </ul>
@@ -1360,8 +1360,8 @@ autocode job set daily-report --host HOST --model MODEL \
         words.
       </li>
       <li>
-        The last line says that the prompt comes from Autocode, not from you,
-        and how the agent lists its wakes and gets help.
+        The last line names Autocode and says how the agent gets help:
+        <code>— Autocode. "autocode_me action=help" for more info.</code>
       </li>
     </ul>
 
