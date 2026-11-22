@@ -912,7 +912,10 @@ export class Costs {
       )
       .all() as any[]) {
       const after = parseDuration(String(this.values(row.id).expire_after))
-      const last = row.idle_since ?? row.registered_at
+      // its session's last turn, or its registration when that is later:
+      // an ID given to a session that was idle for long is new all the same
+      // (the third review before 1.1.0-rc4)
+      const last = Math.max(row.idle_since ?? 0, row.registered_at)
       if (after > 0 && this.now() - last > after && !this.busy(row.id))
         out.push(row.id)
     }

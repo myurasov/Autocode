@@ -279,6 +279,16 @@ export class Agents {
             "cut_at = NULL WHERE id = ?",
         )
         .run(session, this.now(), id)
+      /*
+       * The agent has just come to this session: its idle time, for its
+       * expiry and its idle wakes, counts from now. Without this it counted
+       * from that session's own last turn, or from the agent's registration
+       * when the session had run none, and a moved agent was gone at the
+       * next pass (the second review before 1.1.0-rc4).
+       */
+      this.db
+        .query("UPDATE sessions SET idle_since = ? WHERE id = ? AND busy = 0")
+        .run(this.now(), session)
       this.history.record("agent.moved", {
         ...fields,
         data: { from: holder.session_id, forced: force && !holder.deleted_at },

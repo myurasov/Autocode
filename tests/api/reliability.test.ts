@@ -20,6 +20,7 @@ import {
   instructions,
   registered,
   report,
+  sessionToken,
   type TestServer,
   testServer,
 } from "../helpers/server.ts"
@@ -547,6 +548,82 @@ describe("expiry", () => {
     t.server.maintenance()
     expect((await owner("GET", "/v1/agents/team:a")).status).toBe(200)
     t.clock.advance(DAY + MIN)
+    await hello(t, HOST)
+    t.server.maintenance()
+    expect((await owner("GET", "/v1/agents/team:a")).status).toBe(404)
+  })
+
+  // The third review before 1.1.0-rc4: the same for an ID that is new.
+  test("an ID registered to a session whose last turn is long past does not expire at once", async () => {
+    await owner("PATCH", "/v1/settings", {
+      rules: [{ match: "team:*", settings: { expire_after: "2d" } }],
+    })
+    await sessionToken(t, HOST, "ses_idle")
+    await report(t, HOST, [
+      { type: "turn.started", session: "ses_idle" },
+      { type: "turn.ended", session: "ses_idle", outcome: "succeeded" },
+    ])
+    t.clock.advance(3 * DAY)
+    const res = await owner("POST", "/v1/agents", {
+      id: "team:new",
+      session: "ses_idle",
+    })
+    expect(res.status).toBe(201)
+    t.server.maintenance()
+    expect((await owner("GET", "/v1/agents/team:new")).status).toBe(200)
+    // two days after it registered, with no turn, it goes
+    t.clock.advance(2 * DAY + MIN)
+    await hello(t, HOST)
+    t.server.maintenance()
+    expect((await owner("GET", "/v1/agents/team:new")).status).toBe(404)
+  })
+
+  /*
+   * The second review before 1.1.0-rc4: an agent's time counted from its
+   * session's last turn, or from its registration when the session had run
+   * none, so an agent the owner moved to a fresh session was gone at the
+   * next pass, with its wakes. The move is the way to go on with an agent
+   * in a new session.
+   */
+  test("an agent the owner moved to another session does not expire at once: its time counts from the move", async () => {
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { expire_after: "2d" } },
+    })
+    await as(a, "PUT", "/v1/me/wakes/w", { text: "Go.", trigger: "every 1h" })
+    // registered three days ago, its last turn just now
+    t.clock.advance(3 * DAY)
+    await turnEnds()
+    await report(t, HOST, [{ type: "session.deleted", session: "ses_a" }])
+    // a session that has run no turn yet
+    await sessionToken(t, HOST, "ses_new")
+    const moved = await owner("POST", "/v1/agents", {
+      id: "team:a",
+      session: "ses_new",
+    })
+    expect(moved.status).toBe(200)
+    t.server.maintenance()
+    expect((await owner("GET", "/v1/agents/team:a")).status).toBe(200)
+    expect(
+      (await owner("GET", "/v1/wakes")).body.wakes.filter(
+        (w: any) => w.agent === "team:a",
+      ).length,
+    ).toBe(1)
+    // a session whose own last turn is long past: the same
+    await registered(t, HOST, "ses_old", "team:old")
+    await turnEnds("ses_old")
+    await owner("DELETE", "/v1/agents/team:old")
+    t.clock.advance(DAY + MIN)
+    await owner("POST", "/v1/agents", {
+      id: "team:a",
+      session: "ses_old",
+      force: true,
+    })
+    t.clock.advance(DAY + MIN)
+    await hello(t, HOST)
+    t.server.maintenance()
+    expect((await owner("GET", "/v1/agents/team:a")).status).toBe(200)
+    // with no turn it expires expire_after after the move
+    t.clock.advance(DAY)
     await hello(t, HOST)
     t.server.maintenance()
     expect((await owner("GET", "/v1/agents/team:a")).status).toBe(404)
