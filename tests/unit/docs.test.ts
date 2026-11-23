@@ -407,7 +407,11 @@ test("the reference has wake_mode, and expire_after 0 for never", () => {
       "1.1.0-rc5 or later on its machine",
     "A job or a wake that it proposed and that waits for your approval " +
       "is not an open ask: it goes with the agent.",
-    "- `approve`, the default: the wake is set at once.",
+    "- `approve`, the default: the wake is set at once. The agent asks " +
+      "nobody, and nothing comes to your Inbox.",
+    "The value's name means that a wake counts as approved at once, by " +
+      "the setting, as `approve` does for `permission_mode` and " +
+      "`approval_mode`. It does not mean that somebody approves the wake.",
     "- `ask`: an approval lands in your Inbox, `Wake NAME, set by AGENT`, " +
       "with the wake's exact terms",
     "- `off`: the wake is refused.",
@@ -419,7 +423,8 @@ test("the reference has wake_mode, and expire_after 0 for never", () => {
       "`fire-only once`), cancelling and firing.",
     "- **Your own wakes** for an agent are never asked for",
     "| `wake_mode` | agent | `approve` | periodic wakes that an agent sets " +
-      "(`every`, `cron`, `idle`): set at once (`approve`), you " +
+      "(`every`, `cron`, `idle`): set at once, with nobody asked " +
+      "(`approve`), you " +
       "approve first (`ask`), or refused (`off`)",
     "| `expire_after` | agent | `14d` | unregister an agent this long " +
       "after its session's last turn. `0`: never |",

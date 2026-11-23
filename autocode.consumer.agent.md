@@ -185,12 +185,18 @@ More:
   `show` one whole; `cancel` removes a wake and any of its runs still
   waiting (also the waiting run of a one-time wake that is gone
   already).
-- The owner may gate periodic wakes (`every`, `cron`, and `idle`
-  with or without `repeat`) with the `wake_mode` setting;
-  `autocode_me status` says so when they are not free. With `ask`,
-  `set` does not set the wake: it asks the owner, with the wake's
-  exact terms, and the wake is set once the owner approves (a notice
-  tells you: `approval "Wake NAME" approved`). Go on with your work
+- You set your wakes yourself, at once. Autocode asks nobody for
+  them: do not ask the owner for an approval of a wake, and do not
+  wait for one, unless your own instructions say so. That is the
+  default, `wake_mode` `approve`: the name means that a wake counts
+  as approved at once, by the setting, not that somebody approves it.
+  Only where the owner changed the setting is that different, and
+  only for periodic wakes (`every`, `cron`, and `idle` with or
+  without `repeat`); `autocode_me status` says which it is. With
+  `ask`, `set` does not set the wake: it asks the owner, with the
+  wake's exact terms, and the wake is set once the owner approves (a
+  notice tells you: `approval "Wake NAME" approved`). Go on with your
+  work
   meanwhile: a wake of that name that exists stays as it is, `list`
   shows what waits, and you take a proposal back with
   `autocode_approval action=close`. Cancelling a wake, or setting it

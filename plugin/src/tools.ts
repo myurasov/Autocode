@@ -356,14 +356,22 @@ export async function runMe(
               : `Wakes: ${w.count}; none due at a known time. ` +
                 "See autocode_wake list.",
         )
-      // how its periodic wakes are gated, unless they are free (wake_mode,
-      // 1.1.0-rc5)
+      /*
+       * Whether its wakes need anyone's word (wake_mode, 1.1.0-rc5). The
+       * default says so too: agents read `approve` as "needs approval"
+       * and asked the owner (the owner, 2026-11-22).
+       */
       if (set?.wake_mode === "ask" || set?.wake_mode === "off")
         lines.push(
           "Periodic wakes (every, cron, idle): " +
             (set.wake_mode === "ask"
               ? "the owner approves each one first (wake_mode ask)."
               : "you cannot set them (wake_mode off)."),
+        )
+      else if (set?.wake_mode === "approve")
+        lines.push(
+          "Wakes: you set them yourself, at once; no approval is needed " +
+            "(wake_mode approve).",
         )
       // how many messages wait (for a prompt, a steer or a read)
       if (me.waiting !== undefined)
@@ -550,8 +558,9 @@ export const WAKE_TOOL = {
     "user message starting with [autocode]), only while the session is " +
     "idle (never into a running turn) and at most once per min_interval. " +
     "Actions: set (name, trigger, text; optional check, check_timeout; " +
-    "the same name replaces the wake; the owner may have to approve a " +
-    "periodic one first), list (when each falls due next, " +
+    "the same name replaces the wake; it is set at once and you ask " +
+    "nobody, unless autocode_me status says that the owner approves " +
+    "periodic wakes first), list (when each falls due next, " +
     "what each cost in the last 7 days), show (name), " +
     "cancel (name), fire (agent, name, text: deliver now, skipping the " +
     "check). Triggers: every 30m [from 09:00]; in 45m (once); at 09:00 or " +

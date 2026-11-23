@@ -683,8 +683,9 @@ describe('HelpPage', () => {
       ['expire_after', '14d'],
     ]);
     expect(settings.find((r) => r[0] === 'wake_mode')![2]).toBe(
-      'periodic wakes an agent sets (every, cron, idle): set at once ' +
-        '(approve), you approve them first (ask), or refused (off)',
+      'periodic wakes an agent sets (every, cron, idle): set at once, ' +
+        'with nobody asked (approve), you approve them first (ask), or ' +
+        'refused (off)',
     );
     // 1.1.0-rc5: 0 means never
     expect(settings.find((r) => r[0] === 'expire_after')![2]).toBe(
@@ -697,7 +698,9 @@ describe('HelpPage', () => {
         "Inbox with the wake's exact terms, and the wake is set once you " +
         'approve it. With off such a wake is refused. One-time wakes, and ' +
         'the wakes you set yourself, are never asked for. The default, ' +
-        'approve, sets every wake at once.',
+        'approve, sets every wake at once: the agent asks nobody, and ' +
+        'nothing comes to your Inbox. Its name means approved at once, by ' +
+        'the setting.',
     );
     // 1.1.0-rc5 (the owner, 2026-11-22): a prompt has no footer line
     expect(section(page, 'sees')).toContain(

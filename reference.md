@@ -585,7 +585,10 @@ A periodic wake costs a turn each time it falls due, and a turn reads the sessio
 itself: `every`, `cron` and `idle`. An `idle` wake counts also without `repeat`: it falls due once in every idle
 stretch, and each of its own turns starts a new one.
 
-- `approve`, the default: the wake is set at once.
+- `approve`, the default: the wake is set at once. The agent asks nobody, and nothing comes to your Inbox. The
+  value's name means that a wake counts as approved at once, by the setting, as `approve` does for
+  `permission_mode` and `approval_mode`. It does not mean that somebody approves the wake. The guide and
+  `autocode_me action=status` tell agents so.
 - `ask`: an approval lands in your Inbox, `Wake NAME, set by AGENT`, with the wake's exact terms: its trigger with
   its end, its check and the check's time limit, its text, and for a change the trigger that it has now. The wake
   is set only once you approve it, and its schedule counts from then.
@@ -1816,7 +1819,7 @@ clears that value again.
 | `permission_mode` | agent | `ask` | where permission prompts go: `ask`, `approve`, `agent:<id>` or `job:<name>` |
 | `approval_mode` | agent | `ask` | where approvals go: `ask`, `approve`, `agent:<id>` or `job:<name>` |
 | `job_mode` | agent | `ask` | jobs that an agent sets: you approve first (`ask`), set at once (`approve`), or refused (`off`) |
-| `wake_mode` | agent | `approve` | periodic wakes that an agent sets (`every`, `cron`, `idle`): set at once (`approve`), you approve first (`ask`), or refused (`off`) (see [Your Approval of Periodic Wakes](#your-approval-of-periodic-wakes)) |
+| `wake_mode` | agent | `approve` | periodic wakes that an agent sets (`every`, `cron`, `idle`): set at once, with nobody asked (`approve`), you approve first (`ask`), or refused (`off`) (see [Your Approval of Periodic Wakes](#your-approval-of-periodic-wakes)) |
 | `filter_recovery` | agent | `retry compact` | after a blocked reply: `retry compact`, `retry` or `off` (see [A Blocked Reply](#a-blocked-reply)) |
 | `retry_interval` | agent | `1m` | the wait after a failed turn before a retry prompt, and between retries |
 | `retry_attempts` | agent | `0` | the most retries in a row before Autocode stops and tells you. 0: no limit |

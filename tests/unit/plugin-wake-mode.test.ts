@@ -52,10 +52,17 @@ function server(answers: Record<string, unknown>) {
 }
 
 describe("wake_mode", () => {
-  test("the tool says that a periodic wake may need the owner's approval", () => {
+  /*
+   * The owner, 2026-11-22: "agent seem to be confused about wake_mode set
+   * to approval. make sure it is explained in the instructions and docs
+   * that with that setting agent doesnt have to ask for setting up wakes."
+   * `approve` reads as "needs approval": it means approved at once.
+   */
+  test("the tool says that a wake is set at once, with nobody asked, unless status says otherwise", () => {
     expect(WAKE_TOOL.description).toContain(
-      "the same name replaces the wake; the owner may have to approve a " +
-        "periodic one first",
+      "the same name replaces the wake; it is set at once and you ask " +
+        "nobody, unless autocode_me status says that the owner approves " +
+        "periodic wakes first",
     )
   })
 
@@ -154,8 +161,15 @@ describe("wake_mode", () => {
       "Periodic wakes (every, cron, idle): you cannot set them " +
         "(wake_mode off).",
     )
+    // the default says plainly that nobody is asked (the owner,
+    // 2026-11-22: agents read `approve` as "needs approval")
+    expect(await status("approve")).toContain(
+      "Wakes: you set them yourself, at once; no approval is needed " +
+        "(wake_mode approve).",
+    )
     expect(await status("approve")).not.toContain("Periodic wakes")
-    expect(await status()).not.toContain("Periodic wakes")
+    // an older server says nothing of it
+    expect(await status()).not.toContain("wake_mode")
   })
 
   test("closing a wake that waits for the owner says that it is not set", async () => {

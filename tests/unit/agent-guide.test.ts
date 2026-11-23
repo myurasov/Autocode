@@ -791,9 +791,16 @@ describe("the guide", () => {
   test("1.1.0-rc5: the owner may gate periodic wakes, and what to do then", () => {
     const own = flat(guideText(FACTS))
     for (const answer of [
-      "The owner may gate periodic wakes (`every`, `cron`, and `idle` " +
-        "with or without `repeat`) with the `wake_mode` setting; " +
-        "`autocode_me status` says so when they are not free.",
+      // the owner, 2026-11-22: `approve` does not mean "ask first"
+      "You set your wakes yourself, at once. Autocode asks nobody for " +
+        "them: do not ask the owner for an approval of a wake, and do not " +
+        "wait for one, unless your own instructions say so.",
+      "That is the default, `wake_mode` `approve`: the name means that a " +
+        "wake counts as approved at once, by the setting, not that " +
+        "somebody approves it.",
+      "Only where the owner changed the setting is that different, and " +
+        "only for periodic wakes (`every`, `cron`, and `idle` with or " +
+        "without `repeat`); `autocode_me status` says which it is.",
       "Cancelling a wake, or setting it with other terms, closes its " +
         "proposal.",
       "With `ask`, `set` does not set the wake: it asks the owner, with " +
