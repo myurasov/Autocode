@@ -490,7 +490,10 @@ test("the reference names the mode values by their new names, and says what was 
     "- **Unchanged:** `ask`, `agent:<id>` and `job:<name>`; `off` where it " +
       "means not in use (`compact_at`, `daily_usd`, a job's `run_usd`, " +
       "`filter_recovery`); and the words of an answer, as in `autocode " +
-      "answer ITEM approve`.",
+      "answer ID approve`.",
+    "- **The plugin.** Update it on every machine with the server " +
+      "(`autocode plugin install`): an older plugin does not know the new " +
+      "names, and its status says nothing of `wake_mode`.",
     "autocode settings set wake_mode allow --agent kaggle:lead",
   ])
     expect(ref, part).toContain(part)

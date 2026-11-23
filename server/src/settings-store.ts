@@ -9,6 +9,7 @@ import {
   AutocodeError,
   builtinDefaults,
   checkId,
+  currentValue,
   normalizeLayers,
   record,
   resolveSettings,
@@ -28,7 +29,9 @@ export class SettingsStore {
 
   /*
    * The stored layers. A setting no longer known (one the simplifications
-   * removed, like total_usd) is left out, so it never blocks a change.
+   * removed, like total_usd) is left out, so it never blocks a change; an
+   * old name of a mode value reads as its new one (1.1.0-rc6: one that
+   * migration 30 missed, in a database edited by hand).
    */
   layers(): SettingsLayers {
     const out: SettingsLayers = {
@@ -39,7 +42,7 @@ export class SettingsStore {
     const known = (values: Record<string, unknown>) => {
       const kept = record<SettingValue>()
       for (const [k, v] of Object.entries(values ?? {}))
-        if (settingDef(k)) kept[k] = v as SettingValue
+        if (settingDef(k)) kept[k] = currentValue(k, v as SettingValue)
       return kept
     }
     for (const row of this.db
@@ -47,7 +50,8 @@ export class SettingsStore {
       .all() as any[]) {
       const value = JSON.parse(row.value)
       if (row.scope === "server") {
-        if (settingDef(row.key)) out.server[row.key] = value
+        if (settingDef(row.key))
+          out.server[row.key] = currentValue(row.key, value)
       } else if (row.scope === "rules")
         out.rules = (Array.isArray(value) ? value : []).map((r: any) => ({
           ...r,

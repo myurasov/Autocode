@@ -128,7 +128,7 @@ describe("asks across machines", () => {
     await idle(a)
   }, 180_000)
 
-  test("a permission prompt: the owner allows it once; with approve it goes at once", async () => {
+  test("a permission prompt: the owner allows it once; with allow it goes at once", async () => {
     const [, b] = agents as [Agent, Agent]
     await b.oc.api("PATCH", `/api/session/${b.session}`, {
       permissions: [{ action: "shell", resource: "*", effect: "ask" }],
@@ -156,7 +156,7 @@ describe("asks across machines", () => {
     await admin("POST", `/v1/asks/${item.id}/answer`, { decision: "once" })
     await reached(b, `asked-${run}`)
     await idle(b)
-    // approve: no inbox item at all
+    // allow: no inbox item at all
     await admin("PATCH", "/v1/settings", {
       agents: { [b.id]: { permission_mode: "allow" } },
     })

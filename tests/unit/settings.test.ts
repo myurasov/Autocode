@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   builtinDefaults,
+  currentValue,
   normalizeLayers,
   normalizeSetting,
   parseListen,
@@ -316,6 +317,15 @@ describe("the mode values' names since 1.1.0-rc6", () => {
         `"${was}" is now "${now}"`,
       )
     }
+    // whatever its case (the review: "Approve" and "OFF" got no hint)
+    for (const [key, typed, now] of [
+      ["wake_mode", "Approve", "allow"],
+      ["wake_mode", "OFF", "deny"],
+      ["question_mode", "Auto", "auto_answer"],
+    ])
+      expect(() => normalizeSetting(key!, typed!)).toThrow(
+        `${key}: "${typed}" is now "${now}" (renamed in 1.1.0-rc6); expected `,
+      )
     // a value that was never one of a setting's gets the plain message
     expect(() => normalizeSetting("question_mode", "approve")).toThrow(
       "question_mode: expected ask, auto_answer, agent:<id> or job:<name>",
@@ -326,6 +336,34 @@ describe("the mode values' names since 1.1.0-rc6", () => {
     expect(() => normalizeSetting("job_mode", "auto")).toThrow(
       "job_mode: expected one of ask, allow, deny",
     )
+  })
+
+  /*
+   * The review before 1.1.0-rc6: migration 30 renames what the server
+   * wrote; an old name that it missed (a database edited by hand, with
+   * other spacing) made every later change of any setting fail, and a
+   * stored `off` asked the owner where it had refused. A stored old name
+   * reads as its new one.
+   */
+  test("a stored old name reads as its new name", () => {
+    expect(currentValue("wake_mode", "approve")).toBe("allow")
+    expect(currentValue("wake_mode", "off")).toBe("deny")
+    expect(currentValue("job_mode", "off")).toBe("deny")
+    expect(currentValue("question_mode", "auto")).toBe("auto_answer")
+    expect(currentValue("permission_mode", "approve")).toBe("allow")
+    expect(currentValue("approval_mode", "approve")).toBe("allow")
+    // everything else is read as it stands
+    expect(currentValue("wake_mode", "allow")).toBe("allow")
+    expect(currentValue("wake_mode", "Approve")).toBe("Approve")
+    expect(currentValue("question_mode", "approve")).toBe("approve")
+    expect(currentValue("compact_at", "off")).toBe("off")
+    expect(currentValue("daily_usd", "off")).toBe("off")
+    expect(currentValue("approval_mode", "agent:team:approve")).toBe(
+      "agent:team:approve",
+    )
+    expect(currentValue("constructor", "approve")).toBe("approve")
+    expect(currentValue("wake_mode", "constructor")).toBe("constructor")
+    expect(currentValue("check_output", 2000)).toBe(2000)
   })
 
   test("off stays the word of the settings where it means not in use", () => {

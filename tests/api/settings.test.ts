@@ -3,7 +3,9 @@
  * changes that apply whole or not at all, by the admin token only, recorded in
  * the history; and each agent's resolved values with where each comes from.
  */
+import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
+import { join } from "node:path"
 import {
   call,
   hello,
@@ -22,6 +24,73 @@ async function start() {
   running.push(t)
   return t
 }
+
+/*
+ * The review before 1.1.0-rc6: an old name of a mode value that migration 30
+ * missed (it renames compact JSON, as the server writes it; a database
+ * edited by hand may hold other spacing) blocked every later change, with
+ * a message that named no place. A stored old name reads as its new one,
+ * and the next change writes the new names.
+ */
+test("a stored old name of a mode value reads as the new one, blocks no change and is written anew", async () => {
+  const t = await start()
+  const rows: [string, string, string][] = [
+    ["server", "job_mode", '"off"'],
+    [
+      "rules",
+      "",
+      '[{"match": "team:*", "settings": {"permission_mode": "approve"}}]',
+    ],
+    [
+      "agent",
+      "team:lead",
+      '{"wake_mode": "approve", "question_mode": "auto", "daily_usd": "off"}',
+    ],
+  ]
+  const db = new Database(join(t.dataDir, "autocode.db"))
+  for (const row of rows)
+    db.run("INSERT INTO settings (scope, key, value) VALUES (?, ?, ?)", row)
+  db.close()
+  const view = (await call(t.url, t.admin, "GET", "/v1/settings")).body
+  expect(view.server).toEqual({ job_mode: "deny" })
+  expect(view.rules).toEqual([
+    { match: "team:*", settings: { permission_mode: "allow" } },
+  ])
+  expect(view.agents).toEqual({
+    "team:lead": {
+      wake_mode: "allow",
+      question_mode: "auto_answer",
+      daily_usd: "off",
+    },
+  })
+  // a change of something else goes through
+  const res = await call(t.url, t.admin, "PATCH", "/v1/settings", {
+    server: { min_interval: "2m" },
+  })
+  expect(res.status).toBe(200)
+  // and the rows now hold the new names
+  const after = new Database(join(t.dataDir, "autocode.db"))
+  const stored = Object.fromEntries(
+    (
+      after.query("SELECT scope, key, value FROM settings").all() as {
+        scope: string
+        key: string
+        value: string
+      }[]
+    ).map((r) => [`${r.scope} ${r.key}`.trim(), JSON.parse(r.value)]),
+  )
+  after.close()
+  expect(stored).toEqual({
+    "server job_mode": "deny",
+    "server min_interval": "2m",
+    rules: [{ match: "team:*", settings: { permission_mode: "allow" } }],
+    "agent team:lead": {
+      wake_mode: "allow",
+      question_mode: "auto_answer",
+      daily_usd: "off",
+    },
+  })
+})
 
 describe("settings API", () => {
   test("GET shows the effective defaults, the rules, the agents' values and the schema", async () => {

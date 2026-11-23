@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { MIGRATIONS, openStore, schemaVersion } from "@autocode/server/store"
+import { RENAMED_VALUES } from "@autocode/shared"
 
 const dirs: string[] = []
 function tempDb(): string {
@@ -621,6 +622,44 @@ describe("store", () => {
       },
     ])
     db.close()
+  })
+
+  // The review before 1.1.0-rc6: three of the server-wide statements were
+  // not tested. Every renamed value, in each scope, from the code's table.
+  test("migration 30 renames every old name of RENAMED_VALUES in each scope", () => {
+    const pairs = Object.entries(RENAMED_VALUES).flatMap(([key, names]) =>
+      Object.entries(names).map(([was, now]) => [key, was, now] as const),
+    )
+    expect(pairs.length).toBe(7)
+    for (const [key, was, now] of pairs) {
+      const path = tempDb()
+      const old = openStore(path, MIGRATIONS.slice(0, 29))
+      const put = (scope: string, k: string, value: unknown) =>
+        old.run("INSERT INTO settings (scope, key, value) VALUES (?, ?, ?)", [
+          scope,
+          k,
+          JSON.stringify(value),
+        ])
+      put("server", key, was)
+      put("rules", "", [{ match: "team:*", settings: { [key]: was } }])
+      put("agent", "team:lead", { min_interval: "2m", [key]: was })
+      old.close()
+      const db = openStore(path)
+      const rows = Object.fromEntries(
+        (
+          db.query("SELECT scope, value FROM settings").all() as {
+            scope: string
+            value: string
+          }[]
+        ).map((r) => [r.scope, JSON.parse(r.value)]),
+      )
+      expect(rows, `${key} ${was}`).toEqual({
+        server: now,
+        rules: [{ match: "team:*", settings: { [key]: now } }],
+        agent: { min_interval: "2m", [key]: now },
+      })
+      db.close()
+    }
   })
 
   test("a failing migration leaves the database at the version before it", () => {

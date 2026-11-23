@@ -1049,8 +1049,10 @@ export async function startServer(
         const b = (await body()) as any
         if (!b || typeof b !== "object")
           throw new AutocodeError("bad_request", "the body must be an object")
+        // the default (ask) is the setting's own; a stored value that is
+        // none of its values asks the owner too
         const mode = String(
-          resolveSettings(settings.layers(), agent).values.job_mode ?? "ask",
+          resolveSettings(settings.layers(), agent).values.job_mode,
         )
         if (mode === "deny")
           throw new AutocodeError(
@@ -1332,8 +1334,10 @@ export async function startServer(
       handler: async ({ caller, params, body }) => {
         const agent = me(caller)
         const def = wakes.check(agent, params.name, await body())
+        // the default (allow) is the setting's own; a stored value that
+        // is none of its values asks the owner
         const mode = String(
-          resolveSettings(settings.layers(), agent).values.wake_mode ?? "allow",
+          resolveSettings(settings.layers(), agent).values.wake_mode,
         )
         // set again as it is: nothing new to decide, under ask and deny
         const same = wakes.sameTerms(agent, def)

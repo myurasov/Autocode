@@ -1846,7 +1846,9 @@ Durations look like `90s`, `5m` or `1h30m`.
 - **An old name is refused**, and the message names the new one: `wake_mode: "approve" is now "allow" (renamed in
   1.1.0-rc6)`. So a script that still writes an old name fails, and no value has two names.
 - **Unchanged:** `ask`, `agent:<id>` and `job:<name>`; `off` where it means not in use (`compact_at`, `daily_usd`,
-  a job's `run_usd`, `filter_recovery`); and the words of an answer, as in `autocode answer ITEM approve`.
+  a job's `run_usd`, `filter_recovery`); and the words of an answer, as in `autocode answer ID approve`.
+- **The plugin.** Update it on every machine with the server (`autocode plugin install`): an older plugin does not
+  know the new names, and its status says nothing of `wake_mode`.
 
 ## Files, Tokens and Backups
 

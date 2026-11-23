@@ -375,16 +375,15 @@ describe("answers by another agent", () => {
 
   /*
    * 1.1.0-rc6: a value that is none of a setting's is refused on input,
-   * and migration 30 renames the old names, so only a database edited by
-   * hand holds one. Such a value sends the ask to the owner: an ask is
-   * never left with nobody to answer it.
+   * so only a database edited by hand holds one. Such a value sends the
+   * ask to the owner: an ask is never left with nobody to answer it.
    */
   test("a stored value that is none of the setting's sends the ask to the owner", async () => {
     const db = new Database(join(t.dataDir, "autocode.db"))
     const odd: [string, string][] = [
-      ["question_mode", "auto"],
-      ["permission_mode", "approve"],
-      ["approval_mode", "approve"],
+      ["question_mode", "maybe"],
+      ["permission_mode", "auto_answer"],
+      ["approval_mode", "deny"],
     ]
     for (const [key, value] of odd)
       db.run(
@@ -421,6 +420,45 @@ describe("answers by another agent", () => {
         .filter((i: any) => i.kind === "question" && i.state === "open")
         .map((i: any) => i.routed),
     ).toEqual(["owner"])
+  })
+
+  // The review before 1.1.0-rc6: an old name that migration 30 missed (a
+  // database edited by hand) reads as its new one, so it still answers at
+  // once.
+  test("a stored old name of a mode value answers at once, as its new name does", async () => {
+    const db = new Database(join(t.dataDir, "autocode.db"))
+    const old: [string, string][] = [
+      ["question_mode", '"auto"'],
+      ["permission_mode", '"approve"'],
+      ["approval_mode", '"approve"'],
+    ]
+    for (const row of old)
+      db.run(
+        "INSERT OR REPLACE INTO settings (scope, key, value) VALUES " +
+          "('server', ?, ?)",
+        row,
+      )
+    db.close()
+    await report(t, HOST, [QUESTION])
+    await report(t, HOST, [{ ...PERMISSION, session: "ses_b" }])
+    expect((await answers()).map((x: any) => [x.kind, x.ref]).sort()).toEqual([
+      ["permission", "per_1"],
+      ["question", "frm_1"],
+    ])
+    expect(await inbox()).toEqual([])
+    const res = await as(a, "POST", "/v1/me/approvals", { text: "Go?" })
+    expect(res.body.approval).toMatchObject({
+      state: "approved",
+      by: "auto",
+      routed: "allow",
+    })
+    const opened = (await owner("GET", "/v1/history?kind=ask.opened")).body
+      .history
+    expect(opened.map((h: any) => h.data.routed).sort()).toEqual([
+      "allow",
+      "allow",
+      "auto_answer",
+    ])
   })
 
   test("job:<name> of no such job is the owner's", async () => {

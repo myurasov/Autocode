@@ -10,7 +10,9 @@
  * creator; all its runs count for the creator; it is deleted when the creator
  * unregisters.
  */
+import { Database } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { join } from "node:path"
 import {
   ack,
   call,
@@ -166,6 +168,36 @@ describe("an agent sets a job", () => {
     expect(no.body.error.message).toBe(
       "you cannot set jobs: job_mode is deny (the owner's setting)",
     )
+  })
+
+  /*
+   * The review before 1.1.0-rc6: a stored value that a PATCH would refuse
+   * (a database edited by hand). An old name reads as its new one; a
+   * value that is none of the setting's asks the owner.
+   */
+  test("a stored job_mode that no PATCH would take: an old name counts as its new one, anything else asks", async () => {
+    const store = (value: string) => {
+      const db = new Database(join(t.dataDir, "autocode.db"))
+      db.run(
+        "INSERT OR REPLACE INTO settings (scope, key, value) VALUES " +
+          "('agent', 'team:lead', ?)",
+        [`{"job_mode": ${JSON.stringify(value)}}`],
+      )
+      db.close()
+    }
+    store("off")
+    const no = await as(lead, "POST", "/v1/me/jobs", DEF)
+    expect(no.status).toBe(403)
+    expect(no.body.error.message).toContain("job_mode is deny")
+    store("maybe")
+    const asked = await as(lead, "POST", "/v1/me/jobs", DEF)
+    expect(asked.status).toBe(202)
+    expect(asked.body.state).toBe("asked")
+    expect(await job("team:lead:digest")).toBeUndefined()
+    store("approve")
+    const res = await as(lead, "POST", "/v1/me/jobs", DEF)
+    expect(res.status).toBe(201)
+    expect(res.body.state).toBe("set")
   })
 
   test("the definition is checked: run_usd is required; a name stays the agent's own", async () => {

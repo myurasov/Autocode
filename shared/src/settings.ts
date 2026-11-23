@@ -243,7 +243,8 @@ function fail(key: string, message: string): never {
  * mode settings: "lets rename: "approve" to "allow" "auto" to "auto_answer"
  * "off" to "deny""; agents had read approve as "needs approval"). An old
  * name is refused with the new one, never taken as a second name; migration
- * 30 renames what a database holds. `off` of the other settings (compact_at,
+ * 30 renames what a database holds, and a stored one that it missed reads
+ * as the new one (currentValue). `off` of the other settings (compact_at,
  * daily_usd, run_usd, filter_recovery) means "not in use" and stays.
  */
 export const RENAMED_VALUES: Record<string, Record<string, string>> = {
@@ -254,11 +255,27 @@ export const RENAMED_VALUES: Record<string, Record<string, string>> = {
   wake_mode: { approve: "allow", off: "deny" },
 }
 
-// What to say of a value that is not one of a setting's: its new name
-// first, when it is an old one.
-function notOneOf(key: string, value: string, expected: string): never {
+// The name that an old name of a mode value has now, or undefined.
+function renamed(key: string, value: string): string | undefined {
   const names = Object.hasOwn(RENAMED_VALUES, key) ? RENAMED_VALUES[key]! : {}
-  const now = Object.hasOwn(names, value) ? names[value] : undefined
+  return Object.hasOwn(names, value) ? names[value] : undefined
+}
+
+/*
+ * A stored value as it reads now: an old name of a mode value reads as its
+ * new one. Migration 30 renames what the server wrote (compact JSON); a
+ * database edited by hand may hold an old name that it missed, which would
+ * make every later change fail its check and turn a stored `off` into
+ * "ask" (the review before 1.1.0-rc6). The next change writes the new name.
+ */
+export function currentValue(key: string, value: SettingValue): SettingValue {
+  return (typeof value === "string" ? renamed(key, value) : undefined) ?? value
+}
+
+// What to say of a value that is not one of a setting's: its new name
+// first, when it is an old one (whatever its case).
+function notOneOf(key: string, value: string, expected: string): never {
+  const now = renamed(key, value.toLowerCase())
   return fail(
     key,
     now

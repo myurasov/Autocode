@@ -9,7 +9,9 @@
  * wakes, cancelling, firing and the owner's own setting stay free. Until
  * 1.1.0-rc6 allow was called approve, and deny off.
  */
+import { Database } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { join } from "node:path"
 import {
   ack,
   call,
@@ -640,5 +642,49 @@ describe("wake_mode deny", () => {
     expect((await set("tick", "every 1h")).status).toBe(200)
     expect((await set("tick", "every 30m")).status).toBe(403)
     expect((await as(lead, "DELETE", "/v1/me/wakes/tick")).status).toBe(200)
+  })
+})
+
+/*
+ * The review before 1.1.0-rc6: what the wake route does with a stored
+ * value that a PATCH would refuse (a database edited by hand). An old name
+ * reads as its new one; a value that is none of the setting's asks the
+ * owner, and never sets a periodic wake at once.
+ */
+describe("a stored wake_mode that no PATCH would take", () => {
+  const store = (value: string) => {
+    const db = new Database(join(t.dataDir, "autocode.db"))
+    db.run(
+      "INSERT OR REPLACE INTO settings (scope, key, value) VALUES " +
+        "('agent', 'team:lead', ?)",
+      [`{"wake_mode": ${JSON.stringify(value)}}`],
+    )
+    db.close()
+  }
+
+  test("an old name counts as its new one: off refuses, approve sets at once", async () => {
+    store("off")
+    const no = await set("p", "every 1h")
+    expect(no.status).toBe(403)
+    expect(no.body.error.message).toContain("wake_mode is deny")
+    expect((await as(lead, "GET", "/v1/me")).body.settings.wake_mode).toBe(
+      "deny",
+    )
+    store("approve")
+    expect((await set("p", "every 1h")).status).toBe(201)
+    expect(await approvals()).toEqual([])
+    expect((await as(lead, "GET", "/v1/me")).body.settings.wake_mode).toBe(
+      "allow",
+    )
+  })
+
+  test("a value that is none of the setting's asks the owner", async () => {
+    store("maybe")
+    const res = await set("p", "every 1h")
+    expect(res.status).toBe(202)
+    expect((await approvals()).length).toBe(1)
+    expect((await mine()).wakes).toEqual([])
+    // one-time wakes stay free
+    expect((await set("once", "in 45m")).status).toBe(201)
   })
 })
