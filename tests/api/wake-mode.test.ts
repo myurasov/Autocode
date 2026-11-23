@@ -433,11 +433,13 @@ describe("wake_mode ask", () => {
         title: "Wake w, set by team:lead",
       },
     })
-    expect(await prompts()).toEqual([
-      expect.stringMatching(
-        /^\[autocode\] approval "Wake w" closed\n\nYour approval "Wake w" was closed: the owner set the wake w meanwhile\. Ask again if your change is still needed\.\n/,
-      ),
-    ])
+    const told = await prompts()
+    expect(told.length).toBe(1)
+    expect(told[0]).toStartWith(
+      '[autocode] approval "Wake w" closed\n\nYour approval "Wake w" was ' +
+        "closed: the owner set the wake w meanwhile. Ask again if your " +
+        "change is still needed.\n",
+    )
     // the agent itself, once the owner lets it
     await set("w", "every 10m")
     expect((await approvals()).length).toBe(1)

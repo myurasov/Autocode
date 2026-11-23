@@ -290,7 +290,8 @@ describe("an end on a periodic trigger (until)", () => {
       "every 1d until 9999-12-31T23:59:59-01:00",
     ])
       expect(() => parseTrigger(far, opts), far).toThrow(
-        /the end \(until\) is too far ahead: it must come before the year 10000/,
+        "the end (until) is too far ahead: it must come before the year " +
+          "10000",
       )
     for (const text of [
       "every 1d until 9999-12-30",
