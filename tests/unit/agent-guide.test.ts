@@ -765,8 +765,9 @@ describe("the guide", () => {
       "`autocode_approval action=close id=... text=<why>`. You stop " +
         "waiting at once, and your wakes and messages come again. Closed " +
         "is not approved: act only on what the owner told you.",
-      "A prompt that starts with `[autocode]`, and whose last line " +
-        "starts with `-- Autocode.`, is Autocode's, not the owner's typing.",
+      // 1.1.0-rc5 (the owner, 2026-11-22): no footer; the header says it
+      "A prompt that starts with `[autocode]` is Autocode's, not the " +
+        "owner's typing.",
     ])
       expect(own, answer).toContain(answer)
   })
@@ -877,13 +878,16 @@ describe("the guide", () => {
 
   test("1.1.0: a prompt's status line, so that status is not called for it", () => {
     for (const answer of [
-      // the example prompt carries it, above the footer
+      // the example prompt carries it, as its last line (1.1.0-rc5: it
+      // says how to get help, and no footer follows)
       "Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of " +
-        "compact_at (100,000). Cost today: $3.10 (no daily cap). -- " +
-        'Autocode. "autocode_me action=help" for more info.',
-      "The line above the footer says the server's time, your context " +
-        "against `compact_at` and what you spent today",
+        "compact_at (100,000). Cost today: $3.10 (no daily cap). " +
+        '"autocode_me action=help" for more info. ```',
+      "The last line says the server's time, your context against " +
+        "`compact_at` and what you spent today",
       "do not call `autocode_me status` just to learn them",
+      "It ends with how to read this guide.",
+      "says today's spend and your context in its last line",
     ])
       expect(guide).toContain(answer)
   })

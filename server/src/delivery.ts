@@ -5,9 +5,9 @@
  * per min_interval, only while the session is idle, its host online and the
  * agent not paused; each injection one prompt with the [autocode] header, in
  * which what agents wrote is quoted, each wake says what kind it is and when
- * it runs next, and a footer says where the prompt comes from; the line
- * before it says the server's time, the agent's context and today's spend
- * (1.1.0). Notices (lock
+ * it runs next, and the last line says the server's time, the agent's
+ * context and today's spend (1.1.0), and how to get help (1.1.0-rc5: no
+ * footer line after it). Notices (lock
  * grants and expiries: messages from autocode) say what they are in the header
  * and are Autocode's own text, not quoted (tier 0c). Messages come whole, in
  * their order, up to 32,000 characters a prompt (Phase 1). Past compact_at an
@@ -56,25 +56,27 @@ export function promptId(now: number): string {
 }
 
 /*
- * The last line of every injection (tier 0b2). One short line since the
- * owner's word of 2026-11-22: the header already says that the prompt is
- * Autocode's, and each wake's part names its next run. It starts with two
- * hyphens, by the owner's word too ("two dashes, not ndash not mdash").
+ * How every injection ends: the last words of its status line. No footer
+ * line of its own since 1.1.0-rc5 (the owner, 2026-11-22: "remove "--
+ * Autocode." and fold '"autocode_me action=help" for more info.' in the
+ * status message. I think "[autocode]" in the beginning makes it pretty
+ * obvious this message is from autocode.").
  */
-export const FOOTER = '-- Autocode. "autocode_me action=help" for more info.'
+export const HELP_POINTER = '"autocode_me action=help" for more info.'
 
 /*
- * The line before the footer (1.1.0; the owner, 2026-11-20: agents called
+ * The last line of a prompt (1.1.0; the owner, 2026-11-20: agents called
  * autocode_me status in most hourly turns to learn these, each call a step
  * that re-reads the whole context): the server's time in its zone, the
  * agent's context against compact_at once a step has reported one, and
- * today's spend against the daily cap. In status's own words.
+ * today's spend against the daily cap, in status's own words; then how to
+ * get help.
  */
 export function statusLine(now: number, tz: string, cost?: CostView): string {
   const n = (x: number) => x.toLocaleString("en-US")
   const usd = (x: number) => `$${x.toFixed(2)}`
   const parts = [`Server time ${localTime(now, tz)}.`]
-  if (!cost) return parts[0]!
+  if (!cost) return `${parts[0]} ${HELP_POINTER}`
   if (cost.context !== null) {
     const share =
       cost.compact_at === null
@@ -90,6 +92,7 @@ export function statusLine(now: number, tz: string, cost?: CostView): string {
         ? " (no daily cap)."
         : ` of your daily cap of ${usd(Number(cost.daily_usd))}.`),
   )
+  parts.push(HELP_POINTER)
   return parts.join(" ")
 }
 
@@ -948,7 +951,7 @@ export class Delivery {
           "go on with your work.\n\n"
         : "") +
       `${sections.join("\n\n")}\n\n` +
-      `${statusLine(this.now(), tz, this.costs?.view(row.id))}\n${FOOTER}`
+      statusLine(this.now(), tz, this.costs?.view(row.id))
     const now = this.now()
     const id = promptId(now)
     const instruction = this.hosts.enqueue(row.host_id, "inject", {

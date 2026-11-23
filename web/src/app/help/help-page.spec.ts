@@ -697,6 +697,13 @@ describe('HelpPage', () => {
         'One-time wakes, and the wakes you set yourself, are never asked ' +
         'for. The default, approve, sets every wake at once.',
     );
+    // 1.1.0-rc5 (the owner, 2026-11-22): a prompt has no footer line
+    expect(section(page, 'sees')).toContain(
+      "The last line says the server's time, the agent's context and its " +
+        'spend today, and ends with how the agent gets help: "autocode_me ' +
+        'action=help" for more info.',
+    );
+    expect(text(page)).not.toContain('-- Autocode');
     // (two code words side by side keep the space between them: the page
     // said "job_modeask" before 1.1.0-rc5)
     expect(section(page, 'jobs')).toContain(

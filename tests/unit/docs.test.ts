@@ -288,25 +288,40 @@ test("the reference has the one-shot fire-only wake: the trigger, the example an
     expect(ref, part).toContain(part)
 })
 
-// 3: the status line before a prompt's footer.
-test("the reference and the README show a prompt's status line", () => {
+// 3: the status line that ends a prompt. Since 1.1.0-rc5 it is the last
+// line and says how to get help; no footer line follows (the owner,
+// 2026-11-22).
+test("the reference and the README show a prompt's status line, its last line", () => {
   const ref = read("reference.md")
-  // the line as the server writes it, above the footer
+  // the line as the server writes it
   const line =
     "Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of " +
-    "compact_at (100,000). Cost today: $3.10 (no daily cap).\n" +
-    '-- Autocode. "autocode_me action=help" for more info.\n'
+    "compact_at (100,000). Cost today: $3.10 (no daily cap). " +
+    '"autocode_me action=help" for more info.\n```\n'
   expect(ref).toContain(line)
   expect(ref).toContain(
     "| Status line | the server's time in its zone; the agent's context " +
       "and its share of `compact_at`, once a step has reported one; " +
       "today's spend, and the daily cap where the agent has one.",
   )
+  expect(ref).toContain(
+    'It ends with how an agent gets help: `"autocode_me action=help" ' +
+      "for more info.` |",
+  )
   expect(read("README.md")).toContain(
     "Server time 2026-11-17 14:02 PST. Context: 14,210 tokens, 14.2% of " +
-      "compact_at (100,000). Cost today: $0.04 (no daily cap).\n" +
-      '   -- Autocode. "autocode_me action=help" for more info.\n',
+      "compact_at (100,000). Cost today: $0.04 (no daily cap). " +
+      '"autocode_me action=help" for more info.\n   ```\n',
   )
+  // no footer line anywhere in the texts
+  for (const file of [
+    "reference.md",
+    "README.md",
+    "autocode.consumer.agent.md",
+    "web/src/app/help/help-page.html",
+  ])
+    expect(read(file), file).not.toContain("-- Autocode")
+  expect(ref).not.toContain("| Footer |")
 })
 
 // 1.1.0-rc4 (the owner, 2026-11-22): an agent never takes a registered ID,

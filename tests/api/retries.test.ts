@@ -26,12 +26,14 @@ let b: string
 const HOST = "m:1"
 const SEC = 1000
 const MIN = 60_000
-const FOOTER = '-- Autocode. "autocode_me action=help" for more info.'
-// The two lines that end a prompt (1.1.0): the server's time and the
-// agent's spend at that time of day, then the footer.
+// How a prompt ends since 1.1.0-rc5 (the owner, 2026-11-22): the status
+// line says how to get help, and no footer line follows it.
+const HELP = '"autocode_me action=help" for more info.'
+// The line that ends a prompt: the server's time, the agent's spend at
+// that time of day, and the help pointer.
 const footer = (time: string) =>
-  `Server time 2026-10-28 ${time} PDT. Cost today: $0.00 (no daily cap).\n` +
-  FOOTER
+  `Server time 2026-10-28 ${time} PDT. Cost today: $0.00 (no daily cap). ` +
+  HELP
 
 const as = (token: string, method: string, path: string, body?: unknown) =>
   call(t.url, token, method, path, body)
@@ -195,7 +197,8 @@ describe("holding", () => {
       'Wake "soon" (once, this was its only run):\nLook.',
     )
     expect(prompt).toContain("from agent team:b:\n> hi")
-    expect(prompt).toEndWith(FOOTER)
+    expect(prompt).toEndWith(` ${HELP}`)
+    expect(prompt).not.toContain("-- Autocode")
   })
 
   test("after a turn succeeds, what waits is delivered as usual", async () => {

@@ -1300,7 +1300,8 @@ autocode_me  action=job_delete  job=digest
 ## Injected Prompts
 
 An injected prompt is a prompt that Autocode types into a session. Each one starts with a header line that names its
-source and reason, and ends with a footer. So a session can always tell that the owner is not speaking.
+source and reason: `[autocode] ...`. So a session can always tell that the owner is not speaking. It ends with a
+status line.
 
 ```
 [autocode] wake "tick", 1 message
@@ -1313,8 +1314,7 @@ Its check said:
 Message m_123 from agent kaggle:worker-1, subject "results":
 > Done: 0.91.
 
-Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of compact_at (100,000). Cost today: $3.10 (no daily cap).
--- Autocode. "autocode_me action=help" for more info.
+Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of compact_at (100,000). Cost today: $3.10 (no daily cap). "autocode_me action=help" for more info.
 ```
 
 | Part | What it holds |
@@ -1322,8 +1322,7 @@ Server time 2026-11-03 09:00 PST. Context: 61,000 tokens, 61% of compact_at (100
 | Header | the reasons. Into a running turn it ends with `, during your turn` |
 | Wakes | what kind each wake is and when it runs next, then its text. `Added by ...:` carries the extra text of a fired wake. `Its check said:` carries the check's output |
 | Messages | `Message <id> from agent X, subject "...":`, or `from the owner`, then the text |
-| Status line | the server's time in its zone; the agent's context and its share of `compact_at`, once a step has reported one; today's spend, and the daily cap where the agent has one. So an agent need not call `autocode_me action=status` to learn them |
-| Footer | that the prompt is Autocode's, and how an agent gets help |
+| Status line | the server's time in its zone; the agent's context and its share of `compact_at`, once a step has reported one; today's spend, and the daily cap where the agent has one. So an agent need not call `autocode_me action=status` to learn them. It ends with how an agent gets help: `"autocode_me action=help" for more info.` |
 
 Headers you will see:
 

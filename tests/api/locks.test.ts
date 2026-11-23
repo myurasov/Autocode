@@ -23,12 +23,14 @@ let b: string
 let c: string
 const HOST = "m:1"
 const MIN = 60_000
-const FOOTER = '-- Autocode. "autocode_me action=help" for more info.'
-// The two lines that end a prompt (1.1.0): the server's time and the
-// agent's spend at that time of day, then the footer.
+// The line that ends a prompt: the server's time, the agent's spend at
+// that time of day, and how to get help. One line, with no footer line
+// after it, since 1.1.0-rc5 (the owner, 2026-11-22: "remove "-- Autocode."
+// and fold '"autocode_me action=help" for more info.' in the status
+// message").
 const footer = (time: string) =>
-  `Server time 2026-10-28 ${time} PDT. Cost today: $0.00 (no daily cap).\n` +
-  FOOTER
+  `Server time 2026-10-28 ${time} PDT. Cost today: $0.00 (no daily cap). ` +
+  '"autocode_me action=help" for more info.'
 
 const owner = (method: string, path: string, body?: unknown) =>
   call(t.url, t.admin, method, path, body)

@@ -161,11 +161,12 @@ describe("an agent's spend and context", () => {
 /*
  * 1.1.0 (the owner, 2026-11-20, from the review of real sessions: agents
  * called autocode_me status in 176 of 235 hourly turns to learn these): the
- * line before a prompt's footer says the server's time, the context against
+ * last line of a prompt says the server's time, the context against
  * compact_at and today's spend against the cap.
  */
 describe("a prompt's status line", () => {
-  // The line before the footer of the prompt a fired wake brings.
+  // The status line of the prompt a fired wake brings, without the help
+  // pointer that ends it.
   async function line(): Promise<string> {
     await owner("POST", "/v1/agents/team:a/wakes/w/fire")
     t.clock.advance(2000)
@@ -179,8 +180,11 @@ describe("a prompt's status line", () => {
       { type: "turn.ended", session: "ses_a", outcome: "succeeded" },
     ])
     const lines: string[] = prompt.payload.text.split("\n")
-    expect(lines.at(-1)).toStartWith("-- Autocode. ")
-    return lines.at(-2)!
+    // the last line; it ends with how to get help (1.1.0-rc5: no footer)
+    const help = ' "autocode_me action=help" for more info.'
+    expect(lines.at(-1)).toEndWith(help)
+    expect(lines.at(-2)).toBe("")
+    return lines.at(-1)!.slice(0, -help.length)
   }
 
   test("the time, the context with its share of compact_at, the spend and the cap", async () => {
@@ -220,8 +224,9 @@ describe("a prompt's status line", () => {
     const [prompt] = (await instructions(t, HOST)).filter(
       (i) => i.type === "inject",
     )
-    expect(prompt.payload.text.split("\n").at(-2)).toBe(
-      "Server time 2026-10-28 05:00 PDT. Cost today: $0.00 (no daily cap).",
+    expect(prompt.payload.text.split("\n").at(-1)).toBe(
+      "Server time 2026-10-28 05:00 PDT. Cost today: $0.00 (no daily cap). " +
+        '"autocode_me action=help" for more info.',
     )
   })
 })

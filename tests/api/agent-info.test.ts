@@ -5,7 +5,7 @@
  * when it falls due next (an estimate for idle wakes); an idle wake counts
  * from the later of the session's idle start and the time it was set; an
  * injected wake states its trigger and next run in the server's zone; every
- * injection ends with a footer that says where it comes from; cancelling a
+ * injection ends with its status line (and no footer); cancelling a
  * wake drops its runs that wait to be delivered.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
@@ -158,7 +158,7 @@ describe("cancelling", () => {
 })
 
 describe("what an injected prompt says", () => {
-  test("a wake's section names its trigger and next run in the server's zone; a footer ends the prompt", async () => {
+  test("a wake's section names its trigger and next run in the server's zone; the status line ends the prompt", async () => {
     await as(a, "PUT", "/v1/me/wakes/tick", {
       text: "Tick.",
       trigger: "every 30m",
@@ -172,16 +172,21 @@ describe("what an injected prompt says", () => {
       'Wake "tick" (every 30m; next 2026-10-28 06:00 PDT):\nTick.',
     )
     const lines = text.split("\n")
-    // the owner, 2026-11-22: one short line; the header says the rest
-    expect(lines.at(-1)).toBe(
-      '-- Autocode. "autocode_me action=help" for more info.',
-    )
-    // 1.1.0 (the owner, 2026-11-20): the line before it says the server's
-    // time and today's spend; the context once a step has reported one
-    expect(lines.slice(-3, -1)).toEqual([
+    /*
+     * The last line (1.1.0, the owner, 2026-11-20): the server's time and
+     * today's spend; the context once a step has reported one. Since
+     * 1.1.0-rc5 it ends with how to get help, and no footer line follows
+     * (the owner, 2026-11-22: "remove "-- Autocode." and fold '"autocode_me
+     * action=help" for more info.' in the status message. I think
+     * "[autocode]" in the beginning makes it pretty obvious this message is
+     * from autocode.").
+     */
+    expect(lines.slice(-2)).toEqual([
       "",
-      "Server time 2026-10-28 05:30 PDT. Cost today: $0.00 (no daily cap).",
+      "Server time 2026-10-28 05:30 PDT. Cost today: $0.00 (no daily cap). " +
+        '"autocode_me action=help" for more info.',
     ])
+    expect(text).not.toContain("-- Autocode")
   })
 
   test("one-shot, idle, fire-only and cron wakes say what they are", async () => {
