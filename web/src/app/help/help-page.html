@@ -887,11 +887,10 @@
       that an agent sets for itself (<code>every</code>, <code>cron</code>,
       <code>idle</code>) is not set at once: an approval comes to your Inbox
       with the wake's exact terms, and the wake is set once you approve it.
-      With <code>off</code> such a wake is refused. One-time wakes, and the
+      With <code>deny</code> such a wake is refused. One-time wakes, and the
       wakes you set yourself, are never asked for. The default,
-      <code>approve</code>, sets every wake at once: the agent asks nobody,
-      and nothing comes to your Inbox. Its name means approved at once, by
-      the setting.
+      <code>allow</code>, sets every wake at once: the agent asks nobody,
+      and nothing comes to your Inbox.
     </p>
     <p>
       A wake can have a check: a shell command that runs first, in the agent's
@@ -1157,11 +1156,11 @@ autocode wake set kaggle:lead results --trigger "every 30m" \
     </p>
     <ul>
       <li>
-        <code>auto</code>, for questions only: Autocode answers at once with
-        the text in <code>auto_answer_text</code>;
+        <code>auto_answer</code>, for questions only: Autocode answers at
+        once with the text in <code>auto_answer_text</code>;
       </li>
       <li>
-        <code>approve</code>, for permissions and approvals: Autocode allows
+        <code>allow</code>, for permissions and approvals: Autocode allows
         once, or approves, at once;
       </li>
       <li>
@@ -1350,9 +1349,8 @@ autocode job set daily-report --host HOST --model MODEL \
       <li>
         With <code>job_mode</code>&ngsp;<code>ask</code> (the default) an
         approval in your Inbox shows the whole definition, and the job exists
-        once you approve it. <code>approve</code> sets it at once;
-        <code>off</code>
-        refuses.
+        once you approve it. <code>allow</code> sets it at once;
+        <code>deny</code> refuses.
       </li>
       <li>An agent's jobs go when it unregisters.</li>
     </ul>
@@ -2091,7 +2089,7 @@ autocode settings --agent kaggle:lead</pre
           <td>ask</td>
           <td>
             where questions go: you (<code>ask</code>), answered at once
-            (<code>auto</code>), <code>agent:&lt;id&gt;</code> or
+            (<code>auto_answer</code>), <code>agent:&lt;id&gt;</code> or
             <code>job:&lt;name&gt;</code>
           </td>
         </tr>
@@ -2101,14 +2099,14 @@ autocode settings --agent kaggle:lead</pre
             Act according to your best judgement and safe practices to achieve
             my goals.
           </td>
-          <td>the answer that <code>auto</code> gives</td>
+          <td>the answer that <code>auto_answer</code> gives</td>
         </tr>
         <tr>
           <td><code>permission_mode</code></td>
           <td>ask</td>
           <td>
             where permission prompts go: you (<code>ask</code>), allowed once
-            at once (<code>approve</code>), <code>agent:&lt;id&gt;</code> or
+            at once (<code>allow</code>), <code>agent:&lt;id&gt;</code> or
             <code>job:&lt;name&gt;</code>
           </td>
         </tr>
@@ -2117,7 +2115,7 @@ autocode settings --agent kaggle:lead</pre
           <td>ask</td>
           <td>
             where approvals go: you (<code>ask</code>), approved at once
-            (<code>approve</code>), <code>agent:&lt;id&gt;</code> or
+            (<code>allow</code>), <code>agent:&lt;id&gt;</code> or
             <code>job:&lt;name&gt;</code>
           </td>
         </tr>
@@ -2126,17 +2124,17 @@ autocode settings --agent kaggle:lead</pre
           <td>ask</td>
           <td>
             jobs an agent sets: you approve them first (<code>ask</code>), set
-            at once (<code>approve</code>), or refused (<code>off</code>)
+            at once (<code>allow</code>), or refused (<code>deny</code>)
           </td>
         </tr>
         <tr>
           <td><code>wake_mode</code></td>
-          <td>approve</td>
+          <td>allow</td>
           <td>
             periodic wakes an agent sets (<code>every</code>,
             <code>cron</code>, <code>idle</code>): set at once, with nobody
-            asked (<code>approve</code>), you approve them first
-            (<code>ask</code>), or refused (<code>off</code>)
+            asked (<code>allow</code>), you approve them first
+            (<code>ask</code>), or refused (<code>deny</code>)
           </td>
         </tr>
         <tr>
@@ -2194,6 +2192,19 @@ autocode settings --agent kaggle:lead</pre
       service, run <code>autocode install</code> again with the new
       <code>--listen</code>; see
       <a routerLink="/help" fragment="install">{{ sec.install.label }}</a>.
+    </p>
+    <p>
+      Renamed in 1.1.0-rc6: <code>approve</code> is now
+      <code>allow</code> (<code>permission_mode</code>,
+      <code>approval_mode</code>, <code>job_mode</code>,
+      <code>wake_mode</code>), <code>auto</code> is now
+      <code>auto_answer</code> (<code>question_mode</code>), and
+      <code>off</code> is now <code>deny</code> (<code>job_mode</code>,
+      <code>wake_mode</code>). What you had set is renamed with the upgrade;
+      an old name is refused, and the message names the new one.
+      <code>off</code> keeps its name where it means not in use
+      (<code>compact_at</code>, <code>daily_usd</code>,
+      <code>filter_recovery</code>).
     </p>
 
     <h2 id="trouble">

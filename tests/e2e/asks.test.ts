@@ -3,7 +3,7 @@
  * sessions: the question tool's form reaches the owner's inbox and the
  * owner's answer goes back into the turn; a permission prompt (shell set to
  * ask by the session's own rules) is answered once by the owner, and with
- * permission_mode approve at once; a question sent to another agent is
+ * permission_mode allow at once; a question sent to another agent is
  * answered by it with autocode_message; an approval is asked and approved;
  * an agent closes its own approval and its own message to the owner.
  */
@@ -158,7 +158,7 @@ describe("asks across machines", () => {
     await idle(b)
     // approve: no inbox item at all
     await admin("PATCH", "/v1/settings", {
-      agents: { [b.id]: { permission_mode: "approve" } },
+      agents: { [b.id]: { permission_mode: "allow" } },
     })
     await fake.script(
       [shell(`auto-${run}`), { session: b.session, reply: "ran it too" }],

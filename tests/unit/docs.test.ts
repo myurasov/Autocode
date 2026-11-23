@@ -398,23 +398,21 @@ test("the reference has wake_mode, and expire_after 0 for never", () => {
     "History says who closed it and why (`ask.closed`), and the agent is " +
       "told when you did it.",
     "Setting a wake again with the terms that it has now asks nothing, is " +
-      "not refused under `off`, and leaves a change that waits where it is",
+      "not refused under `deny`, and leaves a change that waits where it is",
     "an alert in your Inbox tells you too",
     "- **A proposal goes with its agent.**",
     "- **Patterns and renames.**",
-    "autocode settings set wake_mode approve --agent kaggle:lead",
+    "autocode settings set wake_mode allow --agent kaggle:lead",
     "- **The plugin.** An agent's `set` under `ask` needs the plugin of " +
       "1.1.0-rc5 or later on its machine",
     "A job or a wake that it proposed and that waits for your approval " +
       "is not an open ask: it goes with the agent.",
-    "- `approve`, the default: the wake is set at once. The agent asks " +
+    "- `allow`, the default: the wake is set at once. The agent asks " +
       "nobody, and nothing comes to your Inbox.",
-    "The value's name means that a wake counts as approved at once, by " +
-      "the setting, as `approve` does for `permission_mode` and " +
-      "`approval_mode`. It does not mean that somebody approves the wake.",
+    "The guide and `autocode_me action=status` tell agents so.",
     "- `ask`: an approval lands in your Inbox, `Wake NAME, set by AGENT`, " +
       "with the wake's exact terms",
-    "- `off`: the wake is refused.",
+    "- `deny`: the wake is refused.",
     "autocode settings set wake_mode ask --match 'kaggle:worker-*'",
     '`[autocode] approval "Wake digest" approved`',
     "- **Changing a wake** asks again.",
@@ -422,10 +420,10 @@ test("the reference has wake_mode, and expire_after 0 for never", () => {
     "- **What stays free:** one-time wakes (`in`, `at`, `fire-only`, " +
       "`fire-only once`), cancelling and firing.",
     "- **Your own wakes** for an agent are never asked for",
-    "| `wake_mode` | agent | `approve` | periodic wakes that an agent sets " +
+    "| `wake_mode` | agent | `allow` | periodic wakes that an agent sets " +
       "(`every`, `cron`, `idle`): set at once, with nobody asked " +
-      "(`approve`), you " +
-      "approve first (`ask`), or refused (`off`)",
+      "(`allow`), you " +
+      "approve first (`ask`), or refused (`deny`)",
     "| `expire_after` | agent | `14d` | unregister an agent this long " +
       "after its session's last turn. `0`: never |",
     "With `expire_after` `0` an agent never expires",
@@ -448,6 +446,70 @@ test("the reference has a wake's own check timeout: the tool, the command, the s
 })
 
 // 2: what each wake costs.
+/*
+ * 1.1.0-rc6 (the owner, 2026-11-22, after a table of the five mode
+ * settings: "lets rename: "approve" to "allow" "auto" to "auto_answer"
+ * "off" to "deny""): the reference names the values by their new names,
+ * and says once what was renamed.
+ */
+test("the reference names the mode values by their new names, and says what was renamed", () => {
+  const ref = flat("reference.md")
+  for (const part of [
+    "| `question_mode` | `ask`: your Inbox. `auto_answer`: answered at " +
+      "once with `auto_answer_text`. `agent:<id>`. `job:<name>` |",
+    "| `permission_mode` | `ask`: your Inbox, with Allow Once, Allow " +
+      "Always and Reject. `allow`: allowed once, at once. `agent:<id>`. " +
+      "`job:<name>` |",
+    "| `approval_mode` | `ask`: your Inbox. `allow`: approved at once. " +
+      "`agent:<id>`. `job:<name>` |",
+    "- **`auto_answer`** answers a question with `auto_answer_text`.",
+    "An approval is settled automatically only if you set " +
+      "`approval_mode=allow` on purpose.",
+    "- `allow`: the job is set at once.",
+    "- `deny`: the job is refused.",
+    "| `question_mode` | agent | `ask` | where questions go: `ask`, " +
+      "`auto_answer`, `agent:<id>` or `job:<name>`",
+    "| the answer under `question_mode` `auto_answer` |",
+    "| `permission_mode` | agent | `ask` | where permission prompts go: " +
+      "`ask`, `allow`, `agent:<id>` or `job:<name>` |",
+    "| `approval_mode` | agent | `ask` | where approvals go: `ask`, " +
+      "`allow`, `agent:<id>` or `job:<name>` |",
+    "| `job_mode` | agent | `ask` | jobs that an agent sets: you approve " +
+      "first (`ask`), set at once (`allow`), or refused (`deny`) |",
+    // what was renamed, once, under All Settings
+    "**Renamed in 1.1.0-rc6.** Three values of the mode settings have new " +
+      "names. What they do is unchanged.",
+    "| `approve` | `allow` | `permission_mode`, `approval_mode`, " +
+      "`job_mode`, `wake_mode` |",
+    "| `auto` | `auto_answer` | `question_mode` |",
+    "| `off` | `deny` | `job_mode`, `wake_mode` |",
+    "- **What you had set** is renamed when the server is upgraded: the " +
+      "server-wide values, the rules and each agent's own.",
+    "- **An old name is refused**, and the message names the new one: " +
+      '`wake_mode: "approve" is now "allow" (renamed in 1.1.0-rc6)`.',
+    "- **Unchanged:** `ask`, `agent:<id>` and `job:<name>`; `off` where it " +
+      "means not in use (`compact_at`, `daily_usd`, a job's `run_usd`, " +
+      "`filter_recovery`); and the words of an answer, as in `autocode " +
+      "answer ITEM approve`.",
+    "autocode settings set wake_mode allow --agent kaggle:lead",
+  ])
+    expect(ref, part).toContain(part)
+  // no old name stands beside its setting any more
+  for (const old of [
+    "`auto`:",
+    "`approve`: allowed once",
+    "`approve`: approved at once",
+    "approval_mode=approve",
+    "wake_mode approve",
+    "- `approve`",
+    "- `off`: the",
+    "(`approve`)",
+    "in `auto` mode",
+    "**`auto`**",
+  ])
+    expect(ref, old).not.toContain(old)
+})
+
 test("the reference says what each wake costs, where it shows and what is not counted", () => {
   const ref = read("reference.md")
   for (const part of [

@@ -377,8 +377,9 @@ export interface InboxItem {
   report?: boolean;
   // a message's answer (its text); an ask's (its decision, option, text...)
   answer?: unknown;
-  // An ask's: who it went to (owner, agent:<id>; auto or approve when it was
-  // answered at once), notes (an agent could not answer), state, expiry.
+  // An ask's: who it went to (owner, agent:<id>; auto_answer or allow when
+  // a setting answered it at once), notes (an agent could not answer), state,
+  // expiry.
   routed?: string;
   notes?: string[];
   state?: string;

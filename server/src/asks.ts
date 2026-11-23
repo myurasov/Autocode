@@ -3,8 +3,8 @@
  * Permissions; Approvals; tier 0d). The plugin reports a pending form (the
  * question tool) or permission request of an agent's session; an agent opens
  * an approval itself. Each is routed by its mode setting, resolved for the
- * asking agent: answered at once (auto: a question dismissed with
- * auto_answer_text; approve: a permission once, an approval approved), left
+ * asking agent: answered at once (auto_answer: a question dismissed with
+ * auto_answer_text; allow: a permission once, an approval approved), left
  * to the owner (ask), or sent to another agent (agent:<id>) or a job's run
  * (job:<name>) as a notice, while the owner's inbox has it too. The first
  * answer wins; an agent answers a permission once or reject only, and may
@@ -362,7 +362,10 @@ export class Asks {
   /*
    * Where an ask goes: the mode for the asking agent; an agent never answers
    * its own ask; an unregistered agent, and a job that cannot take a run
-   * now, fall back to the owner.
+   * now, fall back to the owner. So does a stored value that is none of
+   * the setting's (1.1.0-rc6: only a database edited by hand holds one,
+   * like an old name that migration 30 would have renamed): an ask is
+   * never left with nobody to answer it.
    */
   private route(agent: string, kind: AskKind): string {
     const mode = this.mode(agent, kind)
@@ -373,7 +376,9 @@ export class Asks {
     }
     if (mode.startsWith("job:"))
       return this.jobIdle(mode.slice("job:".length)) ? mode : "owner"
-    return mode === "ask" ? "owner" : mode
+    // answered at once: a question by auto_answer, the two others by allow
+    const atOnce = kind === "question" ? "auto_answer" : "allow"
+    return mode === atOnce ? mode : "owner"
   }
 
   // An open question or permission reported by the plugin.
@@ -461,7 +466,7 @@ export class Asks {
       data: { id, kind, routed, title },
     })
     // answered at once
-    if (kind === "question" && routed === "auto") {
+    if (kind === "question" && routed === "auto_answer") {
       const text = String(
         resolveSettings(this.settings.layers(), agent).values.auto_answer_text,
       )
@@ -469,7 +474,7 @@ export class Asks {
       this.carry(this.row(id), { cancel: text })
       return
     }
-    if (kind === "permission" && routed === "approve") {
+    if (kind === "permission" && routed === "allow") {
       this.finish(this.row(id), "answered", { decision: "once" }, "auto")
       this.carry(this.row(id), { decision: "once" })
       return
@@ -831,7 +836,7 @@ export class Asks {
       session,
       data: { id, kind: "approval", routed },
     })
-    if (routed === "approve")
+    if (routed === "allow")
       this.finish(this.row(id), "answered", { decision: "approve" }, "auto")
     else if (routed.startsWith("agent:")) this.send(this.row(id))
     else if (routed.startsWith("job:")) this.toJob(this.row(id))

@@ -45,7 +45,9 @@ describe("settings API", () => {
     const t = await start()
     const res = await call(t.url, t.admin, "PATCH", "/v1/settings", {
       server: { min_interval: "90s", check_output: 2048 },
-      rules: [{ match: "kaggle:*", settings: { question_mode: "auto" } }],
+      rules: [
+        { match: "kaggle:*", settings: { question_mode: "auto_answer" } },
+      ],
       agents: { "kaggle:lead": { min_interval: "5m" } },
     })
     expect(res.status).toBe(200)
@@ -55,7 +57,7 @@ describe("settings API", () => {
     })
     expect(res.body.defaults.min_interval).toBe("1m30s")
     expect(res.body.rules).toEqual([
-      { match: "kaggle:*", settings: { question_mode: "auto" } },
+      { match: "kaggle:*", settings: { question_mode: "auto_answer" } },
     ])
     expect(res.body.agents).toEqual({ "kaggle:lead": { min_interval: "5m" } })
     const cleared = await call(t.url, t.admin, "PATCH", "/v1/settings", {
@@ -132,7 +134,7 @@ describe("settings API", () => {
     await call(t.url, t.admin, "PATCH", "/v1/settings", {
       server: { check_output: 100 },
       rules: [{ match: "kaggle:*", settings: { min_interval: "5m" } }],
-      agents: { "kaggle:lead": { question_mode: "auto" } },
+      agents: { "kaggle:lead": { question_mode: "auto_answer" } },
     })
     const res = await call(
       t.url,
@@ -144,7 +146,7 @@ describe("settings API", () => {
     expect(res.body.values).toMatchObject({
       check_output: 100,
       min_interval: "5m",
-      question_mode: "auto",
+      question_mode: "auto_answer",
       approval_mode: "ask",
     })
     expect(res.body.sources).toMatchObject({

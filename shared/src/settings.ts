@@ -43,15 +43,16 @@ export const SETTINGS: Record<string, SettingDef> = {
     help: "at most one injection per session this often",
   },
   // Tier 0d: who handles an ask; also agent:<id> (another agent) and
-  // job:<name> (a run of a job, tier 0f).
+  // job:<name> (a run of a job, tier 0f). The values that answer at once
+  // are auto_answer and allow since 1.1.0-rc6 (see RENAMED_VALUES).
   question_mode: {
     kind: "mode",
     scope: "agent",
     default: "ask",
-    values: ["ask", "auto"],
+    values: ["ask", "auto_answer"],
     help:
-      "questions go to the owner (ask), are answered at once (auto), or go " +
-      "to agent:<id> or job:<name>",
+      "questions go to the owner (ask), are answered at once " +
+      "(auto_answer), or go to agent:<id> or job:<name>",
   },
   auto_answer_text: {
     kind: "text",
@@ -59,24 +60,24 @@ export const SETTINGS: Record<string, SettingDef> = {
     default:
       "Act according to your best judgement " +
       "and safe practices to achieve my goals.",
-    help: "the answer given in auto question mode",
+    help: "the answer given under question_mode auto_answer",
   },
   permission_mode: {
     kind: "mode",
     scope: "agent",
     default: "ask",
-    values: ["ask", "approve"],
+    values: ["ask", "allow"],
     help:
-      "permission prompts go to the owner (ask), are approved once " +
-      "(approve), or go to agent:<id> or job:<name>",
+      "permission prompts go to the owner (ask), are allowed once " +
+      "(allow), or go to agent:<id> or job:<name>",
   },
   approval_mode: {
     kind: "mode",
     scope: "agent",
     default: "ask",
-    values: ["ask", "approve"],
+    values: ["ask", "allow"],
     help:
-      "approvals go to the owner (ask), are approved at once (approve), or " +
+      "approvals go to the owner (ask), are approved at once (allow), or " +
       "go to agent:<id> or job:<name>",
   },
   // Phase 2 (the owner, 2026-11-09): a reply the content filter blocked is
@@ -92,16 +93,16 @@ export const SETTINGS: Record<string, SettingDef> = {
       "compaction and a retry (retry compact), one retry (retry), or none (off)",
   },
   // The owner, 2026-11-09 (rc2): whether an agent may set jobs of its own:
-  // ask (an approval of the owner with the whole definition), approve (at
-  // once) or off.
+  // ask (an approval of the owner with the whole definition), allow (at
+  // once) or deny.
   job_mode: {
     kind: "enum",
     scope: "agent",
     default: "ask",
-    values: ["ask", "approve", "off"],
+    values: ["ask", "allow", "deny"],
     help:
       "jobs an agent sets: an approval of the owner first (ask), set at once " +
-      "(approve), or refused (off)",
+      "(allow), or refused (deny)",
   },
   // 1.1.0-rc5 (asked for by a project; the owner, 2026-11-22, tabled only
   // the push notice of that list): whether an agent may set periodic wakes
@@ -109,12 +110,12 @@ export const SETTINGS: Record<string, SettingDef> = {
   wake_mode: {
     kind: "enum",
     scope: "agent",
-    default: "approve",
-    values: ["ask", "approve", "off"],
+    default: "allow",
+    values: ["ask", "allow", "deny"],
     help:
       "periodic wakes an agent sets (every, cron, idle): set at once, " +
-      "with nobody asked (approve), an approval of the owner first " +
-      "(ask), or refused (off)",
+      "with nobody asked (allow), an approval of the owner first " +
+      "(ask), or refused (deny)",
   },
   compact_at: {
     kind: "compact",
@@ -236,6 +237,36 @@ function fail(key: string, message: string): never {
   throw new AutocodeError("bad_setting", `${key}: ${message}`)
 }
 
+/*
+ * The names that three values of the mode settings had until 1.1.0-rc5,
+ * each with its name now (the owner, 2026-11-22, after a table of the five
+ * mode settings: "lets rename: "approve" to "allow" "auto" to "auto_answer"
+ * "off" to "deny""; agents had read approve as "needs approval"). An old
+ * name is refused with the new one, never taken as a second name; migration
+ * 30 renames what a database holds. `off` of the other settings (compact_at,
+ * daily_usd, run_usd, filter_recovery) means "not in use" and stays.
+ */
+export const RENAMED_VALUES: Record<string, Record<string, string>> = {
+  question_mode: { auto: "auto_answer" },
+  permission_mode: { approve: "allow" },
+  approval_mode: { approve: "allow" },
+  job_mode: { approve: "allow", off: "deny" },
+  wake_mode: { approve: "allow", off: "deny" },
+}
+
+// What to say of a value that is not one of a setting's: its new name
+// first, when it is an old one.
+function notOneOf(key: string, value: string, expected: string): never {
+  const names = Object.hasOwn(RENAMED_VALUES, key) ? RENAMED_VALUES[key]! : {}
+  const now = Object.hasOwn(names, value) ? names[value] : undefined
+  return fail(
+    key,
+    now
+      ? `"${value}" is now "${now}" (renamed in 1.1.0-rc6); ${expected}`
+      : expected,
+  )
+}
+
 // The definition of a setting, or undefined: never a member of Object.prototype
 // ("constructor", "toString").
 export function settingDef(key: string): SettingDef | undefined {
@@ -332,15 +363,16 @@ export function normalizeSetting(key: string, value: unknown): SettingValue {
     }
     case "enum":
       if (!def.values?.includes(String(text)))
-        fail(key, `expected one of ${def.values?.join(", ")}`)
+        notOneOf(key, String(text), `expected one of ${def.values?.join(", ")}`)
       return String(text)
     case "mode": {
       const value = String(text)
       if (def.values?.includes(value)) return value
       const m = /^(agent|job):(.+)$/.exec(value)
       if (m && isValidId(m[2]!) && !isReservedId(m[2]!)) return value
-      return fail(
+      return notOneOf(
         key,
+        value,
         `expected ${def.values?.join(", ")}, agent:<id> or job:<name>`,
       )
     }

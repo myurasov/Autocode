@@ -5,8 +5,8 @@
  * with the agent's ID (<agent>:<name>), so the owner's rules for that pattern
  * apply to its runs; run_usd is required. job_mode, per agent and pattern:
  * ask (the default: an approval in the owner's inbox with the whole
- * definition; the job exists once the owner approves it), approve (set at
- * once), off (refused). Changing a job asks again. The job records its
+ * definition; the job exists once the owner approves it), allow (set at
+ * once), deny (refused). Changing a job asks again. The job records its
  * creator; all its runs count for the creator; it is deleted when the creator
  * unregisters.
  */
@@ -147,9 +147,9 @@ describe("an agent sets a job", () => {
     expect(notice).toContain("not every weekday")
   })
 
-  test("job_mode approve: set at once; off: refused", async () => {
+  test("job_mode allow: set at once; deny: refused", async () => {
     await owner("PATCH", "/v1/settings", {
-      rules: [{ match: "team:*", settings: { job_mode: "approve" } }],
+      rules: [{ match: "team:*", settings: { job_mode: "allow" } }],
     })
     const res = await as(lead, "POST", "/v1/me/jobs", DEF)
     expect(res.status).toBe(201)
@@ -159,11 +159,13 @@ describe("an agent sets a job", () => {
     })
     expect(await approvalOf()).toBeUndefined()
     await owner("PATCH", "/v1/settings", {
-      agents: { "team:lead": { job_mode: "off" } },
+      agents: { "team:lead": { job_mode: "deny" } },
     })
-    const off = await as(lead, "POST", "/v1/me/jobs", { ...DEF, name: "other" })
-    expect(off.status).toBe(403)
-    expect(off.body.error.message).toContain("job_mode is off")
+    const no = await as(lead, "POST", "/v1/me/jobs", { ...DEF, name: "other" })
+    expect(no.status).toBe(403)
+    expect(no.body.error.message).toBe(
+      "you cannot set jobs: job_mode is deny (the owner's setting)",
+    )
   })
 
   test("the definition is checked: run_usd is required; a name stays the agent's own", async () => {
@@ -173,7 +175,7 @@ describe("an agent sets a job", () => {
     expect(res.body.error.message).toContain("run_usd is required")
     // a name already prefixed is not prefixed twice
     await owner("PATCH", "/v1/settings", {
-      agents: { "team:lead": { job_mode: "approve" } },
+      agents: { "team:lead": { job_mode: "allow" } },
     })
     const twice = await as(lead, "POST", "/v1/me/jobs", {
       ...DEF,
@@ -192,7 +194,7 @@ describe("an agent sets a job", () => {
 
   test("changing a job asks again; it stays as it was until approved", async () => {
     await owner("PATCH", "/v1/settings", {
-      agents: { "team:lead": { job_mode: "approve" } },
+      agents: { "team:lead": { job_mode: "allow" } },
     })
     await as(lead, "POST", "/v1/me/jobs", DEF)
     await owner("PATCH", "/v1/settings", {
@@ -227,7 +229,7 @@ describe("an agent sets a job", () => {
 
   test("job_delete: an agent's own jobs only", async () => {
     await owner("PATCH", "/v1/settings", {
-      agents: { "team:lead": { job_mode: "approve" } },
+      agents: { "team:lead": { job_mode: "allow" } },
     })
     await as(lead, "POST", "/v1/me/jobs", DEF)
     await owner("PUT", "/v1/jobs/mail", {
@@ -247,7 +249,7 @@ describe("an agent sets a job", () => {
 
   test("its runs count for the creator, scheduled ones too", async () => {
     await owner("PATCH", "/v1/settings", {
-      agents: { "team:lead": { job_mode: "approve" } },
+      agents: { "team:lead": { job_mode: "allow" } },
     })
     await as(lead, "POST", "/v1/me/jobs", { ...DEF, trigger: "fire-only" })
     await owner(
@@ -272,7 +274,7 @@ describe("an agent sets a job", () => {
   // job=count, then run job=count said "no job count".
   test("run takes the agent's own job by its short name too", async () => {
     await owner("PATCH", "/v1/settings", {
-      agents: { "team:lead": { job_mode: "approve" } },
+      agents: { "team:lead": { job_mode: "allow" } },
     })
     await as(lead, "POST", "/v1/me/jobs", { ...DEF, trigger: "fire-only" })
     const res = await as(lead, "POST", "/v1/jobs/digest/run", {})
@@ -292,7 +294,7 @@ describe("an agent sets a job", () => {
 
   test("the creator's jobs go when it unregisters", async () => {
     await owner("PATCH", "/v1/settings", {
-      agents: { "team:lead": { job_mode: "approve" } },
+      agents: { "team:lead": { job_mode: "allow" } },
     })
     await as(lead, "POST", "/v1/me/jobs", DEF)
     await as(lead, "POST", "/v1/me/jobs", { ...DEF, name: "second" })

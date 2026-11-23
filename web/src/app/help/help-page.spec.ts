@@ -675,7 +675,7 @@ describe('HelpPage', () => {
       // rc2 and rc3 (the owner, 2026-11-09)
       ['job_mode', 'ask'],
       // 1.1.0-rc5: periodic wakes that agents set
-      ['wake_mode', 'approve'],
+      ['wake_mode', 'allow'],
       ['filter_recovery', 'retry compact'],
       ['compact_at', '50% max 500000'],
       ['daily_usd', 'off'],
@@ -684,8 +684,50 @@ describe('HelpPage', () => {
     ]);
     expect(settings.find((r) => r[0] === 'wake_mode')![2]).toBe(
       'periodic wakes an agent sets (every, cron, idle): set at once, ' +
-        'with nobody asked (approve), you approve them first (ask), or ' +
-        'refused (off)',
+        'with nobody asked (allow), you approve them first (ask), or ' +
+        'refused (deny)',
+    );
+    /*
+     * 1.1.0-rc6 (the owner, 2026-11-22: "lets rename: "approve" to "allow"
+     * "auto" to "auto_answer" "off" to "deny""): the mode values by their
+     * new names, and what was renamed.
+     */
+    const does = (key: string) => settings.find((r) => r[0] === key)![2];
+    expect(does('question_mode')).toBe(
+      'where questions go: you (ask), answered at once (auto_answer), ' +
+        'agent:<id> or job:<name>',
+    );
+    expect(does('auto_answer_text')).toBe('the answer that auto_answer gives');
+    expect(does('permission_mode')).toBe(
+      'where permission prompts go: you (ask), allowed once at once ' +
+        '(allow), agent:<id> or job:<name>',
+    );
+    expect(does('approval_mode')).toBe(
+      'where approvals go: you (ask), approved at once (allow), ' +
+        'agent:<id> or job:<name>',
+    );
+    expect(does('job_mode')).toBe(
+      'jobs an agent sets: you approve them first (ask), set at once ' +
+        '(allow), or refused (deny)',
+    );
+    expect(section(page, 'settings')).toContain(
+      'Renamed in 1.1.0-rc6: approve is now allow (permission_mode, ' +
+        'approval_mode, job_mode, wake_mode), auto is now auto_answer ' +
+        '(question_mode), and off is now deny (job_mode, wake_mode). What ' +
+        'you had set is renamed with the upgrade; an old name is refused, ' +
+        'and the message names the new one. off keeps its name where it ' +
+        'means not in use (compact_at, daily_usd, filter_recovery).',
+    );
+    expect(section(page, 'asks')).toContain(
+      'auto_answer, for questions only: Autocode answers at once with the ' +
+        'text in auto_answer_text;',
+    );
+    expect(section(page, 'asks')).toContain(
+      'allow, for permissions and approvals: Autocode allows once, or ' +
+        'approves, at once;',
+    );
+    expect(section(page, 'jobs')).toContain(
+      'allow sets it at once; deny refuses.',
     );
     // 1.1.0-rc5: 0 means never
     expect(settings.find((r) => r[0] === 'expire_after')![2]).toBe(
@@ -696,11 +738,10 @@ describe('HelpPage', () => {
       'With wake_mode ask, a periodic wake that an agent sets for itself ' +
         '(every, cron, idle) is not set at once: an approval comes to your ' +
         "Inbox with the wake's exact terms, and the wake is set once you " +
-        'approve it. With off such a wake is refused. One-time wakes, and ' +
+        'approve it. With deny such a wake is refused. One-time wakes, and ' +
         'the wakes you set yourself, are never asked for. The default, ' +
-        'approve, sets every wake at once: the agent asks nobody, and ' +
-        'nothing comes to your Inbox. Its name means approved at once, by ' +
-        'the setting.',
+        'allow, sets every wake at once: the agent asks nobody, and ' +
+        'nothing comes to your Inbox.',
     );
     // 1.1.0-rc5 (the owner, 2026-11-22): a prompt has no footer line
     expect(section(page, 'sees')).toContain(

@@ -309,10 +309,11 @@ export class InboxPage {
     return !isAsk(item) || item.routed === 'owner';
   }
 
-  // Who else an ask went to: none (answered at once by a setting), or as the
-  // server says.
+  // Who else an ask went to: none (answered at once by a setting: the
+  // setting's value, auto_answer or allow since 1.1.0-rc6), or as the server
+  // says.
   protected sentText(item: InboxItem): string {
-    return item.routed === 'auto' || item.routed === 'approve'
+    return item.routed === 'auto_answer' || item.routed === 'allow'
       ? 'answered at once'
       : (item.routed ?? '');
   }

@@ -585,14 +585,12 @@ A periodic wake costs a turn each time it falls due, and a turn reads the sessio
 itself: `every`, `cron` and `idle`. An `idle` wake counts also without `repeat`: it falls due once in every idle
 stretch, and each of its own turns starts a new one.
 
-- `approve`, the default: the wake is set at once. The agent asks nobody, and nothing comes to your Inbox. The
-  value's name means that a wake counts as approved at once, by the setting, as `approve` does for
-  `permission_mode` and `approval_mode`. It does not mean that somebody approves the wake. The guide and
-  `autocode_me action=status` tell agents so.
+- `allow`, the default: the wake is set at once. The agent asks nobody, and nothing comes to your Inbox. The guide
+  and `autocode_me action=status` tell agents so.
 - `ask`: an approval lands in your Inbox, `Wake NAME, set by AGENT`, with the wake's exact terms: its trigger with
   its end, its check and the check's time limit, its text, and for a change the trigger that it has now. The wake
   is set only once you approve it, and its schedule counts from then.
-- `off`: the wake is refused.
+- `deny`: the wake is refused.
 
 ```sh
 autocode settings set wake_mode ask --match 'kaggle:worker-*'
@@ -603,7 +601,7 @@ autocode settings set wake_mode ask --match 'kaggle:worker-*'
   can take its proposal back (`autocode_approval action=close`). `autocode_wake action=list` shows the agent
   which of its wakes wait for you, and `autocode_me action=status` says how its periodic wakes are gated.
 - **Changing a wake** asks again. The wake stays as it was until you approve. Setting a wake again with the terms
-  that it has now asks nothing, is not refused under `off`, and leaves a change that waits where it is: there is
+  that it has now asks nothing, is not refused under `deny`, and leaves a change that waits where it is: there is
   nothing new to decide, and agents set their wakes again when they start.
 - **What stays free:** one-time wakes (`in`, `at`, `fire-only`, `fire-only once`), cancelling and firing. The guide
   tells agents not to rebuild a periodic wake from one-time ones.
@@ -620,7 +618,7 @@ autocode settings set wake_mode ask --match 'kaggle:worker-*'
 
   ```sh
   autocode settings set wake_mode ask
-  autocode settings set wake_mode approve --agent kaggle:lead
+  autocode settings set wake_mode allow --agent kaggle:lead
   ```
 
 - **The plugin.** An agent's `set` under `ask` needs the plugin of 1.1.0-rc5 or later on its machine
@@ -900,17 +898,17 @@ Three settings decide, one per kind. Each can differ per agent or pattern (see [
 
 | Setting | Values, the default first |
 |---|---|
-| `question_mode` | `ask`: your Inbox. `auto`: answered at once with `auto_answer_text`. `agent:<id>`. `job:<name>` |
-| `permission_mode` | `ask`: your Inbox, with Allow Once, Allow Always and Reject. `approve`: allowed once, at once. `agent:<id>`. `job:<name>` |
-| `approval_mode` | `ask`: your Inbox. `approve`: approved at once. `agent:<id>`. `job:<name>` |
+| `question_mode` | `ask`: your Inbox. `auto_answer`: answered at once with `auto_answer_text`. `agent:<id>`. `job:<name>` |
+| `permission_mode` | `ask`: your Inbox, with Allow Once, Allow Always and Reject. `allow`: allowed once, at once. `agent:<id>`. `job:<name>` |
+| `approval_mode` | `ask`: your Inbox. `allow`: approved at once. `agent:<id>`. `job:<name>` |
 
 - **`agent:<id>`** sends the ask to that agent, as a notice. It goes to you instead if that agent is not registered,
   or is the agent that asks. When that agent unregisters, its open asks come back to you.
 - **`job:<name>`** starts a run of that job with the ask in its prompt, and the run answers it. The ask goes to you
   instead if the job cannot start a run now: one is running, or there is no such job. Asks still open when the run
   ends come to you too.
-- **`auto`** answers a question with `auto_answer_text`. By default that tells the agent to use its best judgement
-  and safe practices: it chooses, goes on, and records what it chose.
+- **`auto_answer`** answers a question with `auto_answer_text`. By default that tells the agent to use its best
+  judgement and safe practices: it chooses, goes on, and records what it chose.
 
 An example that sends the questions of the workers to their lead:
 
@@ -933,7 +931,7 @@ Rules that hold for every ask:
 ### Approvals
 
 For anything that spends money, trades, deploys, deletes data or cannot be undone, agents ask for an approval, not a
-question. An approval is settled automatically only if you set `approval_mode=approve` on purpose.
+question. An approval is settled automatically only if you set `approval_mode=allow` on purpose.
 
 ```
 autocode_approval  action=ask  text="Pay the electricity bill: $142.17 from checking"  expires=2d
@@ -1311,8 +1309,8 @@ autocode_me  action=job_delete  job=digest
 - **Your approval.** The `job_mode` setting decides, per agent or pattern:
   - `ask`, the default: an approval lands in your Inbox, with the whole definition and prompt. The job exists only
     once you approve it.
-  - `approve`: the job is set at once.
-  - `off`: the job is refused.
+  - `allow`: the job is set at once.
+  - `deny`: the job is refused.
 - **Meanwhile** the agent goes on with its work: a proposed job does not make it `waiting`. It is told by a notice,
   `[autocode] approval "Job kaggle:lead:digest" approved`. A new proposal of the same job replaces the old one.
 - **Changing a job** asks again. The job stays as it was until you approve.
@@ -1814,12 +1812,12 @@ clears that value again.
 | `check_timeout_max` | agent | `10m` | the longest time a wake may ask for its own check (`check_timeout` on the wake) |
 | `check_output` | agent | `2000` | how many characters of a check's output go into the prompt |
 | `max_tool_wait` | agent | `5m` | the longest a tool waits inside a turn: `autocode_message action=wait`, `autocode_approval action=wait` |
-| `question_mode` | agent | `ask` | where questions go: `ask`, `auto`, `agent:<id>` or `job:<name>` (see [Where Each Ask Goes](#where-each-ask-goes)) |
-| `auto_answer_text` | agent | "Act according to your best judgement and safe practices to achieve my goals." | the answer in `auto` mode |
-| `permission_mode` | agent | `ask` | where permission prompts go: `ask`, `approve`, `agent:<id>` or `job:<name>` |
-| `approval_mode` | agent | `ask` | where approvals go: `ask`, `approve`, `agent:<id>` or `job:<name>` |
-| `job_mode` | agent | `ask` | jobs that an agent sets: you approve first (`ask`), set at once (`approve`), or refused (`off`) |
-| `wake_mode` | agent | `approve` | periodic wakes that an agent sets (`every`, `cron`, `idle`): set at once, with nobody asked (`approve`), you approve first (`ask`), or refused (`off`) (see [Your Approval of Periodic Wakes](#your-approval-of-periodic-wakes)) |
+| `question_mode` | agent | `ask` | where questions go: `ask`, `auto_answer`, `agent:<id>` or `job:<name>` (see [Where Each Ask Goes](#where-each-ask-goes)) |
+| `auto_answer_text` | agent | "Act according to your best judgement and safe practices to achieve my goals." | the answer under `question_mode` `auto_answer` |
+| `permission_mode` | agent | `ask` | where permission prompts go: `ask`, `allow`, `agent:<id>` or `job:<name>` |
+| `approval_mode` | agent | `ask` | where approvals go: `ask`, `allow`, `agent:<id>` or `job:<name>` |
+| `job_mode` | agent | `ask` | jobs that an agent sets: you approve first (`ask`), set at once (`allow`), or refused (`deny`) |
+| `wake_mode` | agent | `allow` | periodic wakes that an agent sets (`every`, `cron`, `idle`): set at once, with nobody asked (`allow`), you approve first (`ask`), or refused (`deny`) (see [Your Approval of Periodic Wakes](#your-approval-of-periodic-wakes)) |
 | `filter_recovery` | agent | `retry compact` | after a blocked reply: `retry compact`, `retry` or `off` (see [A Blocked Reply](#a-blocked-reply)) |
 | `retry_interval` | agent | `1m` | the wait after a failed turn before a retry prompt, and between retries |
 | `retry_attempts` | agent | `0` | the most retries in a row before Autocode stops and tells you. 0: no limit |
@@ -1834,6 +1832,21 @@ clears that value again.
 | `listen` | server | `localhost,tailscale:4848` | the addresses and the port the server answers on. A change takes effect at the next start. The `--listen` flag wins over it |
 
 Durations look like `90s`, `5m` or `1h30m`.
+
+**Renamed in 1.1.0-rc6.** Three values of the mode settings have new names. What they do is unchanged.
+
+| Before | Now | Settings |
+|---|---|---|
+| `approve` | `allow` | `permission_mode`, `approval_mode`, `job_mode`, `wake_mode` |
+| `auto` | `auto_answer` | `question_mode` |
+| `off` | `deny` | `job_mode`, `wake_mode` |
+
+- **What you had set** is renamed when the server is upgraded: the server-wide values, the rules and each agent's
+  own.
+- **An old name is refused**, and the message names the new one: `wake_mode: "approve" is now "allow" (renamed in
+  1.1.0-rc6)`. So a script that still writes an old name fails, and no value has two names.
+- **Unchanged:** `ask`, `agent:<id>` and `job:<name>`; `off` where it means not in use (`compact_at`, `daily_usd`,
+  a job's `run_usd`, `filter_recovery`); and the words of an answer, as in `autocode answer ITEM approve`.
 
 ## Files, Tokens and Backups
 

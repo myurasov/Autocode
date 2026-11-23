@@ -791,13 +791,14 @@ describe("the guide", () => {
   test("1.1.0-rc5: the owner may gate periodic wakes, and what to do then", () => {
     const own = flat(guideText(FACTS))
     for (const answer of [
-      // the owner, 2026-11-22: `approve` does not mean "ask first"
+      // the owner, 2026-11-22: the default does not mean "ask first"; its
+      // name is `allow` since 1.1.0-rc6 (it was `approve`)
       "You set your wakes yourself, at once. Autocode asks nobody for " +
         "them: do not ask the owner for an approval of a wake, and do not " +
         "wait for one, unless your own instructions say so.",
-      "That is the default, `wake_mode` `approve`: the name means that a " +
-        "wake counts as approved at once, by the setting, not that " +
-        "somebody approves it.",
+      "That is the default, `wake_mode` `allow`. Before 1.1.0-rc6 that " +
+        "value was called `approve`, and `deny` was called `off`: the " +
+        "names changed, not what they do.",
       "Only where the owner changed the setting is that different, and " +
         "only for periodic wakes (`every`, `cron`, and `idle` with or " +
         "without `repeat`); `autocode_me status` says which it is.",
@@ -809,12 +810,28 @@ describe("the guide", () => {
       "a wake of that name that exists stays as it is",
       "take a proposal back with `autocode_approval action=close`",
       "Setting a wake again with the terms it has asks nothing, also " +
-        "under `off`, and leaves a change that waits where it is.",
-      "With `off`, a periodic wake is refused.",
+        "under `deny`, and leaves a change that waits where it is.",
+      "With `deny`, a periodic wake is refused.",
       "do not rebuild a periodic wake from one-time ones to get around " +
         "the setting: ask the owner.",
     ])
       expect(own, answer).toContain(answer)
+  })
+
+  // 1.1.0-rc6 (the owner, 2026-11-22: "lets rename: "approve" to "allow"
+  // "auto" to "auto_answer" "off" to "deny""): no old name is left.
+  test("1.1.0-rc6: the guide names the mode values by their new names only", () => {
+    const own = flat(guideText(FACTS))
+    for (const old of [
+      "`wake_mode` `approve`",
+      "wake_mode approve",
+      "wake_mode off",
+      "With `off`",
+      "under `off`",
+      "job_mode off",
+      "`auto` mode",
+    ])
+      expect(own, old).not.toContain(old)
   })
 
   // The questions an update-loop agent could not answer (2026-11-02).

@@ -56,7 +56,8 @@ describe("wake_mode", () => {
    * The owner, 2026-11-22: "agent seem to be confused about wake_mode set
    * to approval. make sure it is explained in the instructions and docs
    * that with that setting agent doesnt have to ask for setting up wakes."
-   * `approve` reads as "needs approval": it means approved at once.
+   * The value was called `approve` then, which read as "needs approval";
+   * since 1.1.0-rc6 it is `allow`.
    */
   test("the tool says that a wake is set at once, with nobody asked, unless status says otherwise", () => {
     expect(WAKE_TOOL.description).toContain(
@@ -157,19 +158,22 @@ describe("wake_mode", () => {
       "Periodic wakes (every, cron, idle): the owner approves each one " +
         "first (wake_mode ask).",
     )
-    expect(await status("off")).toContain(
+    expect(await status("deny")).toContain(
       "Periodic wakes (every, cron, idle): you cannot set them " +
-        "(wake_mode off).",
+        "(wake_mode deny).",
     )
     // the default says plainly that nobody is asked (the owner,
-    // 2026-11-22: agents read `approve` as "needs approval")
-    expect(await status("approve")).toContain(
+    // 2026-11-22: agents read the old name, `approve`, as "needs approval")
+    expect(await status("allow")).toContain(
       "Wakes: you set them yourself, at once; no approval is needed " +
-        "(wake_mode approve).",
+        "(wake_mode allow).",
     )
-    expect(await status("approve")).not.toContain("Periodic wakes")
-    // an older server says nothing of it
+    expect(await status("allow")).not.toContain("Periodic wakes")
+    // a server before 1.1.0-rc5 says nothing of it, and the names of rc5
+    // (approve, off) are not read: the plugin and its server are one build
     expect(await status()).not.toContain("wake_mode")
+    expect(await status("approve")).not.toContain("wake_mode")
+    expect(await status("off")).not.toContain("wake_mode")
   })
 
   test("closing a wake that waits for the owner says that it is not set", async () => {

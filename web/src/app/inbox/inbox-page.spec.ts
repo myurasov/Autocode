@@ -1084,10 +1084,18 @@ describe('InboxPage', () => {
           answer: { decision: 'approve', option: 'tonight', text: 'late' },
           by: 'owner',
         }),
+        // answered at once by a setting: routed says which value it was
+        // (1.1.0-rc6: auto_answer and allow; before, auto and approve)
         closed(q1!, {
           id: 'ask_q3',
-          routed: 'auto',
+          routed: 'auto_answer',
           answer: { cancel: 'Use your judgement.' },
+          by: 'auto',
+        }),
+        closed(p1!, {
+          id: 'ask_p2',
+          routed: 'allow',
+          answer: { decision: 'once' },
           by: 'auto',
         }),
         closed(a1!, { id: 'ask_a2', state: 'expired', answer: null, by: null }),
@@ -1122,9 +1130,10 @@ describe('InboxPage', () => {
       // closed is not answered
       expect(answer('ask_a3')).toBe('Closed by team:lead: the plan changed');
       expect(answer('ask_a4')).toBe('Closed by the owner');
-      expect(text(row(page, 'ask_q3').querySelector('td.sent-to'))).toBe(
-        'answered at once',
-      );
+      for (const id of ['ask_q3', 'ask_p2'])
+        expect(text(row(page, id).querySelector('td.sent-to')), id).toBe(
+          'answered at once',
+        );
       expect(
         row(page, 'ask_q3').querySelector('td.sent-to')!.classList,
       ).not.toContain('id-like');

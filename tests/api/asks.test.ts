@@ -3,7 +3,7 @@
  * Permissions; Approvals; tier 0d), with the plugin played over its channel:
  * an open question or permission reported by the plugin becomes an ask,
  * routed by question_mode, permission_mode or approval_mode (resolved per
- * agent and pattern): answered at once (auto, approve), left to the owner
+ * agent and pattern): answered at once (auto_answer, allow), left to the owner
  * (ask), or sent to another agent (agent:<id>) as a notice while the owner's
  * inbox has it too. The first answer wins and goes back as an instruction to
  * the plugin; an agent answers once or reject only and may escalate; the
@@ -11,7 +11,9 @@
  * whose session went away close. Approvals: ask, wait, the answer as a
  * notice, expiry.
  */
+import { Database } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { join } from "node:path"
 import {
   ack,
   call,
@@ -170,8 +172,10 @@ describe("questions", () => {
     })
   })
 
-  test("auto: dismissed at once with auto_answer_text, nothing in the inbox", async () => {
-    await owner("PATCH", "/v1/settings", { server: { question_mode: "auto" } })
+  test("auto_answer: dismissed at once with auto_answer_text, nothing in the inbox", async () => {
+    await owner("PATCH", "/v1/settings", {
+      server: { question_mode: "auto_answer" },
+    })
     await report(t, HOST, [QUESTION])
     expect(await answers()).toEqual([
       {
@@ -185,7 +189,12 @@ describe("questions", () => {
     ])
     expect(await inbox()).toEqual([])
     const h = (await owner("GET", "/v1/history?kind=ask.answered")).body.history
+    // who answered keeps its word: "auto", at once by the setting
     expect(h[0].data).toMatchObject({ by: "auto" })
+    // how it was routed is the setting's value (1.1.0-rc6: its new name)
+    const opened = (await owner("GET", "/v1/history?kind=ask.opened")).body
+      .history
+    expect(opened[0].data).toMatchObject({ routed: "auto_answer" })
   })
 
   test("a session that is no agent's is left alone", async () => {
@@ -242,15 +251,18 @@ describe("permissions", () => {
     ])
   })
 
-  test("approve: once, at once", async () => {
+  test("allow: once, at once", async () => {
     await owner("PATCH", "/v1/settings", {
-      rules: [{ match: "team:*", settings: { permission_mode: "approve" } }],
+      rules: [{ match: "team:*", settings: { permission_mode: "allow" } }],
     })
     await report(t, HOST, [PERMISSION])
     expect(await answers()).toEqual([
       { session: "ses_a", kind: "permission", ref: "per_1", decision: "once" },
     ])
     expect(await inbox()).toEqual([])
+    const opened = (await owner("GET", "/v1/history?kind=ask.opened")).body
+      .history
+    expect(opened[0].data).toMatchObject({ routed: "allow" })
   })
 })
 
@@ -361,6 +373,56 @@ describe("answers by another agent", () => {
     expect(await prompts()).toEqual({})
   })
 
+  /*
+   * 1.1.0-rc6: a value that is none of a setting's is refused on input,
+   * and migration 30 renames the old names, so only a database edited by
+   * hand holds one. Such a value sends the ask to the owner: an ask is
+   * never left with nobody to answer it.
+   */
+  test("a stored value that is none of the setting's sends the ask to the owner", async () => {
+    const db = new Database(join(t.dataDir, "autocode.db"))
+    const odd: [string, string][] = [
+      ["question_mode", "auto"],
+      ["permission_mode", "approve"],
+      ["approval_mode", "approve"],
+    ]
+    for (const [key, value] of odd)
+      db.run(
+        "INSERT OR REPLACE INTO settings (scope, key, value) VALUES " +
+          "('server', ?, ?)",
+        [key, JSON.stringify(value)],
+      )
+    db.close()
+    await report(t, HOST, [QUESTION])
+    await report(t, HOST, [{ ...PERMISSION, session: "ses_b" }])
+    expect(await answers()).toEqual([])
+    expect(
+      (await inbox()).map((i: any) => [i.kind, i.routed, i.state]).sort(),
+    ).toEqual([
+      ["permission", "owner", "open"],
+      ["question", "owner", "open"],
+    ])
+    // the owner answers the question; only that answer goes out
+    const first = (await inbox()).find((i: any) => i.kind === "question")
+    await owner("POST", `/v1/asks/${first.id}/answer`, { text: "v3" })
+    expect((await answers()).map((x: any) => x.ref)).toEqual(["frm_1"])
+    const res = await as(a, "POST", "/v1/me/approvals", { text: "Go?" })
+    expect(res.body.approval).toMatchObject({ state: "open", routed: "owner" })
+    // a value of another kind's setting is no better
+    const again = new Database(join(t.dataDir, "autocode.db"))
+    again.run(
+      "UPDATE settings SET value = '\"allow\"' WHERE key = 'question_mode'",
+    )
+    again.close()
+    await report(t, HOST, [{ ...QUESTION, ref: "frm_9" }])
+    expect(await answers()).toEqual([])
+    expect(
+      (await inbox())
+        .filter((i: any) => i.kind === "question" && i.state === "open")
+        .map((i: any) => i.routed),
+    ).toEqual(["owner"])
+  })
+
   test("job:<name> of no such job is the owner's", async () => {
     await owner("PATCH", "/v1/settings", {
       server: { question_mode: "job:answerer" },
@@ -370,13 +432,18 @@ describe("answers by another agent", () => {
   })
 
   test("modes take agent:<id> and job:<name>; others are refused", async () => {
-    for (const value of ["agent:team:lead", "job:answerer", "ask", "auto"]) {
+    for (const value of [
+      "agent:team:lead",
+      "job:answerer",
+      "ask",
+      "auto_answer",
+    ]) {
       const res = await owner("PATCH", "/v1/settings", {
         server: { question_mode: value },
       })
       expect(res.status, value).toBe(200)
     }
-    for (const value of ["agent:", "agent:owner", "job:", "maybe", "approve"]) {
+    for (const value of ["agent:", "agent:owner", "job:", "maybe", "allow"]) {
       const res = await owner("PATCH", "/v1/settings", {
         server: { question_mode: value },
       })
@@ -385,10 +452,51 @@ describe("answers by another agent", () => {
     expect(
       (
         await owner("PATCH", "/v1/settings", {
-          server: { permission_mode: "auto" },
+          server: { permission_mode: "auto_answer" },
         })
       ).status,
     ).toBe(400)
+  })
+
+  /*
+   * 1.1.0-rc6 (the owner, 2026-11-22: "lets rename: "approve" to "allow"
+   * "auto" to "auto_answer" "off" to "deny""): an old name is refused in
+   * every scope, the message names the new one, and nothing is stored.
+   */
+  test("an old name of a mode value is refused, with the new one", async () => {
+    const old: [string, string, string][] = [
+      ["question_mode", "auto", "auto_answer"],
+      ["permission_mode", "approve", "allow"],
+      ["approval_mode", "approve", "allow"],
+      ["job_mode", "approve", "allow"],
+      ["job_mode", "off", "deny"],
+      ["wake_mode", "approve", "allow"],
+      ["wake_mode", "off", "deny"],
+    ]
+    for (const [key, was, now] of old)
+      for (const body of [
+        { server: { [key]: was } },
+        { rules: [{ match: "team:*", settings: { [key]: was } }] },
+        { agents: { "team:worker": { [key]: was } } },
+      ]) {
+        const res = await owner("PATCH", "/v1/settings", body)
+        expect(res.status, `${key} ${was}`).toBe(400)
+        expect(res.body.error.code).toBe("bad_setting")
+        expect(res.body.error.message).toContain(
+          `${key}: "${was}" is now "${now}" (renamed in 1.1.0-rc6)`,
+        )
+      }
+    const view = (await owner("GET", "/v1/settings")).body
+    for (const [key] of old) expect(view.server[key], key).toBeUndefined()
+    expect(view.rules).toEqual([])
+    expect(view.agents).toEqual({})
+    // what the schema offers, and the defaults
+    expect(view.schema.question_mode.values).toEqual(["ask", "auto_answer"])
+    expect(view.schema.permission_mode.values).toEqual(["ask", "allow"])
+    expect(view.schema.approval_mode.values).toEqual(["ask", "allow"])
+    expect(view.schema.job_mode.values).toEqual(["ask", "allow", "deny"])
+    expect(view.schema.wake_mode.values).toEqual(["ask", "allow", "deny"])
+    expect(view.schema.wake_mode.default).toBe("allow")
   })
 })
 
@@ -496,10 +604,10 @@ describe("approvals", () => {
     expect(await inbox()).toEqual([])
   })
 
-  test("approve mode approves at once; agent:<id> sends it to that agent", async () => {
+  test("allow mode approves at once; agent:<id> sends it to that agent", async () => {
     await owner("PATCH", "/v1/settings", {
       agents: {
-        "team:worker": { approval_mode: "approve" },
+        "team:worker": { approval_mode: "allow" },
         "team:lead": { approval_mode: "agent:team:worker" },
       },
     })

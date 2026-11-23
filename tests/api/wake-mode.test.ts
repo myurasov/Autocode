@@ -3,11 +3,11 @@
  * approves every periodic wake with its exact terms. A wake re-reads the
  * whole context, so an unapproved hourly wake gets costly"). Per agent and
  * pattern, like job_mode, for the periodic wakes an agent sets for itself
- * (every, cron, idle with or without repeat): approve (the default: set at
- * once), ask
- * (an approval in the owner's Inbox with the wake's exact terms; the wake
- * is set once the owner approves it) or off (refused). One-time wakes,
- * cancelling, firing and the owner's own setting stay free.
+ * (every, cron, idle with or without repeat): allow (the default: set at
+ * once), ask (an approval in the owner's Inbox with the wake's exact terms;
+ * the wake is set once the owner approves it) or deny (refused). One-time
+ * wakes, cancelling, firing and the owner's own setting stay free. Until
+ * 1.1.0-rc6 allow was called approve, and deny off.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import {
@@ -70,7 +70,7 @@ beforeEach(async () => {
 })
 afterEach(() => t.stop())
 
-describe("wake_mode approve (the default)", () => {
+describe("wake_mode allow (the default)", () => {
   test("a periodic wake is set at once, as before, and nothing is asked", async () => {
     const res = await set("tick", "every 1h")
     expect(res.status).toBe(201)
@@ -229,7 +229,7 @@ describe("wake_mode ask", () => {
   })
 
   test("a change asks again, and the wake stays as it was until approved", async () => {
-    await mode("approve")
+    await mode("allow")
     await set("tick", "every 2h")
     await mode("ask")
     const res = await set("tick", "every 30m", { text: "Go faster." })
@@ -259,7 +259,7 @@ describe("wake_mode ask", () => {
   })
 
   test("setting a wake again with the terms it has asks nothing", async () => {
-    await mode("approve")
+    await mode("allow")
     await set("tick", "every 2h", { check: "./c.sh", check_timeout: "2m" })
     await mode("ask")
     t.clock.advance(HOUR)
@@ -443,7 +443,7 @@ describe("wake_mode ask", () => {
     // the agent itself, once the owner lets it
     await set("w", "every 10m")
     expect((await approvals()).length).toBe(1)
-    await mode("approve")
+    await mode("allow")
     expect((await set("w", "every 2d")).status).toBe(200)
     expect(await approvals()).toEqual([])
     expect((await closed())[0].data).toMatchObject({
@@ -461,7 +461,7 @@ describe("wake_mode ask", () => {
   })
 
   test("cancelling a wake closes its proposal, also when only the proposal exists", async () => {
-    await mode("approve")
+    await mode("allow")
     await set("w", "every 1h")
     await mode("ask")
     await set("w", "every 10m")
@@ -608,9 +608,9 @@ describe("wake_mode ask", () => {
   })
 })
 
-describe("wake_mode off", () => {
+describe("wake_mode deny", () => {
   test("a periodic wake is refused, with the reason; one-time wakes are set", async () => {
-    await mode("off")
+    await mode("deny")
     for (const trigger of [
       "every 30m",
       'cron "0 9 * * 1-5"',
@@ -623,7 +623,7 @@ describe("wake_mode off", () => {
         code: "forbidden",
         message:
           "you cannot set periodic wakes (every, cron, idle): wake_mode " +
-          "is off (the owner's setting); one-time wakes (in, at, " +
+          "is deny (the owner's setting); one-time wakes (in, at, " +
           "fire-only) stay free",
       })
     }

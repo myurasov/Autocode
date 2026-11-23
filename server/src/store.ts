@@ -239,8 +239,9 @@ export const MIGRATIONS: string[] = [
   /*
    * 9 (tier 0d): questions, permission prompts and approvals ("asks"). `ref`
    * is OpenCode's form or permission request ID (none for an approval);
-   * `body` the JSON of what is asked; `routed` where it went (owner, auto,
-   * approve, job:<name> until its run starts,
+   * `body` the JSON of what is asked; `routed` where it went (owner; auto
+   * or approve, the mode's value that answered at once, called auto_answer
+   * and allow since migration 30; job:<name> until its run starts;
    * agent:<id>); `notes` the escalations (JSON list).
    */
   `
@@ -723,6 +724,46 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE asks ADD COLUMN wake_def TEXT;
   UPDATE wakes SET end_at = NULL;
+  `,
+  /*
+   * 30 (1.1.0-rc6; the owner, 2026-11-22: "lets rename: "approve" to
+   * "allow" "auto" to "auto_answer" "off" to "deny""): three values of the
+   * five mode settings have new names (RENAMED_VALUES in the shared
+   * settings), and what the database holds takes them: the server-wide
+   * values; the rules and each agent's values, which are compact JSON as
+   * JSON.stringify writes it, so a key and its value stand as
+   * "key":"value" (inside a text a quote is escaped, so a text that quotes
+   * one is not touched); and how an ask that a setting answered at once
+   * was routed. `off` of the other settings stays, and so do an answer's
+   * words and the history of the past.
+   */
+  `
+  UPDATE settings SET value = '"auto_answer"'
+    WHERE scope = 'server' AND key = 'question_mode' AND value = '"auto"';
+  UPDATE settings SET value = '"allow"'
+    WHERE scope = 'server' AND key = 'permission_mode' AND value = '"approve"';
+  UPDATE settings SET value = '"allow"'
+    WHERE scope = 'server' AND key = 'approval_mode' AND value = '"approve"';
+  UPDATE settings SET value = '"allow"'
+    WHERE scope = 'server' AND key = 'job_mode' AND value = '"approve"';
+  UPDATE settings SET value = '"deny"'
+    WHERE scope = 'server' AND key = 'job_mode' AND value = '"off"';
+  UPDATE settings SET value = '"allow"'
+    WHERE scope = 'server' AND key = 'wake_mode' AND value = '"approve"';
+  UPDATE settings SET value = '"deny"'
+    WHERE scope = 'server' AND key = 'wake_mode' AND value = '"off"';
+  UPDATE settings SET value =
+    replace(replace(replace(replace(replace(replace(replace(value,
+      '"question_mode":"auto"', '"question_mode":"auto_answer"'),
+      '"permission_mode":"approve"', '"permission_mode":"allow"'),
+      '"approval_mode":"approve"', '"approval_mode":"allow"'),
+      '"job_mode":"approve"', '"job_mode":"allow"'),
+      '"job_mode":"off"', '"job_mode":"deny"'),
+      '"wake_mode":"approve"', '"wake_mode":"allow"'),
+      '"wake_mode":"off"', '"wake_mode":"deny"')
+    WHERE scope IN ('rules', 'agent');
+  UPDATE asks SET routed = 'allow' WHERE routed = 'approve';
+  UPDATE asks SET routed = 'auto_answer' WHERE routed = 'auto';
   `,
 ]
 

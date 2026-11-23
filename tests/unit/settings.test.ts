@@ -30,8 +30,9 @@ describe("settings", () => {
     // jobs set by agents: an approval of the owner first (the owner,
     // 2026-11-09, rc2)
     expect(d.job_mode).toBe("ask")
-    // periodic wakes set by agents: at once, as before (1.1.0-rc5)
-    expect(d.wake_mode).toBe("approve")
+    // periodic wakes set by agents: at once, as before (1.1.0-rc5); the
+    // value is called allow since 1.1.0-rc6
+    expect(d.wake_mode).toBe("allow")
     expect(d.compact_at).toBe("50% max 500000")
     expect(d.check_timeout).toBe("60s")
     expect(d.check_output).toBe(2000)
@@ -60,7 +61,7 @@ describe("settings", () => {
   test("values are checked and normalized per key", () => {
     expect(normalizeSetting("min_interval", "90s")).toBe("1m30s")
     expect(normalizeSetting("check_output", "2048")).toBe(2048)
-    expect(normalizeSetting("question_mode", "auto")).toBe("auto")
+    expect(normalizeSetting("question_mode", "auto_answer")).toBe("auto_answer")
     expect(normalizeSetting("daily_usd", 12.5)).toBe(12.5)
     expect(normalizeSetting("daily_usd", "off")).toBe("off")
     expect(normalizeSetting("cap_warn", "80%")).toBe("80%")
@@ -183,7 +184,7 @@ describe("settings", () => {
       rules: [
         {
           match: "kaggle:*",
-          settings: { min_interval: "5m", question_mode: "auto" },
+          settings: { min_interval: "5m", question_mode: "auto_answer" },
         },
         {
           match: "kaggle:lead",
@@ -219,33 +220,119 @@ describe("settings", () => {
 })
 
 // The owner, 2026-11-09 (rc2): job_mode, per agent and pattern: ask (an
-// approval of the owner), approve (at once) or off (agents cannot set jobs).
-test("job_mode takes ask, approve or off, and nothing else", () => {
-  for (const v of ["ask", "approve", "off"])
+// approval of the owner), allow (at once) or deny (agents cannot set jobs).
+test("job_mode takes ask, allow or deny, and nothing else", () => {
+  for (const v of ["ask", "allow", "deny"])
     expect(normalizeSetting("job_mode", v)).toBe(v)
-  for (const v of ["agent:team:lead", "job:mail", "auto", ""])
+  for (const v of ["agent:team:lead", "job:mail", "auto_answer", ""])
     expect(() => normalizeSetting("job_mode", v), v).toThrow(
-      "expected one of ask, approve, off",
+      "expected one of ask, allow, deny",
     )
   expect(SETTINGS.job_mode?.scope).toBe("agent")
+  expect(SETTINGS.job_mode?.help).toBe(
+    "jobs an agent sets: an approval of the owner first (ask), set at once " +
+      "(allow), or refused (deny)",
+  )
 })
 
 // 1.1.0-rc5 (asked for by a project): wake_mode, per agent and pattern,
-// for the periodic wakes an agent sets: approve (at once, the default), ask
-// (an approval of the owner) or off.
-test("wake_mode takes ask, approve or off, and nothing else", () => {
-  for (const v of ["ask", "approve", "off"])
+// for the periodic wakes an agent sets: allow (at once, the default), ask
+// (an approval of the owner) or deny.
+test("wake_mode takes ask, allow or deny, and nothing else", () => {
+  for (const v of ["ask", "allow", "deny"])
     expect(normalizeSetting("wake_mode", v)).toBe(v)
-  for (const v of ["agent:team:lead", "job:mail", "auto", ""])
+  for (const v of ["agent:team:lead", "job:mail", "auto_answer", ""])
     expect(() => normalizeSetting("wake_mode", v), v).toThrow(
-      "expected one of ask, approve, off",
+      "expected one of ask, allow, deny",
     )
   expect(SETTINGS.wake_mode?.scope).toBe("agent")
   expect(SETTINGS.wake_mode?.help).toBe(
     "periodic wakes an agent sets (every, cron, idle): set at once, " +
-      "with nobody asked (approve), an approval of the owner first " +
-      "(ask), or refused (off)",
+      "with nobody asked (allow), an approval of the owner first " +
+      "(ask), or refused (deny)",
   )
+})
+
+/*
+ * 1.1.0-rc6 (the owner, 2026-11-22, after a table of the five mode
+ * settings: "lets rename: "approve" to "allow" "auto" to "auto_answer"
+ * "off" to "deny""; agents had read approve as "needs approval"). An old
+ * name is refused, with the new one: no value has two names.
+ */
+describe("the mode values' names since 1.1.0-rc6", () => {
+  test("each mode setting takes its new values", () => {
+    const takes: Record<string, string[]> = {
+      question_mode: ["ask", "auto_answer", "agent:team:lead", "job:mail"],
+      permission_mode: ["ask", "allow", "agent:team:lead", "job:mail"],
+      approval_mode: ["ask", "allow", "agent:team:lead", "job:mail"],
+      job_mode: ["ask", "allow", "deny"],
+      wake_mode: ["ask", "allow", "deny"],
+    }
+    for (const [key, values] of Object.entries(takes)) {
+      for (const v of values) expect(normalizeSetting(key, v), key).toBe(v)
+      expect(SETTINGS[key]?.values, key).toEqual(
+        values.filter((v) => !v.includes(":")),
+      )
+    }
+    expect(SETTINGS.question_mode?.help).toBe(
+      "questions go to the owner (ask), are answered at once " +
+        "(auto_answer), or go to agent:<id> or job:<name>",
+    )
+    expect(SETTINGS.auto_answer_text?.help).toBe(
+      "the answer given under question_mode auto_answer",
+    )
+    expect(SETTINGS.permission_mode?.help).toBe(
+      "permission prompts go to the owner (ask), are allowed once " +
+        "(allow), or go to agent:<id> or job:<name>",
+    )
+    expect(SETTINGS.approval_mode?.help).toBe(
+      "approvals go to the owner (ask), are approved at once (allow), or " +
+        "go to agent:<id> or job:<name>",
+    )
+  })
+
+  test("an old name is refused, and the message names the new one", () => {
+    const old: [string, string, string][] = [
+      ["question_mode", "auto", "auto_answer"],
+      ["permission_mode", "approve", "allow"],
+      ["approval_mode", "approve", "allow"],
+      ["job_mode", "approve", "allow"],
+      ["job_mode", "off", "deny"],
+      ["wake_mode", "approve", "allow"],
+      ["wake_mode", "off", "deny"],
+    ]
+    for (const [key, was, now] of old) {
+      let message = ""
+      try {
+        normalizeSetting(key, was)
+      } catch (err) {
+        message = (err as Error).message
+      }
+      expect(message, `${key} ${was}`).toStartWith(
+        `${key}: "${was}" is now "${now}" (renamed in 1.1.0-rc6); expected `,
+      )
+      // with spaces around it too
+      expect(() => normalizeSetting(key, ` ${was} `)).toThrow(
+        `"${was}" is now "${now}"`,
+      )
+    }
+    // a value that was never one of a setting's gets the plain message
+    expect(() => normalizeSetting("question_mode", "approve")).toThrow(
+      "question_mode: expected ask, auto_answer, agent:<id> or job:<name>",
+    )
+    expect(() => normalizeSetting("permission_mode", "off")).toThrow(
+      "permission_mode: expected ask, allow, agent:<id> or job:<name>",
+    )
+    expect(() => normalizeSetting("job_mode", "auto")).toThrow(
+      "job_mode: expected one of ask, allow, deny",
+    )
+  })
+
+  test("off stays the word of the settings where it means not in use", () => {
+    expect(normalizeSetting("compact_at", "off")).toBe("off")
+    expect(normalizeSetting("daily_usd", "off")).toBe("off")
+    expect(normalizeSetting("filter_recovery", "off")).toBe("off")
+  })
 })
 
 // 1.1.0-rc5 (asked for by a project): 0 means never, as for a host's

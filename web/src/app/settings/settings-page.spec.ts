@@ -36,7 +36,7 @@ function view(change: Partial<SettingsView> = {}): SettingsView {
     },
     server: {},
     rules: [
-      { match: 'kaggle:*', settings: { question_mode: 'auto' } },
+      { match: 'kaggle:*', settings: { question_mode: 'auto_answer' } },
       { match: 'a:*', settings: { min_interval: '5m' } },
     ],
     agents: { 'kaggle:lead': { min_interval: '2m' } },
@@ -51,8 +51,10 @@ function view(change: Partial<SettingsView> = {}): SettingsView {
         kind: 'enum',
         scope: 'agent',
         default: 'ask',
-        values: ['ask', 'auto'],
-        help: 'questions go to the owner (ask) or are answered at once (auto)',
+        values: ['ask', 'auto_answer'],
+        help:
+          'questions go to the owner (ask) or are answered at once ' +
+          '(auto_answer)',
       },
       history_days: {
         kind: 'int',
@@ -65,7 +67,7 @@ function view(change: Partial<SettingsView> = {}): SettingsView {
         kind: 'mode',
         scope: 'agent',
         default: 'ask',
-        values: ['ask', 'approve'],
+        values: ['ask', 'allow'],
         help: 'approvals go to the owner, are approved, or go to an agent',
       },
       // No setting of the server is a switch now (the owner, 2026-11-07):
@@ -254,14 +256,19 @@ describe('SettingsPage', () => {
   it('choices are a list and switches a checkbox', async () => {
     const page = await open();
     const mode = row(page, 'question_mode').querySelector('select')!;
-    expect([...mode.options].map((o) => o.value)).toEqual(['ask', 'auto']);
+    expect([...mode.options].map((o) => o.value)).toEqual([
+      'ask',
+      'auto_answer',
+    ]);
     expect(mode.value).toBe('ask');
-    choose(mode, 'auto');
+    choose(mode, 'auto_answer');
     await settle(fixture);
     button(row(page, 'question_mode'), 'Save')!.click();
     const first = patch();
-    expect(first.request.body).toEqual({ server: { question_mode: 'auto' } });
-    first.flush(withServer({ question_mode: 'auto' }));
+    expect(first.request.body).toEqual({
+      server: { question_mode: 'auto_answer' },
+    });
+    first.flush(withServer({ question_mode: 'auto_answer' }));
     await settle(fixture);
 
     const box = row(page, 'sample_switch').querySelector(
@@ -290,7 +297,7 @@ describe('SettingsPage', () => {
       cell().querySelector('select.mode-target') as HTMLSelectElement | null;
     expect([...kind().options].map((o) => text(o))).toEqual([
       'ask',
-      'approve',
+      'allow',
       'Agent…',
       'Job…',
     ]);
@@ -394,17 +401,17 @@ describe('SettingsPage', () => {
     type(editor.querySelector('input[aria-label="Value 1"]'), '3m');
     button(editor, 'Add a Setting')!.click();
     await settle(fixture);
-    choose(editor.querySelector('select[aria-label="Value 2"]'), 'auto');
+    choose(editor.querySelector('select[aria-label="Value 2"]'), 'auto_answer');
     await settle(fixture);
     button(editor, 'Save Rule')!.click();
     const req = patch();
     expect(req.request.body).toEqual({
       rules: [
-        { match: 'kaggle:*', settings: { question_mode: 'auto' } },
+        { match: 'kaggle:*', settings: { question_mode: 'auto_answer' } },
         { match: 'a:*', settings: { min_interval: '5m' } },
         {
           match: 'b:*',
-          settings: { min_interval: '3m', question_mode: 'auto' },
+          settings: { min_interval: '3m', question_mode: 'auto_answer' },
         },
       ],
     });
@@ -428,7 +435,7 @@ describe('SettingsPage', () => {
     const edited = patch();
     expect(edited.request.body.rules[0]).toEqual({
       match: 'kaggle:*,casmi:*',
-      settings: { question_mode: 'auto' },
+      settings: { question_mode: 'auto_answer' },
     });
     apiError(
       edited,
@@ -492,17 +499,17 @@ describe('SettingsPage', () => {
     await settle(fixture);
     choose(
       page.querySelector('select[aria-label="Value for the agent"]'),
-      'auto',
+      'auto_answer',
     );
     await settle(fixture);
     button(page.querySelector('.add-row')!, 'Add')!.click();
     const added = patch();
     expect(added.request.body).toEqual({
-      agents: { 'kaggle:worker': { question_mode: 'auto' } },
+      agents: { 'kaggle:worker': { question_mode: 'auto_answer' } },
     });
     const both = {
       'kaggle:lead': { min_interval: '2m' },
-      'kaggle:worker': { question_mode: 'auto' },
+      'kaggle:worker': { question_mode: 'auto_answer' },
     };
     added.flush(view({ agents: both }));
     await settle(fixture);
@@ -547,7 +554,11 @@ describe('SettingsPage', () => {
     );
     req.flush({
       agent: 'kaggle:lead',
-      values: { min_interval: '2m', question_mode: 'auto', history_days: 30 },
+      values: {
+        min_interval: '2m',
+        question_mode: 'auto_answer',
+        history_days: 30,
+      },
       sources: {
         min_interval: 'agent',
         question_mode: 'rule 1 (kaggle:*)',
@@ -576,6 +587,6 @@ describe('SettingsPage', () => {
     ).toBe('built-in default');
     expect(
       text(result.querySelector('tr[data-key="question_mode"] td.value')),
-    ).toBe('auto');
+    ).toBe('auto_answer');
   });
 });

@@ -455,6 +455,174 @@ describe("store", () => {
     db.close()
   })
 
+  /*
+   * 30 (1.1.0-rc6; the owner, 2026-11-22: "lets rename: "approve" to
+   * "allow" "auto" to "auto_answer" "off" to "deny""): what the database
+   * holds of the five mode settings takes the new names, in every scope,
+   * and so does how an ask was routed. Nothing else changes: `off` of the
+   * other settings, a text that quotes an old name, an answer's words.
+   */
+  test("migration 30 renames the stored values of the mode settings and asks.routed", () => {
+    const path = tempDb()
+    const old = openStore(path, MIGRATIONS.slice(0, 29))
+    const put = (scope: string, key: string, value: unknown) =>
+      old.run("INSERT INTO settings (scope, key, value) VALUES (?, ?, ?)", [
+        scope,
+        key,
+        JSON.stringify(value),
+      ])
+    // server-wide
+    put("server", "question_mode", "auto")
+    put("server", "permission_mode", "approve")
+    put("server", "approval_mode", "agent:team:approve")
+    put("server", "job_mode", "off")
+    put("server", "wake_mode", "approve")
+    put("server", "compact_at", "off")
+    put("server", "daily_usd", "off")
+    put("server", "filter_recovery", "off")
+    // a text that names the old values is not a value
+    const quote =
+      'Say "wake_mode":"approve" or {"job_mode":"off"}, never auto or off.'
+    put("server", "auto_answer_text", quote)
+    // the rules, in their order
+    put("rules", "", [
+      {
+        match: "kaggle:*",
+        settings: { question_mode: "auto", min_interval: "5m" },
+      },
+      {
+        match: 'odd:"wake_mode":"off"*',
+        settings: {
+          permission_mode: "approve",
+          approval_mode: "approve",
+          job_mode: "approve",
+          wake_mode: "off",
+          auto_answer_text: quote,
+          compact_at: "off",
+        },
+      },
+      { match: "team:*", settings: { job_mode: "off", wake_mode: "ask" } },
+    ])
+    // per agent
+    put("agent", "team:lead", {
+      wake_mode: "approve",
+      job_mode: "ask",
+      daily_usd: "off",
+    })
+    put("agent", "team:worker", {
+      question_mode: "job:auto",
+      permission_mode: "agent:team:lead",
+      approval_mode: "approve",
+      wake_mode: "off",
+    })
+    put("agent", "approve", { question_mode: "auto", filter_recovery: "off" })
+    // asks: how each was routed
+    const ask = (id: string, kind: string, routed: string, answer: unknown) =>
+      old.run(
+        "INSERT INTO asks (id, kind, agent_id, session_id, ref, title, " +
+          "body, routed, state, answer, answered_by, created_at) VALUES " +
+          "(?, ?, 'team:lead', 'ses_a', ?, 'T', '{}', ?, 'answered', ?, " +
+          "'auto', 1)",
+        [id, kind, id, routed, JSON.stringify(answer)],
+      )
+    ask("ask_q", "question", "auto", { cancel: "Go on." })
+    ask("ask_p", "permission", "approve", { decision: "once" })
+    ask("ask_a", "approval", "approve", { decision: "approve" })
+    ask("ask_o", "approval", "owner", { decision: "approve" })
+    ask("ask_g", "question", "agent:team:auto", { cancel: "x" })
+    old.close()
+
+    const db = openStore(path)
+    expect(schemaVersion(db)).toBeGreaterThanOrEqual(30)
+    const stored = (scope: string, key: string) =>
+      JSON.parse(
+        (
+          db
+            .query("SELECT value FROM settings WHERE scope = ? AND key = ?")
+            .get(scope, key) as { value: string }
+        ).value,
+      )
+    expect(stored("server", "question_mode")).toBe("auto_answer")
+    expect(stored("server", "permission_mode")).toBe("allow")
+    expect(stored("server", "approval_mode")).toBe("agent:team:approve")
+    expect(stored("server", "job_mode")).toBe("deny")
+    expect(stored("server", "wake_mode")).toBe("allow")
+    expect(stored("server", "compact_at")).toBe("off")
+    expect(stored("server", "daily_usd")).toBe("off")
+    expect(stored("server", "filter_recovery")).toBe("off")
+    expect(stored("server", "auto_answer_text")).toBe(quote)
+    expect(stored("rules", "")).toEqual([
+      {
+        match: "kaggle:*",
+        settings: { question_mode: "auto_answer", min_interval: "5m" },
+      },
+      {
+        match: 'odd:"wake_mode":"off"*',
+        settings: {
+          permission_mode: "allow",
+          approval_mode: "allow",
+          job_mode: "allow",
+          wake_mode: "deny",
+          auto_answer_text: quote,
+          compact_at: "off",
+        },
+      },
+      { match: "team:*", settings: { job_mode: "deny", wake_mode: "ask" } },
+    ])
+    expect(stored("agent", "team:lead")).toEqual({
+      wake_mode: "allow",
+      job_mode: "ask",
+      daily_usd: "off",
+    })
+    expect(stored("agent", "team:worker")).toEqual({
+      question_mode: "job:auto",
+      permission_mode: "agent:team:lead",
+      approval_mode: "allow",
+      wake_mode: "deny",
+    })
+    expect(stored("agent", "approve")).toEqual({
+      question_mode: "auto_answer",
+      filter_recovery: "off",
+    })
+    expect(
+      db
+        .query("SELECT id, routed, answer, answered_by FROM asks ORDER BY id")
+        .all(),
+    ).toEqual([
+      {
+        id: "ask_a",
+        routed: "allow",
+        answer: '{"decision":"approve"}',
+        answered_by: "auto",
+      },
+      {
+        id: "ask_g",
+        routed: "agent:team:auto",
+        answer: '{"cancel":"x"}',
+        answered_by: "auto",
+      },
+      {
+        id: "ask_o",
+        routed: "owner",
+        answer: '{"decision":"approve"}',
+        answered_by: "auto",
+      },
+      {
+        id: "ask_p",
+        routed: "allow",
+        answer: '{"decision":"once"}',
+        answered_by: "auto",
+      },
+      {
+        id: "ask_q",
+        routed: "auto_answer",
+        answer: '{"cancel":"Go on."}',
+        answered_by: "auto",
+      },
+    ])
+    db.close()
+  })
+
   test("a failing migration leaves the database at the version before it", () => {
     const path = tempDb()
     openStore(path, ["CREATE TABLE t (a TEXT)"]).close()

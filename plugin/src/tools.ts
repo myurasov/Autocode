@@ -358,20 +358,21 @@ export async function runMe(
         )
       /*
        * Whether its wakes need anyone's word (wake_mode, 1.1.0-rc5). The
-       * default says so too: agents read `approve` as "needs approval"
-       * and asked the owner (the owner, 2026-11-22).
+       * default says so too: agents read its old name, `approve`, as
+       * "needs approval" and asked the owner (the owner, 2026-11-22); it is
+       * `allow` since 1.1.0-rc6, and `off` is `deny`.
        */
-      if (set?.wake_mode === "ask" || set?.wake_mode === "off")
+      if (set?.wake_mode === "ask" || set?.wake_mode === "deny")
         lines.push(
           "Periodic wakes (every, cron, idle): " +
             (set.wake_mode === "ask"
               ? "the owner approves each one first (wake_mode ask)."
-              : "you cannot set them (wake_mode off)."),
+              : "you cannot set them (wake_mode deny)."),
         )
-      else if (set?.wake_mode === "approve")
+      else if (set?.wake_mode === "allow")
         lines.push(
           "Wakes: you set them yourself, at once; no approval is needed " +
-            "(wake_mode approve).",
+            "(wake_mode allow).",
         )
       // how many messages wait (for a prompt, a steer or a read)
       if (me.waiting !== undefined)
@@ -1468,7 +1469,7 @@ function approvalLine(a: any): string {
     a.by === "owner"
       ? " by the owner"
       : a.by === "auto"
-        ? " (by the setting approval_mode=approve)"
+        ? " (by the setting approval_mode=allow)"
         : a.by && a.by === a.agent
           ? " by you"
           : a.by

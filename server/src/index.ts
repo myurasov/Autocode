@@ -1034,7 +1034,7 @@ export async function startServer(
     /*
      * The owner, 2026-11-09 (rc2): an agent sets a job of its own, named
      * <agent>:<name>, its run_usd required; job_mode: ask (an approval of the
-     * owner with the whole definition), approve (set at once), off.
+     * owner with the whole definition), allow (set at once), deny.
      */
     {
       method: "POST",
@@ -1052,10 +1052,10 @@ export async function startServer(
         const mode = String(
           resolveSettings(settings.layers(), agent).values.job_mode ?? "ask",
         )
-        if (mode === "off")
+        if (mode === "deny")
           throw new AutocodeError(
             "forbidden",
-            "you cannot set jobs: job_mode is off (the owner's setting)",
+            "you cannot set jobs: job_mode is deny (the owner's setting)",
             403,
           )
         const { name: given, ...fields } = b
@@ -1090,7 +1090,7 @@ export async function startServer(
             `the job ${name} is not yours`,
             403,
           )
-        if (mode === "approve") {
+        if (mode === "allow") {
           jobs.store(def, agent)
           return json(
             { state: "set", name, job: jobs.view(jobs.row(name)) },
@@ -1324,7 +1324,7 @@ export async function startServer(
       /*
        * wake_mode (1.1.0-rc5; asked for by a project): the periodic wakes
        * an agent sets for itself (every, cron, idle) may need
-       * the owner's approval (ask) or be refused (off). The terms are
+       * the owner's approval (ask) or be refused (deny). The terms are
        * checked first. Setting a wake again with the terms it has asks
        * nothing and is not refused, and leaves a change that waits where
        * it is. One-time wakes are free.
@@ -1333,17 +1333,16 @@ export async function startServer(
         const agent = me(caller)
         const def = wakes.check(agent, params.name, await body())
         const mode = String(
-          resolveSettings(settings.layers(), agent).values.wake_mode ??
-            "approve",
+          resolveSettings(settings.layers(), agent).values.wake_mode ?? "allow",
         )
-        // set again as it is: nothing new to decide, under ask and off
+        // set again as it is: nothing new to decide, under ask and deny
         const same = wakes.sameTerms(agent, def)
-        if (mode !== "approve" && periodic(def.trigger) && !same) {
-          if (mode === "off")
+        if (mode !== "allow" && periodic(def.trigger) && !same) {
+          if (mode === "deny")
             throw new AutocodeError(
               "forbidden",
               "you cannot set periodic wakes (every, cron, idle): " +
-                "wake_mode is off (the owner's setting); one-time wakes " +
+                "wake_mode is deny (the owner's setting); one-time wakes " +
                 "(in, at, fire-only) stay free",
               403,
             )

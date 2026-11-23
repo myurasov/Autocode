@@ -140,7 +140,14 @@ describe("autocode CLI", () => {
     expect(
       (
         await cli(
-          ["settings", "set", "question_mode", "auto", "--match", "kaggle:*"],
+          [
+            "settings",
+            "set",
+            "question_mode",
+            "auto_answer",
+            "--match",
+            "kaggle:*",
+          ],
           asAdmin(),
         )
       ).code,
@@ -161,7 +168,7 @@ describe("autocode CLI", () => {
       asAdmin(),
     )
     expect(resolved.stdout).toMatch(
-      /question_mode\s+auto\s+rule 1 \(kaggle:\*\)/,
+      /question_mode\s+auto_answer\s+rule 1 \(kaggle:\*\)/,
     )
     expect(resolved.stdout).toMatch(/check_output\s+99\s+agent/)
     const bad = await cli(
@@ -170,6 +177,20 @@ describe("autocode CLI", () => {
     )
     expect(bad.code).toBe(1)
     expect(bad.stderr).toContain("min_interval")
+    // 1.1.0-rc6: an old name of a mode value is refused, with the new one
+    const renamed = await cli(
+      ["settings", "set", "wake_mode", "approve", "--agent", "kaggle:lead"],
+      asAdmin(),
+    )
+    expect(renamed.code).toBe(1)
+    expect(renamed.stderr).toContain(
+      'wake_mode: "approve" is now "allow" (renamed in 1.1.0-rc6)',
+    )
+    for (const args of [
+      ["settings", "set", "wake_mode", "deny", "--agent", "kaggle:lead"],
+      ["settings", "unset", "wake_mode", "--agent", "kaggle:lead"],
+    ])
+      expect((await cli(args, asAdmin())).code, args[1]).toBe(0)
     expect(
       (await cli(["settings", "unset", "min_interval"], asAdmin())).code,
     ).toBe(0)

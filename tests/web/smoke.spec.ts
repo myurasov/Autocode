@@ -1975,9 +1975,10 @@ test("Settings: a mode's Agent… lists the agents and saves agent:<id>", async 
   await openTab(page, "Settings")
   const row = page.locator('table.settings tr[data-key="approval_mode"]')
   const kind = row.getByLabel("Value of approval_mode", { exact: true })
+  // 1.1.0-rc6: the value that approves at once is called allow
   await expect(kind.locator("option")).toHaveText([
     "ask",
-    "approve",
+    "allow",
     "Agent…",
     "Job…",
   ])

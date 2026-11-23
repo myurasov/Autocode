@@ -478,7 +478,7 @@ describe("autocode_approval", () => {
     })
   })
 
-  test("ask approved at once (approve mode), and wait's outcomes", async () => {
+  test("ask approved at once (approval_mode allow), and wait's outcomes", async () => {
     const { call } = fake({
       "GET /v1/me": ME,
       "POST /v1/me/approvals": {
@@ -491,7 +491,7 @@ describe("autocode_approval", () => {
       }),
     })
     expect(await runApproval({ action: "ask", text: "Go?" }, call)).toBe(
-      "Approval ask_2 is approved (by the setting approval_mode=approve).",
+      "Approval ask_2 is approved (by the setting approval_mode=allow).",
     )
     expect(
       await runApproval({ action: "wait", id: "ask_3", seconds: 30 }, call),

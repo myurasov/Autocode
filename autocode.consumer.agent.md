@@ -188,21 +188,20 @@ More:
 - You set your wakes yourself, at once. Autocode asks nobody for
   them: do not ask the owner for an approval of a wake, and do not
   wait for one, unless your own instructions say so. That is the
-  default, `wake_mode` `approve`: the name means that a wake counts
-  as approved at once, by the setting, not that somebody approves it.
-  Only where the owner changed the setting is that different, and
-  only for periodic wakes (`every`, `cron`, and `idle` with or
-  without `repeat`); `autocode_me status` says which it is. With
-  `ask`, `set` does not set the wake: it asks the owner, with the
-  wake's exact terms, and the wake is set once the owner approves (a
-  notice tells you: `approval "Wake NAME" approved`). Go on with your
-  work
-  meanwhile: a wake of that name that exists stays as it is, `list`
-  shows what waits, and you take a proposal back with
+  default, `wake_mode` `allow`. Before 1.1.0-rc6 that value was
+  called `approve`, and `deny` was called `off`: the names changed,
+  not what they do. Only where the owner changed the setting is that
+  different, and only for periodic wakes (`every`, `cron`, and `idle`
+  with or without `repeat`); `autocode_me status` says which it is.
+  With `ask`, `set` does not set the wake: it asks the owner, with
+  the wake's exact terms, and the wake is set once the owner approves
+  (a notice tells you: `approval "Wake NAME" approved`). Go on with
+  your work meanwhile: a wake of that name that exists stays as it
+  is, `list` shows what waits, and you take a proposal back with
   `autocode_approval action=close`. Cancelling a wake, or setting it
   with other terms, closes its proposal. Setting a wake again with
-  the terms it has asks nothing, also under `off`, and leaves a
-  change that waits where it is. With `off`, a periodic wake is
+  the terms it has asks nothing, also under `deny`, and leaves a
+  change that waits where it is. With `deny`, a periodic wake is
   refused. One-time wakes stay free in both, but do not rebuild a
   periodic wake from one-time ones to get around the setting: ask the
   owner.

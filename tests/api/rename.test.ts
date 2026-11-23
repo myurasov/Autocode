@@ -53,7 +53,7 @@ beforeEach(async () => {
   t = await testServer()
   await owner("PATCH", "/v1/settings", {
     server: { timezone: "UTC", min_interval: "1s" },
-    rules: [{ match: "team:*", settings: { job_mode: "approve" } }],
+    rules: [{ match: "team:*", settings: { job_mode: "allow" } }],
   })
   await hello(t, HOST)
   a = await registered(t, HOST, "ses_a", "team:a")
