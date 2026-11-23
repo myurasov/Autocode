@@ -161,12 +161,12 @@ Triggers (times without a zone are in the server's zone):
 - `fire-only once`: the same, for one fire: the wake is removed when
   it is fired, and its run is still delivered. Use it for a job that
   ends once; a plain `fire-only` wake stays until you cancel it.
-- An end: `every`, `cron` and `idle ... repeat` take `until <time>`
-  as their last words (`every 1d until 2027-03-01`). A date alone
-  means through that day; a date and a time, an ISO time, or `HH:MM`
-  (the next one) is that instant; a cron trigger's end is in the
-  cron's zone. The wake runs while its time is before the end. At the
-  end it is removed, and a notice tells you (`[autocode] wake "NAME"
+- An end: `every`, `cron` and `idle` take `until <time>` as their
+  last words (`every 1d until 2027-03-01`). A date alone means
+  through that day; a date and a time, an ISO time, or `HH:MM` (the
+  next one) is that instant; a cron trigger's end is in the cron's
+  zone. The wake runs while its time is before the end. At the end it
+  is removed, and a notice tells you (`[autocode] wake "NAME"
   ended`). Use it when the owner grants a wake for a period. One-time
   and fire-only wakes take no end.
 
@@ -185,15 +185,17 @@ More:
   `show` one whole; `cancel` removes a wake and any of its runs still
   waiting (also the waiting run of a one-time wake that is gone
   already).
-- The owner may gate periodic wakes (`every`, `cron`, `idle ...
-  repeat`) with the `wake_mode` setting; `autocode_me status` says so
-  when they are not free. With `ask`, `set` does not set the wake: it
-  asks the owner, with the wake's exact terms, and the wake is set
-  once the owner approves (a notice tells you: `approval "Wake NAME"
-  approved`). Go on with your work meanwhile: a wake of that name
-  that exists stays as it is, `list` shows what waits, and you take a
-  proposal back with `autocode_approval action=close`. Setting a wake
-  again with the terms it has asks nothing. With `off`, a periodic
+- The owner may gate periodic wakes (`every`, `cron`, and `idle`
+  with or without `repeat`) with the `wake_mode` setting;
+  `autocode_me status` says so when they are not free. With `ask`,
+  `set` does not set the wake: it asks the owner, with the wake's
+  exact terms, and the wake is set once the owner approves (a notice
+  tells you: `approval "Wake NAME" approved`). Go on with your work
+  meanwhile: a wake of that name that exists stays as it is, `list`
+  shows what waits, and you take a proposal back with
+  `autocode_approval action=close`. Cancelling a wake, or setting it
+  again, closes its proposal. Setting a wake again with the terms it
+  has asks nothing. With `off`, a periodic
   wake is refused. One-time wakes stay free in both, but do not
   rebuild a periodic wake from one-time ones to get around the
   setting: ask the owner.

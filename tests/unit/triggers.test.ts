@@ -250,28 +250,82 @@ describe("an end on a periodic trigger (until)", () => {
   })
 
   test("only a periodic trigger takes one, and the refusal says so", () => {
+    const only = new RegExp(
+      "only a periodic trigger takes an end \\(until\\): every, cron or " +
+        "idle; a trigger looks like",
+    )
     for (const bad of [
       "in 45m until 2027-03-01",
       "at 09:00 until 10:00",
       "at 2027-02-01 09:00 until 2027-03-01",
-      "idle 30m until 2027-03-01",
       "fire-only until 2027-03-01",
       "fire-only once until 2027-03-01",
     ])
-      expect(() => parseTrigger(bad, opts), bad).toThrow(
-        /only a periodic trigger takes an end \(until\): every, cron or idle \.\.\. repeat/,
-      )
+      expect(() => parseTrigger(bad, opts), bad).toThrow(only)
     expect(periodic(parseTrigger("every 30m", opts))).toBe(true)
     expect(periodic(parseTrigger('cron "0 9 * * *"', opts))).toBe(true)
     expect(periodic(parseTrigger("idle 30m repeat", opts))).toBe(true)
-    for (const once of [
-      "in 45m",
-      "at 18:00",
-      "idle 30m",
-      "fire-only",
-      "fire-only once",
-    ])
+    /*
+     * The review before 1.1.0-rc5: an idle wake without repeat runs again
+     * too, once in every idle stretch, and each of its own turns starts a
+     * new one. So it is periodic, and may end.
+     */
+    expect(periodic(parseTrigger("idle 30m", opts))).toBe(true)
+    expect(parseTrigger("idle 30m until 2027-03-01", opts)).toEqual({
+      kind: "idle",
+      idle_ms: 1_800_000,
+      repeat: false,
+      until: "2027-03-02T08:00:00.000Z",
+    })
+    for (const once of ["in 45m", "at 18:00", "fire-only", "fire-only once"])
       expect(periodic(parseTrigger(once, opts)), once).toBe(false)
+  })
+
+  // The review before 1.1.0-rc5: `until 9999-12-31`, a natural "for ever",
+  // stored an end that could not be read back.
+  test("an end past the year 9999 is refused; every end it takes is read again", () => {
+    for (const far of [
+      "every 1d until 9999-12-31",
+      "every 1d until 9999-12-31 18:00",
+      "every 1d until 9999-12-31T23:59:59-01:00",
+    ])
+      expect(() => parseTrigger(far, opts), far).toThrow(
+        /the end \(until\) must be before the year 10000/,
+      )
+    for (const text of [
+      "every 1d until 9999-12-30",
+      "every 1d until 9999-12-31 15:59",
+      "every 1d until 2028-02-29",
+      "every 1d until 2027-03-14",
+      "every 1d until 2027-11-07 01:30",
+      "every 90m from 23:30 until 2026-12-31",
+      'cron "0 9 * * *" Asia/Tokyo until 2027-01-01',
+      "idle 45m until 18:00",
+      "idle 45m repeat until 2026-11-02T20:00:00+01:00",
+      // more than one space between the end's words
+      "every 1d until 2027-03-01  18:00",
+      "every 1d   until   2027-03-01",
+    ]) {
+      const t = parseTrigger(text, opts)
+      const again = parseTrigger(formatTrigger(t), opts)
+      expect(again, text).toEqual(t)
+      expect(formatTrigger(again), text).toBe(formatTrigger(t))
+    }
+  })
+
+  test("an end that cannot be read gets a reason of its own", () => {
+    for (const bad of [
+      "every 1d until tomorrow",
+      "every 1d until 24:00",
+      "every 1d until 23:59:59",
+      "every 1d until 2027-03-01 6pm",
+    ])
+      expect(() => parseTrigger(bad, opts), bad).toThrow(
+        /cannot read the end \(until\): a date \(2027-03-01\), a date and a time, an ISO time or HH:MM/,
+      )
+    expect(() => parseTrigger("every 1d until 2027-02-30", opts)).toThrow(
+      /no such date or time/,
+    )
   })
 
   test("refuses an end it cannot read, and one that has passed", () => {

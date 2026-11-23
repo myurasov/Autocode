@@ -1917,8 +1917,9 @@ test("Messages: every message is text; no Kind column, no file to send", async (
 })
 
 /*
- * A wake has no end (the owner, 2026-11-07): the Set a Wake form has no End
- * field, and the table no End column.
+ * A wake has no End of its own (the owner, 2026-11-07): the Set a Wake form
+ * has no End field, and the table no End column. Since 1.1.0-rc5 a periodic
+ * trigger may say `until`.
  */
 test("Wakes: no End in the Set a Wake form or the table", async ({ page }) => {
   await signIn(page, admin)

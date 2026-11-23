@@ -242,9 +242,8 @@ test("wake_mode takes ask, approve or off, and nothing else", () => {
     )
   expect(SETTINGS.wake_mode?.scope).toBe("agent")
   expect(SETTINGS.wake_mode?.help).toBe(
-    "periodic wakes an agent sets (every, cron, idle ... repeat): an " +
-      "approval of the owner first (ask), set at once (approve), or " +
-      "refused (off)",
+    "periodic wakes an agent sets (every, cron, idle): an approval of " +
+      "the owner first (ask), set at once (approve), or refused (off)",
   )
 })
 

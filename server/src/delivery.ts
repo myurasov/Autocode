@@ -27,6 +27,7 @@ import {
   parseDuration,
   resolveSettings,
   type Trigger,
+  triggerEnd,
 } from "@autocode/shared"
 import type { CompactDue, CostView } from "./costs.ts"
 import type { History } from "./history.ts"
@@ -846,11 +847,17 @@ export class Delivery {
         return live?.next_at
           ? `(once, at ${localTime(live.next_at, tz)})`
           : "(once, this was its only run)"
-      case "idle":
+      case "idle": {
+        // one with an end (1.1.0-rc5): its next run comes that long after
+        // this turn at the earliest, which may be past the end
+        const end = triggerEnd(t)
+        if (end !== null && (!live || this.now() + t.idle_ms >= end))
+          return `(${shown(t)}; no run left before its end)`
         return t.repeat
           ? `(${shown(t)}; again after ${formatDuration(t.idle_ms)} ` +
               `more idle)`
           : `(${shown(t)}; once per idle stretch)`
+      }
       case "fire-only":
         // a one-shot one went when it was fired (1.1.0)
         return t.once

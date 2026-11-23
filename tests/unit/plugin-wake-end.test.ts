@@ -49,9 +49,9 @@ function server(answers: Record<string, unknown>) {
 describe("a wake with an end", () => {
   test("the tool says which triggers may end, how, and what happens then", () => {
     expect(WAKE_TOOL.description).toContain(
-      "every, cron and idle ... repeat may end: add until 2027-03-01 " +
-        "(through that day) or until 2027-03-01 18:00; at its end the wake " +
-        "is removed and a notice tells you.",
+      "every, cron and idle may end: add until 2027-03-01 (through that " +
+        "day) or until 2027-03-01 18:00; at its end the wake is removed " +
+        "and a notice tells you.",
     )
     expect((WAKE_TOOL.input.properties.trigger as any).description).toContain(
       "every 1d until 2027-03-01",
@@ -112,6 +112,75 @@ describe("a wake with an end", () => {
         "and again every 2h while you stay idle. It ends 2026-10-29 00:00 " +
         "PDT: then it is removed, and a notice tells you. Delivered only " +
         "while your session is idle, at most once per 1m.",
+    )
+  })
+
+  // The review before 1.1.0-rc5: an idle wake without repeat may end too.
+  test("set: an idle wake without repeat, with an end", async () => {
+    const { call } = server({
+      "GET /v1/me": ME,
+      "PUT /v1/me/wakes/w": {
+        wake: wake({
+          trigger: "idle 2h until 2026-10-29T07:00:00.000Z",
+          due: "2026-10-28T14:00:00.000Z",
+        }),
+      },
+    })
+    expect(
+      await runWake(
+        {
+          action: "set",
+          name: "w",
+          trigger: "idle 2h until 2026-10-29",
+          text: "Go.",
+        },
+        call,
+      ),
+    ).toBe(
+      'Wake "w" set: idle 2h until 2026-10-29 00:00 PDT. It falls due once ' +
+        "per idle stretch: if your session stays idle, at 2026-10-28 07:00 " +
+        "PDT (in 2h). It ends 2026-10-29 00:00 PDT: then it is removed, " +
+        "and a notice tells you. Delivered only while your session is " +
+        "idle, at most once per 1m.",
+    )
+  })
+
+  // The review before 1.1.0-rc5: during a turn, an idle wake said "due 30m
+  // after this turn ends" also when that was past its end.
+  test("an idle wake whose next run cannot come before its end says so, also during a turn", async () => {
+    const wakes = {
+      wakes: [
+        wake({
+          name: "near",
+          trigger: "idle 30m repeat until 2026-10-28T12:10:00.000Z",
+        }),
+        wake({
+          name: "far",
+          trigger: "idle 30m until 2026-10-28T18:00:00.000Z",
+        }),
+      ],
+    }
+    const working = server({
+      "GET /v1/me": { ...ME, agent: { ...ME.agent, status: "working" } },
+      "GET /v1/me/wakes": wakes,
+    })
+    expect(
+      await runWake({ action: "show", name: "near" }, working.call),
+    ).toContain(
+      "Trigger: idle 30m repeat until 2026-10-28 05:10 PDT; no run left " +
+        "before its end.",
+    )
+    expect(
+      await runWake({ action: "show", name: "far" }, working.call),
+    ).toContain(
+      "Trigger: idle 30m until 2026-10-28 11:00 PDT; due 30m after this " +
+        "turn ends.",
+    )
+    // idle, and it ran in this stretch
+    const idle = server({ "GET /v1/me": ME, "GET /v1/me/wakes": wakes })
+    expect(await runWake({ action: "show", name: "far" }, idle.call)).toContain(
+      "Trigger: idle 30m until 2026-10-28 11:00 PDT; ran in this idle " +
+        "stretch; due again 30m after your next turn ends.",
     )
   })
 

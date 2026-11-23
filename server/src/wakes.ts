@@ -160,6 +160,13 @@ export class Wakes {
   // Tells an agent something of Autocode's own (a wake that ended).
   notify: (agent: string, subject: string, text: string) => void = () => {}
 
+  /*
+   * A wake that is stored or cancelled, by anyone, makes its open proposal
+   * (wake_mode ask) stale: it is closed, and this says whether there was
+   * one (the review before 1.1.0-rc5: a late approval overwrote the wake).
+   */
+  dropProposal: (agent: string, name: string) => boolean = () => false
+
   private agentExists(agent: string) {
     if (!this.db.query("SELECT 1 FROM agents WHERE id = ?").get(agent))
       throw new AutocodeError("not_registered", `no agent ${agent}`, 404)
@@ -288,7 +295,11 @@ export class Wakes {
     }
   }
 
-  // Its terms as lines for the owner, times in the server's zone.
+  /*
+   * Its terms as lines for the owner, times in the server's zone. The check
+   * is quoted line by line, like the text: it is the agent's own writing,
+   * and may hold line breaks.
+   */
   describe(agent: string, def: WakeDef): string[] {
     const tz = this.timezone()
     const shown = (t: Trigger) =>
@@ -296,15 +307,18 @@ export class Wakes {
     const now = this.row(agent, def.name)
     return [
       `- trigger: ${shown(def.trigger)}`,
+      ...(now ? [`- now: ${shown(JSON.parse(now.trigger))}`] : []),
       ...(def.check
         ? [
-            `- check: ${def.check}` +
+            "",
+            "Its check" +
               (def.check_timeout_ms
                 ? ` (up to ${formatDuration(def.check_timeout_ms)})`
-                : ""),
+                : "") +
+              ":",
+            ...def.check.split("\n").map((l) => `> ${l}`),
           ]
         : []),
-      ...(now ? [`- now: ${shown(JSON.parse(now.trigger))}`] : []),
     ]
   }
 
@@ -368,6 +382,7 @@ export class Wakes {
           )
     }
     this.db.query("RELEASE wake_set").run()
+    this.dropProposal(agent, name)
     this.history.record("wake.set", {
       agent,
       data: { name, trigger: formatTrigger(trigger), by, replaced: !!before },
@@ -430,7 +445,9 @@ export class Wakes {
         "DELETE FROM queue WHERE agent_id = ? AND kind = 'wake' AND wake = ?",
       )
       .run(agent, name)
-    if (!res.changes && !waiting.changes)
+    // and its proposal that waits for the owner, also when that is all
+    const proposed = this.dropProposal(agent, name)
+    if (!res.changes && !waiting.changes && !proposed)
       throw new AutocodeError("no_wake", `${agent} has no wake ${name}`, 404)
     this.history.record("wake.cancelled", { agent, data: { name, by } })
     return { cancelled: name }
@@ -507,10 +524,23 @@ export class Wakes {
       )
       .all(now) as any[])
       try {
+        const trigger = JSON.parse(row.trigger) as Trigger
+        /*
+         * Only a trigger's own end counts. The column is an old one: the
+         * first versions kept a wake's `end` there and never cleared it
+         * (the review before 1.1.0-rc5).
+         */
+        if (triggerEnd(trigger) === null) {
+          this.db
+            .query(
+              "UPDATE wakes SET end_at = NULL WHERE agent_id = ? AND name = ?",
+            )
+            .run(row.agent_id, row.name)
+          continue
+        }
         this.db
           .query("DELETE FROM wakes WHERE agent_id = ? AND name = ?")
           .run(row.agent_id, row.name)
-        const trigger = JSON.parse(row.trigger) as Trigger
         this.history.record("wake.ended", {
           agent: row.agent_id,
           data: { name: row.name, trigger: formatTrigger(trigger) },

@@ -3,7 +3,8 @@
  * (a link to the agent on the Agents page) with its trigger, next time, text
  * and check (a long one's first 200 characters, whole on a click anywhere in
  * its cell; the check as code), setter (an agent's a link), when it was set
- * and last firing (a wake has no end); Fire, and Cancel after a confirmation
+ * and last firing (no End column: a trigger says `until`); Fire, and Cancel
+ * after a confirmation
  * (the list refreshes after each), with the result in the toolbar; the Set a
  * Wake form, collapsed until opened, for any agent (and the server's message
  * when it refuses); "Updated" in the footer; and the 10 s refresh (one at a
@@ -191,7 +192,8 @@ describe('WakesPage', () => {
       'Last 7 days: 117 turns, $225.21. It fell due 118 times; its check ' +
         'skipped 1.',
     );
-    // A wake has no end (the owner, 2026-11-07).
+    // No End column (the owner, 2026-11-07): since 1.1.0-rc5 a periodic
+    // trigger says `until`.
     expect(standup.querySelector('td.end')).toBeNull();
     expect(cell(standup, 'by')).toBe('owner');
     expect(standup.querySelector('td.by code')).toBeNull();
@@ -490,7 +492,10 @@ describe('WakesPage', () => {
     expect(form.open).toBe(true);
     expect(
       (page.querySelector('#wake-trigger') as HTMLInputElement).placeholder,
-    ).toBe('every 30m, at 09:00, cron "0 9 * * 1-5", idle 30m, fire-only');
+    ).toBe(
+      'every 30m [until 2027-03-01], at 09:00, cron "0 9 * * 1-5", ' +
+        'idle 30m, fire-only',
+    );
     // Its fields: no End, as a wake has none (the owner, 2026-11-07).
     expect([...form.querySelectorAll('label')].map((l) => text(l))).toEqual([
       'Agent ID',

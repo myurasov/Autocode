@@ -145,14 +145,18 @@ export class Asks {
     def: { name: string; text: string },
   ): AskView {
     const name = def.name
+    const stored = JSON.stringify(def)
     for (const old of this.db
       .query(
         "SELECT * FROM asks WHERE agent_id = ? AND state = 'open' " +
           "AND wake_def IS NOT NULL",
       )
-      .all(agent) as any[])
+      .all(agent) as any[]) {
+      // the same terms again: the item the owner has seen stays
+      if (old.wake_def === stored) return this.approvalView(old)
       if (JSON.parse(old.wake_def).name === name)
         this.finish(old, "gone", null, null, true)
+    }
     const text = [
       `${agent} asks to ${change ? "change" : "set"} the wake ${name}:`,
       ...lines,
@@ -174,7 +178,7 @@ export class Asks {
         `Wake ${name}, set by ${agent}`,
         JSON.stringify({ text, options: [], wake: name }),
         this.now(),
-        JSON.stringify(def),
+        stored,
       )
     this.history.record("ask.opened", {
       agent,
@@ -182,6 +186,26 @@ export class Asks {
       data: { id, kind: "approval", routed: "owner", wake: name },
     })
     return this.approvalView(this.row(id))
+  }
+
+  /*
+   * The wake was set or cancelled meanwhile: its open proposal no longer
+   * describes a change, and is closed without a word (the review before
+   * 1.1.0-rc5). Says whether there was one.
+   */
+  dropWakeProposal(agent: string, name: string): boolean {
+    let dropped = false
+    for (const old of this.db
+      .query(
+        "SELECT * FROM asks WHERE agent_id = ? AND state = 'open' " +
+          "AND wake_def IS NOT NULL",
+      )
+      .all(agent) as any[])
+      if (JSON.parse(old.wake_def).name === name) {
+        this.finish(old, "gone", null, null, true)
+        dropped = true
+      }
+    return dropped
   }
 
   // An agent's wakes that wait for the owner's word, oldest first.
@@ -987,7 +1011,7 @@ export class Asks {
           } catch (err) {
             setNote =
               `The wake ${def.name} could not be set: ` +
-              `${(err as Error).message}`
+              `${(err as Error).message}.`
           }
         }
       }

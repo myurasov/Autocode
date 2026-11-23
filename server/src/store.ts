@@ -715,10 +715,14 @@ export const MIGRATIONS: string[] = [
    * 29 (1.1.0-rc5; asked for by a project, wake_mode): a periodic wake an
    * agent set that waits for the owner's approval, kept with its ask
    * (asks.wake_def), as a job's is (job_def). It does not make the agent
-   * wait.
+   * wait. And wakes.end_at is used again, for the end of a trigger
+   * (`until`): what the first versions left there (a wake's own `end`,
+   * dropped on 2026-11-07 and never cleared) goes, or it would end a live
+   * wake at the first tick (the review before 1.1.0-rc5).
    */
   `
   ALTER TABLE asks ADD COLUMN wake_def TEXT;
+  UPDATE wakes SET end_at = NULL;
   `,
 ]
 

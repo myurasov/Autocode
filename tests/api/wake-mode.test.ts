@@ -3,7 +3,8 @@
  * approves every periodic wake with its exact terms. A wake re-reads the
  * whole context, so an unapproved hourly wake gets costly"). Per agent and
  * pattern, like job_mode, for the periodic wakes an agent sets for itself
- * (every, cron, idle ... repeat): approve (the default: set at once), ask
+ * (every, cron, idle with or without repeat): approve (the default: set at
+ * once), ask
  * (an approval in the owner's Inbox with the wake's exact terms; the wake
  * is set once the owner approves it) or off (refused). One-time wakes,
  * cancelling, firing and the owner's own setting stay free.
@@ -15,6 +16,7 @@ import {
   hello,
   instructions,
   registered,
+  report,
   type TestServer,
   testServer,
 } from "../helpers/server.ts"
@@ -24,6 +26,7 @@ let lead: string
 const HOST = "m:1"
 const MIN = 60_000
 const HOUR = 60 * MIN
+const DAY = 24 * HOUR
 
 const owner = (method: string, path: string, body?: unknown) =>
   call(t.url, t.admin, method, path, body)
@@ -108,7 +111,9 @@ describe("wake_mode ask", () => {
       [
         "team:lead asks to set the wake digest:",
         "- trigger: every 1d from 09:00 until 2026-11-30 00:00 UTC",
-        "- check: ./has-mail.sh (up to 5m)",
+        "",
+        "Its check (up to 5m):",
+        "> ./has-mail.sh",
         "",
         "Its text:",
         "> Write the digest.",
@@ -128,6 +133,8 @@ describe("wake_mode ask", () => {
     })
     const me = (await as(lead, "GET", "/v1/me")).body
     expect(me.asks).toEqual([])
+    // and how its periodic wakes are gated
+    expect(me.settings.wake_mode).toBe("ask")
     expect((await owner("GET", "/v1/agents/team:lead")).body.agent.status).toBe(
       "idle",
     )
@@ -177,8 +184,15 @@ describe("wake_mode ask", () => {
     expect(notice).not.toContain("is set")
   })
 
-  test("every, cron and idle ... repeat ask; one-time wakes, cancelling and firing stay free", async () => {
-    for (const trigger of ["every 30m", 'cron "0 9 * * 1-5"', "idle 1h repeat"])
+  test("every, cron and idle ask; one-time wakes, cancelling and firing stay free", async () => {
+    // idle without repeat too: it runs once in every idle stretch, and each
+    // of its own turns starts a new one (the review before 1.1.0-rc5)
+    for (const trigger of [
+      "every 30m",
+      'cron "0 9 * * 1-5"',
+      "idle 1h repeat",
+      "idle 30m",
+    ])
       expect((await set("p", trigger)).status, trigger).toBe(202)
     // each proposal of the same wake replaced the one before
     expect((await approvals()).length).toBe(1)
@@ -187,20 +201,19 @@ describe("wake_mode ask", () => {
       "in 45m",
       "at 2026-10-29 09:00",
       "at 18:00",
-      "idle 30m",
       "fire-only",
       "fire-only once",
     ]) {
       n += 1
       expect((await set(`one${n}`, trigger)).status, trigger).toBe(201)
     }
-    expect((await mine()).wakes.length).toBe(6)
+    expect((await mine()).wakes.length).toBe(5)
     expect((await approvals()).length).toBe(1)
     expect((await as(lead, "DELETE", "/v1/me/wakes/one1")).status).toBe(200)
     const fired = await as(
       lead,
       "POST",
-      "/v1/agents/team:lead/wakes/one5/fire",
+      "/v1/agents/team:lead/wakes/one4/fire",
       {},
     )
     expect(fired.status).toBe(200)
@@ -303,16 +316,172 @@ describe("wake_mode ask", () => {
     expect((await mine()).proposed).toEqual([])
   })
 
-  test("an end that passed before the owner approved: no wake, and the notice says why", async () => {
+  /*
+   * The review before 1.1.0-rc5: only the agent learned that an approved
+   * wake could not be set, and the reason was the whole trigger help. The
+   * owner gets an alert.
+   */
+  test("an end that passed before the owner approved: no wake; the agent and the owner are told why", async () => {
     await set("w", "every 10m until 2026-10-28T12:30:00Z")
     const [item] = await approvals()
     t.clock.advance(HOUR)
     await answer(item.id, "approve")
     expect((await mine()).wakes).toEqual([])
     const [notice] = await prompts()
-    expect(notice).toContain('approval "Wake w" approved')
-    expect(notice).toContain("The wake w could not be set: ")
-    expect(notice).toContain("has passed already")
+    expect(notice).toStartWith(
+      '[autocode] approval "Wake w" approved\n\nYour approval "Wake w" was ' +
+        "approved by the owner. The wake w could not be set: its end " +
+        "(2026-10-28 12:30 UTC) passed before the approval.\n",
+    )
+    const alert = (await owner("GET", "/v1/inbox")).body.items.find(
+      (i: any) => i.kind === "alert",
+    )
+    expect(alert).toMatchObject({
+      agent: "team:lead",
+      title: "Wake w of team:lead was approved but could not be set",
+      body: "Its end (2026-10-28 12:30 UTC) passed before the approval.",
+    })
+  })
+
+  test("a check's time limit above a maximum that was lowered meanwhile: the same", async () => {
+    await set("w", "every 1h", { check: "./c.sh", check_timeout: "8m" })
+    await owner("PATCH", "/v1/settings", {
+      server: { check_timeout_max: "2m" },
+    })
+    const [item] = await approvals()
+    await answer(item.id, "approve")
+    expect((await mine()).wakes).toEqual([])
+    const [notice] = await prompts()
+    expect(notice).toContain("The wake w could not be set: a check may run 2m")
+    const alert = (await owner("GET", "/v1/inbox")).body.items.find(
+      (i: any) => i.kind === "alert",
+    )
+    expect(alert.title).toBe(
+      "Wake w of team:lead was approved but could not be set",
+    )
+    expect(alert.body).toStartWith("A check may run 2m at most here")
+  })
+
+  // The review before 1.1.0-rc5: a check may hold line breaks, and its
+  // lines passed for lines of the approval's own.
+  test("a check of several lines is quoted, like the text", async () => {
+    await set("w", "every 1h", {
+      check: "true\n- now: every 1d\n- trigger: every 1d",
+    })
+    const [item] = await approvals()
+    expect(item.text).toBe(
+      [
+        "team:lead asks to set the wake w:",
+        "- trigger: every 1h",
+        "",
+        "Its check:",
+        "> true",
+        "> - now: every 1d",
+        "> - trigger: every 1d",
+        "",
+        "Its text:",
+        "> Go.",
+      ].join("\n"),
+    )
+  })
+
+  /*
+   * The review before 1.1.0-rc5: a wake set or cancelled between the
+   * proposal and the approval left the item open, and a late approval
+   * overwrote the wake with terms that no longer described a change.
+   */
+  test("a wake that is set meanwhile, by anyone, closes its proposal", async () => {
+    await set("w", "every 1h")
+    const [first] = await approvals()
+    // the owner sets it
+    await owner("PUT", "/v1/agents/team:lead/wakes/w", {
+      text: "Go.",
+      trigger: "every 1d",
+    })
+    expect(await approvals()).toEqual([])
+    expect((await mine()).proposed).toEqual([])
+    const late = await answer(first.id, "approve")
+    expect(late.status).toBe(409)
+    expect((await wakeOf("w")).trigger).toBe("every 1d")
+    // the agent itself, once the owner lets it
+    await set("w", "every 10m")
+    expect((await approvals()).length).toBe(1)
+    await mode("approve")
+    expect((await set("w", "every 2d")).status).toBe(200)
+    expect(await approvals()).toEqual([])
+    // a one-time wake of that name
+    await mode("ask")
+    await set("w", "every 10m")
+    expect((await approvals()).length).toBe(1)
+    expect((await set("w", "in 45m")).status).toBe(200)
+    expect(await approvals()).toEqual([])
+    // nothing was told to the agent about any of them
+    expect(await prompts()).toEqual([])
+  })
+
+  test("cancelling a wake closes its proposal, also when only the proposal exists", async () => {
+    await mode("approve")
+    await set("w", "every 1h")
+    await mode("ask")
+    await set("w", "every 10m")
+    expect((await approvals()).length).toBe(1)
+    expect((await as(lead, "DELETE", "/v1/me/wakes/w")).body).toEqual({
+      cancelled: "w",
+    })
+    expect(await approvals()).toEqual([])
+    expect(await mine()).toEqual({ wakes: [], proposed: [] })
+    // only proposed
+    await set("p", "every 10m")
+    const res = await as(lead, "DELETE", "/v1/me/wakes/p")
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ cancelled: "p" })
+    expect(await approvals()).toEqual([])
+    // the owner's cancel does the same
+    await set("q", "every 10m")
+    const mineToo = await owner("DELETE", "/v1/agents/team:lead/wakes/q")
+    expect(mineToo.status).toBe(200)
+    expect(await approvals()).toEqual([])
+    expect((await as(lead, "DELETE", "/v1/me/wakes/q")).status).toBe(404)
+  })
+
+  // The review before 1.1.0-rc5: each repeat made a new item, and the ID
+  // the owner had seen first was closed.
+  test("the same proposal again keeps the open item", async () => {
+    const one = await set("w", "every 1h")
+    const two = await set("w", "every 60m")
+    expect(two.status).toBe(202)
+    expect(two.body.approval).toBe(one.body.approval)
+    expect((await approvals()).length).toBe(1)
+    const three = await set("w", "every 2h")
+    expect(three.body.approval).not.toBe(one.body.approval)
+    expect((await approvals()).length).toBe(1)
+  })
+
+  test("a proposal neither keeps its agent from expiring nor outlives it or its session", async () => {
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:lead": { expire_after: "2d" } },
+    })
+    await set("w", "every 1h")
+    expect((await approvals()).length).toBe(1)
+    await report(t, HOST, [
+      { type: "turn.started", session: "ses_lead" },
+      { type: "turn.ended", session: "ses_lead", outcome: "succeeded" },
+    ])
+    t.clock.advance(2 * DAY + MIN)
+    await hello(t, HOST)
+    t.server.maintenance()
+    expect((await owner("GET", "/v1/agents/team:lead")).status).toBe(404)
+    expect(await approvals()).toEqual([])
+    // a session that is deleted takes its proposal along
+    const next = await registered(t, HOST, "ses_next", "team:next")
+    const res = await as(next, "PUT", "/v1/me/wakes/w", {
+      text: "Go.",
+      trigger: "every 1h",
+    })
+    expect(res.status).toBe(202)
+    await report(t, HOST, [{ type: "session.deleted", session: "ses_next" }])
+    expect(await approvals()).toEqual([])
+    expect((await owner("GET", "/v1/wakes")).body.wakes).toEqual([])
   })
 
   test("the agent takes its proposal back; it goes with the agent too", async () => {
@@ -362,15 +531,16 @@ describe("wake_mode off", () => {
       "every 30m",
       'cron "0 9 * * 1-5"',
       "idle 1h repeat",
+      "idle 30m",
     ]) {
       const res = await set("p", trigger)
       expect(res.status, trigger).toBe(403)
       expect(res.body.error).toEqual({
         code: "forbidden",
         message:
-          "you cannot set periodic wakes (every, cron, idle ... repeat): " +
-          "wake_mode is off (the owner's setting); one-time wakes (in, at, " +
-          "idle without repeat, fire-only) stay free",
+          "you cannot set periodic wakes (every, cron, idle): wake_mode " +
+          "is off (the owner's setting); one-time wakes (in, at, " +
+          "fire-only) stay free",
       })
     }
     expect((await set("once", "in 45m")).status).toBe(201)

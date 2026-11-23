@@ -302,7 +302,8 @@ export interface Wake {
   week?: { due: number; skipped: number; turns: number; usd: number };
 }
 
-// A wake as set: it has no end (the owner, 2026-11-07).
+// A wake as set. It has no end of its own (the owner, 2026-11-07): a
+// periodic trigger may say `until` (1.1.0-rc5).
 export interface WakeInput {
   text: string;
   trigger: string;

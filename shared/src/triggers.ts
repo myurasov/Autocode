@@ -10,7 +10,7 @@
  *   idle <duration> [repeat]          after the session is idle that long
  *   fire-only [once]                  only when fired; with once, the wake
  *                                     is removed when it is fired
- * A periodic trigger (every, cron, idle ... repeat) may end (1.1.0-rc5):
+ * A periodic trigger (every, cron, idle) may end (1.1.0-rc5):
  *   ... until <time>                  a date alone (through that day), a date
  *                                     and a time, an ISO time, or the next
  *                                     HH:MM; no run at the end or after it
@@ -37,15 +37,21 @@ export type Trigger =
 const HELP =
   "a trigger looks like every 30m [from 09:00], in 45m, at 09:00, " +
   'cron "0 9 * * 1-5" [zone], idle 30m [repeat] or fire-only [once]; ' +
-  "every, cron and idle ... repeat may end: ... [until 2027-03-01]"
+  "every, cron and idle may end: ... [until 2027-03-01]"
 
-// A trigger that runs again and again by itself: what may carry an end, and
-// what wake_mode is about.
+/*
+ * A trigger that runs again and again by itself: what may carry an end, and
+ * what wake_mode is about. An idle wake without repeat is one too: it falls
+ * due once in every idle stretch, and each of its own turns starts a new
+ * stretch (the review before 1.1.0-rc5).
+ */
 export function periodic(t: Trigger): boolean {
-  return (
-    t.kind === "every" || t.kind === "cron" || (t.kind === "idle" && t.repeat)
-  )
+  return t.kind === "every" || t.kind === "cron" || t.kind === "idle"
 }
+
+// The latest end a trigger takes: a later one has a year of five digits,
+// which no trigger text holds.
+const MAX_END = Date.UTC(9999, 11, 31, 23, 59, 59, 999)
 
 // When a trigger ends, or null: it runs while its time is before that.
 export function triggerEnd(t: Trigger): number | null {
@@ -163,7 +169,18 @@ function endTime(when: string, tz: string, now: number, whole: string): number {
     )
   }
   const c = clock(when)
-  return c ? nextClock(c, tz, now) : instant(when, tz, whole)
+  if (c) return nextClock(c, tz, now)
+  try {
+    return instant(when, tz, whole)
+  } catch (err) {
+    // a date that does not exist says so; anything else is unreadable
+    if ((err as Error).message.startsWith("no such date or time")) throw err
+    throw bad(
+      whole,
+      "cannot read the end (until): a date (2027-03-01), a date and a " +
+        "time, an ISO time or HH:MM",
+    )
+  }
 }
 
 export function parseTrigger(
@@ -178,15 +195,16 @@ export function parseTrigger(
   if (!periodic(t))
     throw bad(
       text,
-      "only a periodic trigger takes an end (until): every, cron or " +
-        "idle ... repeat",
+      "only a periodic trigger takes an end (until): every, cron or idle",
     )
-  const when = (ended[2] ?? "").trim()
+  const when = (ended[2] ?? "").trim().split(/\s+/).join(" ")
   if (!when) throw bad(text, "until needs a time, like 2027-03-01")
   // a cron trigger's end is wall time in the cron's own zone
   const tz = t.kind === "cron" ? t.tz : opts.tz
   const end = endTime(when, tz, opts.now, text)
   if (end <= opts.now) throw bad(text, "the end (until) has passed already")
+  if (!Number.isFinite(end) || end > MAX_END)
+    throw bad(text, "the end (until) must be before the year 10000")
   return { ...t, until: new Date(end).toISOString() } as Trigger
 }
 

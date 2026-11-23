@@ -10,7 +10,7 @@
  * server's zone and from now.
  */
 
-import { localTime } from "@autocode/shared"
+import { localTime, parseDuration } from "@autocode/shared"
 
 export interface MeInput {
   action:
@@ -360,7 +360,7 @@ export async function runMe(
       // 1.1.0-rc5)
       if (set?.wake_mode === "ask" || set?.wake_mode === "off")
         lines.push(
-          "Periodic wakes (every, cron, idle ... repeat): " +
+          "Periodic wakes (every, cron, idle): " +
             (set.wake_mode === "ask"
               ? "the owner approves each one first (wake_mode ask)."
               : "you cannot set them (wake_mode off)."),
@@ -559,10 +559,10 @@ export const WAKE_TOOL = {
     "[repeat] (after that long idle, counted from your last turn's end); " +
     "fire-only (a job you start fires it by ending with: autocode fire me " +
     "NAME); fire-only once (the same, removed once it is fired). every, " +
-    "cron and idle ... repeat may end: add until 2027-03-01 (through that " +
-    "day) or until 2027-03-01 18:00; at its end the wake is removed and a " +
-    "notice tells you. Times are in the server's zone (see autocode_me " +
-    "status). Exact rules: autocode_me action=help topic=wakes.",
+    "cron and idle may end: add until 2027-03-01 (through that day) or " +
+    "until 2027-03-01 18:00; at its end the wake is removed and a notice " +
+    "tells you. Times are in the server's zone (see autocode_me status). " +
+    "Exact rules: autocode_me action=help topic=wakes.",
   input: {
     type: "object",
     properties: {
@@ -843,6 +843,15 @@ function preview(text: string): string {
 const idleOf = (trigger: string) =>
   /^idle (\S+)( repeat)?(?: until \S+)?$/.exec(trigger)
 
+// An idle trigger's duration ("30m") in ms; 0 when it cannot be read.
+function idleMs(text: string): number {
+  try {
+    return parseDuration(text)
+  } catch {
+    return 0
+  }
+}
+
 // The end of a periodic trigger (1.1.0-rc5), as the server writes it.
 const endOf = (trigger: string) =>
   / until (\d{4}-\d\d-\d\dT[\d:.]+Z)$/.exec(trigger)?.[1]
@@ -874,8 +883,11 @@ function timing(w: any, c: Clock, working: boolean): string {
   const left = "no run left before its end"
   if (idle) {
     if (w.due) return `due ${when(w.due, c)} if you stay idle`
+    // its next run comes that long after a turn's end at the earliest: with
+    // an end before then, none comes
+    const end = endOf(trigger)
+    if (end && c.now + idleMs(idle[1]!) >= Date.parse(end)) return left
     if (working) return `due ${idle[1]} after this turn ends`
-    if (endOf(trigger)) return left
     return (
       "ran in this idle stretch; due again " +
       `${idle[1]} after your next turn ends`
@@ -1065,6 +1077,15 @@ export async function runWake(input: WakeInput, call: Call): Promise<string> {
           `Wake "${w.name}", set by ${setBy(w, me)} at ` +
             `${localTime(Date.parse(w.updated_at), c.tz)}.`,
           `Trigger: ${shownTrigger(w.trigger, c)}; ${timing(w, c, working)}.`,
+          // a change of it that waits for the owner (wake_mode ask)
+          ...(asked
+            ? [
+                "A change waits for the owner's approval " +
+                  `(${asked.approval}): ` +
+                  `${shownTrigger(String(asked.trigger), c)}. Until then ` +
+                  "the wake stays as it is.",
+              ]
+            : []),
           w.check
             ? `Check: ${w.check} (` +
               (w.check_timeout ? `up to ${w.check_timeout}; ` : "") +

@@ -388,7 +388,8 @@ An agent is unregistered in one of four ways:
 1. It calls `autocode_me action=unregister`.
 2. You unregister it: **Unregister** on the Agents tab, or `autocode agents rm AGENT`.
 3. `expire_after` (14 days) passes after its session's last turn. An agent paused by you or by Stop All does not
-   expire, and neither does one with an open ask. With `expire_after` `0` an agent never expires: for agents that
+   expire, and neither does one with an open ask. A job or a wake that it proposed and that waits for your approval
+   is not an open ask: it goes with the agent. With `expire_after` `0` an agent never expires: for agents that
    stay idle for months and wake only on a message (`autocode settings set expire_after 0 --match 'PATTERN'`).
 4. It is a run of a job, and the run ends.
 
@@ -547,16 +548,17 @@ autocode_wake  action=fire  agent=kaggle:worker-1  name=new-fold  text="Folds v3
   starts when a turn ends.
 - **`idle ... repeat`.** After the first time, it falls due again each time that long has passed since it last fell
   due. A time at which its check skipped it counts too.
-- **An end.** `every`, `cron` and `idle ... repeat` take `until <time>` as their last words. Use it for a wake that
-  is granted for a period.
+- **An end.** `every`, `cron` and `idle` take `until <time>` as their last words. Use it for a wake that is granted
+  for a period.
   - **The time.** A date alone means through that day. A date and a time, or an ISO time with its own zone, is
     that instant. `HH:MM` alone is the next such time. The end of a `cron` trigger is read in the cron's own zone.
-  - **Runs.** The wake runs while its time is before the end: a run at the end itself does not happen. Lists show
-    "no run left before its end" once that is so.
+  - **Runs.** The wake runs while its time is before the end: a run at the end itself does not happen. Once no run
+    is left, `autocode_wake action=list` says "no run left before its end", and `autocode wakes` and the Wakes tab
+    show no next run.
   - **At the end** the wake is removed, and its agent is told by a notice: `[autocode] wake "daily" ended`. A run
     that fell due before the end and still waits is delivered.
-  - **Refused:** an end on a one-time or `fire-only` wake, an end that has passed, and a wake whose first run
-    would not come before its end. A job's trigger takes no end.
+  - **Refused:** an end on a one-time or `fire-only` wake, an end that has passed, an end past the year 9999, and a
+    wake whose first run would not come before its end. A job's trigger takes no end.
 
 ### List, Cancel and Fire
 
@@ -580,7 +582,8 @@ autocode_wake  action=fire  agent=kaggle:worker-1  name=new-fold  text="Folds v3
 
 A periodic wake costs a turn each time it falls due, and a turn reads the session's whole context again. The
 `wake_mode` setting decides, per agent or pattern, what happens to the periodic wakes that an agent sets for
-itself: `every`, `cron` and `idle ... repeat`.
+itself: `every`, `cron` and `idle`. An `idle` wake counts also without `repeat`: it falls due once in every idle
+stretch, and each of its own turns starts a new one.
 
 - `approve`, the default: the wake is set at once.
 - `ask`: an approval lands in your Inbox, `Wake NAME, set by AGENT`, with the wake's exact terms: its trigger with
@@ -598,10 +601,26 @@ autocode settings set wake_mode ask --match 'kaggle:worker-*'
   which of its wakes wait for you, and `autocode_me action=status` says how its periodic wakes are gated.
 - **Changing a wake** asks again. The wake stays as it was until you approve. Setting a wake again with the terms
   that it has now asks nothing: there is nothing new to decide, and agents set their wakes again when they start.
-- **What stays free:** one-time wakes (`in`, `at`, `idle` without `repeat`, `fire-only`, `fire-only once`),
-  cancelling and firing. The guide tells agents not to rebuild a periodic wake from one-time ones.
+- **What stays free:** one-time wakes (`in`, `at`, `fire-only`, `fire-only once`), cancelling and firing. The guide
+  tells agents not to rebuild a periodic wake from one-time ones.
 - **Your own wakes** for an agent are never asked for: the Wakes tab's form and `autocode wake set`.
-- **An end that passed** before you approved: the wake is not set, and the notice says why.
+- **A wake that is set or cancelled meanwhile**, by the agent or by you, closes its proposal: an approval never
+  overwrites a newer wake. The same proposal again keeps the item that you have seen.
+- **An end that passed** before you approved, or a check's time limit above a maximum that you lowered meanwhile:
+  the wake is not set. The agent's notice says why, and an alert in your Inbox tells you too.
+- **A proposal goes with its agent.** It does not keep the agent from expiring, and it closes when the agent
+  unregisters or its session is deleted.
+- **Patterns and renames.** A rule for a pattern holds for the IDs that match it, and an agent can rename itself.
+  To gate every agent, set `wake_mode` server-wide and exempt the ones you trust by ID:
+
+  ```sh
+  autocode settings set wake_mode ask
+  autocode settings set wake_mode approve --agent kaggle:lead
+  ```
+
+- **The plugin.** An agent's `set` under `ask` needs the plugin of 1.1.0-rc5 or later on its machine
+  (`autocode plugin install`). An older plugin does not know the answer: the agent sees an error, while the
+  approval still reaches you.
 
 ### Checks
 
@@ -1795,7 +1814,7 @@ clears that value again.
 | `permission_mode` | agent | `ask` | where permission prompts go: `ask`, `approve`, `agent:<id>` or `job:<name>` |
 | `approval_mode` | agent | `ask` | where approvals go: `ask`, `approve`, `agent:<id>` or `job:<name>` |
 | `job_mode` | agent | `ask` | jobs that an agent sets: you approve first (`ask`), set at once (`approve`), or refused (`off`) |
-| `wake_mode` | agent | `approve` | periodic wakes that an agent sets (`every`, `cron`, `idle ... repeat`): set at once (`approve`), you approve first (`ask`), or refused (`off`) (see [Your Approval of Periodic Wakes](#your-approval-of-periodic-wakes)) |
+| `wake_mode` | agent | `approve` | periodic wakes that an agent sets (`every`, `cron`, `idle`): set at once (`approve`), you approve first (`ask`), or refused (`off`) (see [Your Approval of Periodic Wakes](#your-approval-of-periodic-wakes)) |
 | `filter_recovery` | agent | `retry compact` | after a blocked reply: `retry compact`, `retry` or `off` (see [A Blocked Reply](#a-blocked-reply)) |
 | `retry_interval` | agent | `1m` | the wait after a failed turn before a retry prompt, and between retries |
 | `retry_attempts` | agent | `0` | the most retries in a row before Autocode stops and tells you. 0: no limit |

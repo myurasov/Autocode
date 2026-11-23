@@ -27,7 +27,8 @@ import { Updated } from '../updated';
 type Field = 'text' | 'check';
 
 export const TRIGGER_HINT =
-  'every 30m, at 09:00, cron "0 9 * * 1-5", idle 30m, fire-only';
+  'every 30m [until 2027-03-01], at 09:00, cron "0 9 * * 1-5", ' +
+  'idle 30m, fire-only';
 
 /*
  * What a wake cost in the last 7 days (1.1.0; the owner, 2026-11-20): the

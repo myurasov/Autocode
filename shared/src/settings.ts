@@ -112,9 +112,8 @@ export const SETTINGS: Record<string, SettingDef> = {
     default: "approve",
     values: ["ask", "approve", "off"],
     help:
-      "periodic wakes an agent sets (every, cron, idle ... repeat): an " +
-      "approval of the owner first (ask), set at once (approve), or " +
-      "refused (off)",
+      "periodic wakes an agent sets (every, cron, idle): an approval of " +
+      "the owner first (ask), set at once (approve), or refused (off)",
   },
   compact_at: {
     kind: "compact",

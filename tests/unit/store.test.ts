@@ -416,6 +416,45 @@ describe("store", () => {
     db.close()
   })
 
+  /*
+   * 29 (1.1.0-rc5): a wake's proposal is kept with its ask. And the review
+   * before rc5: wakes.end_at is used again, for the end of a trigger. A
+   * value left there by the first versions (a wake's own `end`, dropped on
+   * 2026-11-07 but never cleared) would end a live wake at the first tick.
+   */
+  test("migration 29 adds asks.wake_def and clears every old wakes.end_at", () => {
+    const path = tempDb()
+    const old = openStore(path, MIGRATIONS.slice(0, 28))
+    old.run(
+      "INSERT INTO hosts (id, machine, directory, instance, first_seen, " +
+        "last_seen) VALUES ('m:1', 'm', '/w', 'i', 1, 1)",
+    )
+    old.run(
+      "INSERT INTO sessions (id, host_id, created_at, last_seen) " +
+        "VALUES ('ses_a', 'm:1', 1, 1)",
+    )
+    old.run(
+      "INSERT INTO agents (id, session_id, registered_at, last_active) " +
+        "VALUES ('a:b', 'ses_a', 1, 1)",
+    )
+    old.run(
+      "INSERT INTO wakes (agent_id, name, text, trigger, end_at, anchor, " +
+        "set_by, created_at, updated_at) VALUES ('a:b', 'old', 'Go.', " +
+        `'{"kind":"every","every_ms":600000}', 5, 1, 'a:b', 1, 1)`,
+    )
+    old.close()
+    const db = openStore(path)
+    expect(schemaVersion(db)).toBeGreaterThanOrEqual(29)
+    expect(db.query("SELECT name, end_at FROM wakes").all()).toEqual([
+      { name: "old", end_at: null },
+    ])
+    const columns = (db.query("PRAGMA table_info(asks)").all() as any[]).map(
+      (c) => c.name,
+    )
+    expect(columns).toContain("wake_def")
+    db.close()
+  })
+
   test("a failing migration leaves the database at the version before it", () => {
     const path = tempDb()
     openStore(path, ["CREATE TABLE t (a TEXT)"]).close()

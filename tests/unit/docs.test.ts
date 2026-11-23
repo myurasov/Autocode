@@ -361,8 +361,9 @@ test("the reference has the end of a periodic wake: the triggers, the rules and 
       "Then the wake is removed |",
     '| `cron "0 9 * * 1-5" until 2027-03-01 18:00` |',
     "| `idle 30m repeat until 18:00` |",
-    "- **An end.** `every`, `cron` and `idle ... repeat` take " +
-      "`until <time>` as their last words.",
+    "- **An end.** `every`, `cron` and `idle` take `until <time>` as " +
+      "their last words.",
+    "an end past the year 9999",
     "A date alone means through that day.",
     "The wake runs while its time is before the end: a run at the end " +
       "itself does not happen.",
@@ -373,6 +374,11 @@ test("the reference has the end of a periodic wake: the triggers, the rules and 
     "- a wake of the agent's reached its end and was removed;",
   ])
     expect(ref, part).toContain(part)
+  expect(ref.replace(/\s+/g, " ")).toContain(
+    'Once no run is left, `autocode_wake action=list` says "no run left ' +
+      'before its end", and `autocode wakes` and the Wakes tab show no ' +
+      "next run.",
+  )
   expect(ref).not.toContain("A wake has no end date")
 })
 
@@ -384,7 +390,19 @@ test("the reference has wake_mode, and expire_after 0 for never", () => {
     "### Your Approval of Periodic Wakes",
     "`wake_mode` setting decides, per agent or pattern, what happens to " +
       "the periodic wakes that an agent sets for itself: `every`, `cron` " +
-      "and `idle ... repeat`.",
+      "and `idle`.",
+    "An `idle` wake counts also without `repeat`: it falls due once in " +
+      "every idle stretch, and each of its own turns starts a new one.",
+    "- **A wake that is set or cancelled meanwhile**, by the agent or by " +
+      "you, closes its proposal",
+    "an alert in your Inbox tells you too",
+    "- **A proposal goes with its agent.**",
+    "- **Patterns and renames.**",
+    "autocode settings set wake_mode approve --agent kaggle:lead",
+    "- **The plugin.** An agent's `set` under `ask` needs the plugin of " +
+      "1.1.0-rc5 or later on its machine",
+    "A job or a wake that it proposed and that waits for your approval " +
+      "is not an open ask: it goes with the agent.",
     "- `approve`, the default: the wake is set at once.",
     "- `ask`: an approval lands in your Inbox, `Wake NAME, set by AGENT`, " +
       "with the wake's exact terms",
@@ -393,11 +411,11 @@ test("the reference has wake_mode, and expire_after 0 for never", () => {
     '`[autocode] approval "Wake digest" approved`',
     "- **Changing a wake** asks again.",
     "Setting a wake again with the terms that it has now asks nothing",
-    "- **What stays free:** one-time wakes (`in`, `at`, `idle` without " +
-      "`repeat`, `fire-only`, `fire-only once`), cancelling and firing.",
+    "- **What stays free:** one-time wakes (`in`, `at`, `fire-only`, " +
+      "`fire-only once`), cancelling and firing.",
     "- **Your own wakes** for an agent are never asked for",
     "| `wake_mode` | agent | `approve` | periodic wakes that an agent sets " +
-      "(`every`, `cron`, `idle ... repeat`): set at once (`approve`), you " +
+      "(`every`, `cron`, `idle`): set at once (`approve`), you " +
       "approve first (`ask`), or refused (`off`)",
     "| `expire_after` | agent | `14d` | unregister an agent this long " +
       "after its session's last turn. `0`: never |",

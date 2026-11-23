@@ -2,12 +2,14 @@
  * An end on a periodic wake (spec, Wakes; 1.1.0-rc5; asked for by
  * a project, whose owner grants a wake for a period: "daily until the
  * permit is issued, March 1 at the latest"). `until <time>` as the last
- * words of every, cron and idle ... repeat: the wake runs while its time is
- * before the end; at the end it is removed and its agent told by a notice.
- * A date alone means through that day. No end on a one-time wake, and none
- * on a job.
+ * words of every, cron and idle: the wake runs while its time is before the
+ * end; at the end it is removed and its agent told by a notice. A date
+ * alone means through that day. No end on a one-time wake, and none on a
+ * job.
  */
+import { Database } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { join } from "node:path"
 import {
   ack,
   call,
@@ -236,6 +238,78 @@ describe("a periodic wake with an end", () => {
     expect(await history("wake.ended")).toEqual([])
   })
 
+  /*
+   * The review before 1.1.0-rc5: an idle wake without repeat runs once in
+   * every idle stretch, so again and again; it may end too. And the prompt
+   * of an idle wake said "again after 30m more idle" when no such run could
+   * come before the end.
+   */
+  test("an idle wake without repeat takes an end; its prompt says when no run is left", async () => {
+    const res = await set("i", "idle 10m until 2026-10-28T12:30:00Z")
+    expect(res.status).toBe(201)
+    expect(res.body.wake.trigger).toBe(
+      "idle 10m until 2026-10-28T12:30:00.000Z",
+    )
+    await turn() // idle since 12:00
+    t.clock.advance(10 * MIN)
+    const [first] = await tick()
+    expect(first).toContain(
+      'Wake "i" (idle 10m until 2026-10-28 12:30 UTC; once per idle stretch):',
+    )
+    // its own turn starts a new stretch: due again at 12:21, before the end
+    t.clock.advance(MIN)
+    await turn()
+    t.clock.advance(10 * MIN)
+    const [second] = await tick()
+    // a third (10 minutes after this turn) would not come before 12:30
+    expect(second).toContain(
+      'Wake "i" (idle 10m until 2026-10-28 12:30 UTC; no run left before ' +
+        "its end):",
+    )
+    t.clock.advance(5 * MIN)
+    await turn()
+    expect((await wakes())[0]).toMatchObject({ due: null })
+    t.clock.advance(9 * MIN)
+    const [told] = await tick()
+    expect(told).toStartWith('[autocode] wake "i" ended\n')
+    expect((await history("wake.due")).length).toBe(2)
+  })
+
+  test("an idle ... repeat wake's prompt does not promise a run that cannot come", async () => {
+    await set("i", "idle 10m repeat until 2026-10-28T12:25:00Z")
+    await turn()
+    t.clock.advance(10 * MIN)
+    const [first] = await tick()
+    expect(first).toContain(
+      'Wake "i" (idle 10m repeat until 2026-10-28 12:25 UTC; again after ' +
+        "10m more idle):",
+    )
+    await turn()
+    t.clock.advance(10 * MIN)
+    const [second] = await tick()
+    expect(second).toContain(
+      'Wake "i" (idle 10m repeat until 2026-10-28 12:25 UTC; no run left ' +
+        "before its end):",
+    )
+  })
+
+  /*
+   * The review before 1.1.0-rc5: the column that holds a wake's end is an
+   * old one. A value in it without an end in the trigger (left by a wake's
+   * own `end` of the first versions) ends nothing.
+   */
+  test("a wake whose trigger has no end is never ended, whatever its row says", async () => {
+    await set("old", "every 10m")
+    const db = new Database(join(t.dataDir, "autocode.db"))
+    db.run("UPDATE wakes SET end_at = 5 WHERE name = 'old'")
+    db.close()
+    t.clock.advance(10 * MIN)
+    const [prompt] = await tick()
+    expect(prompt).toStartWith('[autocode] wake "old"\n')
+    expect((await wakes()).length).toBe(1)
+    expect(await history("wake.ended")).toEqual([])
+  })
+
   test("the owner sets one for an agent, and the lists show it", async () => {
     const res = await owner("PUT", "/v1/agents/team:a/wakes/o", {
       text: "Go.",
@@ -263,22 +337,28 @@ describe("what is refused", () => {
     for (const trigger of [
       "in 45m until 2026-11-30",
       "at 2026-10-29 09:00 until 2026-11-30",
-      "idle 30m until 2026-11-30",
       "fire-only until 2026-11-30",
       "fire-only once until 2026-11-30",
     ])
       await refused(
         trigger,
-        "only a periodic trigger takes an end (until): every, cron or " +
-          "idle ... repeat",
+        "only a periodic trigger takes an end (until): every, cron or idle;",
       )
     expect(await wakes()).toEqual([])
+  })
+
+  test("an end past the year 9999", async () => {
+    await refused(
+      "every 1d until 9999-12-31",
+      "the end (until) must be before the year 10000",
+    )
+    expect((await set("far", "every 1d until 9999-12-30")).status).toBe(201)
   })
 
   test("an end that has passed, or one that cannot be read", async () => {
     await refused("every 10m until 2026-10-27", "has passed already")
     await refused("every 10m until 2026-10-28T12:00:00Z", "has passed already")
-    await refused("every 10m until next week", "a trigger looks like")
+    await refused("every 10m until next week", "cannot read the end (until)")
     await refused("every 10m until", "until needs a time")
     expect(await wakes()).toEqual([])
   })

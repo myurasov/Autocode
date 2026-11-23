@@ -541,11 +541,35 @@ export async function startServer(
   })
   asks.jobIdle = (job) => jobs.idle(job)
   asks.setJob = (def, agent) => jobs.store(def as JobDef, agent)
-  // an approved wake counts from the approval, with the terms it showed
+  /*
+   * An approved wake counts from the approval, with the terms it showed.
+   * One that cannot be set any more (its end passed while it waited, its
+   * check's time limit is above a maximum that was lowered) is told to the
+   * agent by the approval's notice, and to the owner by an alert (the
+   * review before 1.1.0-rc5: the owner's answer said nothing of it).
+   */
   asks.setWake = (def, agent) => {
     const { name, ...terms } = def as Record<string, string>
-    wakes.set(agent, name, terms, agent)
+    try {
+      const end = / until (\S+)$/.exec(terms.trigger ?? "")?.[1]
+      if (end && Date.parse(end) <= now())
+        throw new AutocodeError(
+          "bad_trigger",
+          `its end (${localTime(Date.parse(end), tz())}) passed before ` +
+            "the approval",
+        )
+      wakes.set(agent, name, terms, agent)
+    } catch (err) {
+      const why = (err as Error).message
+      inbox.open("alert", {
+        agent,
+        title: `Wake ${name} of ${agent} was approved but could not be set`,
+        body: `${why.slice(0, 1).toUpperCase()}${why.slice(1)}.`,
+      })
+      throw err
+    }
   }
+  wakes.dropProposal = (agent, name) => asks.dropWakeProposal(agent, name)
   asks.startJob = (job, ask) =>
     jobs.start(job, "ask", "ask", undefined, ask)?.id ?? null
   retries.onGivenUp = (agent, reason) => jobs.turnsFailed(agent, reason)
@@ -1298,7 +1322,7 @@ export async function startServer(
         "approves first)",
       /*
        * wake_mode (1.1.0-rc5; asked for by a project): the periodic wakes
-       * an agent sets for itself (every, cron, idle ... repeat) may need
+       * an agent sets for itself (every, cron, idle) may need
        * the owner's approval (ask) or be refused (off). The terms are
        * checked first. Setting a wake again with the terms it has asks
        * nothing. One-time wakes are free.
@@ -1314,9 +1338,9 @@ export async function startServer(
           if (mode === "off")
             throw new AutocodeError(
               "forbidden",
-              "you cannot set periodic wakes (every, cron, idle ... " +
-                "repeat): wake_mode is off (the owner's setting); one-time " +
-                "wakes (in, at, idle without repeat, fire-only) stay free",
+              "you cannot set periodic wakes (every, cron, idle): " +
+                "wake_mode is off (the owner's setting); one-time wakes " +
+                "(in, at, fire-only) stay free",
               403,
             )
           if (!wakes.sameTerms(agent, def)) {

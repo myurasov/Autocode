@@ -355,7 +355,7 @@ describe('HelpPage', () => {
       expect(section(page, 'web-settings'), part).toContain(part);
   });
 
-  it('keeps to what Autocode has: messages are text, a wake has no end and merges by name', async () => {
+  it('keeps to what Autocode has: messages are text, a wake merges by name and has no end of its own', async () => {
     const page = await open();
     const messages = section(page, 'messages');
     expect(messages).toContain('A message is a text');
@@ -364,7 +364,8 @@ describe('HelpPage', () => {
     expect(wakes).toContain('merged only when they have the same name');
     expect(wakes).not.toContain('same text');
     expect(wakes).not.toContain('end time');
-    expect(section(page, 'web-wakes')).not.toMatch(/\bend\b/);
+    // no End field or column: a periodic trigger says `until` (1.1.0-rc5)
+    expect(section(page, 'web-wakes')).not.toMatch(/\bEnd\b/);
     // the review of 0b2: Fire waits for an idle session too
     expect(wakes).not.toContain('Fire delivers a wake at once');
     expect(wakes).toContain(
@@ -409,8 +410,9 @@ describe('HelpPage', () => {
     );
     // what you type is in the server's zone, what you read in the browser's
     expect(section(page, 'web-wakes')).toContain(
-      "A time you type in Trigger is in the server's time zone. The times " +
-        "the tab shows are in your browser's",
+      "A time you type in Trigger is in the server's time zone, unless a " +
+        'cron trigger names its own. The times the tab shows are in your ' +
+        "browser's",
     );
   });
 
@@ -436,9 +438,9 @@ describe('HelpPage', () => {
       ],
     ]);
     expect(rows(table)[7]![1]!).toBe(
-      'with an end, for every, cron and idle ... repeat. A date alone ' +
-        'means through that day. The wake runs while its time is before ' +
-        'the end; at the end it is removed, and its agent is told.',
+      'with an end, for every, cron and idle. A date alone means ' +
+        'through that day. The wake runs while its time is before the ' +
+        'end; at the end it is removed, and its agent is told.',
     );
     expect(rows(table)[6]![1]!).toContain(
       'the same, for one fire: the wake is removed when it is fired',
@@ -681,8 +683,8 @@ describe('HelpPage', () => {
       ['expire_after', '14d'],
     ]);
     expect(settings.find((r) => r[0] === 'wake_mode')![2]).toBe(
-      'periodic wakes an agent sets (every, cron, idle ... repeat): set at ' +
-        'once (approve), you approve them first (ask), or refused (off)',
+      'periodic wakes an agent sets (every, cron, idle): set at once ' +
+        '(approve), you approve them first (ask), or refused (off)',
     );
     // 1.1.0-rc5: 0 means never
     expect(settings.find((r) => r[0] === 'expire_after')![2]).toBe(
@@ -691,11 +693,11 @@ describe('HelpPage', () => {
     );
     expect(section(page, 'wakes')).toContain(
       'With wake_mode ask, a periodic wake that an agent sets for itself ' +
-        '(every, cron, idle ... repeat) is not set at once: an approval ' +
-        "comes to your Inbox with the wake's exact terms, and the wake is " +
-        'set once you approve it. With off such a wake is refused. ' +
-        'One-time wakes, and the wakes you set yourself, are never asked ' +
-        'for. The default, approve, sets every wake at once.',
+        '(every, cron, idle) is not set at once: an approval comes to your ' +
+        "Inbox with the wake's exact terms, and the wake is set once you " +
+        'approve it. With off such a wake is refused. One-time wakes, and ' +
+        'the wakes you set yourself, are never asked for. The default, ' +
+        'approve, sets every wake at once.',
     );
     // 1.1.0-rc5 (the owner, 2026-11-22): a prompt has no footer line
     expect(section(page, 'sees')).toContain(

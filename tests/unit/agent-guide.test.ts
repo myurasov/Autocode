@@ -776,8 +776,8 @@ describe("the guide", () => {
   test("1.1.0-rc5: a periodic wake may end, and what happens then", () => {
     const own = flat(guideText(FACTS))
     for (const answer of [
-      "An end: `every`, `cron` and `idle ... repeat` take `until <time>` " +
-        "as their last words (`every 1d until 2027-03-01`).",
+      "An end: `every`, `cron` and `idle` take `until <time>` as their " +
+        "last words (`every 1d until 2027-03-01`).",
       "A date alone means through that day",
       "The wake runs while its time is before the end.",
       'a notice tells you (`[autocode] wake "NAME" ended`)',
@@ -791,9 +791,10 @@ describe("the guide", () => {
   test("1.1.0-rc5: the owner may gate periodic wakes, and what to do then", () => {
     const own = flat(guideText(FACTS))
     for (const answer of [
-      "The owner may gate periodic wakes (`every`, `cron`, `idle ... " +
-        "repeat`) with the `wake_mode` setting; `autocode_me status` says " +
-        "so when they are not free.",
+      "The owner may gate periodic wakes (`every`, `cron`, and `idle` " +
+        "with or without `repeat`) with the `wake_mode` setting; " +
+        "`autocode_me status` says so when they are not free.",
+      "Cancelling a wake, or setting it again, closes its proposal.",
       "With `ask`, `set` does not set the wake: it asks the owner, with " +
         "the wake's exact terms, and the wake is set once the owner " +
         'approves (a notice tells you: `approval "Wake NAME" approved`).',

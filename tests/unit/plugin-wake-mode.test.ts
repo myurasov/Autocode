@@ -119,6 +119,20 @@ describe("wake_mode", () => {
       'error: you have no wake "poll" yet: it waits for the owner\'s ' +
         "approval (ask_2)",
     )
+    // show: a wake with a change that waits says so (the review before
+    // 1.1.0-rc5)
+    const change = server({
+      "GET /v1/me": ME,
+      "GET /v1/me/wakes": {
+        wakes: [wake({ name: "tick", trigger: "every 1h" })],
+        proposed: [{ name: "tick", trigger: "every 1m", approval: "ask_9" }],
+      },
+    })
+    const shown = await runWake({ action: "show", name: "tick" }, change.call)
+    expect(shown.split("\n")[2]).toBe(
+      "A change waits for the owner's approval (ask_9): every 1m. Until " +
+        "then the wake stays as it is.",
+    )
   })
 
   test("status says how periodic wakes are gated, unless they are free", async () => {
@@ -133,11 +147,11 @@ describe("wake_mode", () => {
         }).call,
       )
     expect(await status("ask")).toContain(
-      "Periodic wakes (every, cron, idle ... repeat): the owner approves " +
-        "each one first (wake_mode ask).",
+      "Periodic wakes (every, cron, idle): the owner approves each one " +
+        "first (wake_mode ask).",
     )
     expect(await status("off")).toContain(
-      "Periodic wakes (every, cron, idle ... repeat): you cannot set them " +
+      "Periodic wakes (every, cron, idle): you cannot set them " +
         "(wake_mode off).",
     )
     expect(await status("approve")).not.toContain("Periodic wakes")
