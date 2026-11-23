@@ -600,12 +600,14 @@ autocode settings set wake_mode ask --match 'kaggle:worker-*'
   can take its proposal back (`autocode_approval action=close`). `autocode_wake action=list` shows the agent
   which of its wakes wait for you, and `autocode_me action=status` says how its periodic wakes are gated.
 - **Changing a wake** asks again. The wake stays as it was until you approve. Setting a wake again with the terms
-  that it has now asks nothing: there is nothing new to decide, and agents set their wakes again when they start.
+  that it has now asks nothing, is not refused under `off`, and leaves a change that waits where it is: there is
+  nothing new to decide, and agents set their wakes again when they start.
 - **What stays free:** one-time wakes (`in`, `at`, `fire-only`, `fire-only once`), cancelling and firing. The guide
   tells agents not to rebuild a periodic wake from one-time ones.
 - **Your own wakes** for an agent are never asked for: the Wakes tab's form and `autocode wake set`.
 - **A wake that is set or cancelled meanwhile**, by the agent or by you, closes its proposal: an approval never
-  overwrites a newer wake. The same proposal again keeps the item that you have seen.
+  overwrites a newer wake. History says who closed it and why (`ask.closed`), and the agent is told when you did
+  it. The same proposal again keeps the item that you have seen.
 - **An end that passed** before you approved, or a check's time limit above a maximum that you lowered meanwhile:
   the wake is not set. The agent's notice says why, and an alert in your Inbox tells you too.
 - **A proposal goes with its agent.** It does not keep the agent from expiring, and it closes when the agent

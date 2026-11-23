@@ -569,7 +569,8 @@ export async function startServer(
       throw err
     }
   }
-  wakes.dropProposal = (agent, name) => asks.dropWakeProposal(agent, name)
+  wakes.dropProposal = (agent, name, by, why) =>
+    asks.dropWakeProposal(agent, name, by, why)
   asks.startJob = (job, ask) =>
     jobs.start(job, "ask", "ask", undefined, ask)?.id ?? null
   retries.onGivenUp = (agent, reason) => jobs.turnsFailed(agent, reason)
@@ -1325,7 +1326,8 @@ export async function startServer(
        * an agent sets for itself (every, cron, idle) may need
        * the owner's approval (ask) or be refused (off). The terms are
        * checked first. Setting a wake again with the terms it has asks
-       * nothing. One-time wakes are free.
+       * nothing and is not refused, and leaves a change that waits where
+       * it is. One-time wakes are free.
        */
       handler: async ({ caller, params, body }) => {
         const agent = me(caller)
@@ -1334,7 +1336,9 @@ export async function startServer(
           resolveSettings(settings.layers(), agent).values.wake_mode ??
             "approve",
         )
-        if (mode !== "approve" && periodic(def.trigger)) {
+        // set again as it is: nothing new to decide, under ask and off
+        const same = wakes.sameTerms(agent, def)
+        if (mode !== "approve" && periodic(def.trigger) && !same) {
           if (mode === "off")
             throw new AutocodeError(
               "forbidden",
@@ -1343,21 +1347,19 @@ export async function startServer(
                 "(in, at, fire-only) stay free",
               403,
             )
-          if (!wakes.sameTerms(agent, def)) {
-            const approval = asks.proposeWake(
-              agent,
-              caller!.session!,
-              !!wakes.row(agent, def.name),
-              wakes.describe(agent, def),
-              wakes.proposal(def) as { name: string; text: string },
-            )
-            return json(
-              { state: "asked", name: def.name, approval: approval.id },
-              202,
-            )
-          }
+          const approval = asks.proposeWake(
+            agent,
+            caller!.session!,
+            !!wakes.row(agent, def.name),
+            wakes.describe(agent, def),
+            wakes.proposal(def) as { name: string; text: string },
+          )
+          return json(
+            { state: "asked", name: def.name, approval: approval.id },
+            202,
+          )
         }
-        const res = wakes.store(agent, def, agent)
+        const res = wakes.store(agent, def, agent, same)
         return json({ wake: res.wake }, res.status)
       },
     },

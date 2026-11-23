@@ -204,7 +204,11 @@ export function parseTrigger(
   const end = endTime(when, tz, opts.now, text)
   if (end <= opts.now) throw bad(text, "the end (until) has passed already")
   if (!Number.isFinite(end) || end > MAX_END)
-    throw bad(text, "the end (until) must be before the year 10000")
+    throw bad(
+      text,
+      "the end (until) is too far ahead: it must come before the year " +
+        "10000 (a date alone ends at the midnight after it)",
+    )
   return { ...t, until: new Date(end).toISOString() } as Trigger
 }
 

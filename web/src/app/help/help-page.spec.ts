@@ -493,9 +493,9 @@ describe('HelpPage', () => {
     expect(section(page, 'commands')).toContain('[--check-timeout DURATION]');
     // 1.1.0 (the owner, 2026-11-20): what ends every prompt
     expect(section(page, 'wakes')).toContain(
-      "Every prompt from Autocode ends with two lines: the server's time, " +
-        "the agent's context and what it spent today; then Autocode's " +
-        'name and where the agent gets help.',
+      "Every prompt from Autocode ends with one line: the server's time, " +
+        "the agent's context and what it spent today, then where the " +
+        'agent gets help.',
     );
     // 1.1.0-rc4 (the owner, 2026-11-22): an agent closes its own items
     expect(section(page, 'inbox')).toContain(

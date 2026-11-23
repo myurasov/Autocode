@@ -350,7 +350,8 @@ describe("what is refused", () => {
   test("an end past the year 9999", async () => {
     await refused(
       "every 1d until 9999-12-31",
-      "the end (until) must be before the year 10000",
+      "the end (until) is too far ahead: it must come before the year " +
+        "10000 (a date alone ends at the midnight after it)",
     )
     expect((await set("far", "every 1d until 9999-12-30")).status).toBe(201)
   })

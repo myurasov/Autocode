@@ -395,6 +395,10 @@ test("the reference has wake_mode, and expire_after 0 for never", () => {
       "every idle stretch, and each of its own turns starts a new one.",
     "- **A wake that is set or cancelled meanwhile**, by the agent or by " +
       "you, closes its proposal",
+    "History says who closed it and why (`ask.closed`), and the agent is " +
+      "told when you did it.",
+    "Setting a wake again with the terms that it has now asks nothing, is " +
+      "not refused under `off`, and leaves a change that waits where it is",
     "an alert in your Inbox tells you too",
     "- **A proposal goes with its agent.**",
     "- **Patterns and renames.**",

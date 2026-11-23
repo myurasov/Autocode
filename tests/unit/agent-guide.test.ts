@@ -794,13 +794,15 @@ describe("the guide", () => {
       "The owner may gate periodic wakes (`every`, `cron`, and `idle` " +
         "with or without `repeat`) with the `wake_mode` setting; " +
         "`autocode_me status` says so when they are not free.",
-      "Cancelling a wake, or setting it again, closes its proposal.",
+      "Cancelling a wake, or setting it with other terms, closes its " +
+        "proposal.",
       "With `ask`, `set` does not set the wake: it asks the owner, with " +
         "the wake's exact terms, and the wake is set once the owner " +
         'approves (a notice tells you: `approval "Wake NAME" approved`).',
       "a wake of that name that exists stays as it is",
       "take a proposal back with `autocode_approval action=close`",
-      "Setting a wake again with the terms it has asks nothing.",
+      "Setting a wake again with the terms it has asks nothing, also " +
+        "under `off`, and leaves a change that waits where it is.",
       "With `off`, a periodic wake is refused.",
       "do not rebuild a periodic wake from one-time ones to get around " +
         "the setting: ask the owner.",

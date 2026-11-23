@@ -162,10 +162,16 @@ export class Wakes {
 
   /*
    * A wake that is stored or cancelled, by anyone, makes its open proposal
-   * (wake_mode ask) stale: it is closed, and this says whether there was
-   * one (the review before 1.1.0-rc5: a late approval overwrote the wake).
+   * (wake_mode ask) stale: it is closed, with who did it and why, and this
+   * says whether there was one (the review before 1.1.0-rc5: a late
+   * approval overwrote the wake).
    */
-  dropProposal: (agent: string, name: string) => boolean = () => false
+  dropProposal: (
+    agent: string,
+    name: string,
+    by: string,
+    why: string,
+  ) => boolean = () => false
 
   private agentExists(agent: string) {
     if (!this.db.query("SELECT 1 FROM agents WHERE id = ?").get(agent))
@@ -302,8 +308,11 @@ export class Wakes {
    */
   describe(agent: string, def: WakeDef): string[] {
     const tz = this.timezone()
+    // a one-time wake's time too (the wake that a change would replace)
     const shown = (t: Trigger) =>
-      formatTrigger(t, (iso) => localTime(Date.parse(iso), tz))
+      t.kind === "at"
+        ? `at ${localTime(Date.parse(t.at), tz)}`
+        : formatTrigger(t, (iso) => localTime(Date.parse(iso), tz))
     const now = this.row(agent, def.name)
     return [
       `- trigger: ${shown(def.trigger)}`,
@@ -322,11 +331,17 @@ export class Wakes {
     ]
   }
 
-  // Stores a checked wake: it counts from now.
+  /*
+   * Stores a checked wake: it counts from now. Its open proposal is closed,
+   * unless the wake is only set again as it is (`same`): agents do that
+   * when they start, and it must not take back a change that waits for the
+   * owner (the second review before 1.1.0-rc5).
+   */
   store(
     agent: string,
     def: WakeDef,
     by: string,
+    same = false,
   ): { status: number; wake: WakeView } {
     const { name, text, trigger, check } = def
     const checkTimeout = def.check_timeout_ms
@@ -382,7 +397,7 @@ export class Wakes {
           )
     }
     this.db.query("RELEASE wake_set").run()
-    this.dropProposal(agent, name)
+    if (!same) this.dropProposal(agent, name, by, "the wake was set")
     this.history.record("wake.set", {
       agent,
       data: { name, trigger: formatTrigger(trigger), by, replaced: !!before },
@@ -446,10 +461,17 @@ export class Wakes {
       )
       .run(agent, name)
     // and its proposal that waits for the owner, also when that is all
-    const proposed = this.dropProposal(agent, name)
+    // there was (the history then has the closed proposal, and no wake)
+    const proposed = this.dropProposal(
+      agent,
+      name,
+      by,
+      "the wake was cancelled",
+    )
     if (!res.changes && !waiting.changes && !proposed)
       throw new AutocodeError("no_wake", `${agent} has no wake ${name}`, 404)
-    this.history.record("wake.cancelled", { agent, data: { name, by } })
+    if (res.changes || waiting.changes)
+      this.history.record("wake.cancelled", { agent, data: { name, by } })
     return { cancelled: name }
   }
 

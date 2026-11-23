@@ -297,6 +297,20 @@ describe("wake_mode ask", () => {
       check: "./c.sh",
       check_timeout: "2m",
     })
+    /*
+     * The second review before 1.1.0-rc5: agents set their wakes again
+     * when they start; that must not take back a change that waits.
+     */
+    const again = await set("tick", "every 2h", {
+      check: "./c.sh",
+      check_timeout: "2m",
+    })
+    expect(again.status).toBe(200)
+    expect((await approvals()).map((i: any) => i.id)).toEqual([
+      moved.body.approval,
+    ])
+    expect((await mine()).proposed.length).toBe(1)
+    expect(await prompts()).toEqual([])
   })
 
   test("the terms are checked before anything is asked", async () => {
@@ -402,20 +416,45 @@ describe("wake_mode ask", () => {
     expect((await mine()).proposed).toEqual([])
     const late = await answer(first.id, "approve")
     expect(late.status).toBe(409)
+    expect(late.body.error.message).toBe(
+      `ask ${first.id} was closed by the owner`,
+    )
     expect((await wakeOf("w")).trigger).toBe("every 1d")
+    // History says who closed it and why, and the agent is told: it was
+    // not its own doing (the second review before 1.1.0-rc5)
+    const closed = async () =>
+      (await owner("GET", "/v1/history?kind=ask.closed")).body.history
+    expect((await closed())[0]).toMatchObject({
+      agent: "team:lead",
+      data: {
+        id: first.id,
+        by: "owner",
+        why: "the wake was set",
+        title: "Wake w, set by team:lead",
+      },
+    })
+    expect(await prompts()).toEqual([
+      expect.stringMatching(
+        /^\[autocode\] approval "Wake w" closed\n\nYour approval "Wake w" was closed: the owner set the wake w meanwhile\. Ask again if your change is still needed\.\n/,
+      ),
+    ])
     // the agent itself, once the owner lets it
     await set("w", "every 10m")
     expect((await approvals()).length).toBe(1)
     await mode("approve")
     expect((await set("w", "every 2d")).status).toBe(200)
     expect(await approvals()).toEqual([])
+    expect((await closed())[0].data).toMatchObject({
+      by: "team:lead",
+      why: "the wake was set",
+    })
     // a one-time wake of that name
     await mode("ask")
     await set("w", "every 10m")
     expect((await approvals()).length).toBe(1)
     expect((await set("w", "in 45m")).status).toBe(200)
     expect(await approvals()).toEqual([])
-    // nothing was told to the agent about any of them
+    // its own doing: nothing is told to the agent
     expect(await prompts()).toEqual([])
   })
 
@@ -436,12 +475,31 @@ describe("wake_mode ask", () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ cancelled: "p" })
     expect(await approvals()).toEqual([])
-    // the owner's cancel does the same
+    expect(await prompts()).toEqual([])
+    // the owner's cancel does the same, and the agent is told
     await set("q", "every 10m")
     const mineToo = await owner("DELETE", "/v1/agents/team:lead/wakes/q")
     expect(mineToo.status).toBe(200)
     expect(await approvals()).toEqual([])
+    expect((await prompts())[0]).toContain(
+      'Your approval "Wake q" was closed: the owner cancelled the wake q ' +
+        "meanwhile.",
+    )
     expect((await as(lead, "DELETE", "/v1/me/wakes/q")).status).toBe(404)
+    // History: each closed proposal, and a wake cancelled only where one
+    // was there
+    const kinds = async (kind: string) =>
+      (await owner("GET", `/v1/history?kind=${kind}`)).body.history.map(
+        (h: any) => [h.data.name ?? h.data.title, h.data.by, h.data.why],
+      )
+    expect(await kinds("wake.cancelled")).toEqual([
+      ["w", "team:lead", undefined],
+    ])
+    expect(await kinds("ask.closed")).toEqual([
+      ["Wake q, set by team:lead", "owner", "the wake was cancelled"],
+      ["Wake p, set by team:lead", "team:lead", "the wake was cancelled"],
+      ["Wake w, set by team:lead", "team:lead", "the wake was cancelled"],
+    ])
   })
 
   // The review before 1.1.0-rc5: each repeat made a new item, and the ID
@@ -455,6 +513,30 @@ describe("wake_mode ask", () => {
     const three = await set("w", "every 2h")
     expect(three.body.approval).not.toBe(one.body.approval)
     expect((await approvals()).length).toBe(1)
+  })
+
+  // The second review before 1.1.0-rc5: a kept item said "change" and
+  // "now" of a wake that had gone meanwhile.
+  test("the same proposal again makes a new item when the wake it would change is gone", async () => {
+    await set("x", "in 5m")
+    const one = await set("x", "every 1h")
+    const [first] = await approvals()
+    // a one-time trigger reads in the server's zone here too
+    expect(first.text).toStartWith(
+      "team:lead asks to change the wake x:\n- trigger: every 1h\n- now: " +
+        "at 2026-10-28 12:05 UTC\n",
+    )
+    t.clock.advance(5 * MIN)
+    await prompts()
+    expect(await wakeOf("x")).toBeUndefined()
+    const two = await set("x", "every 1h")
+    expect(two.body.approval).not.toBe(one.body.approval)
+    const [item, ...more] = await approvals()
+    expect(more).toEqual([])
+    expect(item.text).toBe(
+      "team:lead asks to set the wake x:\n- trigger: every 1h\n\nIts " +
+        "text:\n> Go.",
+    )
   })
 
   test("a proposal neither keeps its agent from expiring nor outlives it or its session", async () => {
@@ -551,8 +633,10 @@ describe("wake_mode off", () => {
       trigger: "every 1h",
     })
     expect(res.status).toBe(201)
-    // which the agent cannot set again, and may cancel
-    expect((await set("tick", "every 1h")).status).toBe(403)
+    // which the agent may set again as it is (agents do when they start),
+    // but not change; and may cancel
+    expect((await set("tick", "every 1h")).status).toBe(200)
+    expect((await set("tick", "every 30m")).status).toBe(403)
     expect((await as(lead, "DELETE", "/v1/me/wakes/tick")).status).toBe(200)
   })
 })

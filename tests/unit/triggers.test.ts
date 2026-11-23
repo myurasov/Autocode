@@ -290,7 +290,7 @@ describe("an end on a periodic trigger (until)", () => {
       "every 1d until 9999-12-31T23:59:59-01:00",
     ])
       expect(() => parseTrigger(far, opts), far).toThrow(
-        /the end \(until\) must be before the year 10000/,
+        /the end \(until\) is too far ahead: it must come before the year 10000/,
       )
     for (const text of [
       "every 1d until 9999-12-30",
@@ -321,7 +321,8 @@ describe("an end on a periodic trigger (until)", () => {
       "every 1d until 2027-03-01 6pm",
     ])
       expect(() => parseTrigger(bad, opts), bad).toThrow(
-        /cannot read the end \(until\): a date \(2027-03-01\), a date and a time, an ISO time or HH:MM/,
+        "cannot read the end (until): a date (2027-03-01), a date and a " +
+          "time, an ISO time or HH:MM",
       )
     expect(() => parseTrigger("every 1d until 2027-02-30", opts)).toThrow(
       /no such date or time/,

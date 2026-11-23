@@ -146,17 +146,6 @@ export class Asks {
   ): AskView {
     const name = def.name
     const stored = JSON.stringify(def)
-    for (const old of this.db
-      .query(
-        "SELECT * FROM asks WHERE agent_id = ? AND state = 'open' " +
-          "AND wake_def IS NOT NULL",
-      )
-      .all(agent) as any[]) {
-      // the same terms again: the item the owner has seen stays
-      if (old.wake_def === stored) return this.approvalView(old)
-      if (JSON.parse(old.wake_def).name === name)
-        this.finish(old, "gone", null, null, true)
-    }
     const text = [
       `${agent} asks to ${change ? "change" : "set"} the wake ${name}:`,
       ...lines,
@@ -164,6 +153,19 @@ export class Asks {
       "Its text:",
       ...def.text.split("\n").map((l) => `> ${l}`),
     ].join("\n")
+    for (const old of this.db
+      .query(
+        "SELECT * FROM asks WHERE agent_id = ? AND state = 'open' " +
+          "AND wake_def IS NOT NULL",
+      )
+      .all(agent) as any[]) {
+      // the same proposal again, word for word: the item the owner has
+      // seen stays
+      if (old.wake_def === stored && JSON.parse(old.body).text === text)
+        return this.approvalView(old)
+      if (JSON.parse(old.wake_def).name === name)
+        this.finish(old, "gone", null, null, true)
+    }
     const id = randomId()
     this.db
       .query(
@@ -189,22 +191,46 @@ export class Asks {
   }
 
   /*
-   * The wake was set or cancelled meanwhile: its open proposal no longer
-   * describes a change, and is closed without a word (the review before
-   * 1.1.0-rc5). Says whether there was one.
+   * The wake was set or cancelled meanwhile (`why`), by the agent or the
+   * owner (`by`): its open proposal no longer describes a change, and is
+   * closed (the review before 1.1.0-rc5). History says who and why, and the
+   * agent is told when it was not its own doing. Says whether there was
+   * one.
    */
-  dropWakeProposal(agent: string, name: string): boolean {
+  dropWakeProposal(
+    agent: string,
+    name: string,
+    by: string,
+    why: string,
+  ): boolean {
     let dropped = false
     for (const old of this.db
       .query(
         "SELECT * FROM asks WHERE agent_id = ? AND state = 'open' " +
           "AND wake_def IS NOT NULL",
       )
-      .all(agent) as any[])
-      if (JSON.parse(old.wake_def).name === name) {
-        this.finish(old, "gone", null, null, true)
-        dropped = true
-      }
+      .all(agent) as any[]) {
+      if (JSON.parse(old.wake_def).name !== name) continue
+      this.finish(old, "gone", { text: why }, by, true)
+      this.history.record("ask.closed", {
+        agent,
+        data: { id: old.id, by, why, title: old.title },
+      })
+      dropped = true
+      if (by === agent) continue
+      const who = by === "owner" ? "the owner" : `agent ${by}`
+      const did = why.endsWith("cancelled") ? "cancelled" : "set"
+      try {
+        this.notify({
+          agent,
+          subject: `approval "Wake ${name}" closed`,
+          text:
+            `Your approval "Wake ${name}" was closed: ${who} ${did} the ` +
+            `wake ${name} meanwhile. Ask again if your change is still ` +
+            "needed.",
+        })
+      } catch {}
+    }
     return dropped
   }
 
