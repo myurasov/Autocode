@@ -33,10 +33,10 @@ afterAll(async () => {
 
 describe("the version", () => {
   test("is the release plus the build number, or -dev", () => {
-    // the fourth release candidate (the owner, 2026-11-22: "push and
-    // release rc4"); the build counter keeps counting
-    expect(RELEASE).toBe("1.1.0-rc4")
-    expect(versionOf(RELEASE, "90")).toBe("1.1.0-rc4-build90")
+    // the fifth release candidate (the owner, 2026-11-22: "lets fold
+    // another change in rc5"); the build counter keeps counting
+    expect(RELEASE).toBe("1.1.0-rc5")
+    expect(versionOf(RELEASE, "91")).toBe("1.1.0-rc5-build91")
     expect(versionOf("0.1.0", "7")).toBe("0.1.0-build7")
     expect(versionOf("0.1.0", "")).toBe("0.1.0-dev")
     expect(versionOf("0.1.0")).toBe("0.1.0-dev")
