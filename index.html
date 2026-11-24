@@ -1,0 +1,104 @@
+<!doctype html>
+<!--
+  A replica of the Autocode web UI for demos, filled with an invented team of
+  agents. It is static: it loads only the files beside it, talks to no server
+  and keeps nothing. Open it from a folder or serve it from any web server.
+  ?bare hides the strip at the top (for screenshots); ?theme=light starts light.
+-->
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
+  >
+  <title>Autocode (demo)</title>
+  <meta
+    name="description"
+    content="A click-through demo of Autocode's web UI with an invented setup: 12 agents that run one person's home life and their engineering project. Autocode is a long-term autonomy support framework for OpenCode agents."
+  >
+  <meta property="og:title" content="Autocode (demo): safely remove the human bottleneck">
+  <meta
+    property="og:description"
+    content="Click through Autocode's web UI with an invented setup: 12 agents worked through the night; a few decisions wait for you."
+  >
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link
+    rel="icon"
+    href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="%23e8436e" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M8 2 14.5 13.5 1.5 13.5Z"/></svg>'
+  >
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="demo.css">
+</head>
+<body>
+  <aside id="demo-strip" aria-label="About this demo">
+    <p class="demo-slogan">safely remove the human bottleneck</p>
+    <p class="demo-what">
+      This is Autocode's web UI with an invented setup: 12 agents on 3 machines
+      that run one person's home life (bills, mail, the house, a trip) and their
+      engineering project, on a Monday at 09:12, after a night and a weekend of
+      work on their own. Nothing here is real or connected to anything; every
+      click stays in this page.
+    </p>
+    <p class="demo-tour">
+      <span>Try:</span>
+      <a href="#/inbox">answer the few things that wait for you</a>
+      <a href="#/wakes">see what brought each agent back to work</a>
+      <a href="#/messages">read what they tell each other</a>
+      <a href="#/costs">check the caps</a>
+      <a href="#/history">trace everything that happened</a>
+    </p>
+    <p class="demo-get">
+      Autocode is a long-term autonomy support framework for OpenCode agents:
+      <a href="https://github.com/myurasov/Autocode" rel="noopener">get it on GitHub</a>.
+    </p>
+    <button type="button" class="small" data-act="demo-hide" title="Hide this note">Hide</button>
+  </aside>
+
+  <app-root>
+    <header class="top">
+      <h1>
+        <svg
+          class="logo"
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linejoin="round"
+          stroke-linecap="round"
+        >
+          <path d="M8 2 14.5 13.5 1.5 13.5Z" />
+        </svg>
+        Autocode
+        <small class="server" title="Autocode version" id="demo-version"></small>
+      </h1>
+      <span class="spacer"></span>
+      <span id="demo-who">
+        <span class="who" title="signed in with the admin token">admin</span>
+        <button type="button" class="small" data-act="sign-out">Sign Out</button>
+      </span>
+      <button
+        type="button"
+        class="theme"
+        data-act="theme"
+        title="Light or dark"
+        aria-label="Light or dark"
+      >
+        &#9681;
+      </button>
+    </header>
+    <div id="demo-app"></div>
+  </app-root>
+  <noscript>
+    <p>This demo is drawn by scripts: turn JavaScript on to see it.</p>
+  </noscript>
+
+  <script src="help.js"></script>
+  <script src="world.js"></script>
+  <script src="core.js"></script>
+  <script src="pages.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

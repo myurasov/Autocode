@@ -1,0 +1,62 @@
+/*
+ * The demo's own styles, after the web UI's (ui.css): the strip above the
+ * UI that says what this page is, and the two places where the replica's
+ * elements differ from the app's.
+ */
+
+/* The strip: the slogan, what the page is, where to start. */
+#demo-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 1rem;
+  align-items: start;
+  margin: -0.5rem 0 1.2rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--tint);
+  background: var(--softer);
+}
+#demo-strip p {
+  grid-column: 1;
+  margin: 0;
+  max-width: 68rem;
+}
+#demo-strip .demo-slogan {
+  font-size: 1.25rem;
+  font-weight: var(--bold);
+  color: var(--fg-strong);
+  letter-spacing: 0.01em;
+}
+#demo-strip .demo-what {
+  color: var(--fg-dim);
+}
+#demo-strip .demo-tour {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 1.1rem;
+  margin-top: 0.15rem;
+}
+#demo-strip .demo-tour span {
+  color: var(--fg-dim);
+}
+#demo-strip .demo-get {
+  margin-top: 0.15rem;
+  color: var(--fg-dim);
+}
+#demo-strip button {
+  grid-column: 2;
+  grid-row: 1;
+}
+body.bare #demo-strip {
+  display: none;
+}
+
+/* The header's "admin" and Sign Out sit in one element here. */
+#demo-who {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+#demo-who[hidden] {
+  display: none;
+}
