@@ -284,6 +284,18 @@ describe('JobsPage', () => {
     expect(nightly.querySelector('td.by a.id-link')!.getAttribute('href')).toBe(
       '/agents?agent=team:lead',
     );
+    // To and Set By break only at punctuation, the owner's word never; a
+    // job's name may break anywhere (the owner, 2026-11-23).
+    for (const [row, c] of [
+      [nightly, 'td.to code'],
+      [nightly, 'td.by code'],
+      [mail, 'td.to code'],
+      [mail, 'td.by span'],
+    ] as const)
+      expect(row.querySelector(c)!.classList, c).toContain('agent-id');
+    expect(mail.querySelector('td.name code')!.classList).not.toContain(
+      'agent-id',
+    );
   });
 
   // The owner, 2026-11-09 (rc2): a job's row on Costs links here.
@@ -366,6 +378,12 @@ describe('JobsPage', () => {
       '00',
     ]);
     expect(cell(done, 'by')).toBe('schedule');
+    // who started it never breaks inside a word; the run's ID may break
+    // anywhere (the owner, 2026-11-23)
+    expect(done.querySelector('td.by span')!.classList).toContain('agent-id');
+    expect(done.querySelector('td.id code')!.classList).not.toContain(
+      'agent-id',
+    );
     expect(cell(done, 'state')).toBe('Succeeded');
     expect(cell(done, 'started')).toBe(localTime('2026-11-08T09:00:00.000Z'));
     expect(cell(done, 'ended')).toBe(localTime('2026-11-08T09:03:00.000Z'));
@@ -376,6 +394,7 @@ describe('JobsPage', () => {
     expect(failed.querySelector('td.by a.id-link')!.getAttribute('href')).toBe(
       '/agents?agent=team:lead',
     );
+    expect(failed.querySelector('td.by code')!.classList).toContain('agent-id');
     expect(cell(failed, 'state')).toBe('Failed');
     expect(cell(failed, 'cost')).toBe('$1.50');
     expect(cell(failed, 'result')).toBe('—');

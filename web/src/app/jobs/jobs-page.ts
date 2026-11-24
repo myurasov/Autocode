@@ -30,7 +30,7 @@ import {
   type JobInput,
   type Run,
 } from '../api';
-import { Breaks, IdParts, TimeText } from '../breaks';
+import { AgentId, Breaks, IdParts, TimeText } from '../breaks';
 import { FOLD_CHARS, folded } from '../format';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { leftText } from '../locks/locks-page';
@@ -65,6 +65,7 @@ const STARTERS = ['owner', 'schedule', 'ask'];
 @Component({
   selector: 'app-jobs-page',
   imports: [
+    AgentId,
     AgentLink,
     Breaks,
     IdParts,

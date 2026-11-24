@@ -1,7 +1,8 @@
 /*
  * Unit tests of the links from agent and host IDs to their pages: where they
  * lead (the page with the ID to highlight in its address), and that they show
- * the ID as before, breaking only after ":" or "_": code, or plain text.
+ * the ID as before: code, or plain text; a host's breaking after ":" or "_",
+ * an agent's only at its punctuation (the owner, 2026-11-23).
  */
 
 import { Component } from '@angular/core';
@@ -14,6 +15,7 @@ import { AgentLink, HostLink } from './links';
   template: `
     <p class="agent"><app-agent-link id="kaggle:lead" /></p>
     <p class="plain"><app-agent-link id="kaggle:lead" [plain]="true" /></p>
+    <p class="dashed"><app-agent-link id="co-work:update-loop-dev" /></p>
     <p class="host"><app-host-link id="machine-b:My-Project:ea8173fe" /></p>
   `,
 })
@@ -43,6 +45,26 @@ describe('AgentLink and HostLink', () => {
     expect(plain.querySelector('code')).toBeNull();
     expect(plain.textContent).toBe('kaggle:lead');
     expect(parts(plain)).toEqual(['kaggle:', 'lead']);
+  });
+
+  // The owner, 2026-11-23: "make agent ids columns only breaking at
+  // punctuation, now everywhere".
+  it('an agent ID breaks right after each punctuation character, in code and in plain text', async () => {
+    const page = await open();
+    const dashed = page.querySelector('p.dashed a code')!;
+    expect(parts(dashed)).toEqual(['co-', 'work:', 'update-', 'loop-', 'dev']);
+    expect(dashed.textContent).toBe('co-work:update-loop-dev');
+    expect(dashed.classList).toContain('agent-id');
+    expect(page.querySelector('p.agent a code')!.classList).toContain(
+      'agent-id',
+    );
+    expect(page.querySelector('p.plain a span')!.classList).toContain(
+      'agent-id',
+    );
+    // a host's ID is not an agent's: it may break anywhere
+    expect(page.querySelector('p.host a code')!.classList).not.toContain(
+      'agent-id',
+    );
   });
 
   it('a host ID leads to the Hosts page with the host to highlight', async () => {

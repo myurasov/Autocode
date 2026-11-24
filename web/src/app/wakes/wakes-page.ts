@@ -14,7 +14,7 @@
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Wake, type WakeInput } from '../api';
-import { Breaks, IdParts, TimeText } from '../breaks';
+import { AgentId, Breaks, IdParts, TimeText } from '../breaks';
 import { FOLD_CHARS, folded, localTime } from '../format';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink } from '../links';
@@ -64,6 +64,7 @@ export function triggerText(trigger: string): string {
 @Component({
   selector: 'app-wakes-page',
   imports: [
+    AgentId,
     AgentLink,
     Breaks,
     FoldRow,

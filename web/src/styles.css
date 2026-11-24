@@ -383,25 +383,42 @@ td.help {
   color: var(--fg-dim);
 }
 /*
- * IDs and id-like names (agent, host, message and session IDs, wake names,
- * setting keys, rules' patterns, machine names; the cells marked .id-like)
- * wrap as normal text (the owner, 2026-11-03): at their separators, after a
+ * IDs and id-like names (host, message and session IDs, wake names, setting
+ * keys, rules' patterns, machine names; the cells marked .id-like) wrap as
+ * normal text (the owner, 2026-11-03): at their separators first, after a
  * ":" or "_" (between the parts appId marks) and where the browser breaks,
- * as after "-"; never inside a word, except in the ID and session columns
- * (below). Folders wrap after "/" (the page marks
- * those places), and a time between its date and clock.
+ * as after "-"; and anywhere when a part does not fit its column (the
+ * owner, 2026-11-23: "reso of id-like can break anywhere"), so such a
+ * column may be as narrow as its heading. Folders wrap after "/" (the page
+ * marks those places), and a time between its date and clock.
  */
+.id-like {
+  overflow-wrap: anywhere;
+}
 .id-part {
   white-space: normal;
 }
 /*
  * Message and session IDs (the ID columns, td.id, and the session columns)
- * break anywhere (the owner, 2026-11-07): their random parts have no
- * separator to break at.
+ * break anywhere, filling each line (the owner, 2026-11-07): their random
+ * parts have no separator to break at.
  */
 td.id.id-like,
 td.session.id-like {
   line-break: anywhere;
+}
+/*
+ * An agent's ID, in every table (appAgentId: .agent-id), breaks only right
+ * after a punctuation character, never inside a word (the owner,
+ * 2026-11-23: "make agent ids columns only breaking at punctuation, now
+ * everywhere"): each of its parts stays on one line, in the ID column too.
+ */
+.agent-id {
+  line-break: auto;
+  overflow-wrap: normal;
+}
+.agent-id .id-part {
+  white-space: nowrap;
 }
 /*
  * The Agents table's ID column keeps room for an ID's parts (tier 0g: with
@@ -415,10 +432,13 @@ table.agents td.id {
 }
 /*
  * A description may hold a long path with no place to break: it breaks
- * anywhere, so it never makes the table wider than a laptop's screen (the
- * owner, 2026-11-09: a live page was 128 px too wide at 1280 px).
+ * anywhere, so a path never makes the table wider (the owner, 2026-11-09: a
+ * live page was 128 px too wide at 1280 px). It keeps 250 px (the owner,
+ * 2026-11-23: "make min-width of agent descr 250px"): with it the table
+ * needs about 1350 px, and scrolls inside the frame in a narrower window.
  */
 table.agents td.desc {
+  min-width: 250px;
   overflow-wrap: anywhere;
 }
 td.time > span {

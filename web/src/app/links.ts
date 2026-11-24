@@ -1,9 +1,9 @@
 /*
  * Links from an agent or host ID to its page, which highlights its row (the
- * owner, 2026-11-03): the ID as it shows elsewhere, code that breaks only
- * after a ":" or "_" (or plain text in a group's heading row), underlined on
- * hover. And, for those pages, the ID to highlight from their
- * address, and its row scrolled into view.
+ * owner, 2026-11-03): the ID as it shows elsewhere, code (or plain text in a
+ * group's heading row), underlined on hover; an agent's breaks only at its
+ * punctuation (the owner, 2026-11-23). And, for those pages, the ID to
+ * highlight from their address, and its row scrolled into view.
  */
 
 import {
@@ -19,18 +19,18 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
-import { IdParts } from './breaks';
+import { AgentId, IdParts } from './breaks';
 
 @Component({
   selector: 'app-agent-link',
-  imports: [IdParts, RouterLink],
+  imports: [AgentId, RouterLink],
   template: `<a
     class="id-link"
     routerLink="/agents"
     [queryParams]="gone() ? { agent: id(), unregistered: 1 } : { agent: id() }"
     title="Show on the Agents page"
-    >@if (plain()) {<span [appId]="id()"></span>} @else {<code
-        [appId]="id()"
+    >@if (plain()) {<span [appAgentId]="id()"></span>} @else {<code
+        [appAgentId]="id()"
       ></code>}</a
   >`,
 })

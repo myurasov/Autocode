@@ -29,7 +29,7 @@ import {
   errorText,
 } from '../api';
 import { clockText, dayText, dotClass } from '../format';
-import { IdParts } from '../breaks';
+import { AgentId } from '../breaks';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink, highlightParam, scrollToHighlight } from '../links';
 import { contains } from '../filter';
@@ -77,8 +77,8 @@ export function weekTotals(weeks: CostDay[][]): CostDay[] {
 @Component({
   selector: 'app-costs-page',
   imports: [
+    AgentId,
     AgentLink,
-    IdParts,
     MoreRow,
     NgTemplateOutlet,
     RouterLink,

@@ -125,7 +125,9 @@ describe('InboxPage', () => {
       'kaggle:',
       'lead',
     ]);
-    // An agent ID breaks only after ":" (the owner, 2026-11-03).
+    // An agent ID breaks only at its punctuation (the owner, 2026-11-23).
+    for (const c of ['td.agent code', 'td.sent-to span'])
+      expect(message.querySelector(c)!.classList, c).toContain('agent-id');
     expect(message.querySelector('td.agent')!.classList).toContain('id-like');
     expect(message.querySelector('td.item')!.classList).not.toContain(
       'id-like',

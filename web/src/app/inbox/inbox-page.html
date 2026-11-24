@@ -97,7 +97,7 @@
           @if (sentAgent(item); as to) {
             <app-agent-link [id]="to" />
           } @else if (sentOwner(item)) {
-            <span appId="owner"></span>
+            <span appAgentId="owner"></span>
           } @else {
             <span class="muted">{{ sentText(item) }}</span>
           }

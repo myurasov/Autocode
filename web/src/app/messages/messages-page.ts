@@ -19,7 +19,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Message } from '../api';
-import { IdParts, TimeText } from '../breaks';
+import { AgentId, IdParts, TimeText } from '../breaks';
 import { FOLD_CHARS, localTime } from '../format';
 import { AgentLink } from '../links';
 import { Markdown } from '../markdown';
@@ -76,7 +76,16 @@ export function recipients(to: string): string | string[] {
 
 @Component({
   selector: 'app-messages-page',
-  imports: [AgentLink, IdParts, Markdown, MoreRow, SortHead, TimeText, Updated],
+  imports: [
+    AgentId,
+    AgentLink,
+    IdParts,
+    Markdown,
+    MoreRow,
+    SortHead,
+    TimeText,
+    Updated,
+  ],
   templateUrl: './messages-page.html',
 })
 export class MessagesPage {

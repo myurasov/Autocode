@@ -235,6 +235,17 @@ describe('WakesPage', () => {
       );
     expect(parts(standup.querySelector('td.name code'))).toEqual(['standup']);
     expect(parts(standup.querySelector('td.by'))).toEqual(['owner']);
+    // Who set it and the group's agent break only at punctuation; a wake's
+    // name may break anywhere (the owner, 2026-11-23).
+    for (const [row, c] of [
+      [standup, 'td.by span'],
+      [ping, 'td.by code'],
+      [groups[1]!, 'tr.group th a span'],
+    ] as const)
+      expect(row.querySelector(c)!.classList, c).toContain('agent-id');
+    expect(standup.querySelector('td.name code')!.classList).not.toContain(
+      'agent-id',
+    );
     expect(
       groups[1]!.querySelector('tr.group th')!.getAttribute('colspan'),
     ).toBe('10');

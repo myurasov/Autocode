@@ -1,8 +1,10 @@
 /*
  * Where a narrow table cell may break its text, so that a table fits its frame:
  * a folder or a check after each ":", "/" and "_" (a <wbr>); an ID or id-like
- * name only right after a ":" or "_", never inside a part (the owner,
- * 2026-11-03); and a time only between its date and its clock with its zone.
+ * name right after a ":" or "_" (the owner, 2026-11-03; the page's styles let
+ * it break anywhere when a part does not fit); an agent's ID only right after
+ * a punctuation character, never inside a word (the owner, 2026-11-23); and a
+ * time only between its date and its clock with its zone.
  * The text stays the same, and a copy of it has no extra characters.
  */
 
@@ -60,10 +62,30 @@ export function idParts(id: string): string[] {
   return id ? id.split(/(?<=[:_])/) : [];
 }
 
+// An agent's ID's parts: each ends right after a punctuation character, one
+// that is not a letter or a digit (":", "-", "_", ".", and the "," and "*"
+// of a list or a pattern).
+export function agentIdParts(id: string): string[] {
+  return id ? id.split(/(?<=[^\p{L}\p{N}])/u) : [];
+}
+
+// The parts as the host's content: a span.id-part each, a <wbr> between.
+function showParts(host: HTMLElement, parts: string[]): void {
+  const document = host.ownerDocument;
+  host.replaceChildren();
+  parts.forEach((part, i) => {
+    if (i > 0) host.append(document.createElement('wbr'));
+    const span = document.createElement('span');
+    span.className = 'id-part';
+    span.textContent = part;
+    host.append(span);
+  });
+}
+
 /*
- * An ID as its parts, each kept whole (a span.id-part, white-space: pre), with
- * a break (a <wbr>) only between them: it breaks only right after a ":" or
- * "_", and one without either never breaks.
+ * An ID as its parts (a span.id-part each), with a break (a <wbr>) between
+ * them: it breaks right after a ":" or "_" first, and, by the page's styles,
+ * anywhere when a part does not fit (the owner, 2026-11-23).
  */
 @Directive({ selector: '[appId]' })
 export class IdParts {
@@ -71,16 +93,23 @@ export class IdParts {
 
   constructor() {
     const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
-    effect(() => {
-      const document = host.ownerDocument;
-      host.replaceChildren();
-      idParts(this.appId() ?? '').forEach((part, i) => {
-        if (i > 0) host.append(document.createElement('wbr'));
-        const span = document.createElement('span');
-        span.className = 'id-part';
-        span.textContent = part;
-        host.append(span);
-      });
-    });
+    effect(() => showParts(host, idParts(this.appId() ?? '')));
+  }
+}
+
+/*
+ * An agent's ID, wherever a table shows one, and the words that stand in its
+ * place (owner, autocode, schedule): its parts kept whole (.agent-id, whose
+ * parts the styles keep on one line), so it breaks only right after a
+ * punctuation character (the owner, 2026-11-23: "make agent ids columns only
+ * breaking at punctuation").
+ */
+@Directive({ selector: '[appAgentId]', host: { class: 'agent-id' } })
+export class AgentId {
+  readonly appAgentId = input<string | null | undefined>('');
+
+  constructor() {
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    effect(() => showParts(host, agentIdParts(this.appAgentId() ?? '')));
   }
 }

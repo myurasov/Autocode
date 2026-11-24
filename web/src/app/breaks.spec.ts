@@ -2,6 +2,8 @@
  * Unit tests of how an ID may break (the owner, 2026-11-03): only right after
  * a ":" or "_", never inside a part; its parts as shown, each kept whole, with
  * a break between them and nothing added to the text.
+ * An agent's ID (the owner, 2026-11-23): right after each punctuation
+ * character, marked .agent-id for the page's styles.
  * Breaks (folders, model names, error types): only after its characters.
  * A time: its date, clock and zone, each kept whole.
  */
@@ -10,7 +12,14 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { el, parts, settle, setup } from '../testing/helpers';
 import { localTime } from './format';
-import { Breaks, IdParts, idParts, TimeText } from './breaks';
+import {
+  AgentId,
+  agentIdParts,
+  Breaks,
+  IdParts,
+  idParts,
+  TimeText,
+} from './breaks';
 
 @Component({
   imports: [IdParts],
@@ -81,6 +90,96 @@ describe('IdParts', () => {
     expect(parts(name)).toEqual(['layout-check-of-a-long-wake-name']);
     expect(name.querySelector('wbr')).toBeNull();
     expect(page.querySelector('code.none')!.innerHTML).toBe('');
+  });
+});
+
+// The owner, 2026-11-23: "make agent ids columns only breaking at
+// punctuation": an agent's ID breaks right after each character that is not
+// a letter or a digit, and nowhere else.
+@Component({
+  imports: [AgentId],
+  template: `
+    <code class="agent" appAgentId="co-work:update-loop_dev.2"></code>
+    <span class="owner" appAgentId="owner"></span>
+    <code class="list" appAgentId="team:*,kaggle:lead"></code>
+    <code class="none" [appAgentId]="null"></code>
+  `,
+})
+class AgentIds {}
+
+describe('agentIdParts', () => {
+  it('splits right after each punctuation character, never inside a word', () => {
+    expect(agentIdParts('co-work:update-loop_dev.2')).toEqual([
+      'co-',
+      'work:',
+      'update-',
+      'loop_',
+      'dev.',
+      '2',
+    ]);
+    expect(agentIdParts('live:laptop:glm-5.3:20261028T1314')).toEqual([
+      'live:',
+      'laptop:',
+      'glm-',
+      '5.',
+      '3:',
+      '20261028T1314',
+    ]);
+    expect(agentIdParts('owner')).toEqual(['owner']);
+    // a list and a pattern (a job's To): after "," and "*" too
+    expect(agentIdParts('team:*,kaggle:lead')).toEqual([
+      'team:',
+      '*',
+      ',',
+      'kaggle:',
+      'lead',
+    ]);
+    // letters and digits of any script are no punctuation
+    expect(agentIdParts('équipe:агент-1')).toEqual(['équipe:', 'агент-', '1']);
+    expect(agentIdParts('a::b')).toEqual(['a:', ':', 'b']);
+    expect(agentIdParts('')).toEqual([]);
+  });
+});
+
+describe('AgentId', () => {
+  beforeEach(() => {
+    setup();
+  });
+
+  it('shows each part whole, with a break only between parts, and marks itself; the text stays the same', async () => {
+    const fixture = TestBed.createComponent(AgentIds);
+    await settle(fixture);
+    const page = el(fixture);
+    const agent = page.querySelector('code.agent')!;
+    expect(agent.classList).toContain('agent-id');
+    expect(agent.textContent).toBe('co-work:update-loop_dev.2');
+    expect(agent.innerHTML).toBe(
+      '<span class="id-part">co-</span><wbr>' +
+        '<span class="id-part">work:</span><wbr>' +
+        '<span class="id-part">update-</span><wbr>' +
+        '<span class="id-part">loop_</span><wbr>' +
+        '<span class="id-part">dev.</span><wbr>' +
+        '<span class="id-part">2</span>',
+    );
+    const owner = page.querySelector('span.owner')!;
+    expect(owner.classList).toContain('agent-id');
+    expect(parts(owner)).toEqual(['owner']);
+    expect(owner.querySelector('wbr')).toBeNull();
+    expect(parts(page.querySelector('code.list'))).toEqual([
+      'team:',
+      '*',
+      ',',
+      'kaggle:',
+      'lead',
+    ]);
+    expect(page.querySelector('code.none')!.innerHTML).toBe('');
+  });
+
+  it("an ID that is no agent's is not marked", async () => {
+    const fixture = TestBed.createComponent(Ids);
+    await settle(fixture);
+    for (const code of el(fixture).querySelectorAll('code'))
+      expect(code.classList).not.toContain('agent-id');
   });
 });
 

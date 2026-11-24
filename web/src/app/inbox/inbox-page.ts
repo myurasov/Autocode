@@ -24,7 +24,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FILTER_DELAY_MS, REFRESH_MS } from '../agents/agents-page';
 import { type AskAnswer, Api, errorText, type InboxItem } from '../api';
-import { IdParts, TimeText } from '../breaks';
+import { AgentId, TimeText } from '../breaks';
 import { localTime } from '../format';
 import { AgentLink } from '../links';
 import { Latest } from '../latest';
@@ -135,7 +135,7 @@ export function askClosedText(item: InboxItem): string {
 
 @Component({
   selector: 'app-inbox-page',
-  imports: [AgentLink, IdParts, Markdown, MoreRow, SortHead, TimeText, Updated],
+  imports: [AgentId, AgentLink, Markdown, MoreRow, SortHead, TimeText, Updated],
   templateUrl: './inbox-page.html',
 })
 export class InboxPage {

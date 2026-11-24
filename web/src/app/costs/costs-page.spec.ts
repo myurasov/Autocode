@@ -333,6 +333,11 @@ describe('CostsPage', () => {
     const link = job.querySelector('td.agent a')!;
     expect(text(link)).toBe('job:nightly');
     expect(link.getAttribute('href')).toBe('/jobs?job=nightly');
+    // the Agent column breaks only at punctuation (the owner, 2026-11-23)
+    expect(link.querySelector('code')!.classList).toContain('agent-id');
+    expect(
+      row(page, 'kaggle:lead').querySelector('td.agent code')!.classList,
+    ).toContain('agent-id');
     expect(text(job.querySelector('td.status'))).toBe('job');
     expect(job.querySelector('td.status .dot')).toBeNull();
     expect(cell(page, 'job:nightly', 'cap')).toBe('off');

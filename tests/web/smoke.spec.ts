@@ -870,7 +870,8 @@ test("link: an agent or host that is not there now says so", async ({
  * failed shows error with a dot of its own, its error type and when the next
  * retry comes (full times in a tooltip), and Retry, which asks for one now
  * (its result in the toolbar); a failure that is not retried says so; a turn
- * that succeeds clears it. The page still fits 1280 px.
+ * that succeeds clears it. At 1280 px the window never scrolls sideways (the
+ * Agents table may, inside its frame: the owner, 2026-11-23).
  */
 test("error state: an agent whose turn failed shows error, its retries and Retry", async ({
   page,
@@ -946,7 +947,7 @@ test("error state: an agent whose turn failed shows error, its retries and Retry
         .locator("table.agents td.actions")
         .getByRole("button", { name: "Retry", exact: true }),
     ).toHaveCount(1)
-    expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+    expect((await overflow(page)).page).toBe(0)
     await retry.click()
     await expect(page.locator(".toolbar .notice")).toHaveText(
       `Retrying ${failing}.`,
@@ -1005,24 +1006,26 @@ test("admin: sets, fires and cancels a wake on the Wakes page", async ({
 })
 
 /*
- * IDs and id-like names (agent, host, message and session IDs, wake names,
- * setting keys, patterns, machine names) wrap as normal text, so they break
- * at their separators (after ":" and "_", which the page marks, and where the
- * browser breaks, as after "-"), never inside a word (the owner, 2026-11-03:
- * "instead of white-space: pre, use normal"), except the ID and session
- * columns, which break anywhere (the owner, 2026-11-07: a message or
- * session ID's random part has no separator). At 1024 px: every line of
- * such a cell but the last ends with a separator (in those columns, any
- * character), a long wake name breaks at its hyphens, nothing is added
- * around the ID, and the fixture's long IDs are among them.
+ * How IDs wrap (the owner, 2026-11-23: "make agent ids columns only breaking
+ * at punctuation, now everywhere; reso of id-like can break anywhere"). An
+ * agent's ID, in every table, breaks only right after a punctuation
+ * character: its parts stay whole (white-space: nowrap), and every line of
+ * it but the last ends with one. The other id-like names (host, message and
+ * session IDs, wake names, setting keys, patterns, machine names) wrap as
+ * normal text, at their separators first (after ":" and "_", which the page
+ * marks, and where the browser breaks, as after "-"), and anywhere when a
+ * part does not fit; the ID and session columns break anywhere, filling the
+ * line (the owner, 2026-11-07). At 1024 px: nothing is added around an ID,
+ * a long wake name breaks, and the fixture's long IDs are among them.
  */
-test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async ({
+test("id cells: an agent's ID breaks only at punctuation, the other IDs anywhere, at 1024 px", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1024, height: 800 })
   await signIn(page, admin)
   const seen: Record<string, string[]> = {}
   const lines: Record<string, number> = {}
+  let agents = 0
   for (const tab of [
     "Agents",
     "Hosts",
@@ -1031,6 +1034,7 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
     "Locks",
     "Wakes",
     "Jobs",
+    "Costs",
     "History",
     "Settings",
   ]) {
@@ -1041,14 +1045,25 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
         const range = document.createRange()
         range.selectNodeContents(e)
         const style = getComputedStyle(e)
+        const agent = e.querySelector(".agent-id")
+        const spaces = (of: Element[]) => [
+          ...new Set(of.map((p) => getComputedStyle(p).whiteSpace)),
+        ]
         return {
           raw: e.textContent ?? "",
           text: (e.textContent ?? "").trim(),
-          anywhere: getComputedStyle(e).lineBreak === "anywhere",
+          // an agent's ID (or owner, autocode, schedule in its place)
+          agent: agent
+            ? {
+                text: agent.textContent ?? "",
+                lineBreak: getComputedStyle(agent).lineBreak,
+                wrap: getComputedStyle(agent).overflowWrap,
+              }
+            : null,
+          wrap: style.overflowWrap,
           parts: parts.map((p) => p.textContent ?? ""),
-          spaces: [
-            ...new Set(parts.map((p) => getComputedStyle(p).whiteSpace)),
-          ],
+          spaces: spaces(parts.filter((p) => !p.closest(".agent-id"))),
+          agentSpaces: spaces(parts.filter((p) => p.closest(".agent-id"))),
           // The character before each line break: walk the characters and
           // note where the next one starts lower down.
           ends: (() => {
@@ -1083,30 +1098,42 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
       // No ID: a dash, or an empty cell (History: an entry without one).
       if (cell.text === "—" || cell.text === "") continue
       expect(cell.parts.join(""), name).toBe(cell.text)
-      expect(cell.spaces, name).toEqual(["normal"])
-      // Every line but the last ends with a separator (ID and session
-      // columns: anywhere).
-      if (!cell.anywhere)
+      // every id-like cell may break anywhere when a part does not fit
+      expect(cell.wrap, name).toBe("anywhere")
+      if (cell.agent) {
+        agents++
+        // an agent's ID is all the cell holds; its parts stay whole, and
+        // every line but the last ends with a punctuation character
+        expect(cell.agent.text, name).toBe(cell.text)
+        expect([cell.agent.lineBreak, cell.agent.wrap], name).toEqual([
+          "auto",
+          "normal",
+        ])
+        expect(cell.agentSpaces, name).toEqual(["nowrap"])
+        expect(cell.spaces, name).toEqual([])
         expect(
-          cell.ends.filter((ch) => !/[:_\-/.]/.test(ch)),
+          cell.ends.filter((ch) => /[\p{L}\p{N}]/u.test(ch)),
           name,
         ).toEqual([])
+      } else expect(cell.spaces, name).toEqual(["normal"])
       lines[name] = cell.lines
     }
     seen[tab] = cells.map((cell) => cell.text)
   }
+  expect(agents).toBeGreaterThan(10)
   // The long ones are among them.
   for (const id of [LONG.agent, LONG.session, LONG.host])
     expect(seen.Agents, id).toContain(id)
   expect(seen.Agents).toContain("laptop")
   expect(seen.Hosts).toContain(LONG.host)
   expect(seen.Wakes).toContain("layout-check-of-a-long-wake-name")
-  // A long wake name wraps at its hyphens now (it did not with pre).
+  // A long wake name wraps (it did not with pre).
   expect(lines["Wakes: layout-check-of-a-long-wake-name"]).toBeGreaterThan(1.5)
   expect(seen.Wakes).toContain(LONG.agent)
   expect(seen.Messages).toContain(LONG.agent)
   expect(seen.Messages.some((id) => /^m_\w+$/.test(id))).toBe(true)
   expect(seen.Inbox).toContain(LONG.agent)
+  expect(seen.Costs).toContain(LONG.agent)
   expect(seen.Settings).toContain("min_interval")
   expect(seen.History).toContain("smoke:agent")
   expect(seen.History).toContain("smoke:host:1")
@@ -1114,23 +1141,44 @@ test("id cells: IDs wrap as normal text, only at separators, at 1024 px", async 
   expect(seen.Locks).toContain("smoke:agent")
   expect(seen.Locks).toContain(LONG.agent)
   expect(seen.Jobs).toContain("smoke-report")
-  // The ID and session columns break anywhere; the other id-like ones not.
+  // The long agent's ID on the Agents page, where its column is at its
+  // narrowest: more than one line, each ending at a punctuation character
+  // (checked above), none inside a word.
+  expect(lines[`Agents: ${LONG.agent}`]).toBeGreaterThan(1.5)
+  // The ID and session columns break anywhere, filling the line; the other
+  // id-like ones at their separators first; an agent's ID in any of them
+  // only between its parts.
   const breaks = await page.evaluate(() => {
     const probe = (cls: string) => {
       const td = document.createElement("td")
       td.className = cls
+      const code = document.createElement("code")
+      code.className = "agent-id"
+      const part = document.createElement("span")
+      part.className = "id-part"
+      code.append(part)
+      td.append(code)
       document.body.append(td)
-      const v = getComputedStyle(td).lineBreak
+      const of = (e: Element) => {
+        const style = getComputedStyle(e)
+        return [style.lineBreak, style.overflowWrap, style.whiteSpace].join(" ")
+      }
+      const v = { cell: of(td), agent: of(code), part: of(part) }
       td.remove()
       return v
     }
     return {
       id: probe("id id-like"),
       session: probe("session id-like"),
-      other: probe("from id-like"),
+      other: probe("kind id-like"),
     }
   })
-  expect(breaks).toEqual({ id: "anywhere", session: "anywhere", other: "auto" })
+  const agent = { agent: "auto normal normal", part: "auto normal nowrap" }
+  expect(breaks).toEqual({
+    id: { cell: "anywhere anywhere normal", ...agent },
+    session: { cell: "anywhere anywhere normal", ...agent },
+    other: { cell: "auto anywhere normal", ...agent },
+  })
 })
 
 // "Updated Ns ago." sits in a footer at the bottom of the page, at the left;
@@ -3448,17 +3496,24 @@ async function overflow(page: Page) {
   })
 }
 
-// Every page fits 1280 px. At 1024 px, Agents and Wakes may be wider than
-// the frame, since IDs break only after ':' and '_' (the owner, 2026-11-03:
-// "Fit only at 1280 px"); see the next check.
+// Every page but Agents fits 1280 px (the owner, 2026-11-03: "Fit only at
+// 1280 px"). The Agents table keeps 250 px for its Description (the owner,
+// 2026-11-23: "make min-width of agent descr 250px") and an agent's ID in
+// whole parts, so it is wider than the frame there and scrolls inside it,
+// never the window. At 1024 px Wakes may be wider too; see the next check.
 for (const width of [1280]) {
-  test(`layout: every page fits ${width} px`, async ({ page }) => {
+  test(`layout: every page but Agents fits ${width} px; Agents keeps 250 px for the description`, async ({
+    page,
+  }) => {
     await page.setViewportSize({ width, height: 800 })
     await signIn(page, admin)
     const row = page.locator(`table.agents tr[data-agent="${LONG.agent}"]`)
     await expect(row.locator("td.folder")).toHaveText(LONG.directory)
     await expect(row.locator("td.session")).toHaveText(LONG.session)
-    expect(await overflow(page), "Agents").toEqual({ frame: 0, page: 0 })
+    expect((await overflow(page)).page, "Agents").toBe(0)
+    await expect(row.locator("td.desc")).toHaveCSS("min-width", "250px")
+    const desc = (await row.locator("td.desc").boundingBox())!
+    expect(desc.width).toBeGreaterThanOrEqual(250)
     await openTab(page, "Hosts")
     const host = page.locator(`table.hosts tr[data-host="${LONG.host}"]`)
     await expect(host.locator("td.folder")).toHaveText(LONG.directory)
@@ -4372,8 +4427,11 @@ test("layout: --soft is #efefef in light and #292f36 in dark; a table head shows
 // The owner, 2026-11-09: the live Agents page overflowed a laptop screen
 // (1280 px: 128 px too wide) with agents that have a long description, a
 // model, spend and context. The fixture's agents had none of these, so the
-// page check above passed. Here, agents shaped like the live ones.
-test("layout: Agents fits 1280 px with long descriptions, models, spend and context", async ({
+// page check above passed. Here, agents shaped like the live ones. Since
+// 2026-11-23 (the owner: "make min-width of agent descr 250px", and an
+// agent's ID in whole parts) the table is wider than the frame at 1280 px
+// and scrolls inside it, never the window; it fits 1440 px.
+test("layout: Agents with long descriptions, models, spend and context fits 1440 px; at 1280 px it scrolls inside the frame", async ({
   page,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -4471,10 +4529,22 @@ test("layout: Agents fits 1280 px with long descriptions, models, spend and cont
       await expect(row.locator("td.model + td.effort")).toHaveText("medium")
       await expect(row.locator("td.status")).toContainText("working")
       await expect(row.locator("td.spend")).toContainText(" today / $")
-      expect(await overflow(page), `Agents at ${width}`).toEqual({
-        frame: 0,
-        page: 0,
-      })
+      const over = await overflow(page)
+      expect(over.page, `Agents at ${width}`).toBe(0)
+      if (width === 1440) expect(over.frame, `Agents at ${width}`).toBe(0)
+      // the description keeps 250 px, and the ID its parts whole: no line
+      // of it is narrower than its longest part
+      const desc = (await row.locator("td.desc").boundingBox())!
+      expect(desc.width, `Agents at ${width}`).toBeGreaterThanOrEqual(250)
+      const id = await row.locator("td.id code").evaluate((code) => ({
+        parts: [...code.querySelectorAll(".id-part")].map((part) => ({
+          text: part.textContent,
+          lines: part.getClientRects().length,
+        })),
+      }))
+      expect(id.parts, `Agents at ${width}`).toEqual(
+        ["fit:", "update-", "loop-", "dev"].map((text) => ({ text, lines: 1 })),
+      )
     }
   } finally {
     for (const id of ids)

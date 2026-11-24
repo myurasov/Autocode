@@ -28,7 +28,7 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { type Agent, type AgentError, Api, errorText } from '../api';
-import { Breaks, IdParts, TimeText } from '../breaks';
+import { AgentId, Breaks, IdParts, TimeText } from '../breaks';
 import {
   contextBar,
   contextParts,
@@ -126,6 +126,7 @@ function count(n: number, thing: string): string {
 @Component({
   selector: 'app-agents-page',
   imports: [
+    AgentId,
     Breaks,
     FoldRow,
     HostLink,

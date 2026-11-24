@@ -194,6 +194,13 @@ describe('MessagesPage', () => {
     ]);
     expect(parts(rows[0]!.querySelector('td.sender'))).toEqual(['owner']);
     expect(parts(rows[0]!.querySelector('td.id'))).toEqual(['msg_', '2']);
+    // From and To break only at punctuation, the owner's word never; the
+    // message's ID may break anywhere (the owner, 2026-11-23).
+    for (const c of ['td.sender span', 'td.recipient code'])
+      expect(rows[0]!.querySelector(c)!.classList, c).toContain('agent-id');
+    expect(rows[0]!.querySelector('td.id code')!.classList).not.toContain(
+      'agent-id',
+    );
     // IDs break only after ":" or "_" (the owner, 2026-11-03); the rest
     // wraps.
     for (const c of ['id', 'sender', 'recipient'])

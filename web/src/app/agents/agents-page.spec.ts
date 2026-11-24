@@ -595,6 +595,11 @@ describe('AgentsPage', () => {
       );
     expect(parts(code('id'))).toEqual(['kaggle:', 'lead']);
     expect(parts(code('session'))).toEqual(['ses_', 'lead']);
+    // The agent's ID breaks only at its punctuation; the host and the
+    // session may break anywhere (the owner, 2026-11-23).
+    expect(code('id').classList).toContain('agent-id');
+    for (const cell of ['host', 'session'])
+      expect(code(cell).classList, cell).not.toContain('agent-id');
     expect(code('session').textContent).toBe('ses_lead');
     const machine = page.querySelector('table.agents tr.group th')!;
     expect(machine.classList).toContain('id-like');

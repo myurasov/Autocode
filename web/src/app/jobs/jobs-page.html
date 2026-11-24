@@ -249,7 +249,7 @@
           @if (isAgent(j.to)) {
             <app-agent-link [id]="j.to" />
           } @else {
-            <code [appId]="j.to"></code>
+            <code [appAgentId]="j.to"></code>
           }
         </td>
         <!-- Its last run: its state and start, a link to its row below. -->
@@ -271,7 +271,7 @@
           @if (j.created_by) {
             <app-agent-link [id]="j.created_by" />
           } @else {
-            <span appId="owner"></span>
+            <span appAgentId="owner"></span>
           }
         </td>
         <td class="actions">
@@ -358,7 +358,7 @@
           @if (isAgent(r.by)) {
             <app-agent-link [id]="r.by" />
           } @else {
-            <span [appId]="r.by"></span>
+            <span [appAgentId]="r.by"></span>
           }
         </td>
         <td class="state">{{ stateText(r.state) }}</td>

@@ -95,7 +95,7 @@
               routerLink="/jobs"
               [queryParams]="{ job: a.job }"
               title="Show on the Jobs page"
-              ><code [appId]="a.agent"></code
+              ><code [appAgentId]="a.agent"></code
             ></a>
           } @else {
             <app-agent-link [id]="a.agent" [gone]="!a.registered" />

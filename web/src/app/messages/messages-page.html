@@ -113,14 +113,14 @@
         <td class="time" [title]="m.created_at" [appTime]="m.created_at"></td>
         <td class="sender id-like">
           @if (m.from === 'owner' || m.from === 'autocode') {
-            <span [appId]="m.from"></span>
+            <span [appAgentId]="m.from"></span>
           } @else {
             <app-agent-link [id]="m.from" />
           }
         </td>
         <td class="recipient id-like">
           @if (m.to === 'owner') {
-            <span appId="owner"></span>
+            <span appAgentId="owner"></span>
           } @else {
             <app-agent-link [id]="m.to" />
           }
