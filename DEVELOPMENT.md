@@ -201,6 +201,7 @@ AUTOCODE_CI_HOST=machine-b ci/dev.sh run 'bun test tests/unit'
 | `autocode.consumer.agent.md` | the agents' guide. The plugin embeds it as the `autocode` skill and as `autocode_me action=help` |
 | `autocode.admin.agent.md` | for an agent that works on this repository, or installs Autocode |
 | `README.md`, `reference.md` | the documentation for people |
+| `media/` | the README's pictures: the demo of the web UI, with invented data |
 
 Kept out of git: `node_modules/`, `dist/`, `cli/src/generated/`, and every folder whose name starts with `__`, such
 as `__out/`.

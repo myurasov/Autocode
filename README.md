@@ -1,15 +1,28 @@
 # Autocode <!-- omit in toc -->
 
+**safely remove the human bottleneck**
+
 Autocode is a long-term autonomy support framework for [OpenCode](https://opencode.ai) agents. It gives AI coding
 agents what they need to work on their own for days or weeks, alone or as a team, and keeps them under your control.
 
-It is for developers who use OpenCode 2 (2.3.0 or later) on one Linux machine or several.
+[![The demo of Autocode's web UI. In the Inbox, the owner approves a flight fare that an agent holds, and 20 seconds
+later the agent reports the booking. The Messages tab shows agents writing to each other, and the Costs tab shows
+what each agent spent, beside its daily cap.](media/demo.gif)](https://myurasov.github.io/Autocode/)
+
+**[Try the demo](https://myurasov.github.io/Autocode/)** in your browser: Autocode's web UI with an invented setup,
+12 agents on 3 machines that run one person's home life and their engineering project. There is nothing to install,
+and every click stays in the page.
+
+If Autocode is useful to you, a star on GitHub helps other OpenCode users find it.
+
+Autocode is for developers who use OpenCode 2 (2.3.0 or later) on one Linux machine or several.
 
 **What you install:** one Autocode server on one of your machines, and a plugin in each machine's OpenCode. Both
 come from a single `autocode` binary, which is also the command line and holds the web UI. You build it from source
 and host it yourself.
 
 - [Why Autocode](#why-autocode)
+- [What It Looks Like](#what-it-looks-like)
 - [How It Works](#how-it-works)
 - [Install](#install)
 - [First Agent](#first-agent)
@@ -38,10 +51,73 @@ What Autocode provides:
 | **Jobs** | a saved task that a fresh agent runs, on a schedule or when you or an agent start it |
 | **Control** | pause and resume an agent, stop all agents at once, and read the history of what happened |
 
+## What It Looks Like
+
+The pictures show the [demo](https://myurasov.github.io/Autocode/): the web UI with an invented setup, in which every
+name, text and number is made up. Click a picture to open that tab of the demo.
+
+**Inbox: the decisions that are yours.** An agent that needs you asks and waits, and the others keep working. Here
+one agent holds a flight fare until you approve the booking. Another wants to send a mail in your name: the agent
+that answers its permission prompts passed this one on to you.
+
+<p>
+  <a href="https://myurasov.github.io/Autocode/#/inbox">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="media/inbox-dark.png">
+      <img src="media/inbox-light.png" alt="The Inbox tab of the demo: an approval for a held flight fare, with two
+options, and a permission prompt for sending a mail, which another agent passed on to the owner.">
+    </picture>
+  </a>
+</p>
+
+**Wakes: what brings each agent back to its work.** A schedule, a time, or the agent being idle. Where a wake has a
+check, a shell command, the check skips the wake when there is nothing to do, at no model cost.
+
+<p>
+  <a href="https://myurasov.github.io/Autocode/#/wakes">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="media/wakes-dark.png">
+      <img src="media/wakes-light.png" alt="The Wakes tab of the demo: each agent's wakes with their triggers, such as
+every 30 minutes or when idle for 10 minutes, the next run, the text the agent is told, the check, and the cost of the
+last 7 days.">
+    </picture>
+  </a>
+</p>
+
+**Costs: what each agent spent, beside its daily cap.** You set the caps: none is set at first. Past its cap, an
+agent is paused when its turn ends and your Inbox gets an alert. Here one agent reached its cap.
+
+<p>
+  <a href="https://myurasov.github.io/Autocode/#/costs">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="media/costs-dark.png">
+      <img src="media/costs-light.png" alt="The Costs tab of the demo: every agent with its status, today's spend, its
+daily cap with the share used, the last 7 days as bars, and the total. One agent is paused at 100.3% of its cap.">
+    </picture>
+  </a>
+</p>
+
 ## How It Works
 
 Each machine's OpenCode connects to the one Autocode server through the plugin. The command line and the web UI
 talk to the same server.
+
+```mermaid
+flowchart LR
+  you(["You:<br/>the web UI or<br/>the command line"])
+  server["Autocode server<br/>on one machine"]
+  a["OpenCode with the plugin<br/>on machine-a: its agents"]
+  b["OpenCode with the plugin<br/>on machine-b: its agents"]
+  provider(["Your model provider"])
+  you <--> server
+  server <--> a
+  server <--> b
+  a -.->|model calls| provider
+  b -.->|model calls| provider
+```
+
+You reach the server through the web UI or the command line, and each machine's OpenCode reaches it through the
+plugin. OpenCode goes on calling your model provider itself.
 
 | Word | Meaning |
 |---|---|
@@ -309,12 +385,13 @@ and what each agent does, with its spend and context. **Inbox** holds what waits
 permission prompts and approvals. **Messages**, **Locks**, **Wakes** and **Jobs** list those and let you act on them.
 **Costs** shows the spend per agent and day, **History** every event, **Settings** every setting, and **Help** is the
 manual. Click a column heading to sort. A filter field finds what you type anywhere in an ID: `lead` finds
-`kaggle:lead`.
+`kaggle:lead`. The [demo](https://myurasov.github.io/Autocode/) has every tab, with invented data.
 
 ## Where to Go Next
 
 | Read | For |
 |---|---|
+| the [demo](https://myurasov.github.io/Autocode/) | the web UI in your browser with invented data: every tab, nothing to install |
 | [`reference.md`](reference.md) | every detail: triggers and checks, messages, locks, jobs, settings, tokens, backups, troubleshooting |
 | the Help page in the web UI | how to use Autocode day by day, beside the data |
 | `autocode --help` | every command and its flags, in groups |
