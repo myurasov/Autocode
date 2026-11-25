@@ -4118,6 +4118,7 @@ test("no page writes a hyphen where a dash belongs", async ({ page }) => {
   }
 })
 
+// Signed out, as with nothing waiting; lit while something waits (below).
 test("the favicon is a flat pink-red outlined triangle, transparent", async ({
   page,
 }) => {
@@ -4138,6 +4139,91 @@ test("the favicon is a flat pink-red outlined triangle, transparent", async ({
   expect(d.match(/M/gi)?.length, d).toBe(1)
   expect(d.trim().endsWith("Z"), d).toBe(true)
   expect(d.match(/-?\d+(\.\d+)?/g)?.length, d).toBe(6)
+})
+
+/*
+ * The owner, 2026-11-24: "implement change in favicon when we have unreads in
+ * inbox (xcept for reports). i want triangle to befilled with gradiend to a
+ * lighter color like it is lit". The fixture's messages to the owner wait:
+ * once signed in, the page's icon is the same triangle and outline with its
+ * inside filled, lighter toward its middle (drawn here: the middle is opaque
+ * and lighter than the outline). With nothing waiting (the count answered for
+ * the server here) it is the plain outline again, transparent inside.
+ */
+test("the favicon is lit while something waits for the owner: filled, lighter toward its middle", async ({
+  page,
+}) => {
+  const prefix = "data:image/svg+xml,"
+  const icon = page.locator('link[rel="icon"]')
+  const svgOf = async () =>
+    decodeURIComponent((await icon.getAttribute("href"))!.slice(prefix.length))
+  // The icon drawn 64 px wide: its middle, its outline (the base), a corner
+  // outside it.
+  const drawn = () =>
+    page.evaluate(async () => {
+      const href = document
+        .querySelector('link[rel="icon"]')!
+        .getAttribute("href")!
+      const image = new Image()
+      image.src = href
+      await image.decode()
+      const canvas = document.createElement("canvas")
+      canvas.width = canvas.height = 64
+      const ctx = canvas.getContext("2d")!
+      ctx.drawImage(image, 0, 0, 64, 64)
+      const at = (x: number, y: number) => [
+        ...ctx.getImageData(x, y, 1, 1).data,
+      ]
+      return { middle: at(32, 41), base: at(32, 54), outside: at(3, 3) }
+    })
+  await page.goto("/")
+  const plain = await icon.getAttribute("href")
+  expect(await svgOf()).toContain('fill="none"')
+  await signIn(page, admin)
+  await expect(
+    page.getByRole("link", { name: "Inbox", exact: true }),
+  ).toHaveClass(/has-items/)
+  await expect(icon).toHaveAttribute("href", /radialGradient/)
+  await expect(page.locator('link[rel="icon"]')).toHaveCount(1)
+  const svg = await svgOf()
+  expect(svg).toContain('stroke="#e8436e"')
+  expect(svg).toContain('stroke-width="2"')
+  expect(svg).not.toContain('fill="none"')
+  expect(svg).toMatch(/fill="url\(#[a-z]+\)"/)
+  // the same triangle: one path, the header's
+  const paths = [...svg.matchAll(/<path\b[^>]*\bd="([^"]*)"/g)]
+  expect(paths.length).toBe(1)
+  await expect(page.locator("header h1 svg.logo path")).toHaveAttribute(
+    "d",
+    paths[0]![1]!,
+  )
+  const lit = await drawn()
+  // the outline in the logo's pink-red, the corner outside transparent
+  expect(lit.base).toEqual([232, 67, 110, 255])
+  expect(lit.outside[3]).toBe(0)
+  // the middle: opaque, and much lighter than the outline
+  expect(lit.middle[3]).toBe(255)
+  expect(lit.middle[0]).toBeGreaterThan(245)
+  expect(lit.middle[1]).toBeGreaterThan(200)
+  expect(lit.middle[2]).toBeGreaterThan(210)
+  // it stays lit on another tab of the page
+  await openTab(page, "Hosts")
+  await expect(icon).toHaveAttribute("href", /radialGradient/)
+  // nothing waits: the plain outline again
+  await page.route("**/v1/inbox/count", (route) =>
+    route.fulfill({ json: { open: 0 } }),
+  )
+  await page.reload()
+  await expect(
+    page.getByRole("link", { name: "Hosts", exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("link", { name: "Inbox", exact: true }),
+  ).not.toHaveClass(/has-items/)
+  expect(await icon.getAttribute("href")).toBe(plain)
+  const off = await drawn()
+  expect(off.middle[3]).toBe(0)
+  expect(off.base).toEqual([232, 67, 110, 255])
 })
 
 // Room above every table: 1rem from what comes before it (the owner's choice,

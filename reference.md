@@ -1694,8 +1694,10 @@ tab are days in the server's zone.
 
 - Messages to you, alerts, and asks. You answer each here.
 - **The tab's top edge is red-pink** while something waits for you: a message, an alert, or an ask that is yours
-  to answer. It shows on every tab; hover over the Inbox tab for how many. Reports do not light it, and neither
-  does an ask that an agent or a job is answering, until that one hands it back to you.
+  to answer. It shows on every tab; hover over the Inbox tab for how many. The page's icon in the browser's tab
+  strip is lit for as long: its triangle is filled, lighter toward its middle, so you see it while you work in
+  another browser tab. Reports do not light it, the edge or the icon, and neither does an ask that an agent or a
+  job is answering, until that one hands it back to you.
 - **Sent To** says whom an ask went to. An agent that escalates adds a note.
 - **A question:** click an option, or write your words and press **Answer**.
 - **A permission:** **Allow Once**, **Allow Always** or **Reject**, with a reason. With Allow Always, OpenCode

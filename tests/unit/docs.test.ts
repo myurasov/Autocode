@@ -572,6 +572,17 @@ test("the reference says what the Inbox tab's red-pink top edge means", () => {
   expect(ref).toContain("Reports do not light it")
 })
 
+// The owner, 2026-11-24: "implement change in favicon when we have unreads in
+// inbox (xcept for reports)".
+test("the reference says the page's icon is lit while something waits, not for reports", () => {
+  const ref = read("reference.md").replace(/\s+/g, " ")
+  expect(ref).toContain(
+    "The page's icon in the browser's tab strip is lit for as long: its " +
+      "triangle is filled, lighter toward its middle",
+  )
+  expect(ref).toContain("Reports do not light it, the edge or the icon")
+})
+
 // 1.0.1 (the owner, 2026-11-19: "lets implement fix for stale host
 // records"): a host's record goes by itself; the reference said that no
 // command removes one.

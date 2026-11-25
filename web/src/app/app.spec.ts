@@ -21,6 +21,8 @@ import { REFRESH_MS } from './agents/agents-page';
 import { Api } from './api';
 import { App } from './app';
 import { TOKEN_KEY } from './auth';
+import { litHref } from './favicon';
+import { InboxCount } from './inbox-count';
 import { THEME_KEY } from './theme';
 
 describe('App (shell)', () => {
@@ -292,6 +294,53 @@ describe('App (shell)', () => {
         fixture.destroy();
         vi.useRealTimers();
       }
+    });
+  });
+
+  /*
+   * The owner, 2026-11-24: "implement change in favicon when we have unreads
+   * in inbox (xcept for reports). i want triangle to befilled with gradiend
+   * to a lighter color like it is lit". The count is the Inbox tab's: the
+   * server leaves reports out of it.
+   */
+  describe('the favicon', () => {
+    const PLAIN = 'data:image/svg+xml,<svg xmlns="plain"/>';
+    let icon: HTMLLinkElement;
+
+    beforeEach(() => {
+      icon = document.createElement('link');
+      icon.rel = 'icon';
+      icon.setAttribute('href', PLAIN);
+      document.head.append(icon);
+    });
+    afterEach(() => icon.remove());
+
+    it('is lit while something waits for the owner, and plain again after an answer or a Close', async () => {
+      const page = await start();
+      // signed out: the page's own icon
+      expect(icon.getAttribute('href')).toBe(PLAIN);
+      await signIn(page, ADMIN, 'admin', false, 2);
+      expect(icon.getAttribute('href')).toBe(litHref);
+      // the header's triangle stays an outline
+      expect(page.querySelector('svg.logo')!.getAttribute('fill')).toBe('none');
+      // the Inbox page loads its list: nothing waits any more
+      const list = TestBed.inject(Api).inbox();
+      http.expectOne('/v1/inbox').flush({ items: [], open: 0 });
+      await list;
+      await settle(fixture);
+      expect(icon.getAttribute('href')).toBe(PLAIN);
+    });
+
+    it('stays plain with nothing waiting, and goes plain at Sign Out', async () => {
+      const page = await start();
+      await signIn(page, ADMIN, 'admin');
+      expect(icon.getAttribute('href')).toBe(PLAIN);
+      TestBed.inject(InboxCount).open.set(1);
+      await settle(fixture);
+      expect(icon.getAttribute('href')).toBe(litHref);
+      button(page, 'Sign Out')!.click();
+      await settle(fixture);
+      expect(icon.getAttribute('href')).toBe(PLAIN);
     });
   });
 

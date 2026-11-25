@@ -455,6 +455,14 @@ describe('HelpPage', () => {
         'message that is not a report, an alert, or an ask that is yours ' +
         'to answer. Hover over the tab to see how many.',
     );
+    // the owner, 2026-11-24: the page's icon is lit for as long
+    expect(section(page, 'inbox')).toContain(
+      "The page's icon in the browser's tab strip is lit for as long: " +
+        'its triangle is filled.',
+    );
+    expect(section(page, 'web-inbox')).toContain(
+      "The page's icon in the browser's tab strip is lit for as long.",
+    );
     // 1.1.0 (the owner, 2026-11-20): a "report" mark for messages to you
     expect(section(page, 'inbox')).toContain(
       'An agent tells you what it did or found, and needs no answer.',
