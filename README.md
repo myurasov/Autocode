@@ -117,7 +117,8 @@ flowchart LR
 ```
 
 You reach the server through the web UI or the command line, and each machine's OpenCode reaches it through the
-plugin. OpenCode goes on calling your model provider itself.
+plugin. OpenCode goes on calling your model provider itself: the Autocode server calls no model and holds no
+provider key.
 
 | Word | Meaning |
 |---|---|
