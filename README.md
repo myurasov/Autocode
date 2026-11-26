@@ -1,6 +1,6 @@
 # Autocode <!-- omit in toc -->
 
-**safely remove the human bottleneck**
+**Autonomy, under your control.**
 
 Autocode is a long-term autonomy support framework for [OpenCode](https://opencode.ai) agents. It gives AI coding
 agents what they need to work on their own for days or weeks, alone or as a team, and keeps them under your control.
