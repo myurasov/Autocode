@@ -5,9 +5,10 @@
 Autocode is a long-term autonomy support framework for [OpenCode](https://opencode.ai) agents. It gives AI coding
 agents what they need to work on their own for days or weeks, alone or as a team, and keeps them under your control.
 
-[![The demo of Autocode's web UI. In the Inbox, the owner approves a flight fare that an agent holds, and 20 seconds
-later the agent reports the booking. The Messages tab shows agents writing to each other, and the Costs tab shows
-what each agent spent, beside its daily cap.](media/demo.gif)](https://myurasov.github.io/Autocode/)
+[![The demo of Autocode's web UI. The Hosts tab lists the connected project folders, and the Agents tab the agents
+that work in them. In the Inbox, the owner approves a flight fare that an agent holds, and 20 seconds later the
+agent reports the booking. The Messages tab shows agents writing to each other, and the Costs tab shows what each
+agent spent, beside its daily cap.](media/demo.gif)](https://myurasov.github.io/Autocode/)
 
 **[Try the demo](https://myurasov.github.io/Autocode/)** in your browser: Autocode's web UI with an invented setup,
 12 agents on 3 machines that run one person's home life and their engineering project. There is nothing to install,
