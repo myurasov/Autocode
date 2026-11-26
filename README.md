@@ -79,8 +79,8 @@ check, a shell command, the check skips the wake when there is nothing to do, at
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="media/wakes-dark.png">
       <img src="media/wakes-light.png" alt="The Wakes tab of the demo: each agent's wakes with their triggers, such as
-every 30 minutes or when idle for 10 minutes, the next run, the text the agent is told, the check, and the cost of the
-last 7 days.">
+every 6 hours or every 30 minutes, the next run, the text the agent is told, the check, and the cost of the last 7
+days.">
     </picture>
   </a>
 </p>
@@ -92,7 +92,7 @@ agent is paused when its turn ends and your Inbox gets an alert. Here one agent 
   <a href="https://myurasov.github.io/Autocode/#/costs">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="media/costs-dark.png">
-      <img src="media/costs-light.png" alt="The Costs tab of the demo: every agent with its status, today's spend, its
+      <img src="media/costs-light.png" alt="The Costs tab of the demo: agents with their status, today's spend, the
 daily cap with the share used, the last 7 days as bars, and the total. One agent is paused at 100.3% of its cap.">
     </picture>
   </a>
