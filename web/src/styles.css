@@ -521,6 +521,19 @@ button.days::before {
 details.panel > summary::before {
   vertical-align: 0px;
 }
+/*
+ * The Details button's marker sits at the middle of its label (the owner,
+ * 2026-11-27: "fix vertical alignment of arrow on details button, so its
+ * visually vertically centered"; on the baseline less 2 px it was 2 px
+ * under the label's middle). Raised so that its own middle is at half the
+ * label's capital height, whatever the font; a browser without the `cap`
+ * unit keeps the place it had.
+ */
+@supports (height: 1cap) {
+  button.days::before {
+    vertical-align: calc(0.5cap - 0.35rem);
+  }
+}
 tr[app-fold].folded .chevron,
 details.panel:not([open]) > summary::before,
 button.days[aria-expanded="false"]::before {
@@ -877,7 +890,10 @@ table.costs .graph > .col:focus-visible .tip {
  * Split (1.1.0-rc7): the period's spend by kind as one bar, 110 px wide and
  * 8 px high: cache writes amber (the part a warm cache or a smaller context
  * saves), cache reads blue, new input grey, output green, what could not be
- * split in the bar's own background. Its parts with their dollars and shares
+ * split hatched (the owner, 2026-11-27: "make "not split" more distinct from
+ * bg color"; it had the bar's own background, hardly apart from the row's:
+ * now lines across it, darker than new input's solid grey and unlike the
+ * row). Its parts with their dollars and shares
  * show at once beside it, on hover and on focus: left of the bar and
  * centred on it, where the frame (which clips what leaves it) has room in
  * the first row and in the totals row alike.
@@ -921,7 +937,11 @@ table.costs .tip .key.output {
 }
 table.costs .split-bar .rest,
 table.costs .tip .key.rest {
-  background: var(--soft);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--fg-dim) 0 1.5px,
+    var(--soft) 1.5px 4px
+  );
 }
 table.costs tr.gone .split-bar .seg {
   opacity: 0.55;

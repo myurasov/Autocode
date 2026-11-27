@@ -2430,6 +2430,220 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Details sho
   )
 })
 
+/*
+ * What a picture of a part of the page shows, read in a blank page: its
+ * commonest color (its background), and where its ink is, in CSS pixels
+ * (SCALE device pixels each).
+ */
+const SCALE = 4
+type Ink = { top: number; bottom: number; centre: number }
+type Seen = { background: number[]; left: Ink; right: Ink; colors: number[][] }
+async function seenIn(
+  blank: Page,
+  png: Buffer,
+  // where its left part ends and its right part starts, in CSS pixels
+  splitAt = 0,
+): Promise<Seen> {
+  return blank.evaluate(
+    async ({ data, splitAt, scale }) => {
+      const img = new Image()
+      img.src = `data:image/png;base64,${data}`
+      await img.decode()
+      const canvas = document.createElement("canvas")
+      canvas.width = img.width
+      canvas.height = img.height
+      const g = canvas.getContext("2d")!
+      g.drawImage(img, 0, 0)
+      const { width, height } = canvas
+      const px = g.getImageData(0, 0, width, height).data
+      const at = (x: number, y: number) => {
+        const i = (y * width + x) * 4
+        return [px[i]!, px[i + 1]!, px[i + 2]!]
+      }
+      const counts = new Map<string, number>()
+      for (let y = 0; y < height; y++)
+        for (let x = 0; x < width; x++) {
+          const key = at(x, y).join(",")
+          counts.set(key, (counts.get(key) ?? 0) + 1)
+        }
+      const ranked = [...counts].sort((a, b) => b[1] - a[1])
+      const background = ranked[0]![0].split(",").map(Number)
+      const ink = (x: number, y: number) =>
+        Math.max(...at(x, y).map((v, i) => Math.abs(v - background[i]!))) > 40
+      // away from the picture's own edge (a button's border)
+      const edge = 2 * scale
+      const rows = (from: number, to: number) => {
+        let top = -1
+        let bottom = -1
+        for (let y = edge; y < height - edge; y++)
+          for (let x = from; x < to; x++)
+            if (ink(x, y)) {
+              if (top < 0) top = y
+              bottom = y + 1
+              break
+            }
+        return {
+          top: top / scale,
+          bottom: bottom / scale,
+          centre: (top + bottom) / 2 / scale,
+        }
+      }
+      const split = Math.round(splitAt * scale)
+      return {
+        background,
+        left: rows(edge, split),
+        right: rows(split, width - edge),
+        // its colors, commonest first, with each one's share
+        colors: ranked
+          .slice(0, 40)
+          .map(([key, n]) => [
+            ...key.split(",").map(Number),
+            n / (width * height),
+          ]),
+      }
+    },
+    { data: png.toString("base64"), splitAt, scale: SCALE },
+  )
+}
+// The contrast of two colors, from 1 (the same) to 21 (black on white).
+function contrast(a: number[], b: number[]): number {
+  const light = (c: number[]) => {
+    const [r, g, bl] = c.slice(0, 3).map((v) => {
+      const s = v / 255
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * bl!
+  }
+  const [hi, lo] = [light(a), light(b)].sort((x, y) => y - x)
+  return (hi! + 0.05) / (lo! + 0.05)
+}
+
+/*
+ * The owner, 2026-11-27, of the Costs tab: "fix vertical alignment of arrow
+ * on details button, so its visually vertically centered" (it sat 2 px
+ * under the middle of the label: on the baseline less 2 px, as a group
+ * heading's chevron) and "in split col make "not split" more distinct from
+ * bg color" (it had the bar's own background). Both are read from pictures
+ * of the page.
+ */
+test("Costs: the Details button's arrow sits at the middle of its label; Not Split is hatched, apart from the row", async ({
+  browser,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  // spend that cannot be split: a ping of a model without prices
+  const sent = await api.post("/v1/hosts/smoke:host:1/events", {
+    headers: bearer(consumer),
+    data: {
+      instance: "i1",
+      events: [
+        {
+          type: "cost.usage",
+          session: "ses_smoke1",
+          source: "generate",
+          ref: `look-${Date.now()}`,
+          usd: 0.6,
+        },
+      ],
+    },
+  })
+  expect(sent.ok(), await sent.text()).toBe(true)
+  await api.dispose()
+  const context = await browser.newContext({
+    baseURL: base,
+    deviceScaleFactor: SCALE,
+    viewport: { width: 1280, height: 800 },
+  })
+  const page = await context.newPage()
+  const blank = await context.newPage()
+  await signIn(page, admin)
+  await openTab(page, "Costs")
+  const row = page.locator('table.costs tr[data-agent="smoke:agent"]')
+  const button = row.getByRole("button", { name: "Details", exact: true })
+  // where the label starts in the button, and what the marker should be
+  // raised by: half the label's capital height less half the marker
+  const place = () =>
+    button.evaluate((b) => {
+      const node = [...b.childNodes].find(
+        (n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim(),
+      )!
+      const range = document.createRange()
+      const from = node.textContent!.indexOf("Details")
+      range.setStart(node, from)
+      range.setEnd(node, from + "Details".length)
+      const probe = document.createElement("span")
+      probe.style.cssText = "display:inline-block;width:1px;height:1cap"
+      b.append(probe)
+      const cap = probe.getBoundingClientRect().height
+      probe.remove()
+      const marker = getComputedStyle(b, "::before")
+      return {
+        label: range.getBoundingClientRect().left,
+        left: b.getBoundingClientRect().left,
+        raised: Number.parseFloat(marker.verticalAlign),
+        wanted: cap / 2 - Number.parseFloat(marker.height) / 2,
+        turn: marker.transform,
+      }
+    })
+  const look = async () => {
+    const at = await place()
+    const seen = await seenIn(
+      blank,
+      await button.screenshot(),
+      at.label - at.left - 2,
+    )
+    return { ...at, marker: seen.left, label_ink: seen.right }
+  }
+  // closed: the arrow points right, its middle at the label's middle
+  await expect.poll(async () => (await place()).turn).not.toBe("none")
+  const closed = await look()
+  expect(closed.raised).toBeCloseTo(closed.wanted, 1)
+  expect(
+    Math.abs(closed.marker.centre - closed.label_ink.centre),
+    JSON.stringify(closed),
+  ).toBeLessThanOrEqual(0.6)
+  // open: it points down, and stays there
+  await button.click()
+  await expect(button).toHaveAttribute("aria-expanded", "true")
+  await expect.poll(async () => (await place()).turn).toBe("none")
+  const open = await look()
+  expect(
+    Math.abs(open.marker.centre - open.label_ink.centre),
+    JSON.stringify(open),
+  ).toBeLessThanOrEqual(1.1)
+  await button.click()
+  /*
+   * Not Split: hatched, so it is told apart from the row behind it and
+   * from the solid grey of new input, in both themes; the tip's key for
+   * it is hatched the same way.
+   */
+  const bar = row.locator("td.split .split-bar")
+  const rest = bar.locator(".seg.rest")
+  await expect(rest).toBeVisible()
+  for (const theme of ["one", "the other"]) {
+    await page.mouse.move(5, 5)
+    const behind = (
+      await seenIn(blank, await row.locator("td.split").screenshot())
+    ).background
+    const seen = await seenIn(blank, await rest.screenshot())
+    const apart = seen.colors.filter((c) => contrast(c, behind) >= 3.5)
+    const share = apart.reduce((n, c) => n + c[3]!, 0)
+    expect(
+      share,
+      `${theme}: ${JSON.stringify(seen.colors.slice(0, 4))}`,
+    ).toBeGreaterThanOrEqual(0.2)
+    // not one flat color: the row's own would say nothing, new input's
+    // would be taken for input
+    expect(share, theme).toBeLessThanOrEqual(0.7)
+    for (const part of [rest, bar.locator(".tip .key.rest")])
+      expect(
+        await part.evaluate((e) => getComputedStyle(e).backgroundImage),
+        theme,
+      ).toContain("repeating-linear-gradient")
+    await page.getByRole("button", { name: "Light or dark" }).click()
+  }
+  await context.close()
+})
+
 // Tier 0g (the owner, 2026-11-08): the Costs tab follows a model step live
 // (no reload); Days shows the spend per day; the Agents tab's column too.
 test("Costs: spend and context live, an agent's days, and the Agents column", async ({
@@ -5365,7 +5579,8 @@ test("expand/collapse markers: the forms and Details have the group headings' ch
     expect(await look(summary, "::before"), tab).toEqual(closed)
     // a form's marker sits on its title's baseline (the owner, 2026-11-17:
     // "make details.panel>summary:before vertical align 0px"); a group's
-    // chevron and the Details button keep theirs, 2 px below
+    // chevron keeps its place, 2 px below; the Details button's is at the
+    // middle of its label (the owner, 2026-11-27)
     expect(
       await summary.evaluate(
         (e) => getComputedStyle(e, "::before").verticalAlign,
@@ -5385,7 +5600,7 @@ test("expand/collapse markers: the forms and Details have the group headings' ch
   expect(await look(days, "::before")).toEqual(closed)
   expect(
     await days.evaluate((e) => getComputedStyle(e, "::before").verticalAlign),
-  ).toBe("-2px")
+  ).not.toBe("-2px")
   await days.click()
   await expect(days).toHaveAttribute("aria-expanded", "true")
   await settled(days, open.transform)
