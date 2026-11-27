@@ -41,7 +41,7 @@ import { HostLink, highlightParam, scrollToHighlight } from '../links';
 import { FoldRow, Folds } from '../fold';
 import { contains } from '../filter';
 import { Latest } from '../latest';
-import { ModelText } from '../model';
+import { ModelText, modelTip } from '../model';
 import { MoreRow, Paged, paged } from '../more';
 import { SortHead, Sorting } from '../sort';
 import { Updated } from '../updated';
@@ -217,6 +217,8 @@ export class AgentsPage {
 
   protected readonly editing = signal<string | null>(null);
   protected readonly draft = signal('');
+  // the model cell's tooltip: its name, and which model answered
+  protected readonly modelTip = modelTip;
   protected readonly pausedText = pausedText;
   protected readonly dotClass = dotClass;
   protected readonly spendParts = spendParts;

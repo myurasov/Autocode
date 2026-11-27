@@ -33,8 +33,9 @@ they need to work on their own for days or weeks, and keeps them under their own
 - Tokens move only as files. One copy is needed: `~/.autocode/consumer.token` from the server machine to each other
   machine, with `scp -p`, which keeps its mode 0600. Copy `admin.token` the same way only to a machine where the
   owner wants the owner's commands. No other copy of a token is needed.
-- Give tokens to commands as files: `--consumer-token-file`, `--admin-token-file`. Do not use `--consumer-token` or
-  `--admin-token`: the shell history and the process list would show the token.
+- Give tokens to commands as files: `--consumer-token-file`, `--admin-token-file`, and `--token-file` for any other
+  command. Do not use `--consumer-token`, `--admin-token` or `--token`: the shell history and the process list
+  would show the token.
 - Do not delete `~/.autocode/`: it holds the data and the tokens.
 - In a shell that OpenCode started for a session, the CLI acts as that session's agent (`me`, `fire`, `send`). Of
   the owner's commands only `autocode install`, `uninstall`, `plugin`, `serve` and `info` work there. The others,

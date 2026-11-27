@@ -14,7 +14,7 @@
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { REFRESH_MS } from '../agents/agents-page';
 import { Api, errorText, type Wake, type WakeInput } from '../api';
-import { AgentId, Breaks, IdParts, TimeText } from '../breaks';
+import { AgentId, Breaks, TimeText } from '../breaks';
 import { FOLD_CHARS, folded, localTime } from '../format';
 import { costText } from '../jobs/jobs-page';
 import { AgentLink } from '../links';
@@ -34,20 +34,33 @@ export const TRIGGER_HINT =
  * What a wake cost in the last 7 days (1.1.0; the owner, 2026-11-20): the
  * dollars of the turns its prompts started, the turns, and for the tooltip
  * how often it fell due and its check skipped it; null for a wake with
- * nothing to show.
+ * nothing to show. The reload (1.1.0-rc7): of the dollars, what the first
+ * step of each turn cost to load the context, with its share; '' when
+ * there was none (and for an older server).
  */
 export function weekOf(
   w: Wake,
-): { usd: string; turns: string; title: string } | null {
+): { usd: string; turns: string; reload: string; title: string } | null {
   const k = w.week;
   if (!k || !(k.due || k.skipped || k.turns || k.usd)) return null;
   const usd = costText(k.usd);
   const turns = `${k.turns} turn${k.turns === 1 ? '' : 's'}`;
+  const spent = k.reload_usd ?? 0;
+  const reload =
+    spent >= 0.005 && k.usd > 0
+      ? `reload ${costText(spent)} ` + `(${Math.round((spent / k.usd) * 100)}%)`
+      : '';
   return {
     usd,
     turns,
+    reload,
     title:
-      `Last 7 days: ${turns}, ${usd}. It fell due ${k.due} ` +
+      `Last 7 days: ${turns}, ${usd}` +
+      (reload
+        ? `, ${costText(spent)} of it to reload the context when its ` +
+          'turns started'
+        : '') +
+      `. It fell due ${k.due} ` +
       `time${k.due === 1 ? '' : 's'}; its check skipped ${k.skipped}.`,
   };
 }
@@ -68,7 +81,6 @@ export function triggerText(trigger: string): string {
     AgentLink,
     Breaks,
     FoldRow,
-    IdParts,
     MoreRow,
     SortHead,
     TimeText,

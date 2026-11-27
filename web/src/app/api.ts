@@ -71,6 +71,46 @@ export interface Agent {
   model_name?: string | null;
   // and its effort: the model's variant (high, max...), when it has one
   effort?: string | null;
+  // for a claude-agent session: which model answered last, and which was
+  // asked for (1.1.0-rc7)
+  answered_model?: string | null;
+  requested_model?: string | null;
+}
+
+/*
+ * A period's spend by kind (1.1.0-rc7): the dollars these numbers know of
+ * (the steps since that version), their parts for cache writes, cache
+ * reads, new input and output (which add up to less where a step could not
+ * be split), the tokens of each kind, the Subagents' part, the reload (the
+ * context part of each turn's first step) and the turns.
+ */
+export interface CostSplit {
+  usd: number;
+  cache_write_usd: number;
+  cache_read_usd: number;
+  input_usd: number;
+  output_usd: number;
+  cache_write_tokens: number;
+  cache_read_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  subagents_usd: number;
+  reload_usd: number;
+  turns: number;
+}
+
+// An agent's spend under one cause: what started the turn (1.1.0-rc7).
+export interface CostCause {
+  cause: string;
+  turns: number;
+  steps: number;
+  usd: number;
+  subagents_usd: number;
+  reload_usd: number;
+  cache_write_usd: number;
+  cache_read_usd: number;
+  input_usd: number;
+  output_usd: number;
 }
 
 /*
@@ -106,6 +146,8 @@ export interface AgentCost extends CostNumbers {
   // its last 7 days, oldest first, today last (up to 7: from its first day;
   // none if it never spent)
   week: CostDay[];
+  // the period's spend by kind (1.1.0-rc7; an older server says none)
+  split?: CostSplit;
 }
 
 // One day's spend.
@@ -124,17 +166,34 @@ export interface CostsView {
   // the days Total counts back (null: all time)
   days: number | null;
   agents: AgentCost[];
-  totals: { agents: number; today_usd: number; total_usd: number };
+  totals: {
+    agents: number;
+    today_usd: number;
+    total_usd: number;
+    split?: CostSplit;
+  };
 }
 
-// One agent's spend per day, newest first.
+// One day of an agent's spend, with its kinds (1.1.0-rc7).
+export interface CostDayRow {
+  day: string;
+  usd: number;
+  steps: number;
+  split?: CostSplit;
+}
+
+// One agent's spend per day, newest first; and over a period (the last
+// `period_days` days, or all time) by kind and by what started the turn.
 export interface CostDays {
   agent: string;
   registered: boolean;
   day: string;
   timezone: string;
   cost: CostNumbers;
-  days: { day: string; usd: number; steps: number }[];
+  days: CostDayRow[];
+  period_days?: number | null;
+  split?: CostSplit;
+  causes?: CostCause[];
 }
 
 /*
@@ -299,7 +358,15 @@ export interface Wake {
   check_timeout?: string | null;
   // its last 7 days (1.1.0): how often it fell due, how often its check
   // skipped it, the turns its prompts started and their dollars
-  week?: { due: number; skipped: number; turns: number; usd: number };
+  week?: {
+    due: number;
+    skipped: number;
+    turns: number;
+    usd: number;
+    // of usd, what its turns' first steps cost to load the context
+    // (1.1.0-rc7)
+    reload_usd?: number;
+  };
 }
 
 // A wake as set. It has no end of its own (the owner, 2026-11-07): a
@@ -626,10 +693,15 @@ export class Api {
     return this.call(this.http.get<CostsView>('/v1/costs', { params }));
   }
 
-  // One agent's spend per day (tier 0g).
-  costDays(agent: string): Promise<CostDays> {
+  // One agent's spend per day (tier 0g); with `days`, its split and its
+  // causes over the last so many days (1.1.0-rc7).
+  costDays(agent: string, days?: string): Promise<CostDays> {
+    let params = new HttpParams();
+    if (days?.trim()) params = params.set('days', days.trim());
     return this.call(
-      this.http.get<CostDays>(`/v1/costs/${encodeURIComponent(agent)}`),
+      this.http.get<CostDays>(`/v1/costs/${encodeURIComponent(agent)}`, {
+        params,
+      }),
     );
   }
 

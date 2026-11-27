@@ -6,7 +6,9 @@
   today, its daily cap (a bar of the share spent), its last 7 days (a bar per
   day, its value on hover), its total and Days for its spend per day (the
   agent a link led to, ?agent=, highlighted); a totals row; and when the list
-  last loaded.
+  last loaded. By kind and by cause (1.1.0-rc7): each agent's Split bar and
+  its Subagents' part over the period; under Days, what started its turns
+  and each day's kinds.
 -->
 
 <div class="toolbar">
@@ -76,6 +78,21 @@
       <th class="num total" appSort="total" [sorting]="sorting">
         {{ periodTitle() }}
       </th>
+      <!-- the period's spend by kind, and its Subagents' part (1.1.0-rc7) -->
+      <th
+        class="split"
+        title="The period's spend by kind: cache writes, cache reads, input and output"
+      >
+        Split
+      </th>
+      <th
+        class="num subagents"
+        appSort="subagents"
+        [sorting]="sorting"
+        title="The steps that ran in its Subagents' sessions"
+      >
+        Subagents
+      </th>
       <th></th>
     </tr>
   </thead>
@@ -137,6 +154,15 @@
         <td class="num total" [attr.title]="runsTip(a.runs_total_usd)">
           {{ costText(a.total_usd) }}
         </td>
+        <td class="split">
+          <ng-container
+            *ngTemplateOutlet="
+              bar;
+              context: { $implicit: a.split, total: a.total_usd }
+            "
+          />
+        </td>
+        <td class="num subagents">{{ subagentsText(a.split) }}</td>
         <td class="actions">
           <button
             type="button"
@@ -150,10 +176,63 @@
       </tr>
       @if (open() === a.agent) {
         <tr class="days" [attr.data-agent]="a.agent">
-          <td colspan="7">
+          <td colspan="9">
             @if (daysError()) {
               <span class="errmsg" role="alert">{{ daysError() }}</span>
             } @else if (perDay(); as d) {
+              <!-- What started its turns, over the page's period
+                   (1.1.0-rc7). -->
+              @if (d.causes?.length) {
+                <h3 class="causes-title">
+                  What Started the Turns
+                  <small class="muted">{{ periodOf(d) }}</small>
+                </h3>
+                <table class="cost-causes">
+                  <thead>
+                    <tr>
+                      <th appSort="cause" [sorting]="causeSorting">
+                        Started By
+                      </th>
+                      <th class="num" appSort="turns" [sorting]="causeSorting">
+                        Turns
+                      </th>
+                      <th class="num" appSort="usd" [sorting]="causeSorting">
+                        Spend
+                      </th>
+                      <th class="num" appSort="turn" [sorting]="causeSorting">
+                        Per Turn
+                      </th>
+                      <th
+                        class="num"
+                        appSort="reload"
+                        [sorting]="causeSorting"
+                        title="What the first step of each turn cost to load the context"
+                      >
+                        Reload
+                      </th>
+                      <th
+                        class="num"
+                        appSort="subagents"
+                        [sorting]="causeSorting"
+                      >
+                        Subagents
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (c of causeRows(d.causes); track c.cause) {
+                      <tr [attr.data-cause]="c.cause">
+                        <td>{{ causeText(c.cause) }}</td>
+                        <td class="num">{{ c.turns }}</td>
+                        <td class="num">{{ costText(c.usd) }}</td>
+                        <td class="num">{{ perTurn(c) }}</td>
+                        <td class="num">{{ costText(c.reload_usd) }}</td>
+                        <td class="num">{{ costText(c.subagents_usd) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              }
               @if (d.days.length) {
                 <table class="cost-days">
                   <thead>
@@ -165,6 +244,14 @@
                       <th class="num" appSort="steps" [sorting]="daySorting">
                         Steps
                       </th>
+                      <!-- each day's kinds (1.1.0-rc7) -->
+                      @if (d.split) {
+                        <th class="num">Cache Writes</th>
+                        <th class="num">Cache Reads</th>
+                        <th class="num">Input</th>
+                        <th class="num">Output</th>
+                        <th class="num">Subagents</th>
+                      }
                     </tr>
                   </thead>
                   <tbody>
@@ -173,12 +260,29 @@
                         <td>{{ dayText(x.day) }}</td>
                         <td class="num">{{ costText(x.usd) }}</td>
                         <td class="num">{{ x.steps }}</td>
+                        @if (d.split) {
+                          <td class="num">
+                            {{ costText(x.split?.cache_write_usd ?? 0) }}
+                          </td>
+                          <td class="num">
+                            {{ costText(x.split?.cache_read_usd ?? 0) }}
+                          </td>
+                          <td class="num">
+                            {{ costText(x.split?.input_usd ?? 0) }}
+                          </td>
+                          <td class="num">
+                            {{ costText(x.split?.output_usd ?? 0) }}
+                          </td>
+                          <td class="num">
+                            {{ costText(x.split?.subagents_usd ?? 0) }}
+                          </td>
+                        }
                       </tr>
                     }
                     @if (dayRows(d.days).left) {
                       <tr
                         app-more
-                        [columns]="3"
+                        [columns]="d.split ? 8 : 3"
                         [left]="dayRows(d.days).left"
                         (more)="paging.more('days')"
                       ></tr>
@@ -196,7 +300,7 @@
       }
     } @empty {
       <tr>
-        <td class="muted" colspan="7">
+        <td class="muted" colspan="9">
           @if (!view()) {
             Loading...
           } @else if (match()) {
@@ -209,7 +313,7 @@
     }
     <!-- at most 25 rows, then "..." for 25 more (the owner, 2026-11-09) -->
     @if (page().left) {
-      <tr app-more [columns]="7" [left]="page().left" (more)="paging.more('costs')"></tr>
+      <tr app-more [columns]="9" [left]="page().left" (more)="paging.more('costs')"></tr>
     }
   </tbody>
   @if (rows().length) {
@@ -229,6 +333,15 @@
           />
         </td>
         <td class="num total">{{ costText(totals().total_usd) }}</td>
+        <td class="split">
+          <ng-container
+            *ngTemplateOutlet="
+              bar;
+              context: { $implicit: totals().split, total: totals().total_usd }
+            "
+          />
+        </td>
+        <td class="num subagents">{{ subagentsText(totals().split) }}</td>
         <td></td>
       </tr>
     </tfoot>
@@ -259,6 +372,40 @@
       >
     }
   </span>
+</ng-template>
+
+<!--
+  Split (1.1.0-rc7): one bar, a segment per kind in its share of the split's
+  dollars; the parts with their dollars and shares show at once above it on
+  hover and on focus, as Last 7 Days does.
+-->
+<ng-template #bar let-split let-total="total">
+  @if (splitParts(split); as parts) {
+    @if (parts.length) {
+      <span
+        class="split-bar"
+        tabindex="0"
+        [attr.aria-label]="splitLabel(parts)"
+      >
+        @for (p of parts; track p.key) {
+          <span [class]="'seg ' + p.key" [style.width]="p.share + '%'"></span>
+        }
+        <span class="tip" aria-hidden="true">
+          @for (p of parts; track p.key) {
+            <span class="line"
+              ><span [class]="'key ' + p.key"></span
+              ><span class="label">{{ p.label }}</span
+              ><span class="usd">{{ costText(p.usd) }}</span
+              ><span class="share">{{ percentText(p.share) }}</span></span
+            >
+          }
+          <span class="of">{{ splitOf(split, total) }}</span>
+        </span>
+      </span>
+    } @else {
+      <span class="muted">—</span>
+    }
+  }
 </ng-template>
 
 <footer class="muted"><app-updated [at]="updatedAt()" /></footer>

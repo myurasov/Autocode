@@ -226,9 +226,16 @@ a {
 }
 
 /* tabs + frame */
+/*
+ * The tab row wraps onto further lines in a window too narrow for one
+ * (1.1.0-rc7: below about 750 px it overflowed and the window scrolled
+ * sideways).
+ */
 nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
+  row-gap: 0.25rem;
   margin-bottom: -1px;
   align-items: flex-end;
 }
@@ -431,11 +438,25 @@ table.agents td.id {
   min-width: 6rem;
 }
 /*
+ * Its Host column too (1.1.0-rc7): a host's ID may break anywhere, and the
+ * column had shrunk to five letters a line, which set the rows' height.
+ */
+table.agents td.host {
+  min-width: 6rem;
+}
+/* Another model answered than the one asked for (1.1.0-rc7). */
+td.model .answered {
+  display: block;
+  color: var(--warn);
+  font-size: 0.9em;
+}
+/*
  * A description may hold a long path with no place to break: it breaks
  * anywhere, so a path never makes the table wider (the owner, 2026-11-09: a
  * live page was 128 px too wide at 1280 px). It keeps 250 px (the owner,
  * 2026-11-23: "make min-width of agent descr 250px"): with it the table
- * needs about 1350 px, and scrolls inside the frame in a narrower window.
+ * needs about 1385 px (with the Host column's 6rem, 1.1.0-rc7), and scrolls
+ * inside the frame in a narrower window.
  */
 table.agents td.desc {
   min-width: 250px;
@@ -695,7 +716,9 @@ table.inbox .ask-buttons input[type="text"] {
 table.costs td.num,
 table.costs th.num,
 table.cost-days td.num,
-table.cost-days th.num {
+table.cost-days th.num,
+table.cost-causes td.num,
+table.cost-causes th.num {
   text-align: right;
 }
 table.costs td.cap,
@@ -834,6 +857,124 @@ table.costs .graph > .col:hover .tip,
 table.costs .graph > .col:focus-visible .tip {
   display: block;
 }
+/*
+ * Split (1.1.0-rc7): the period's spend by kind as one bar, 110 px wide and
+ * 8 px high: cache writes amber (the part a warm cache or a smaller context
+ * saves), cache reads blue, new input grey, output green, what could not be
+ * split in the bar's own background. Its parts with their dollars and shares
+ * show at once above it, on hover and on focus.
+ */
+table.costs td.split,
+table.costs th.split {
+  width: 110px;
+  min-width: 110px;
+}
+table.costs .split-bar {
+  position: relative;
+  display: flex;
+  width: 110px;
+  height: 8px;
+  background: var(--soft);
+  border-radius: 2px;
+  outline: none;
+}
+table.costs .split-bar .seg {
+  display: block;
+  height: 100%;
+}
+table.costs .split-bar .seg:first-child {
+  border-radius: 2px 0 0 2px;
+}
+table.costs .split-bar .write,
+table.costs .tip .key.write {
+  background: var(--warn);
+}
+table.costs .split-bar .read,
+table.costs .tip .key.read {
+  background: var(--idle);
+}
+table.costs .split-bar .input,
+table.costs .tip .key.input {
+  background: var(--fg-faint);
+}
+table.costs .split-bar .output,
+table.costs .tip .key.output {
+  background: var(--ok);
+}
+table.costs .split-bar .rest,
+table.costs .tip .key.rest {
+  background: var(--soft);
+}
+table.costs tr.gone .split-bar .seg {
+  opacity: 0.55;
+}
+table.costs .split-bar:hover .seg,
+table.costs .split-bar:focus .seg {
+  filter: brightness(0.9);
+}
+table.costs .split-bar .tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 5px);
+  right: 0;
+  z-index: 3;
+  padding: 4px 8px;
+  white-space: nowrap;
+  font-weight: normal;
+  text-align: left;
+  color: var(--fg-strong);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+/* On focus of any kind: a click on the bar keeps its tip on show. */
+table.costs .split-bar:hover .tip,
+table.costs .split-bar:focus .tip {
+  display: block;
+}
+table.costs .split-bar .tip .line {
+  display: grid;
+  grid-template-columns: 10px 6.5rem 4.5rem 2.5rem;
+  align-items: center;
+  column-gap: 6px;
+}
+table.costs .split-bar .tip .key {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  border: 1px solid var(--border-soft);
+}
+table.costs .split-bar .tip .usd,
+table.costs .split-bar .tip .share {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+table.costs .split-bar .tip .share,
+table.costs .split-bar .tip .of {
+  color: var(--fg-dim);
+}
+table.costs .split-bar .tip .of {
+  display: block;
+  margin-top: 2px;
+}
+table.costs td.subagents {
+  white-space: nowrap;
+}
+/* What Started the Turns, over an agent's days. */
+table.costs .causes-title {
+  margin: 0.3rem 0 0.2rem;
+  font-size: 1em;
+  font-weight: var(--bold);
+}
+table.costs .causes-title small {
+  font-weight: normal;
+  margin-left: 0.4rem;
+}
+table.costs table.cost-causes {
+  margin-bottom: 0.7rem;
+}
 /* When the data was read, right of Refresh: its digits keep their width. */
 .toolbar .clock {
   font-variant-numeric: tabular-nums;
@@ -852,7 +993,8 @@ table.costs tfoot tr.totals > td {
   font-weight: var(--bold);
   background: var(--soft);
 }
-table.cost-days {
+table.cost-days,
+table.cost-causes {
   width: auto;
   margin: 0.2rem 0;
 }
@@ -959,6 +1101,7 @@ table.wakes th.num {
   text-align: right;
 }
 table.wakes td.week .turns,
+table.wakes td.week .reload,
 table.wakes td.check .limit {
   display: block;
   white-space: nowrap;

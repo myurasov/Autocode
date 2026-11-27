@@ -558,6 +558,45 @@
         before v1.1.0-rc3, run <code>autocode costs account AGENT</code>.
       </li>
     </ul>
+    <p>
+      Most of what a long-lived agent spends is not its answers. Each model
+      step reads the whole conversation again, and a turn that starts after
+      the provider's cache has expired writes it to the cache again. The
+      Costs tab and <code>autocode costs</code> show the spend three ways:
+    </p>
+    <ul>
+      <li>
+        By kind. Cache writes: context written to the provider's prompt
+        cache, new context and old context whose cache expired. Cache reads:
+        context read back from the cache, at a fraction of the input price.
+        Input: new input outside the cache. Output: the model's answer and
+        its thinking. A step's dollars are divided in the proportion of its
+        tokens of each kind times the model's price for that kind; a step of
+        a model without prices in OpenCode's list is counted, not split.
+      </li>
+      <li>
+        By Subagents: the steps that ran in a Subagent's session. A Subagent
+        runs on the agent's own model unless the agent names another.
+      </li>
+      <li>
+        By what started the turn: wake, message, owner, compaction, job, ask,
+        retry, and other for the rest. Owner is something typed into the
+        session. Work that outlives its turn, a Subagent or a background
+        command, keeps the cause of the turn that started it.
+      </li>
+      <li>
+        Reload: the first step of a turn loads the whole conversation: that
+        is the turn's reload. A turn that starts while the cache is warm
+        reloads cheaply; one that starts cold pays for a cache write of the
+        whole context. So a smaller context
+        (<code>compact_at</code>) and fewer, longer turns cost less.
+      </li>
+    </ul>
+    <p>
+      The numbers start with v1.1.0-rc7: over a period that reaches back
+      before it, the split covers the part it knows and says how many
+      dollars that is.
+    </p>
 
     <h3 id="compaction">
       <span class="n">{{ sec.compaction.n }}</span>
@@ -1553,10 +1592,14 @@ autocode job set daily-report --host HOST --model MODEL \
         >.
       </li>
       <li>
-        Model: the model that the agent's last step ran: its provider in
+        Model: the model that the agent's session is set to: its provider in
         grey, a slash and the model, like claude-agent/fable. Hover for its
         name where OpenCode has one, like Fable 5.2. A claude-agent model
-        also shows its version, like claude-agent/fable (5.2).
+        also shows its version, like claude-agent/fable (5.2). For such a
+        session the tooltip also says which model answered the last turn;
+        if that is not the model that was asked for, a line in amber under
+        the model says so. History gets <code>agent.model</code> when an
+        agent's model or effort changes.
       </li>
       <li>
         Effort: how hard the model is set to think, like high or max.
@@ -1769,8 +1812,10 @@ autocode job set daily-report --host HOST --model MODEL \
       </li>
       <li>
         Last 7 Days: what the wake cost: the dollars of the turns that its
-        prompts started, and the turns under them. Hover for how often it
-        fell due and how often its check skipped it. A Subagent or a
+        prompts started, and the turns under them. Under those, its reload:
+        what the first step of each of its turns cost to load the context.
+        Hover for how often it fell due and how often its check skipped it.
+        A Subagent or a
         background command that a wake's turn starts stays with that wake:
         its steps, and the turn that OpenCode starts by itself when its
         result comes or the command finishes, count for that wake, also when
@@ -1866,8 +1911,23 @@ autocode job set daily-report --host HOST --model MODEL \
         is the agent's most expensive day of the seven.
       </li>
       <li>
+        Split is one bar per agent: its spend by kind over the period, with
+        cache writes in amber, cache reads in blue, input in grey and output
+        in green; what could not be split stays the bar's own grey. Hover
+        over the bar, or tab to it, for the dollars and the share of each.
+        See
+        <a routerLink="/help" fragment="spend">{{ sec.spend.label }}</a>.
+      </li>
+      <li>
+        Subagents is the part that ran in the agent's Subagents' sessions:
+        its dollars and its share.
+      </li>
+      <li>
         The Days button in a row opens that agent's spend per day, newest
-        first: Day, Spend and Steps.
+        first: Day, Spend and Steps, and each day's dollars by kind and for
+        Subagents; above them, What Started the Turns: for each cause the
+        turns, the spend, the spend per turn, the reload and the Subagents'
+        part, over the period of the Days field.
       </li>
       <li>
         Enter a number in the Days field above the table: Total and the
@@ -2521,7 +2581,10 @@ echo 'export PATH="$HOME/.autocode/bin:$PATH"' >> ~/.bashrc</pre
     </ul>
     <p>The token it uses is the first of these that exists:</p>
     <ol>
-      <li><code>--token</code>;</li>
+      <li>
+        <code>--token</code>, or <code>--token-file FILE</code> for a token
+        kept in a file, which keeps it out of the machine's process list;
+      </li>
       <li><code>AUTOCODE_TOKEN</code>, which an agent's shell has;</li>
       <li>the admin token in the client config;</li>
       <li>

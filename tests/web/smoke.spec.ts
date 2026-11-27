@@ -1147,7 +1147,7 @@ test("id cells: an agent's ID breaks only at punctuation, the other IDs anywhere
   expect(lines[`Agents: ${LONG.agent}`]).toBeGreaterThan(1.5)
   // The ID and session columns break anywhere, filling the line; the other
   // id-like ones at their separators first; an agent's ID in any of them
-  // only between its parts.
+  // only between its parts, and so a wake's name (1.1.0-rc7).
   const breaks = await page.evaluate(() => {
     const probe = (cls: string) => {
       const td = document.createElement("td")
@@ -2153,6 +2153,9 @@ test("layout: the Costs tab's Last 7 Days is a bar per day right after Daily Cap
     "Daily Cap",
     "Last 7 Days",
     /^\s*(Total|Last \d+ Days?)\s*$/,
+    // 1.1.0-rc7
+    "Split",
+    "Subagents",
     "",
   ])
   const row = page.locator('table.costs tr[data-agent="smoke:agent"]')
@@ -2238,6 +2241,133 @@ test("Costs: hovering a day of Last 7 Days shows its value at once", async ({
   await expect(tip).toBeHidden()
   await page.mouse.move(5, 5)
   await expect(sum.locator(".tip")).toBeHidden()
+})
+
+/*
+ * 1.1.0-rc7 (the owner, 2026-11-27, from a review of real sessions: cache
+ * writes were about half of the spend and nothing showed it): each agent's
+ * spend by kind as one bar whose parts show at once on hover, its
+ * Subagents' part, and under Days what started its turns and each day's
+ * kinds.
+ */
+test("Costs: the Split bar's parts show at once on hover; Subagents; Days shows what started the turns", async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: base, timeout: 10_000 })
+  const tag = Date.now()
+  // a step priced at twice its list price: 54% cache writes, 22% cache
+  // reads, 2% input, 22% output; no context, so the agent's stays
+  const step = (n: number, more: Record<string, unknown> = {}) => ({
+    type: "cost",
+    session: "ses_smoke1",
+    usd: 0.276,
+    step: `split-${tag}-${n}`,
+    tokens: { input: 1000, output: 2000, read: 100_000, write: 20_000 },
+    rates: { input: 3, output: 15, read: 0.3, write: 3.75 },
+    ...more,
+  })
+  const sent = await api.post("/v1/hosts/smoke:host:1/events", {
+    headers: bearer(consumer),
+    data: {
+      instance: "i1",
+      events: [
+        { type: "turn.started", session: "ses_smoke1", by: "user" },
+        step(1),
+        { type: "work.started", session: "ses_smoke1", ref: "ses_smoke_kid" },
+        step(2, { sub: "ses_smoke_kid" }),
+        { type: "turn.ended", session: "ses_smoke1", outcome: "succeeded" },
+      ],
+    },
+  })
+  expect(sent.ok(), await sent.text()).toBe(true)
+  await api.dispose()
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, admin)
+  await openTab(page, "Costs")
+  await expect(page.locator("table.costs thead th.split")).toHaveText("Split")
+  const row = page.locator('table.costs tr[data-agent="smoke:agent"]')
+  const bar = row.locator("td.split .split-bar")
+  await expect(bar.locator(".seg.write")).toBeVisible()
+  // the segments fill no more than the bar, and the bar its column
+  const sizes = await bar.evaluate((el: HTMLElement) => ({
+    bar: el.getBoundingClientRect().width,
+    cell: el.closest("td")!.getBoundingClientRect().width,
+    segments: [...el.querySelectorAll(":scope > .seg")].reduce(
+      (n, seg) => n + seg.getBoundingClientRect().width,
+      0,
+    ),
+  }))
+  expect(sizes.bar).toBe(110)
+  expect(sizes.cell).toBeGreaterThanOrEqual(110)
+  expect(sizes.segments).toBeGreaterThan(50)
+  expect(sizes.segments).toBeLessThanOrEqual(110.5)
+  const tip = bar.locator(".tip")
+  await expect(tip).toBeHidden()
+  await bar.hover()
+  await expect(tip).toBeVisible({ timeout: 300 })
+  await expect(tip.locator(".line .label")).toHaveText(
+    [
+      "Cache Writes",
+      "Cache Reads",
+      "Input",
+      "Output",
+      // the fixture's other steps said no tokens
+      "Not Split",
+    ].slice(0, await tip.locator(".line").count()),
+  )
+  await expect(tip.locator(".line").first()).toHaveText(
+    /^Cache Writes\$\d+\.\d\d\d+%$/,
+  )
+  await expect(tip.locator(".of")).toHaveText(/^of \$\d+\.\d\d/)
+  // whole, in the frame, above the bar
+  const [frame, shown, at] = [
+    (await page.locator("#frame").boundingBox())!,
+    (await tip.boundingBox())!,
+    (await bar.boundingBox())!,
+  ]
+  expect(shown.x).toBeGreaterThanOrEqual(frame.x)
+  expect(shown.x + shown.width).toBeLessThanOrEqual(frame.x + frame.width)
+  expect(shown.y + shown.height).toBeLessThanOrEqual(at.y + 0.5)
+  await page.mouse.move(5, 5)
+  await expect(tip).toBeHidden()
+  // by the keyboard too
+  await bar.focus()
+  await expect(tip).toBeVisible({ timeout: 300 })
+  await expect(row.locator("td.subagents")).toHaveText(/^\$\d+\.\d\d \(\d+%\)$/)
+  // the totals row has its own
+  await expect(
+    page.locator("table.costs tfoot tr.totals td.split .split-bar"),
+  ).toBeVisible()
+  // Days: what started the turns, above the days with their kinds
+  await row.getByRole("button", { name: "Days", exact: true }).click()
+  const open = page.locator('table.costs tr.days[data-agent="smoke:agent"]')
+  await expect(open.locator(".causes-title")).toHaveText(
+    /^\s*What Started the Turns\s+All Time\s*$/,
+  )
+  await expect(open.locator("table.cost-causes thead th")).toHaveText([
+    "Started By",
+    "Turns",
+    "Spend",
+    "Per Turn",
+    "Reload",
+    "Subagents",
+  ])
+  const typed = open.locator('table.cost-causes tr[data-cause="owner"] td')
+  await expect(typed.first()).toHaveText("Owner")
+  // its Subagent's step counts under the turn that started it
+  await expect(typed.last()).toHaveText(/^\$0\.[1-9]\d$/)
+  await expect(open.locator("table.cost-days thead th")).toHaveText([
+    "Day",
+    "Spend",
+    "Steps",
+    "Cache Writes",
+    "Cache Reads",
+    "Input",
+    "Output",
+    "Subagents",
+  ])
+  // with the days open the page still fits
+  expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
 })
 
 // Tier 0g (the owner, 2026-11-08): the Costs tab follows a model step live
@@ -3535,6 +3665,64 @@ for (const width of [1280]) {
   })
 }
 
+/*
+ * 1.1.0-rc7: below about 750 px the tab row did not wrap, and the window
+ * scrolled sideways (11 px at 740, 148 px at 600). The row wraps now, and
+ * from 600 px up no page makes the window scroll sideways: toolbars wrap,
+ * and a wide table scrolls inside the frame.
+ */
+for (const width of [740, 600]) {
+  test(`layout: at ${width} px the tab row wraps and no page makes the window scroll sideways`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await signIn(page, admin)
+    for (const tab of TABS) {
+      await openTab(page, tab)
+      expect((await overflow(page)).page, tab).toBe(0)
+    }
+    // every tab whole inside the window, on as many lines as it takes
+    // (the app's own row: the Help page has a nav of its contents too)
+    const tabs = await page
+      .locator("nav")
+      .first()
+      .locator("a")
+      .evaluateAll((all) =>
+        all.map((a) => {
+          const r = a.getBoundingClientRect()
+          return { left: r.left, right: r.right, bottom: Math.round(r.bottom) }
+        }),
+      )
+    expect(tabs.length).toBe(TABS.length)
+    for (const t of tabs) {
+      expect(t.left).toBeGreaterThanOrEqual(0)
+      expect(t.right).toBeLessThanOrEqual(width)
+    }
+    if (width === 600)
+      expect(new Set(tabs.map((t) => t.bottom)).size).toBeGreaterThan(1)
+    // the header fits too
+    const header = (await page.locator("header.top").boundingBox())!
+    expect(header.x + header.width).toBeLessThanOrEqual(width)
+  })
+}
+
+// 1.1.0-rc7: the Agents tab's Host column had shrunk to five letters a line
+// (about 61 px), which set the rows' height; it keeps 6rem, like the ID's.
+test("layout: the Agents Host column is at least 6rem wide", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, admin)
+  const cell = page.locator(
+    `table.agents tr[data-agent="${LONG.agent}"] td.host`,
+  )
+  await expect(cell).toHaveText(LONG.host)
+  await expect(cell).toHaveCSS("min-width", "96px")
+  expect((await cell.boundingBox())!.width).toBeGreaterThanOrEqual(96)
+  // the page itself still does not scroll sideways
+  expect((await overflow(page)).page).toBe(0)
+})
+
 // At 1024 px a page wider than the frame scrolls inside the frame, never the
 // window, and its last column can be reached (the owner, 2026-11-03).
 test("layout: at 1024 px a wide page scrolls inside the frame", async ({
@@ -4252,12 +4440,23 @@ test("layout: table cells have their padding", async ({ page }) => {
   await signIn(page, admin)
   for (const tab of TABS) {
     await openTab(page, tab)
-    const paddings = await page
-      .locator("#frame th, #frame td")
-      .evaluateAll((cells) => [
-        ...new Set(cells.map((c) => getComputedStyle(c).padding)),
-      ])
-    expect(paddings, tab).toEqual(["8px"])
+    // the cells with another padding, each said by its place and text, so
+    // that a failure names the cell
+    const cells = page.locator("#frame th, #frame td")
+    expect(await cells.count(), tab).toBeGreaterThan(0)
+    const other = await cells.evaluateAll((all) =>
+      all
+        .map((c) => ({
+          padding: getComputedStyle(c).padding,
+          cell:
+            `${c.closest("table")?.className ?? ""} ` +
+            `${c.tagName.toLowerCase()}.${c.className} ` +
+            `connected=${c.isConnected} ` +
+            `"${(c.textContent ?? "").trim().slice(0, 40)}"`,
+        }))
+        .filter((c) => c.padding !== "8px"),
+    )
+    expect(other, tab).toEqual([])
   }
 })
 
@@ -4516,8 +4715,10 @@ test("layout: --soft is #efefef in light and #292f36 in dark; a table head shows
 // page check above passed. Here, agents shaped like the live ones. Since
 // 2026-11-23 (the owner: "make min-width of agent descr 250px", and an
 // agent's ID in whole parts) the table is wider than the frame at 1280 px
-// and scrolls inside it, never the window; it fits 1440 px.
-test("layout: Agents with long descriptions, models, spend and context fits 1440 px; at 1280 px it scrolls inside the frame", async ({
+// and scrolls inside it, never the window. Since 1.1.0-rc7 its Host column
+// keeps 6rem (it had shrunk to five letters a line), which makes the table
+// 35 px wider: with these long values it fits from about 1480 px, so 1512.
+test("layout: Agents with long descriptions, models, spend and context fits 1512 px; at 1280 px it scrolls inside the frame", async ({
   page,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -4588,7 +4789,7 @@ test("layout: Agents with long descriptions, models, spend and context fits 1440
       expect(step.ok()).toBe(true)
     }
     await signIn(page, admin)
-    for (const width of [1280, 1440]) {
+    for (const width of [1280, 1512]) {
       await page.setViewportSize({ width, height: 800 })
       await openTab(page, "Agents")
       const row = page.locator(`table.agents tr[data-agent="${ids[2]}"]`)
@@ -4617,7 +4818,7 @@ test("layout: Agents with long descriptions, models, spend and context fits 1440
       await expect(row.locator("td.spend")).toContainText(" today / $")
       const over = await overflow(page)
       expect(over.page, `Agents at ${width}`).toBe(0)
-      if (width === 1440) expect(over.frame, `Agents at ${width}`).toBe(0)
+      if (width === 1512) expect(over.frame, `Agents at ${width}`).toBe(0)
       // the description keeps 250 px, and the ID its parts whole: no line
       // of it is narrower than its longest part
       const desc = (await row.locator("td.desc").boundingBox())!

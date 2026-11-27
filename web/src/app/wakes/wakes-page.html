@@ -138,7 +138,10 @@
       </tr>
       @for (w of groupRows(g.agent, g.wakes).rows; track w.name) {
         <tr [attr.data-wake]="w.name">
-          <td class="name id-like"><code [appId]="w.name"></code></td>
+          <!-- a name keeps its parts whole, like an agent's ID
+               (1.1.0-rc7: "triage-review" broke as "triage" / "-" /
+               "review") -->
+          <td class="name id-like"><code [appAgentId]="w.name"></code></td>
           <td class="trigger">{{ triggerText(w.trigger) }}</td>
           @if (w.next) {
             <td class="time next" [title]="w.next" [appTime]="w.next"></td>
@@ -206,6 +209,10 @@
             <td class="num week" [attr.title]="k.title">
               <span class="usd">{{ k.usd }}</span>
               <span class="turns muted">{{ k.turns }}</span>
+              <!-- of it, what reloaded the context (1.1.0-rc7) -->
+              @if (k.reload) {
+                <span class="reload muted">{{ k.reload }}</span>
+              }
             </td>
           } @else {
             <td class="num week muted">—</td>

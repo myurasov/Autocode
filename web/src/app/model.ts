@@ -7,7 +7,10 @@
  * of the claude-agent provider, whose ID has no version, shows the one in
  * its name after it, "claude-agent/fable (5.2)" (the owner, 2026-11-17).
  * The page puts the model's name, where OpenCode's model list has one
- * ("Fable 5.2"), in the cell's tooltip.
+ * ("Fable 5.2"), in the cell's tooltip. For a claude-agent session the
+ * server also knows which model answered and which was asked for
+ * (1.1.0-rc7): when the two differ, a second line under the model says
+ * "answered by ..." in amber; the tooltip says it either way.
  */
 
 import { Component, computed, input } from '@angular/core';
@@ -39,7 +42,9 @@ export function modelVersion(model: string, name?: string | null): string {
     >@if (version()) {
       &ngsp;<span class="version">({{ version() }})</span>
     }</code
-  >`,
+    >@if (other()) {
+      <span class="answered" role="note">answered by {{ answered() }}</span>
+    }`,
 })
 export class ModelText {
   // provider/model, as OpenCode writes it
@@ -52,4 +57,37 @@ export class ModelText {
   protected readonly version = computed(() =>
     modelVersion(this.model(), this.name()),
   );
+  // which model answered, and which was asked for, when the server knows
+  readonly answered = input<string | null | undefined>(null);
+  readonly requested = input<string | null | undefined>(null);
+  // another model answered than the one asked for
+  protected readonly other = computed(() =>
+    answeredOther(this.answered(), this.requested()),
+  );
+}
+
+// Whether another model answered than the one that was asked for.
+export function answeredOther(
+  answered?: string | null,
+  requested?: string | null,
+): boolean {
+  return !!answered && !!requested && answered !== requested;
+}
+
+/*
+ * A model cell's tooltip: the model's name where OpenCode's list has one,
+ * then which model answered (and, when another was asked for, which);
+ * null with nothing to say.
+ */
+export function modelTip(
+  name?: string | null,
+  answered?: string | null,
+  requested?: string | null,
+): string | null {
+  const said = !answered
+    ? ''
+    : answeredOther(answered, requested)
+      ? `answered by ${answered}, not by ${requested}, which was asked for`
+      : `answered by ${answered}`;
+  return [name, said].filter(Boolean).join('; ') || null;
 }

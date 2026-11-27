@@ -205,6 +205,56 @@ describe('AgentsPage', () => {
   // The owner, 2026-11-09: "add bar under the context numbers on agents tab".
   // The owner, 2026-11-17: "why i see claude-agent/fable for this agent
   // (why it doesnt say fable 5.2)?"
+  /*
+   * 1.1.0-rc7: OpenCode records the model that was asked for; for a
+   * claude-agent session the server also knows which model answered. The
+   * tooltip says it; when it is another than the one asked for, a line
+   * under the model says so.
+   */
+  it('says which model answered a claude-agent session: in the tooltip, and under the model when another was asked for', async () => {
+    const base = {
+      ...AGENTS[0]!,
+      model: 'claude-agent/fable',
+      model_name: 'Fable 5.2',
+    };
+    const page = await open([
+      {
+        ...base,
+        id: 'a:same',
+        answered_model: 'claude-fable-5-2',
+        requested_model: 'claude-fable-5-2',
+      },
+      {
+        ...base,
+        id: 'a:other',
+        answered_model: 'claude-opus-4-8',
+        requested_model: 'claude-fable-5-2',
+      },
+      // an older transcript: no requested model, so nothing to compare
+      { ...base, id: 'a:old', answered_model: 'claude-fable-5-2' },
+      { ...base, id: 'a:none', answered_model: null, requested_model: null },
+    ]);
+    const cell = (id: string) =>
+      page.querySelector(`tr[data-agent="${id}"] td.model`)!;
+    expect(cell('a:same').getAttribute('title')).toBe(
+      'Fable 5.2; answered by claude-fable-5-2',
+    );
+    expect(cell('a:same').querySelector('.answered')).toBeNull();
+    expect(cell('a:other').getAttribute('title')).toBe(
+      'Fable 5.2; answered by claude-opus-4-8, not by claude-fable-5-2, ' +
+        'which was asked for',
+    );
+    expect(text(cell('a:other').querySelector('.answered'))).toBe(
+      'answered by claude-opus-4-8',
+    );
+    expect(cell('a:old').getAttribute('title')).toBe(
+      'Fable 5.2; answered by claude-fable-5-2',
+    );
+    expect(cell('a:old').querySelector('.answered')).toBeNull();
+    expect(cell('a:none').getAttribute('title')).toBe('Fable 5.2');
+    expect(text(cell('a:none'))).toBe('claude-agent/fable (5.2)');
+  });
+
   it('shows a model by its name where OpenCode has one, its ID in the tooltip; sorts by what shows', async () => {
     const named = {
       ...AGENTS[0]!,

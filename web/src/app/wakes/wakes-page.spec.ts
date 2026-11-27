@@ -235,17 +235,16 @@ describe('WakesPage', () => {
       );
     expect(parts(standup.querySelector('td.name code'))).toEqual(['standup']);
     expect(parts(standup.querySelector('td.by'))).toEqual(['owner']);
-    // Who set it and the group's agent break only at punctuation; a wake's
-    // name may break anywhere (the owner, 2026-11-23).
+    // Who set it and the group's agent break only at punctuation (the
+    // owner, 2026-11-23); so does a wake's name, whose parts stay whole
+    // (1.1.0-rc7: "triage-review" had broken as "triage" / "-" / "review").
     for (const [row, c] of [
       [standup, 'td.by span'],
       [ping, 'td.by code'],
       [groups[1]!, 'tr.group th a span'],
+      [standup, 'td.name code'],
     ] as const)
       expect(row.querySelector(c)!.classList, c).toContain('agent-id');
-    expect(standup.querySelector('td.name code')!.classList).not.toContain(
-      'agent-id',
-    );
     expect(
       groups[1]!.querySelector('tr.group th')!.getAttribute('colspan'),
     ).toBe('10');
@@ -591,6 +590,62 @@ describe('WakesPage', () => {
       'a trigger looks like every 30m',
     );
     expect(value(page, '#wake-trigger')).toBe('sometimes');
+  });
+
+  /*
+   * 1.1.0-rc7: of a wake's cost, what its turns' first steps cost to load
+   * the context, under its dollars and turns; and a wake's name keeps its
+   * parts whole, breaking only right after a punctuation character.
+   */
+  it("says a wake's reload under its cost, and breaks its name only after punctuation", async () => {
+    const page = await open([
+      {
+        ...WAKES[0]!,
+        name: 'triage-review_1',
+        week: {
+          due: 118,
+          skipped: 1,
+          turns: 117,
+          usd: 225.214,
+          reload_usd: 171.5,
+        },
+      },
+      // none of it a reload, and an older server's wake: nothing said
+      {
+        ...WAKES[0]!,
+        name: 'warm',
+        week: { ...WAKES[0]!.week!, reload_usd: 0 },
+      },
+      { ...WAKES[0]!, name: 'older' },
+    ]);
+    const week = row(page, 'kaggle:lead', 'triage-review_1').querySelector(
+      'td.week',
+    )!;
+    expect([...week.children].map((c) => [c.className, text(c)])).toEqual([
+      ['usd', '$225.21'],
+      ['turns muted', '117 turns'],
+      ['reload muted', 'reload $171.50 (76%)'],
+    ]);
+    expect(week.getAttribute('title')).toBe(
+      'Last 7 days: 117 turns, $225.21, $171.50 of it to reload the context ' +
+        'when its turns started. It fell due 118 times; its check skipped 1.',
+    );
+    for (const name of ['warm', 'older']) {
+      const cell = row(page, 'kaggle:lead', name).querySelector('td.week')!;
+      expect(cell.querySelector('.reload'), name).toBeNull();
+      expect(cell.getAttribute('title'), name).toBe(
+        'Last 7 days: 117 turns, $225.21. It fell due 118 times; its check ' +
+          'skipped 1.',
+      );
+    }
+    const name = row(page, 'kaggle:lead', 'triage-review_1').querySelector(
+      'td.name code',
+    )!;
+    expect(name.classList).toContain('agent-id');
+    expect(
+      [...name.querySelectorAll('.id-part')].map((x) => x.textContent),
+    ).toEqual(['triage-', 'review_', '1']);
+    expect(name.textContent).toBe('triage-review_1');
   });
 
   it('refreshes every 10 seconds, one refresh at a time', async () => {

@@ -1090,8 +1090,28 @@ describe('HelpPage', () => {
         'that spent something',
       "right of Refresh is when the data was read, in the server's time " +
         'and zone',
+      // 1.1.0-rc7: by kind, by Subagents, by what started the turn
+      'Split is one bar per agent: its spend by kind over the period',
+      'cache writes in amber, cache reads in blue, input in grey and ' +
+        'output in green',
+      'Hover over the bar, or tab to it, for the dollars and the share of ' +
+        'each',
+      "Subagents is the part that ran in the agent's Subagents' sessions",
+      'above them, What Started the Turns',
     ])
       expect(costs, part).toContain(part);
+    // where the money goes, in words the owner can act on
+    const money = section(page, 'spend');
+    for (const part of [
+      'Most of what a long-lived agent spends is not its answers',
+      'Cache writes: context written to the provider',
+      'Cache reads: context read back from the cache',
+      'the first step of a turn loads the whole conversation: that is the ' +
+        "turn's reload",
+      'wake, message, owner, compaction, job, ask, retry',
+      'The numbers start with v1.1.0-rc7',
+    ])
+      expect(money, part).toContain(part);
     const agents = section(page, 'web-agents');
     for (const part of [
       'model',

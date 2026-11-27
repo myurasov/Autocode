@@ -301,15 +301,15 @@ commands named in step 3 work. In a shell that an agent started, the command act
 | `autocode agents`, `autocode hosts` | the agents and their status; the connected project folders |
 | `autocode inbox`, `autocode answer ID TEXT...` | what waits for you; answer one item |
 | `autocode send kaggle:lead "Stop after fold 3."` | send an agent a message |
-| `autocode costs` | what each agent spent, today and in total, beside its daily cap |
+| `autocode costs` | what each agent spent, today and in total, beside its daily cap, and what the money went to: cache writes, cache reads, input, output and Subagents |
 | `autocode history` | what happened, newest first |
 
 **In the web UI,** at `http://machine-a:4848/`, each tab is one view. **Hosts** and **Agents** show what is connected
 and what each agent does, with its spend and context. **Inbox** holds what waits for you: messages, alerts, questions,
 permission prompts and approvals. **Messages**, **Locks**, **Wakes** and **Jobs** list those and let you act on them.
-**Costs** shows the spend per agent and day, **History** every event, **Settings** every setting, and **Help** is the
-manual. Click a column heading to sort. A filter field finds what you type anywhere in an ID: `lead` finds
-`kaggle:lead`.
+**Costs** shows the spend per agent and day, by kind and by what started the turns, **History** every event,
+**Settings** every setting, and **Help** is the manual. Click a column heading to sort. A filter field finds what you
+type anywhere in an ID: `lead` finds `kaggle:lead`.
 
 ## Where to Go Next
 

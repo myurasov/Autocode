@@ -174,11 +174,23 @@
             Its model, spend and context (the owner, 2026-11-08). The model
             as provider/model, the provider in grey; its name where
             OpenCode's model list has one ("Fable 5.2") in the tooltip (the
-            owner, 2026-11-17).
+            owner, 2026-11-17). For a claude-agent session, which model
+            answered (1.1.0-rc7): in the tooltip, and under the model when
+            it is not the one asked for.
           -->
-          <td class="model" [attr.title]="a.model_name || null">
+          <td
+            class="model"
+            [attr.title]="
+              modelTip(a.model_name, a.answered_model, a.requested_model)
+            "
+          >
             @if (a.model) {
-              <app-model [model]="a.model" [name]="a.model_name" />
+              <app-model
+                [model]="a.model"
+                [name]="a.model_name"
+                [answered]="a.answered_model"
+                [requested]="a.requested_model"
+              />
             } @else {
               <span class="muted">—</span>
             }

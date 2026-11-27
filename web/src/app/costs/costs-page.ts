@@ -12,7 +12,11 @@
  * agent a link led to (?agent=, the Agents tab's Spend) is highlighted. The
  * Unregistered box (on by default) shows the gone agents, whose IDs lead to
  * the Agents tab with its own box on; "X days" makes Total and the totals
- * the last X days (empty: all time).
+ * the last X days (empty: all time). By kind and by cause (1.1.0-rc7): a
+ * Split bar per agent (cache writes, cache reads, input, output, and what
+ * could not be split, of the period's spend) with its dollars on hover, the
+ * Subagents' part, and under Days what started the agent's turns and each
+ * day's kinds.
  */
 
 import { NgTemplateOutlet } from '@angular/common';
@@ -23,8 +27,11 @@ import { FILTER_DELAY_MS } from '../agents/agents-page';
 import {
   type AgentCost,
   Api,
+  type CostCause,
   type CostDay,
+  type CostDayRow,
   type CostDays,
+  type CostSplit,
   type CostsView,
   errorText,
 } from '../api';
@@ -65,6 +72,70 @@ export function weekBars(week: CostDay[]): WeekBar[] {
   }));
 }
 
+// A part of a split: its key (the bar's segment), what it is called, its
+// dollars and its share of the split's dollars (a percentage to a tenth).
+export interface SplitPart {
+  key: 'write' | 'read' | 'input' | 'output' | 'rest';
+  label: string;
+  usd: number;
+  share: number;
+}
+
+/*
+ * A split's parts for its bar (1.1.0-rc7): cache writes, cache reads, new
+ * input and output, then what could not be split when that is a cent or
+ * more; none for a split without dollars (and for an older server's row).
+ */
+export function splitParts(s: CostSplit | null | undefined): SplitPart[] {
+  if (!s || !(s.usd > 0)) return [];
+  const share = (usd: number) => Math.round((usd / s.usd) * 1000) / 10;
+  const kinds: [SplitPart['key'], string, number][] = [
+    ['write', 'Cache Writes', s.cache_write_usd],
+    ['read', 'Cache Reads', s.cache_read_usd],
+    ['input', 'Input', s.input_usd],
+    ['output', 'Output', s.output_usd],
+  ];
+  const rest = Math.max(0, s.usd - kinds.reduce((n, k) => n + k[2], 0));
+  if (rest >= 0.005) kinds.push(['rest', 'Not Split', rest]);
+  return kinds.map(([key, label, usd]) => ({
+    key,
+    label,
+    usd,
+    share: share(usd),
+  }));
+}
+
+// A share as a whole percentage.
+export function percentText(share: number): string {
+  return `${Math.round(share)}%`;
+}
+
+// The Subagents' part of a split: its dollars and its share; '' for none.
+export function subagentsText(s: CostSplit | null | undefined): string {
+  if (!s || !(s.usd > 0)) return '';
+  return (
+    `${costText(s.subagents_usd)} ` +
+    `(${percentText((s.subagents_usd / s.usd) * 100)})`
+  );
+}
+
+// What started a turn, as the page calls each cause.
+const CAUSES: Record<string, string> = {
+  wake: 'Wake',
+  message: 'Message',
+  owner: 'Owner',
+  compaction: 'Compaction',
+  job: 'Job Result',
+  ask: 'Ask',
+  retry: 'Retry',
+  run: 'Job Runs',
+  earlier: 'Before Registration',
+  other: 'Other',
+};
+export function causeText(cause: string): string {
+  return CAUSES[cause] ?? cause;
+}
+
 // The days of several agents added up by day, oldest first.
 export function weekTotals(weeks: CostDay[][]): CostDay[] {
   const sum = new Map<string, number>();
@@ -72,6 +143,20 @@ export function weekTotals(weeks: CostDay[][]): CostDay[] {
   return [...sum.keys()]
     .sort()
     .map((day) => ({ day, usd: Math.round(sum.get(day)! * 1e6) / 1e6 }));
+}
+
+// Several splits added up (the totals row): none when no row has one.
+export function splitSum(
+  splits: (CostSplit | undefined)[],
+): CostSplit | undefined {
+  const known = splits.filter((s): s is CostSplit => !!s);
+  if (!known.length) return undefined;
+  const keys = Object.keys(known[0]) as (keyof CostSplit)[];
+  const sum = {} as CostSplit;
+  for (const key of keys)
+    sum[key] =
+      Math.round(known.reduce((n, s) => n + (s[key] ?? 0), 0) * 1e6) / 1e6;
+  return sum;
 }
 
 @Component({
@@ -128,14 +213,23 @@ export class CostsPage {
       today: { number: (a) => a.today_usd },
       cap: { number: (a) => (a.daily_usd === 'off' ? null : a.daily_usd) },
       total: { number: (a) => a.total_usd },
+      subagents: { number: (a) => a.split?.subagents_usd ?? null },
     },
     by: 'agent',
   });
-  protected readonly daySorting = new Sorting<{
-    day: string;
-    usd: number;
-    steps: number;
-  }>('cost-days', {
+  // what started the turns, largest first as the server lists them
+  protected readonly causeSorting = new Sorting<CostCause>('cost-causes', {
+    columns: {
+      cause: { text: (c) => causeText(c.cause) },
+      turns: { number: (c) => c.turns },
+      usd: { number: (c) => c.usd },
+      turn: { number: (c) => (c.turns > 0 ? c.usd / c.turns : null) },
+      reload: { number: (c) => c.reload_usd },
+      subagents: { number: (c) => c.subagents_usd },
+    },
+    by: 'usd',
+  });
+  protected readonly daySorting = new Sorting<CostDayRow>('cost-days', {
     columns: {
       day: { text: (d) => d.day, first: 'desc' },
       usd: { number: (d) => d.usd },
@@ -150,10 +244,11 @@ export class CostsPage {
       (a) => a.agent === this.target(),
     ),
   );
-  protected dayRows(
-    days: readonly { day: string; usd: number; steps: number }[],
-  ) {
+  protected dayRows(days: readonly CostDayRow[]) {
     return paged(this.daySorting.sort(days), this.paging.count('days'));
+  }
+  protected causeRows(causes: readonly CostCause[]) {
+    return this.causeSorting.sort(causes);
   }
   protected readonly totals = computed(() => {
     const rows = this.rows();
@@ -164,6 +259,7 @@ export class CostsPage {
       today_usd: sum('today_usd'),
       total_usd: sum('total_usd'),
       week: weekBars(weekTotals(rows.map((a) => a.week))),
+      split: splitSum(rows.map((a) => a.split)),
     };
   });
 
@@ -180,6 +276,41 @@ export class CostsPage {
   protected readonly shareText = shareText;
   protected readonly tokensText = tokensText;
   protected readonly weekBars = weekBars;
+  protected readonly splitParts = splitParts;
+  protected readonly percentText = percentText;
+  protected readonly subagentsText = subagentsText;
+  protected readonly causeText = causeText;
+
+  // A cause's dollars per turn: none without a turn (a run's steps, the
+  // steps from before the session registered).
+  protected perTurn(c: CostCause): string {
+    return c.turns > 0 ? costText(c.usd / c.turns) : '—';
+  }
+
+  // What a bar says to a screen reader: its parts in words.
+  protected splitLabel(parts: SplitPart[]): string {
+    return parts
+      .map((p) => `${p.label} ${costText(p.usd)} (${percentText(p.share)})`)
+      .join(', ');
+  }
+
+  /*
+   * Under a bar's parts: the dollars they are parts of, and, where the
+   * period's spend is more than that, why (the numbers start with
+   * v1.1.0-rc7).
+   */
+  protected splitOf(split: CostSplit, total: number): string {
+    return total - split.usd >= 0.005
+      ? `of ${costText(split.usd)}; ${costText(total - split.usd)} ` +
+          'more was spent before the split was kept'
+      : `of ${costText(split.usd)}`;
+  }
+
+  // The period of an agent's split and causes: "All Time", "Last 7 Days".
+  protected periodOf(d: CostDays): string {
+    const n = d.period_days;
+    return !n ? 'All Time' : n === 1 ? 'Last Day' : `Last ${n} Days`;
+  }
 
   private inFlight = 0;
   private typing?: ReturnType<typeof setTimeout>;
@@ -305,7 +436,8 @@ export class CostsPage {
     this.perDay.set(null);
     this.daysError.set('');
     try {
-      const days = await this.api.costDays(agent);
+      // over the page's own period (1.1.0-rc7)
+      const days = await this.api.costDays(agent, this.days());
       if (this.open() === agent) this.perDay.set(days);
     } catch (err) {
       if (this.open() === agent) this.daysError.set(errorText(err));

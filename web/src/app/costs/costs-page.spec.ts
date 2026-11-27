@@ -22,15 +22,37 @@ import {
   type,
 } from '../../testing/helpers';
 import { FILTER_DELAY_MS } from '../agents/agents-page';
-import type { AgentCost, CostsView } from '../api';
+import type { AgentCost, CostSplit, CostsView } from '../api';
 import { contains } from '../filter';
 import {
   COSTS_REFRESH_MS,
   CostsPage,
+  causeText,
   shareText,
+  splitParts,
+  splitSum,
+  subagentsText,
   weekBars,
   weekTotals,
 } from './costs-page';
+
+// A period's spend by kind (1.1.0-rc7): $10, of which $4.50 cache writes,
+// $2.90 cache reads, $0.10 input, $2.00 output and $0.50 not split; $3.10
+// of it the Subagents'.
+const SPLIT: CostSplit = {
+  usd: 10,
+  cache_write_usd: 4.5,
+  cache_read_usd: 2.9,
+  input_usd: 0.1,
+  output_usd: 2,
+  cache_write_tokens: 900_000,
+  cache_read_tokens: 9_000_000,
+  input_tokens: 20_000,
+  output_tokens: 100_000,
+  subagents_usd: 3.1,
+  reload_usd: 4,
+  turns: 20,
+};
 
 const BASE: AgentCost = {
   agent: '',
@@ -149,6 +171,9 @@ describe('CostsPage', () => {
       'Daily Cap',
       'Last 7 Days',
       'Total',
+      // 1.1.0-rc7: the period's spend by kind, and the Subagents' part
+      'Split',
+      'Subagents',
       '',
     ]);
     expect(cell(page, 'kaggle:lead', 'today')).toBe('$1.50');
@@ -233,7 +258,15 @@ describe('CostsPage', () => {
     const heads = [...page.querySelectorAll('table.costs > thead th')];
     expect(
       heads.filter((h) => h.querySelector('button.sort')).map((h) => text(h)),
-    ).toEqual(['Agent', 'Status', 'Today', 'Daily Cap', 'Total']);
+    ).toEqual([
+      'Agent',
+      'Status',
+      'Today',
+      'Daily Cap',
+      'Total',
+      // 1.1.0-rc7
+      'Subagents',
+    ]);
     const total = heads.find((h) => text(h) === 'Total')!;
     (total.querySelector('button.sort') as HTMLButtonElement).click();
     await settle(fixture);
@@ -654,6 +687,234 @@ describe('CostsPage', () => {
     expect(worker.getAttribute('aria-current')).toBe('true');
     expect(page.querySelectorAll('tr.highlight').length).toBe(1);
     expect(scroll).toHaveBeenCalledWith({ block: 'center' });
+  });
+
+  /*
+   * 1.1.0-rc7 (the owner, 2026-11-27, from a review of real sessions: cache
+   * writes were about half of the spend and nothing showed it): each agent's
+   * spend by kind as one bar, its parts on hover and focus; the Subagents'
+   * part; the totals row adds them up; a dash where nothing is known.
+   */
+  it('Split: a bar per agent of its spend by kind, the parts in its tip; Subagents: their dollars and share', async () => {
+    const start = view();
+    start.agents[0]!.split = SPLIT;
+    // nothing counted in the period
+    start.agents[1]!.split = Object.fromEntries(
+      Object.keys(SPLIT).map((key) => [key, 0]),
+    ) as unknown as CostSplit;
+    const page = await open(start);
+    const bar = row(page, 'kaggle:lead').querySelector(
+      'td.split .split-bar',
+    ) as HTMLElement;
+    expect(
+      [...bar.querySelectorAll(':scope > .seg')].map((x) => [
+        [...x.classList].filter((c) => c !== 'seg').join(' '),
+        (x as HTMLElement).style.width,
+      ]),
+    ).toEqual([
+      ['write', '45%'],
+      ['read', '29%'],
+      ['input', '1%'],
+      ['output', '20%'],
+      ['rest', '5%'],
+    ]);
+    expect(bar.getAttribute('tabindex')).toBe('0');
+    expect(bar.getAttribute('aria-label')).toBe(
+      'Cache Writes $4.50 (45%), Cache Reads $2.90 (29%), Input $0.10 (1%), ' +
+        'Output $2.00 (20%), Not Split $0.50 (5%)',
+    );
+    expect([...bar.querySelectorAll('.tip .line')].map((x) => text(x))).toEqual(
+      [
+        'Cache Writes$4.5045%',
+        'Cache Reads$2.9029%',
+        'Input$0.101%',
+        'Output$2.0020%',
+        'Not Split$0.505%',
+      ],
+    );
+    // the period's total is more than the split knows: said under the parts
+    expect(text(bar.querySelector('.tip .of'))).toBe(
+      'of $10.00; $2.35 more was spent before the split was kept',
+    );
+    // no browser tooltip: the page's own tip shows at once
+    expect(bar.getAttribute('title')).toBeNull();
+    expect(cell(page, 'kaggle:lead', 'subagents')).toBe('$3.10 (31%)');
+    // nothing counted in the period, and an older server's row: a dash
+    expect(cell(page, 'kaggle:worker', 'split')).toBe('—');
+    expect(cell(page, 'kaggle:worker', 'subagents')).toBe('');
+    expect(cell(page, 'old:one', 'split')).toBe('—');
+    // the totals row adds up what is listed
+    const totals = page.querySelector('table.costs tfoot tr.totals')!;
+    expect(
+      (totals.querySelector('td.split .seg.write') as HTMLElement).style.width,
+    ).toBe('45%');
+    expect(text(totals.querySelector('td.subagents'))).toBe('$3.10 (31%)');
+    // by Subagents, largest first
+    (
+      page.querySelector('table.costs thead th.subagents button') as HTMLElement
+    ).click();
+    await settle(fixture);
+    expect(
+      page.querySelector('table.costs tbody tr')!.getAttribute('data-agent'),
+    ).toBe('kaggle:lead');
+  });
+
+  it('Days: what started its turns over the period, above its days with their kinds', async () => {
+    // the page's period: the last 7 days, typed into Days
+    const page = await open();
+    type(page.querySelector('#cost-days') as HTMLInputElement, '7');
+    (button(page, 'Refresh') as HTMLElement).click();
+    await settle(fixture);
+    load({ ...view(), days: 7 }, undefined, '7');
+    await settle(fixture);
+    (
+      row(page, 'kaggle:lead').querySelector('button.days') as HTMLElement
+    ).click();
+    // over the page's own period
+    const req = http.expectOne(
+      (r) =>
+        r.url === '/v1/costs/kaggle%3Alead' ||
+        r.url === '/v1/costs/kaggle:lead',
+    );
+    expect(req.request.params.get('days')).toBe('7');
+    const cause = (name: string, turns: number, usd: number) => ({
+      cause: name,
+      turns,
+      steps: turns * 5,
+      usd,
+      subagents_usd: usd / 10,
+      reload_usd: usd / 2,
+      cache_write_usd: 0,
+      cache_read_usd: 0,
+      input_usd: 0,
+      output_usd: 0,
+    });
+    req.flush({
+      agent: 'kaggle:lead',
+      registered: true,
+      day: '2026-11-08',
+      timezone: 'America/Los_Angeles',
+      cost: view().agents[0],
+      period_days: 7,
+      split: SPLIT,
+      causes: [
+        cause('wake', 8, 6),
+        cause('owner', 4, 3),
+        cause('run', 0, 0.8),
+        cause('ask', 1, 0.25),
+      ],
+      days: [
+        { day: '2026-11-08', usd: 1.5, steps: 30, split: SPLIT },
+        { day: '2026-11-07', usd: 8.5, steps: 210 },
+      ],
+    });
+    await settle(fixture);
+    const opened = page.querySelector(
+      'tr.days[data-agent="kaggle:lead"]',
+    ) as HTMLElement;
+    expect(text(opened.querySelector('.causes-title'))).toBe(
+      'What Started the Turns Last 7 Days',
+    );
+    const rows = (table: string) =>
+      [...opened.querySelectorAll(`table.${table} tbody tr`)].map((tr) =>
+        [...tr.querySelectorAll('td')].map((td) => text(td)).join(' | '),
+      );
+    expect(
+      [...opened.querySelectorAll('table.cost-causes thead th')].map((th) =>
+        text(th),
+      ),
+    ).toEqual([
+      'Started By',
+      'Turns',
+      'Spend',
+      'Per Turn',
+      'Reload',
+      'Subagents',
+    ]);
+    // largest first; no dollars a turn for what has no turns
+    expect(rows('cost-causes')).toEqual([
+      'Wake | 8 | $6.00 | $0.75 | $3.00 | $0.60',
+      'Owner | 4 | $3.00 | $0.75 | $1.50 | $0.30',
+      'Job Runs | 0 | $0.80 | — | $0.40 | $0.08',
+      'Ask | 1 | $0.25 | $0.25 | $0.13 | $0.03',
+    ]);
+    // each day with its kinds; a day without a split: zeros
+    const days = [...opened.querySelectorAll('table.cost-days tbody tr')].map(
+      (tr) => [...tr.querySelectorAll('td')].map((td) => text(td)).join(' | '),
+    );
+    expect(days).toEqual([
+      '08-Nov-26 | $1.50 | 30 | $4.50 | $2.90 | $0.10 | $2.00 | $3.10',
+      '07-Nov-26 | $8.50 | 210 | $0.00 | $0.00 | $0.00 | $0.00 | $0.00',
+    ]);
+    // by Turns
+    (
+      opened.querySelector(
+        'table.cost-causes thead th:nth-child(2) button',
+      ) as HTMLElement
+    ).click();
+    await settle(fixture);
+    expect(rows('cost-causes')[0]).toMatch(/^Wake \| 8 /);
+  });
+
+  it('a split as its parts, the Subagents as text, a cause by its name, splits added up', () => {
+    expect(splitParts(SPLIT).map((p) => [p.key, p.usd, p.share])).toEqual([
+      ['write', 4.5, 45],
+      ['read', 2.9, 29],
+      ['input', 0.1, 1],
+      ['output', 2, 20],
+      ['rest', 0.5, 5],
+    ]);
+    // all of it split: no rest; none of it: the rest alone has it all
+    const whole = { ...SPLIT, usd: 9.5 };
+    expect(splitParts(whole).map((p) => p.key)).toEqual([
+      'write',
+      'read',
+      'input',
+      'output',
+    ]);
+    expect(splitParts(whole)[0]!.share).toBe(47.4);
+    expect(
+      splitParts({
+        ...SPLIT,
+        cache_write_usd: 0,
+        cache_read_usd: 0,
+        input_usd: 0,
+        output_usd: 0,
+      }).at(-1),
+    ).toEqual({ key: 'rest', label: 'Not Split', usd: 10, share: 100 });
+    for (const none of [undefined, null, { ...SPLIT, usd: 0 }])
+      expect(splitParts(none)).toEqual([]);
+    expect(subagentsText(SPLIT)).toBe('$3.10 (31%)');
+    expect(subagentsText({ ...SPLIT, subagents_usd: 0 })).toBe('$0.00 (0%)');
+    expect(subagentsText(undefined)).toBe('');
+    expect(subagentsText({ ...SPLIT, usd: 0 })).toBe('');
+    expect(
+      ['wake', 'message', 'owner', 'compaction', 'job', 'ask', 'retry'].map(
+        causeText,
+      ),
+    ).toEqual([
+      'Wake',
+      'Message',
+      'Owner',
+      'Compaction',
+      'Job Result',
+      'Ask',
+      'Retry',
+    ]);
+    expect(['run', 'earlier', 'other', 'new-one'].map(causeText)).toEqual([
+      'Job Runs',
+      'Before Registration',
+      'Other',
+      'new-one',
+    ]);
+    expect(splitSum([SPLIT, undefined, SPLIT])).toMatchObject({
+      usd: 20,
+      cache_write_usd: 9,
+      subagents_usd: 6.2,
+      turns: 40,
+    });
+    expect(splitSum([undefined])).toBeUndefined();
+    expect(splitSum([])).toBeUndefined();
   });
 
   it('a share as a percentage to a tenth', () => {
