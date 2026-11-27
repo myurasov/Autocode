@@ -223,6 +223,8 @@ const MODELS = [
 ]
 const unreadable = new Set<string>()
 const hanging = new Map<string, Promise<void>>()
+// the session hooks this OpenCode refuses: registering one throws
+const noHooks = new Set<string>()
 
 interface Fake {
   tools: any[]
@@ -323,6 +325,7 @@ async function startPlugin(
         return { interrupted: true }
       },
       hook: async (name: string, fn: any) => {
+        if (noHooks.has(name)) throw new Error(`no session hook ${name}`)
         hooks[`session.${name}`] = fn
       },
     },
@@ -1396,11 +1399,23 @@ describe("the plugin in-process, tier 0b", () => {
     expect(skill.content).toContain("`api-test`")
     for (const name of ["autocode_me", "autocode_wake", "autocode_message"])
       expect(skill.content).toContain(`\`${name}\``)
-    const context = (session: string) => {
+    /*
+     * The system text of a request, after the plugin's hook for its kind: a
+     * turn's (context), a compaction's, and one that leaves no trace in the
+     * conversation (generate: OpenCode's cache warming).
+     */
+    const KINDS = ["context", "compaction", "generate"]
+    const systemOf = async (session: string, kind: string) => {
       const event = { sessionID: session, system: [] as any[], tools: {} }
-      return fake.hooks["session.context"]!(event).then(() => event.system)
+      await fake.hooks[`session.${kind}`]!(event)
+      return event.system
     }
-    expect(await context("ses_guide")).toEqual([])
+    const context = (session: string) => systemOf(session, "context")
+    // 1.1.1: every kind of request has the same line, or none
+    const all = (session: string) =>
+      Promise.all(KINDS.map((kind) => systemOf(session, kind)))
+    expect(KINDS.filter((k) => !fake.hooks[`session.${k}`])).toEqual([])
+    expect(await all("ses_guide")).toEqual([[], [], []])
     await tool(fake, "autocode_me").execute(
       { action: "register", id: "inproc:guide" },
       { sessionID: "ses_guide" },
@@ -1417,15 +1432,22 @@ describe("the plugin in-process, tier 0b", () => {
     await until(async () => (await context("ses_guide")).length === 1, {
       what: "the registration to reach the plugin",
     })
-    expect(await context("ses_guide")).toEqual([line])
+    expect(await all("ses_guide")).toEqual([[line], [line], [line]])
     // the same guide through the tool, for agents that do not load skills
     const help = await tool(fake, "autocode_me").execute(
       { action: "help", topic: "wakes" },
       { sessionID: "ses_guide" },
     )
     expect(help.content).toStartWith("## Wakes")
-    expect(await context("ses_guide_child")).toEqual([line])
-    expect(await context("ses_guide_free")).toEqual([])
+    expect(await all("ses_guide_child")).toEqual([[line], [line], [line]])
+    expect(await all("ses_guide_free")).toEqual([[], [], []])
+    // after what OpenCode put there itself: the line is the last entry
+    const own = { type: "text", text: "OpenCode's own" }
+    for (const kind of KINDS) {
+      const event = { sessionID: "ses_guide", system: [own] }
+      await fake.hooks[`session.${kind}`]!(event)
+      expect(event.system).toEqual([own, line])
+    }
     await tool(fake, "autocode_me").execute(
       { action: "unregister" },
       { sessionID: "ses_guide" },
@@ -1433,6 +1455,40 @@ describe("the plugin in-process, tier 0b", () => {
     await until(async () => (await context("ses_guide")).length === 0, {
       what: "the unregistration to reach the plugin",
     })
+    expect(await all("ses_guide")).toEqual([[], [], []])
+  })
+
+  // 1.1.1: each hook is registered on its own, so if OpenCode refuses one,
+  // the others still add the line (and the plugin starts).
+  test("the agent line: a session hook that OpenCode refuses leaves the others", async () => {
+    const dir = join(root, "work-111-hooks")
+    const sessions: Session[] = [{ id: "ses_hooks", directory: dir }]
+    const said = "no agent line on generate requests"
+    const before = logCount(said)
+    noHooks.add("generate")
+    let fake: Fake
+    try {
+      fake = await connected(() => startPlugin(dir, sessions))
+    } finally {
+      noHooks.delete("generate")
+    }
+    expect(fake.hooks["session.generate"]).toBeUndefined()
+    expect(logCount(said)).toBe(before + 1)
+    await tool(fake, "autocode_me").execute(
+      { action: "register", id: "inproc:hooks" },
+      { sessionID: "ses_hooks" },
+    )
+    const systemOf = async (kind: string) => {
+      const event = { sessionID: "ses_hooks", system: [] as any[] }
+      await fake.hooks[`session.${kind}`]!(event)
+      return event.system.map((s: any) => s.text)
+    }
+    await until(async () => (await systemOf("context")).length === 1, {
+      what: "the registration to reach the plugin",
+    })
+    const [line] = await systemOf("context")
+    expect(line).toStartWith("This session is Autocode agent `inproc:hooks`")
+    expect(await systemOf("compaction")).toEqual([line])
   })
 
   test("the wake and message tools (text messages only)", async () => {

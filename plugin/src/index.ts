@@ -715,6 +715,12 @@ export default {
      * The agent guide (spec, Agent Tools): the `autocode` skill for every
      * session, and one line of system text in each model call of a registered
      * session (a Subagent gets its top-level session's).
+     *
+     * The line goes on every request made with the session's context: a
+     * turn's (context), a compaction's, and one that leaves no trace in the
+     * conversation (generate: OpenCode's cache warming). With the line on
+     * the turns only, the others had a different system text and missed the
+     * provider's cache past the first system block (1.1.1).
      */
     try {
       await ctx.skill?.transform?.((editor: any) => {
@@ -730,7 +736,7 @@ export default {
     } catch (err) {
       log(`no autocode skill: ${(err as Error).message}`)
     }
-    await ctx.session.hook("context", async (event: any) => {
+    const addAgentLine = async (event: any) => {
       if (typeof event?.sessionID !== "string" || !registered.size) return
       let agent = registered.get(event.sessionID)
       if (!agent) {
@@ -742,7 +748,15 @@ export default {
           type: "text",
           text: agentLine(agent, channel.serverId),
         })
-    })
+    }
+    await ctx.session.hook("context", addAgentLine)
+    // each on its own: if OpenCode refuses one, the others stay
+    for (const name of ["compaction", "generate"])
+      try {
+        await ctx.session.hook(name, addAgentLine)
+      } catch (err) {
+        log(`no agent line on ${name} requests: ${(err as Error).message}`)
+      }
 
     /*
      * New top-level sessions of this folder, deleted sessions and turns are

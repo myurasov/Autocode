@@ -169,6 +169,9 @@ export default {
       options: safe(ctx.options),
       ctx: describe(ctx),
       sessionKeys: Object.keys(ctx.session ?? {}),
+      // the session hooks OpenCode took or refused (filled in below; here
+      // and not in the records, which drop their oldest entries)
+      hooks: { registered: [] as string[], refused: [] as string[] },
       env: Object.fromEntries(
         Object.entries(process.env).filter(
           ([k]) => k.startsWith("OPENCODE") || k === "HOME",
@@ -246,6 +249,26 @@ export default {
         },
       })
     })
+
+    /*
+     * The other requests of a session that a plugin may hook (1.1.1: a
+     * warming ping and a compaction carry a system prompt of their own):
+     * which hooks OpenCode takes, and what each is given. The last name is
+     * one OpenCode cannot know: whether it refuses such a name.
+     */
+    for (const name of ["generate", "compaction", "no-such-hook"])
+      try {
+        await ctx.session.hook(name, (event: any) => {
+          record(`hook.${name}`, {
+            sessionID: event?.sessionID,
+            keys: Object.keys(event ?? {}),
+            system: Array.isArray(event?.system) ? event.system.length : null,
+          })
+        })
+        info.hooks.registered.push(name)
+      } catch {
+        info.hooks.refused.push(name)
+      }
 
     await ctx.session.hook("context", (event: any) => {
       record("context", {

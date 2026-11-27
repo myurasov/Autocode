@@ -356,7 +356,11 @@ OpenCode's own question tool and its permission prompts also reach you through A
 - The plugin gives it to every session as the `autocode` skill.
 - `autocode_me action=help` returns it whole, or `topic=` one part: `overview`, `delivery`, `wakes`, `checks`,
   `recipes`, `messages`, `owner`, `locks`, `asks`, `costs`, `jobs`, `prompts`, `scripts`, `trouble`.
-- Once a session is registered, each model call carries one extra line that names its agent ID.
+- Once a session is registered, each model call carries one extra line of system text that names its agent ID.
+  Its Subagents' calls carry the same line. So do the session's compactions and OpenCode's cache warming
+  requests, so that every request made with the session's context has the same system text and the provider's
+  prompt cache holds across them. (Before 1.1.1 only a turn's calls had the line: a compaction or a warming
+  request then wrote the whole context to the cache again.)
 
 ### Register and Discover
 

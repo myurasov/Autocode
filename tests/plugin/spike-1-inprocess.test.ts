@@ -104,6 +104,67 @@ describe("spike check 1: in-process", () => {
     }
   })
 
+  /*
+   * 1.1.1: the agent line must be on every request of an agent's session,
+   * or a warming ping and a compaction miss the provider's cache. OpenCode
+   * has a session hook for each kind of request: `context` (a turn's),
+   * `generate` (a plugin's own request, as warming's) and `compaction`.
+   */
+  test("the session hooks generate and compaction exist; each is given a system list", async () => {
+    const hooks = await until(
+      async () => {
+        const h = (await probe.info())[0]?.info?.hooks
+        return h && h.registered.length + h.refused.length === 3 ? h : undefined
+      },
+      { what: "the probe's hooks" },
+    )
+    expect(hooks.registered).toContain("generate")
+    expect(hooks.registered).toContain("compaction")
+    // for the record: what OpenCode does with a name it does not know
+    const unknown = hooks.refused.includes("no-such-hook")
+    console.log(
+      `spike 1: a session hook OpenCode does not know is ${
+        unknown ? "refused" : "taken"
+      }`,
+    )
+    const s = await oc.createSession({})
+    await probe.call("session.prompt", { sessionID: s.id, text: "say hi" })
+    expect((await ended(s.id)).outcome).toBe("succeeded")
+    // a request that leaves no trace in the conversation, as warming's ping
+    const start = await probe.lastSeq()
+    const made = await probe.call("session.generate", {
+      sessionID: s.id,
+      prompt: "ping",
+    })
+    expect(made.error).toBeUndefined()
+    expect(typeof made.result?.text).toBe("string")
+    const pinged = (await probe.records("hook.generate", start)).filter(
+      (r) => r.data.sessionID === s.id,
+    )
+    expect(pinged.length).toBeGreaterThan(0)
+    expect(pinged[0]!.data.keys).toContain("system")
+    // a list (the probe says null of anything else)
+    expect(typeof pinged[0]!.data.system).toBe("number")
+    const since = await probe.lastSeq()
+    await probe.call("session.compact", { sessionID: s.id })
+    await until(
+      async () =>
+        (await events("session.compaction.ended", s.id, since)).length > 0,
+      { timeoutMs: 60_000, what: "the compaction to end" },
+    )
+    const seen = (await probe.records("hook.compaction", since)).filter(
+      (r) => r.data.sessionID === s.id,
+    )
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen[0]!.data.keys).toContain("system")
+    expect(typeof seen[0]!.data.system).toBe("number")
+    console.log(
+      `spike 1: system entries before the probe's hook: generate ${
+        pinged[0]!.data.system
+      }, compaction ${seen[0]!.data.system}`,
+    )
+  })
+
   test("interrupt: ctx.session.interrupt ends a hanging turn as interrupted", async () => {
     const s = await oc.createSession({})
     await fake.script([{ session: s.id, hang: true }], true)

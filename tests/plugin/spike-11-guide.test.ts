@@ -2,9 +2,10 @@
  * Spike check 11 (tier 0b): the agent guide on real OpenCode. The skill the
  * Autocode plugin adds is listed in every session's skill guidance (OpenCode 2
  * puts it in the system text; the skill tool loads it) and its body loads,
- * though its path names no file; the context hook's line reaches the model in
- * each request of a registered session and its Subagents, the same line each
- * time (so the prompt cache holds), and never an unregistered one.
+ * though its path names no file; the plugin's line reaches the model in each
+ * request of a registered session and its Subagents (a turn's, a compaction's
+ * and a `generate` request alike, since 1.1.1), the same line each time (so
+ * the prompt cache holds), and never an unregistered one.
  */
 import { beforeAll, describe, expect, test } from "bun:test"
 import { callTool } from "../helpers/autocode.ts"
@@ -17,6 +18,8 @@ const oc = new OpenCode(nodes[0]!)
 const fake = new FakeModel(nodes[0]!)
 const run = crypto.randomUUID().slice(0, 6)
 const LINE = /This session is Autocode agent `([^`]+)` on server `[^`]+`/
+// any form of the line, for the requests that must not have it
+const ANY_LINE = /This session is Autocode agent/
 
 const defName = (d: any) => d?.function?.name ?? d?.name
 const defOf = (defs: unknown[], name: string): any =>
@@ -64,7 +67,7 @@ describe("spike check 11: the agent guide", () => {
     const free = await oc.createSession({})
     await oc.run(free.id, "hello")
     for (const r of await primary(free.id))
-      expect(systemOf(r)).not.toMatch(LINE)
+      expect(systemOf(r)).not.toMatch(ANY_LINE)
 
     const s = await oc.createSession({})
     const id = `guide:${run}:lead`
@@ -88,15 +91,53 @@ describe("spike check 11: the agent guide", () => {
     expect(systemOf(a)).toBe(systemOf(b))
   })
 
-  // The spec (Agent Tools): compaction calls get no line (the review of 0b2,
-  // 2026-11-08: nothing checked it).
-  test("a registered session's compaction call carries no line", async () => {
+  /*
+   * 1.1.1 (the spec, Agent Guide): a compaction, and a request that leaves
+   * no trace in the conversation (`generate`: OpenCode's cache warming makes
+   * those), are made with the session's whole context. They carry the line
+   * too, so their system text is the turns' and the provider's cache holds.
+   * Before 1.1.1 neither had it (the spec then said so of compactions): on
+   * the Anthropic format each read only the first system block from the
+   * cache and wrote the rest of the context again.
+   */
+  test("a registered session's compaction and generate requests carry the line: the same system text as its turns", async () => {
     const s = await oc.createSession({})
     const id = `guide:${run}:compacted`
     expect(
       await callTool(oc, s.id, "autocode_me", { action: "register", id }),
     ).toContain(`Registered as ${id}`)
-    await oc.run(s.id, "a turn before the compaction")
+    await until(
+      async () => {
+        await oc.run(s.id, "a turn before the others")
+        return LINE.exec(systemOf((await primary(s.id)).at(-1)))?.[1] === id
+      },
+      {
+        timeoutMs: 30_000,
+        intervalMs: 500,
+        what: "the line to reach the model",
+      },
+    )
+    const turn = (await primary(s.id)).at(-1)!
+    const marker = `GENERATE-${crypto.randomUUID().slice(0, 8)}`
+    const made = await oc.api(
+      "POST",
+      `/api/session/${s.id}/generate`,
+      { prompt: `${marker} ping` },
+      60_000,
+    )
+    expect(typeof made.text).toBe("string")
+    const generated = (await fake.requests()).find((r) =>
+      (r.messages as any[]).some(
+        (m) => m?.role === "user" && text(m.content).includes(marker),
+      ),
+    )
+    expect(generated).toBeDefined()
+    expect(LINE.exec(systemOf(generated))?.[1]).toBe(id)
+    expect(systemOf(generated)).toBe(systemOf(turn))
+    // and it left no trace: the next turn's request does not have its prompt
+    await oc.run(s.id, "a turn after it")
+    expect(text((await primary(s.id)).at(-1)!.messages)).not.toContain(marker)
+
     await oc.api("POST", `/api/session/${s.id}/compact`, {})
     const compaction = await until(
       async () =>
@@ -105,7 +146,46 @@ describe("spike check 11: the agent guide", () => {
         ),
       { timeoutMs: 60_000, intervalMs: 500, what: "the compaction's request" },
     )
-    expect(systemOf(compaction)).not.toMatch(LINE)
+    expect(LINE.exec(systemOf(compaction))?.[1]).toBe(id)
+    expect(systemOf(compaction)).toBe(systemOf(turn))
+  })
+
+  test("an unregistered session's compaction and generate requests carry no line", async () => {
+    // beside a registered session: the plugin then looks each session up
+    const beside = await oc.createSession({})
+    const id = `guide:${run}:beside`
+    await callTool(oc, beside.id, "autocode_me", { action: "register", id })
+    await until(
+      async () => {
+        await oc.run(beside.id, "ping")
+        const last = (await primary(beside.id)).at(-1)
+        return LINE.exec(systemOf(last))?.[1] === id
+      },
+      { timeoutMs: 30_000, intervalMs: 500, what: "the other's line" },
+    )
+    const s = await oc.createSession({})
+    await oc.run(s.id, "a turn before the others")
+    const marker = `GENERATE-${crypto.randomUUID().slice(0, 8)}`
+    await oc.api(
+      "POST",
+      `/api/session/${s.id}/generate`,
+      { prompt: `${marker} ping` },
+      60_000,
+    )
+    const generated = (await fake.requests()).find((r) =>
+      text(r.messages).includes(marker),
+    )
+    expect(generated).toBeDefined()
+    expect(systemOf(generated)).not.toMatch(ANY_LINE)
+    await oc.api("POST", `/api/session/${s.id}/compact`, {})
+    const compaction = await until(
+      async () =>
+        (await fake.requests()).find(
+          (r) => r.session === s.id && r.kind === "compaction",
+        ),
+      { timeoutMs: 60_000, intervalMs: 500, what: "the compaction's request" },
+    )
+    expect(systemOf(compaction)).not.toMatch(ANY_LINE)
   })
 
   test("a Subagent of a registered session gets the same line", async () => {
