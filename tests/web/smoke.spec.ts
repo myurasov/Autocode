@@ -2276,6 +2276,17 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Details sho
         { type: "work.started", session: "ses_smoke1", ref: "ses_smoke_kid" },
         step(2, { sub: "ses_smoke_kid" }),
         { type: "turn.ended", session: "ses_smoke1", outcome: "succeeded" },
+        // 1.1.2: what the session spends between its turns: a cache
+        // warming ping, nearly all of it read from the cache
+        {
+          type: "cost.usage",
+          session: "ses_smoke1",
+          source: "generate",
+          ref: `ping-${tag}`,
+          usd: 0.036105,
+          tokens: { input: 10, output: 5, read: 120_000, write: 0 },
+          rates: { input: 3, output: 15, read: 0.3, write: 3.75 },
+        },
       ],
     },
   })
@@ -2391,6 +2402,11 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Details sho
   await expect(typed.first()).toHaveText("Owner")
   // its Subagent's step counts under the turn that started it
   await expect(typed.last()).toHaveText(/^\$0\.[1-9]\d$/)
+  // 1.1.2: cache warming is a row of its own, with no turns, no reload
+  // and no Subagents' part
+  await expect(
+    open.locator('table.cost-causes tr[data-cause="warming"] td'),
+  ).toHaveText(["Cache Warming", "0", /^\$\d+\.\d\d$/, "—", "$0.00", "$0.00"])
   await expect(open.locator("table.cost-days thead th")).toHaveText([
     "Day",
     "Spend",

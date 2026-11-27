@@ -1180,6 +1180,7 @@ spend three ways: by kind, by Subagents, and by what started the turn.
 | `retry` | a retry after a failed turn, or the resume prompt after a cut one |
 | `run` | no turn of the agent's session: the steps of its jobs' runs, which count for it |
 | `earlier` | no turn either: the steps from before the session registered |
+| `warming` | no turn either: OpenCode's cache warming, whose requests between turns keep the session's cache alive |
 | `other` | another notice of Autocode's (a lock, a cost warning), or a start that the plugin could not explain |
 
 - **Work that outlives its turn keeps its cause.** A turn that OpenCode starts by itself, when a Subagent's
@@ -1187,6 +1188,16 @@ spend three ways: by kind, by Subagents, and by what started the turn.
   Subagent's own steps.
 - **A prompt that carries several things** counts by the first of these: the compaction notice, a retry, a wake,
   a message, a job's result, an ask, any other notice.
+- **`warming` is spent between the session's turns** (since v1.1.2). OpenCode's `warming` keeps the provider's
+  cache of the conversation alive with a request that leaves no message, shortly before the cache would expire.
+  Each one reads the whole conversation from the cache. No step record has it, so Autocode takes it from the
+  session's totals: what they rise by while no turn runs. Any other request that a plugin makes with the
+  session's context between turns counts here too.
+  - **It is no activity:** Last Active, the status and the context stay as they are.
+  - **It counts toward `daily_usd`.** A paused agent's session is still warmed: the pause stops turns, not
+    OpenCode's warming. Turn `warming` off in OpenCode's config for a model that must not spend while paused.
+  - **Not counted:** warming requests made while the plugin did not run, or before the session registered; and
+    a session's title, a small request that OpenCode makes beside the first turn.
 
 **Reload.** The first model step of a turn loads the conversation before anything is done. Its dollars for
 cache writes, cache reads and input are the turn's reload. Only a turn that Autocode saw start has one: the turn

@@ -668,3 +668,189 @@ describe("where the split shows", () => {
     })
   })
 })
+
+/*
+ * 1.1.2 (the owner, 2026-11-27: "yes as 1.1.2"): what a session spends
+ * outside its steps. OpenCode's cache warming keeps a session's cache alive
+ * with requests that leave no message: no step event and no record has
+ * their cost. The plugin finds each in the session's totals and reports it
+ * as cost.usage; the server files it once, for the session's agent, under
+ * a cause of its own: `warming`.
+ */
+let usages = 0
+// A warming ping as the plugin reports it: nearly all of it read from the
+// cache. At RATES: $0.00003 + $0.000075 + $0.036 = $0.036105.
+const PING = { input: 10, output: 5, read: 120_000, write: 0 }
+const usage = (usd: number, more: Record<string, unknown> = {}) => ({
+  type: "cost.usage",
+  session: "ses_a",
+  source: "generate",
+  ref: `evt_${++usages}`,
+  at: t.clock.now(),
+  usd,
+  tokens: PING,
+  rates: RATES,
+  ...more,
+})
+const agentA = async () => (await owner("GET", "/v1/agents/team:a")).body.agent
+
+describe("costs outside the steps: cache warming", () => {
+  test("a warming ping counts once for its session's agent, under its own cause, split by kind, in no turn", async () => {
+    await report(t, HOST, [started("user"), step(0.138), ended()])
+    const ping = usage(0.036105)
+    await report(t, HOST, [ping])
+    // its batch sent again after a lost reply: once
+    await report(t, HOST, [ping])
+    expect(await causes()).toEqual({
+      owner: [1, 0.138],
+      warming: [0, 0.036105],
+    })
+    const view = await one()
+    expect(view.cost).toMatchObject({
+      today_usd: 0.174105,
+      total_usd: 0.174105,
+    })
+    // by kind: the ping's own tokens times the rates
+    expect(view.split).toMatchObject({
+      usd: 0.174105,
+      cache_read_usd: 0.066,
+      input_usd: 0.00303,
+      output_usd: 0.030075,
+      cache_write_usd: 0.075,
+      cache_read_tokens: 220_000,
+      // no turn of its own, and no reload
+      turns: 1,
+      reload_usd: 0.108,
+    })
+    // one more request on the day
+    expect(view.days.map((d: any) => [d.usd, d.steps])).toEqual([[0.174105, 2]])
+    // and another ping is another
+    await report(t, HOST, [usage(0.036105)])
+    expect((await causes()).warming).toEqual([0, 0.07221])
+    // the agent sees it in its own status
+    const me = (await as(a, "GET", "/v1/me")).body.cost
+    expect(
+      me.today_causes.find((c: any) => c.cause === "warming"),
+    ).toMatchObject({ usd: 0.07221, turns: 0 })
+  })
+
+  test("a ping of a model without prices counts in full and is not split", async () => {
+    await report(t, HOST, [usage(0.002, { rates: undefined })])
+    expect(await causes()).toEqual({ warming: [0, 0.002] })
+    expect((await one()).split).toMatchObject({
+      usd: 0.002,
+      cache_read_usd: 0,
+      input_usd: 0,
+      output_usd: 0,
+      cache_write_usd: 0,
+      // its tokens count either way
+      cache_read_tokens: 120_000,
+    })
+  })
+
+  test("it is filed on the day it was spent, also when it is reported later; one that names no time, a time to come or one long ago is of now", async () => {
+    const at = t.clock.now()
+    t.clock.advance(DAY)
+    await report(t, HOST, [usage(0.25, { at })])
+    let view = await one()
+    expect(view.cost).toMatchObject({ today_usd: 0, total_usd: 0.25 })
+    expect(view.days.map((d: any) => d.usd)).toEqual([0.25])
+    expect((await one("?days=1")).causes).toEqual([])
+    // of now: no time, the server's clock a day ahead of the report's, a
+    // time in seconds (1970), nonsense
+    const now = t.clock.now()
+    for (const odd of [undefined, now + DAY, now - 30 * DAY, now / 1000, "x"])
+      await report(t, HOST, [usage(0.125, { at: odd })])
+    view = await one()
+    expect(view.cost).toMatchObject({ today_usd: 0.625, total_usd: 0.875 })
+    expect(view.days.map((d: any) => d.usd)).toEqual([0.625, 0.25])
+  })
+
+  test("a title's or a compaction's report, an unknown source, one without a reference or dollars, and nobody's session count for nothing", async () => {
+    await report(t, HOST, [
+      // a title cannot be told from a step, and a compaction's cost is
+      // read from the session's records: neither is taken from a report
+      usage(0.5, { source: "title" }),
+      usage(0.5, { source: "compaction" }),
+      usage(0.5, { source: "other" }),
+      usage(0.5, { source: undefined }),
+      usage(0.5, { ref: undefined }),
+      usage(0.5, { ref: "" }),
+      usage(0.5, { ref: 7 }),
+      // longer than a reference is kept: it would be cut to another's
+      usage(0.5, { ref: "x".repeat(151) }),
+      usage("0.5" as any),
+      usage(-1),
+      usage(Number.NaN),
+      usage(0.5, { session: "ses_nobody" }),
+    ])
+    expect(await causes()).toEqual({})
+    expect((await one()).cost.total_usd).toBe(0)
+    // the longest reference that is taken, and one that differs at its end
+    await report(t, HOST, [
+      usage(0.5, { ref: `${"x".repeat(149)}a` }),
+      usage(0.25, { ref: `${"x".repeat(149)}b` }),
+    ])
+    expect((await one()).cost.total_usd).toBe(0.75)
+  })
+
+  test("a ping is no activity of the agent: its status, its Last Active and its context stay", async () => {
+    await report(t, HOST, [started("user"), step(0.138), ended()])
+    const before = await agentA()
+    expect(before.status).toBe("idle")
+    t.clock.advance(50 * MIN)
+    await report(t, HOST, [usage(0.036105)])
+    // it counted
+    expect((await causes()).warming).toEqual([0, 0.036105])
+    const after = await agentA()
+    expect(after.status).toBe("idle")
+    expect(after.last_active).toBe(before.last_active)
+    expect(after.cost.context).toBe(before.cost.context)
+    expect(after.model).toBe(before.model)
+  })
+
+  test("a ping that takes an idle agent past its daily cap pauses it at once; one reported in a turn, when the turn ends", async () => {
+    await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { daily_usd: 1 } },
+    })
+    await report(t, HOST, [started("user"), step(0.9), ended()])
+    expect((await agentA()).status).toBe("idle")
+    await report(t, HOST, [usage(0.2)])
+    expect(await agentA()).toMatchObject({ status: "paused", paused: "cap" })
+    // a new day, and the cap again: this time a turn runs
+    t.clock.advance(DAY)
+    expect(
+      (await owner("POST", "/v1/agents/team:a/resume", {})).status,
+    ).toBeLessThan(300)
+    await report(t, HOST, [started("user"), step(0.9)])
+    await report(t, HOST, [usage(0.2)])
+    expect((await agentA()).status).toBe("working")
+    await report(t, HOST, [ended()])
+    expect(await agentA()).toMatchObject({ status: "paused", paused: "cap" })
+  })
+
+  test("a ping in a run's session counts for the run, under the runs' cause", async () => {
+    await owner("PUT", "/v1/jobs/mail", {
+      host: HOST,
+      model: "fake/main",
+      prompt: "Summarize the mail.",
+      trigger: "fire-only",
+    })
+    expect((await as(a, "POST", "/v1/jobs/mail/run", {})).status).toBe(201)
+    for (let n = 0; n < 2; n++) {
+      t.server.tick()
+      for (const i of await instructions(t, HOST))
+        await ack(
+          t,
+          HOST,
+          i.id,
+          i.type === "spawn" ? { session: "ses_run" } : { ok: true },
+        )
+    }
+    await sessionToken(t, HOST, "ses_run")
+    await report(t, HOST, [usage(0.002, { session: "ses_run" })])
+    expect(await causes()).toEqual({ run: [0, 0.002] })
+    const runs = (await owner("GET", "/v1/runs?job=mail")).body.runs
+    expect(runs[0].cost).toBe(0.002)
+  })
+})

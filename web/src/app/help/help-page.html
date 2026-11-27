@@ -585,6 +585,14 @@
         command, keeps the cause of the turn that started it.
       </li>
       <li>
+        One more row is no turn: Cache Warming is what OpenCode's warming
+        spends to keep the session's cache alive between turns. Its
+        requests leave no message, and each reads the whole conversation
+        from the cache. Autocode counts them since v1.1.2, while its plugin
+        runs. They count toward the daily cap, and a paused agent's session
+        is still warmed: the pause stops turns, not OpenCode's warming.
+      </li>
+      <li>
         Reload: the first step of a turn loads the whole conversation: that
         is the turn's reload. A turn that starts while the cache is warm
         reloads cheaply; one that starts cold pays for a cache write of the

@@ -1100,6 +1100,15 @@ describe('HelpPage', () => {
       'above them, What Started the Turns',
     ])
       expect(costs, part).toContain(part);
+    // 1.1.2: what a session spends between its turns
+    const outside = section(page, 'spend');
+    for (const part of [
+      "One more row is no turn: Cache Warming is what OpenCode's warming " +
+        "spends to keep the session's cache alive between turns",
+      'They count toward the daily cap',
+      "the pause stops turns, not OpenCode's warming",
+    ])
+      expect(outside, part).toContain(part);
     // where the money goes, in words the owner can act on
     const money = section(page, 'spend');
     for (const part of [

@@ -3,7 +3,12 @@
  * how a step's dollars are divided among the kinds (1.1.0-rc7).
  */
 import { describe, expect, test } from "bun:test"
-import { promptCause } from "@autocode/server/causes"
+import {
+  CAUSES,
+  isCause,
+  promptCause,
+  usageCause,
+} from "@autocode/server/causes"
 import { splitStep, stepTokens } from "@autocode/server/cost-parts"
 
 const summary = (header: string[], more: Record<string, unknown> = {}) => ({
@@ -89,6 +94,35 @@ describe("the cause of a prompt's turn", () => {
     )
     for (const bad of [null, undefined, "x", 3, {}, { header: "x" }])
       expect(promptCause(bad)).toBe("other")
+  })
+})
+
+// 1.1.2: what a session spends outside its steps has a cause of its own.
+describe("the cause of a cost outside the steps", () => {
+  test("a generate request is warming; any other source is none", () => {
+    expect(usageCause("generate")).toBe("warming")
+    // a step is counted from its own event, a compaction from the records;
+    // a title cannot be told from a step and is not counted
+    for (const other of [
+      "title",
+      "compaction",
+      "warming",
+      "",
+      null,
+      undefined,
+      3,
+      {},
+    ])
+      expect(usageCause(other)).toBeUndefined()
+    expect(isCause("warming")).toBe(true)
+    expect(isCause("title")).toBe(false)
+    expect(CAUSES.at(-1)).toBe("other")
+  })
+
+  test("no prompt gives its turn that cause", () => {
+    expect(promptCause({ cause: "warming", wakes: ["w"], header: [] })).toBe(
+      "wake",
+    )
   })
 })
 

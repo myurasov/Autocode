@@ -348,12 +348,19 @@ async function startPlugin(
       },
     },
     event: {
-      subscribe: ({ signal }: { signal?: AbortSignal }) => ({
+      // as OpenCode's: only the types asked for, when types are named
+      subscribe: ({
+        signal,
+        types,
+      }: {
+        signal?: AbortSignal
+        types?: string[]
+      }) => ({
         async *[Symbol.asyncIterator]() {
           while (!signal?.aborted) {
             const next = queue.shift()
             if (next) {
-              yield next
+              if (!types || types.includes(next.type)) yield next
               continue
             }
             await new Promise<void>((resolve) => {
@@ -1456,6 +1463,126 @@ describe("the plugin in-process, tier 0b", () => {
       what: "the unregistration to reach the plugin",
     })
     expect(await all("ses_guide")).toEqual([[], [], []])
+  })
+
+  /*
+   * 1.1.2 (the owner, 2026-11-27: "yes as 1.1.2"): what a session spends
+   * outside its steps. OpenCode's cache warming pings a session with
+   * requests that leave no message. A plugin is told the session's totals
+   * after every request (session.usage.updated, as real OpenCode says them:
+   * tests/plugin/spike-1-inprocess.test.ts): a rise while no turn runs in
+   * the session is a ping, reported for the session's agent and filed
+   * once. What moves the totals during a turn (its steps, a title, a
+   * compaction) is not taken from them.
+   */
+  test("usage outside the steps: a rise of an idle registered session's totals is a warming ping, counted once; a turn's rises, a free session's and a Subagent's are not", async () => {
+    const dir = join(root, "work-112-usage")
+    const sessions: Session[] = [
+      {
+        id: "ses_use",
+        directory: dir,
+        model: { providerID: "claude-agent", id: "fable" },
+      },
+      { id: "ses_use_child", directory: dir, parentID: "ses_use" },
+      { id: "ses_use_free", directory: dir },
+    ]
+    const fake = await connected(() => startPlugin(dir, sessions))
+    await register(fake, "ses_use", "inproc:usage")
+    let n = 0
+    const at = Date.now()
+    // OpenCode's events of a session: no folder is said with these
+    const said = (type: string, session: string, data = {}, late = 0) => ({
+      id: `evt_use_${++n}`,
+      type,
+      created: at + late,
+      data: { sessionID: session, ...data },
+    })
+    // the session's totals so far: the cache's reads, and its dollars
+    const totals = (session: string, cost: number, read: number, late = 0) =>
+      said(
+        "session.usage.updated",
+        session,
+        {
+          cost,
+          tokens: {
+            input: 10,
+            output: 5,
+            reasoning: 0,
+            cache: { read, write: 0 },
+          },
+        },
+        late,
+      )
+    const view = async () =>
+      (await call(t.url, t.admin, "GET", "/v1/costs/inproc:usage")).body
+    const causes = async () =>
+      Object.fromEntries(
+        ((await view()).causes as any[]).map((c) => [c.cause, c.usd]),
+      )
+    const before = await agentOf("inproc:usage")
+    // where each count starts
+    for (const s of ["ses_use", "ses_use_child", "ses_use_free"])
+      fake.emit(totals(s, 1, 500_000))
+    // a ping: 100,000 tokens read from the cache
+    const ping = totals("ses_use", 1.02, 600_000, 60_000)
+    fake.emit(ping)
+    // a free session's, and a Subagent's (Subagents are not warmed)
+    fake.emit(totals("ses_use_free", 1.5, 600_000, 60_000))
+    fake.emit(totals("ses_use_child", 1.5, 600_000, 60_000))
+    await until(async () => (await causes()).warming === 0.02, {
+      what: "the ping to be counted",
+    })
+    // a turn: a title, then a step and its totals; none is a ping
+    fake.emit(said("session.execution.started", "ses_use", {}, 120_000))
+    fake.emit(totals("ses_use", 1.03, 601_000, 120_010))
+    fake.emit({
+      ...said(
+        "session.step.ended",
+        "ses_use",
+        {
+          cost: 0.25,
+          tokens: { input: 1000 },
+          assistantMessageID: "msg_use_step1",
+        },
+        120_020,
+      ),
+      location: { directory: dir },
+    })
+    fake.emit(totals("ses_use", 1.28, 602_000, 120_030))
+    fake.emit(said("session.execution.succeeded", "ses_use", {}, 121_000))
+    // what comes just after the turn's end is the turn's
+    fake.emit(totals("ses_use", 1.3, 603_000, 122_000))
+    // a compaction whose turn's start is not said: its own start is
+    fake.emit({
+      ...said("session.compaction.started", "ses_use", {}, 200_000),
+      location: { directory: dir },
+    })
+    fake.emit(totals("ses_use", 1.5, 603_000, 260_000))
+    fake.emit({
+      ...said("session.compaction.ended", "ses_use", {}, 261_000),
+      location: { directory: dir },
+    })
+    // a ping a while later: 50,000 tokens more
+    fake.emit(totals("ses_use", 1.51, 653_000, 400_000))
+    await until(async () => (await causes()).warming === 0.03, {
+      what: "the second ping to be counted",
+    })
+    const { split, cost, causes: rows } = await view()
+    // the step, and the two pings: nothing else
+    expect(cost.total_usd).toBe(0.28)
+    expect(rows.find((c: any) => c.cause === "warming")).toMatchObject({
+      usd: 0.03,
+      turns: 0,
+    })
+    // the pings at the session's model's rates, nearly all cache reads:
+    // 150,000 x $0.2 a million of the weights (no input or output moved)
+    expect(split.cache_read_usd).toBeCloseTo(0.03, 9)
+    expect(split.cache_read_tokens).toBe(150_000)
+    expect(split.subagents_usd).toBe(0)
+    // the pings are no activity of the agent: its turn was
+    const after = await agentOf("inproc:usage")
+    expect(after.status).toBe("idle")
+    expect(before.status).toBe("idle")
   })
 
   // 1.1.1: each hook is registered on its own, so if OpenCode refuses one,

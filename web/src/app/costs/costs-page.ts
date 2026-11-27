@@ -130,6 +130,8 @@ const CAUSES: Record<string, string> = {
   retry: 'Retry',
   run: 'Job Runs',
   earlier: 'Before Registration',
+  // what a session spends between its turns (1.1.2)
+  warming: 'Cache Warming',
   other: 'Other',
 };
 export function causeText(cause: string): string {

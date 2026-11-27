@@ -5,7 +5,9 @@
  * from OpenCode's records and the server files them, each once, so that the
  * agent's total is what OpenCode says the session's steps cost. And a
  * compaction's cost, which OpenCode ends with no step event, is counted when
- * its turn ends.
+ * its turn ends. And what the session spends outside its steps (1.1.2): a
+ * request that leaves no message, as cache warming's ping, is counted from
+ * what the session's totals rise by while no turn runs.
  */
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import {
@@ -187,3 +189,82 @@ test("a compaction's cost is counted when its turn ends", async () => {
   )
   expect((await cost()).total_usd).toBeGreaterThan(start.total_usd)
 }, 300_000)
+
+/*
+ * 1.1.2 (the owner, 2026-11-27: "yes as 1.1.2"): OpenCode's cache warming
+ * keeps a session's cache alive with requests that leave no message
+ * (session.generate). No step event and no record of the session has their
+ * cost; OpenCode tells the plugin the session's totals, and what they rise
+ * by while no turn runs is such a request. Here one is made as warming
+ * makes it, a while after the last turn: warming waits most of the cache's
+ * lifetime, and the plugin takes what comes within 5 seconds of a turn's
+ * end for the turn's own.
+ */
+test("a request that leaves no message (a warming ping) is counted once, under its own cause; a turn's steps and a compaction are not counted again", async () => {
+  await agentStatus(id, "idle", 90_000)
+  await Bun.sleep(6000)
+  const start = await cost()
+  const rows = async () => {
+    const steps = await recorded("assistant")
+    const compactions = await recorded("compaction")
+    return steps.usd + compactions.usd
+  }
+  const before = await rows()
+  // so far every dollar is a step's or a compaction's: nothing was taken
+  // from the totals for the turns and the compaction above
+  expect(Math.abs(start.total_usd - before)).toBeLessThan(1e-6)
+  const warmed = async () =>
+    ((await admin("GET", `/v1/costs/${enc(id)}`)).causes as any[]).find(
+      (c) => c.cause === "warming",
+    )
+  expect(await warmed()).toBeUndefined()
+  const ping = () =>
+    oc.api(
+      "POST",
+      `/api/session/${session}/generate`,
+      { prompt: "ping" },
+      60_000,
+    )
+  const made = await ping()
+  expect(made.cost).toBeGreaterThan(0)
+  await until(
+    async () =>
+      Math.abs((await cost()).total_usd - (start.total_usd + made.cost)) < 1e-6,
+    { timeoutMs: 30_000, intervalMs: 500, what: "the ping's cost counted" },
+  )
+  // no record of the session holds it
+  expect(await rows()).toBe(before)
+  expect((await warmed()).turns).toBe(0)
+  expect((await warmed()).usd).toBeCloseTo(made.cost, 6)
+  // it is no turn and no activity of the agent
+  expect((await admin("GET", `/v1/agents/${enc(id)}`)).agent.status).toBe(
+    "idle",
+  )
+  // a second one is another; neither is counted twice a while later
+  const again = await ping()
+  const both = start.total_usd + made.cost + again.cost
+  await until(async () => Math.abs((await cost()).total_usd - both) < 1e-6, {
+    timeoutMs: 30_000,
+    intervalMs: 500,
+    what: "the second ping counted",
+  })
+  // a turn after them: its step counts as a step, and only so
+  const fake = new FakeModel(node)
+  await fake.script([{ session, reply: "after the pings" }], true)
+  await oc.run(session, "one more turn", 90_000)
+  await agentStatus(id, "idle", 90_000)
+  await until(
+    async () =>
+      Math.abs(
+        (await cost()).total_usd - ((await rows()) + both - start.total_usd),
+      ) < 1e-6,
+    { timeoutMs: 60_000, intervalMs: 1000, what: "the turn's step counted" },
+  )
+  await Bun.sleep(3000)
+  expect((await warmed()).usd).toBeCloseTo(made.cost + again.cost, 6)
+  expect(
+    Math.abs(
+      (await cost()).total_usd - ((await rows()) + made.cost + again.cost),
+    ),
+  ).toBeLessThan(1e-6)
+}, 240_000)

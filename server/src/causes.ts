@@ -6,9 +6,10 @@
  * result or failure), `ask` (an ask that was answered or closed, or one
  * sent to the agent to answer), `retry` (a retry or resume prompt) and
  * `other` (any other notice of Autocode's, and a turn whose start nobody
- * explained). Two more hold steps that are no turn of the agent's own
- * session: `run` (its jobs' runs) and `earlier` (from before the session
- * registered).
+ * explained). Three more hold what is no turn of the agent's own session:
+ * `run` (its jobs' runs), `earlier` (from before the session registered),
+ * and `warming` (1.1.2): what the session spends between its turns in
+ * requests that leave no message, which is OpenCode's cache warming.
  */
 
 export const CAUSES = [
@@ -21,6 +22,7 @@ export const CAUSES = [
   "retry",
   "run",
   "earlier",
+  "warming",
   "other",
 ] as const
 
@@ -81,4 +83,15 @@ export function promptCause(summary: unknown): Cause {
  */
 export function unpromptedCause(by: unknown): Cause {
   return by === "user" ? "owner" : by === "compaction" ? "compaction" : "other"
+}
+
+/*
+ * The cause of what a session spent outside its steps, from the source
+ * the plugin names: `generate` is a request made with the session's
+ * context that leaves no message, which is how OpenCode's cache warming
+ * pings. Nothing for another source: a step is counted from its own
+ * event, a compaction from the session's records.
+ */
+export function usageCause(source: unknown): Cause | undefined {
+  return source === "generate" ? "warming" : undefined
 }

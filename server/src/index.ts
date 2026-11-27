@@ -27,7 +27,7 @@ import {
 } from "@autocode/shared"
 import { Agents } from "./agents.ts"
 import { Asks } from "./asks.ts"
-import { promptCause } from "./causes.ts"
+import { promptCause, usageCause } from "./causes.ts"
 import { ensureDataDir, resolveServerId, tailscaleAddress } from "./config.ts"
 import { addSplits, CostParts, splitStep, stepTokens } from "./cost-parts.ts"
 import { Costs } from "./costs.ts"
@@ -515,6 +515,57 @@ export async function startServer(
       event.steps,
       event.account === true,
       (payer, usd, day) => costParts.step(payer, { cause, usd, day }),
+    )
+    if (run)
+      db.query("UPDATE runs SET cost = ? WHERE id = ?").run(
+        costs.runCost(run),
+        run,
+      )
+  }
+  /*
+   * What a session spends outside its steps (1.1.2): OpenCode's cache
+   * warming keeps a session's cache alive with requests that leave no
+   * message, so no step event and no record has their cost. The plugin
+   * finds each in the session's totals and reports it here: filed once (by
+   * its reference) on the day it was spent, under the cause `warming`,
+   * divided by kind when the plugin knew the model's rates. It is no
+   * activity of the session and no step of a turn: the agent's Last
+   * Active, context and model, its turn's reload and its wakes' costs stay
+   * as they are.
+   */
+  const USAGE_KEPT_MS = 7 * 86_400_000
+  hosts.onUsageCost = (event) => {
+    const cause = usageCause(event.source)
+    const ref = event.ref
+    // a reference longer than the IDs kept would be cut to another's
+    if (!cause || typeof ref !== "string" || !ref || ref.length > 150) return
+    const session = String(event.session)
+    const run = runOf(session)
+    const agent = run ?? agents.agentOfSession(session)
+    if (!agent) return
+    // when it was spent: a report that names no time, a time to come, or
+    // one from long ago (a report waits no week) is of now
+    const at =
+      typeof event.at === "number" &&
+      Number.isFinite(event.at) &&
+      event.at <= now() &&
+      event.at > now() - USAGE_KEPT_MS
+        ? event.at
+        : now()
+    const tokens = stepTokens(event)
+    costs.past(
+      agent,
+      session,
+      [[`usage:${ref}`, at, event.usd]],
+      false,
+      (payer, usd, day) =>
+        costParts.step(payer, {
+          cause: run ? "run" : cause,
+          usd,
+          day,
+          tokens,
+          split: splitStep(usd, tokens, event.rates),
+        }),
     )
     if (run)
       db.query("UPDATE runs SET cost = ? WHERE id = ?").run(

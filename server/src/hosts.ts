@@ -145,6 +145,9 @@ export class Hosts {
   // steps read from OpenCode's records: a session's earlier ones, and a
   // compaction's (1.1.0-rc3)
   onPastCost: (event: any) => void = () => {}
+  // what a session spent outside its steps: a cache warming ping, as the
+  // plugin found it in the session's totals (1.1.2)
+  onUsageCost: (event: any) => void = () => {}
   // the plugin answered an `account` instruction: its report is whole, or
   // it could not read its OpenCode
   onAccounted: (
@@ -840,6 +843,14 @@ export class Hosts {
       ) {
         try {
           this.onPastCost(event)
+        } catch {}
+      } else if (
+        event.type === "cost.usage" &&
+        typeof event.session === "string"
+      ) {
+        // no activity of the session: a warming ping comes while it idles
+        try {
+          this.onUsageCost(event)
         } catch {}
       } else if (
         ((event.type === "ask.opened" || event.type === "ask.settled") &&

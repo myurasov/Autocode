@@ -71,6 +71,7 @@ import {
   WAKE_TOOL,
   type WakeInput,
 } from "./tools.ts"
+import { Outside, type Ping, pingEvent } from "./usage.ts"
 import { waitInCalls } from "./waits.ts"
 
 type Ctx = any
@@ -122,6 +123,13 @@ const TURN_EVENTS = {
   "session.execution.succeeded": "succeeded",
   "session.execution.failed": "failed",
   "session.execution.interrupted": "interrupted",
+} as const
+
+// A compaction runs (true) or has ended: its totals are its own (usage.ts).
+const COMPACTION_EVENTS = {
+  "session.compaction.started": true,
+  "session.compaction.ended": false,
+  "session.compaction.failed": false,
 } as const
 
 export default {
@@ -822,6 +830,8 @@ export default {
     // The sessions running a turn now, when the local API can tell: after a
     // gap in the event stream, and every minute, so no lost event leaves a
     // session busy (or idle) for long.
+    // each session's totals, and whether a turn runs in it (usage.ts)
+    const outside = new Outside()
     const reportActive = async () => {
       if (!api) return
       const sessions = await activeSessions(api).catch(() => undefined)
@@ -926,6 +936,20 @@ export default {
       // a Subagent's context is not its parent's
       if (session !== raw) report.context = undefined as any
       channel.report(report)
+    }
+    /*
+     * What a session spends outside its steps (1.1.2): OpenCode's cache
+     * warming pings are requests that leave no message, so no step event
+     * has their cost. OpenCode says a session's totals after every request
+     * (session.usage.updated); a rise while no turn runs in the session is
+     * a ping (usage.ts). This folder's top-level sessions are followed
+     * (Subagents are not warmed); a registered one's ping is reported to
+     * the server, which files it once. A ping runs on the session's own
+     * model: its rates divide the dollars by kind.
+     */
+    const onPing = async (session: string, ping: Ping) => {
+      const rates = (await modelOf(session).catch(() => undefined))?.rates
+      channel.report(pingEvent(session, ping, rates))
     }
     /*
      * The model that answered (1.1.0-rc7): for a session on the
@@ -1057,6 +1081,7 @@ export default {
         // commands started or ended, were missed
         inputs.clear()
         shells.clear()
+        outside.clear()
         try {
           const types = [
             "session.created",
@@ -1066,6 +1091,8 @@ export default {
             ...INBOX_EVENTS,
             ...SHELL_EVENTS,
             "session.step.ended",
+            "session.usage.updated",
+            ...Object.keys(COMPACTION_EVENTS),
           ]
           for await (const event of ctx.event.subscribe({
             types,
@@ -1079,12 +1106,35 @@ export default {
             if (event.type === "session.step.ended") {
               // in order per session; a turn's end waits for its steps
               const sid = String(data?.sessionID ?? "")
+              // a turn runs there: its totals' rises are its own
+              if (mine.has(sid)) outside.step(sid)
               const prev = steps.get(sid) ?? Promise.resolve()
               const next = prev.then(() => onStep(event)).catch(() => {})
               steps.set(sid, next)
               void next.finally(() => {
                 if (steps.get(sid) === next) steps.delete(sid)
               })
+              continue
+            }
+            if (event.type in COMPACTION_EVENTS) {
+              const sid = data?.sessionID
+              if (typeof sid === "string" && mine.has(sid))
+                outside.compaction(
+                  sid,
+                  COMPACTION_EVENTS[
+                    event.type as keyof typeof COMPACTION_EVENTS
+                  ],
+                )
+              continue
+            }
+            if (event.type === "session.usage.updated") {
+              // in the stream's order: each total is the one before it
+              // and one request more
+              const sid = data?.sessionID
+              if (typeof sid !== "string" || !mine.has(sid)) continue
+              const ping = outside.updated(sid, event)
+              if (ping && registered.has(sid))
+                void onPing(sid, ping).catch(() => {})
               continue
             }
             if (event.type === "shell.created") {
@@ -1115,6 +1165,7 @@ export default {
               working.forget(session)
               inputs.forget(session)
               shells.forget(session)
+              outside.forget(session)
               providers.delete(session)
               said.forget(session)
               channel.report({ type: "session.deleted", session })
@@ -1144,9 +1195,17 @@ export default {
                   })
               }
             } else if (event.type in TURN_EVENTS) {
-              if (!ours(event, session)) continue
               const outcome =
                 TURN_EVENTS[event.type as keyof typeof TURN_EVENTS]
+              // before anything is awaited: the totals that follow are
+              // read against it (the sessions whose totals are followed)
+              if (mine.has(session))
+                outside.turn(
+                  session,
+                  outcome,
+                  Number(event.created) || Date.now(),
+                )
+              if (!ours(event, session)) continue
               // what started it: the input that waits now, before its
               // delivery is read ("user": a typed prompt; "notice":
               // OpenCode's own, a Subagent's result or a shell's end)

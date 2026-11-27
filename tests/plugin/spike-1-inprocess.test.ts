@@ -165,6 +165,212 @@ describe("spike check 1: in-process", () => {
     )
   })
 
+  /*
+   * 1.1.2: what a session spends outside its steps. A `generate` request
+   * (cache warming's ping) leaves no message, so no step event and no
+   * record of the session has its cost. OpenCode announces each request's
+   * usage (session.usage.recorded, with its source), but not to a plugin:
+   * a plugin is told the session's totals after every request
+   * (session.usage.updated). Autocode's plugin counts on what is pinned
+   * here: the totals of a turn's steps, of the title and of a compaction
+   * come before that turn's end is said, each step's right after the
+   * step's own event; a ping's come while no turn runs, and they rise by
+   * exactly what the request answered that it cost.
+   */
+  test("session.usage.updated says the session's totals after every request: a turn's before its end, a ping's while it idles", async () => {
+    const start = await probe.lastSeq()
+    const s = await oc.createSession({})
+    // a turn of two steps
+    await fake.script(
+      [
+        {
+          session: s.id,
+          tool_calls: [
+            { name: "autocode_me", arguments: { action: "status" } },
+          ],
+        },
+        { session: s.id, reply: "done" },
+      ],
+      true,
+    )
+    await probe.call("session.prompt", { sessionID: s.id, text: "two steps" })
+    // the session's events so far, in the bus's order (the probe keeps
+    // each event whole, under `data`)
+    const said = async (since = start) =>
+      (await probe.records("event", since))
+        .map((r) => r.data.data)
+        .filter((e) => e?.data?.sessionID === s.id)
+    const types = async (since?: number) =>
+      (await said(since)).map((e) => e.type)
+    await until(
+      async () => (await types()).includes("session.execution.succeeded"),
+      { timeoutMs: 60_000, what: "the turn to end" },
+    )
+    const turn = await said()
+    // not for a plugin: the announcement that names each request's source
+    expect(turn.map((e) => e.type)).not.toContain("session.usage.recorded")
+    const steps = turn.filter((e) => e.type === "session.step.ended")
+    expect(steps.length).toBe(2)
+    const totals = turn.filter((e) => e.type === "session.usage.updated")
+    // each step's, and the title's
+    expect(totals.length).toBeGreaterThanOrEqual(2)
+    for (const e of totals) {
+      // an ID of its own, a time, no folder; dollars and tokens by kind
+      expect(e.id).toMatch(/^evt_[0-9A-Za-z]{20,}$/)
+      expect(typeof e.created).toBe("number")
+      expect(e.location).toBeUndefined()
+      expect(typeof e.data.cost).toBe("number")
+      for (const key of ["input", "output", "reasoning"])
+        expect(typeof e.data.tokens[key]).toBe("number")
+      for (const key of ["read", "write"])
+        expect(typeof e.data.tokens.cache[key]).toBe("number")
+    }
+    expect(new Set(totals.map((e) => e.id)).size).toBe(totals.length)
+    // they only rise
+    const costs = totals.map((e) => e.data.cost as number)
+    expect([...costs].sort((a, b) => a - b)).toEqual(costs)
+    // each step's totals come right after the step's own event, and rise
+    // by the step's cost
+    const order = turn.map((e) => e.type)
+    for (const step of steps) {
+      const i = turn.indexOf(step)
+      expect(order[i + 1]).toBe("session.usage.updated")
+      const before = turn
+        .slice(0, i)
+        .filter((e) => e.type === "session.usage.updated")
+        .at(-1)
+      const rise = turn[i + 1].data.cost - (before?.data.cost ?? 0)
+      expect(rise).toBeCloseTo(step.data.cost, 9)
+    }
+    // all of the turn's before its end is said
+    expect(order.lastIndexOf("session.usage.updated")).toBeLessThan(
+      order.indexOf("session.execution.succeeded"),
+    )
+    const sum = steps.reduce((n, e) => n + e.data.cost, 0)
+    // what the totals hold beyond the steps: the title, if one was made
+    const title = costs.at(-1)! - sum
+    expect(title).toBeGreaterThanOrEqual(-1e-9)
+    console.log(
+      `spike 1: a turn's totals ${JSON.stringify(costs)}, its steps ${sum}`,
+    )
+    // a ping, while the session idles: the totals rise by what it cost
+    const idle = await probe.lastSeq()
+    const made = await probe.call("session.generate", {
+      sessionID: s.id,
+      prompt: "ping",
+    })
+    expect(made.error).toBeUndefined()
+    expect(made.result.cost).toBeGreaterThan(0)
+    const pinged = await until(
+      async () =>
+        (await said(idle)).find((e) => e.type === "session.usage.updated"),
+      { what: "the ping's totals" },
+    )
+    expect(pinged.data.cost - costs.at(-1)!).toBeCloseTo(made.result.cost, 9)
+    expect(pinged.data.tokens.input - totals.at(-1)!.data.tokens.input).toBe(
+      made.result.tokens.input,
+    )
+    // no turn ran for it, and no message holds it
+    expect(await types(idle)).not.toContain("session.execution.started")
+    const messages = await oc.api(
+      "GET",
+      `/api/session/${s.id}/message?limit=200&order=desc`,
+    )
+    expect(JSON.stringify(messages)).not.toContain("ping")
+    // a compaction is a turn of its own: its totals come inside it
+    const since = await probe.lastSeq()
+    await probe.call("session.compact", { sessionID: s.id })
+    await until(
+      async () => (await types(since)).includes("session.execution.succeeded"),
+      { timeoutMs: 60_000, what: "the compaction's turn to end" },
+    )
+    const compaction = await types(since)
+    const at = (type: string) => compaction.indexOf(type)
+    expect(at("session.execution.started")).toBeGreaterThanOrEqual(0)
+    expect(at("session.usage.updated")).toBeGreaterThan(
+      at("session.execution.started"),
+    )
+    expect(at("session.usage.updated")).toBeLessThan(
+      at("session.execution.succeeded"),
+    )
+  })
+
+  /*
+   * 1.1.2: a Subagent works on after its parent's turn has ended (OpenCode
+   * 2.3 runs it in the background), so the parent idles while the Subagent
+   * spends. Its requests move its own session's totals and never its
+   * parent's: else each of its steps would look like a ping of the parent.
+   */
+  test("a Subagent's requests move its own session's totals, not its parent's", async () => {
+    const start = await probe.lastSeq()
+    const s = await oc.createSession({})
+    const marker = `TOTALS-KID-${crypto.randomUUID().slice(0, 8)}`
+    await fake.script(
+      [
+        {
+          session: s.id,
+          tool_calls: [
+            {
+              name: "subagent",
+              arguments: {
+                agent: "general",
+                description: "totals",
+                prompt: `${marker} say hi`,
+              },
+            },
+          ],
+        },
+        { session: s.id, reply: "parent done" },
+        // the Subagent answers well after its parent's turn has ended
+        { match: marker, reply: "child done", delay_ms: 3000 },
+        { session: s.id, reply: "parent after the child" },
+      ],
+      true,
+    )
+    await probe.call("session.prompt", { sessionID: s.id, text: "a kid" })
+    const all = async () =>
+      (await probe.records("event", start)).map((r) => r.data.data)
+    const of = async (session: string) =>
+      (await all()).filter((e) => e?.data?.sessionID === session)
+    // the parent's two turns: its own, and the one its Subagent's result
+    // starts
+    await until(
+      async () =>
+        (await of(s.id)).filter((e) => e.type === "session.execution.succeeded")
+          .length >= 2,
+      { timeoutMs: 60_000, what: "the parent's second turn to end" },
+    )
+    const kid = (await all()).find(
+      (e) => e.type === "session.created" && e.data?.parentID === s.id,
+    )?.data.sessionID as string
+    expect(typeof kid).toBe("string")
+    const parent = await of(s.id)
+    const child = await of(kid)
+    const cost = (events: any[], type: string) =>
+      events.filter((e) => e.type === type).map((e) => e.data.cost as number)
+    const sum = (list: number[]) => list.reduce((n, c) => n + c, 0)
+    // the Subagent spent, on its own totals
+    const spent = sum(cost(child, "session.step.ended"))
+    expect(spent).toBeGreaterThan(0)
+    expect(cost(child, "session.usage.updated").at(-1)).toBeCloseTo(spent, 9)
+    // the parent's totals: its own steps, and its title before the first
+    const own = sum(cost(parent, "session.step.ended"))
+    const totals = cost(parent, "session.usage.updated")
+    const first = parent.findIndex((e) => e.type === "session.step.ended")
+    const title = sum(
+      cost(parent.slice(0, first), "session.usage.updated").slice(-1),
+    )
+    expect(totals.at(-1)! - own - title).toBeCloseTo(0, 9)
+    // and none of the parent's totals came while only the Subagent worked:
+    // each is inside one of the parent's own turns
+    let running = false
+    for (const e of parent) {
+      if (e.type === "session.execution.started") running = true
+      if (e.type === "session.execution.succeeded") running = false
+      if (e.type === "session.usage.updated") expect(running).toBe(true)
+    }
+  })
+
   test("interrupt: ctx.session.interrupt ends a hanging turn as interrupted", async () => {
     const s = await oc.createSession({})
     await fake.script([{ session: s.id, hang: true }], true)

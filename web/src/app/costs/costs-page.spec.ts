@@ -812,6 +812,8 @@ describe('CostsPage', () => {
         cause('owner', 4, 3),
         cause('run', 0, 0.8),
         cause('ask', 1, 0.25),
+        // 1.1.2: OpenCode's cache warming, no turn of the agent's
+        cause('warming', 0, 0.2),
       ],
       days: [
         { day: '2026-11-08', usd: 1.5, steps: 30, split: SPLIT },
@@ -847,6 +849,7 @@ describe('CostsPage', () => {
       'Owner | 4 | $3.00 | $0.75 | $1.50 | $0.30',
       'Job Runs | 0 | $0.80 | — | $0.40 | $0.08',
       'Ask | 1 | $0.25 | $0.25 | $0.13 | $0.03',
+      'Cache Warming | 0 | $0.20 | — | $0.10 | $0.02',
     ]);
     // each day with its kinds; a day without a split: zeros
     const days = [...opened.querySelectorAll('table.cost-days tbody tr')].map(
@@ -917,6 +920,8 @@ describe('CostsPage', () => {
       'Other',
       'new-one',
     ]);
+    // 1.1.2: what a session spends between its turns
+    expect(causeText('warming')).toBe('Cache Warming');
     expect(splitSum([SPLIT, undefined, SPLIT])).toMatchObject({
       usd: 20,
       cache_write_usd: 9,
