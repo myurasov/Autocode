@@ -662,6 +662,102 @@ describe("store", () => {
     }
   })
 
+  /*
+   * 31 (1.1.0-rc7; the owner, 2026-11-27: costs by kind and by cause). A
+   * database with sessions, a wake's numbers and a turn's work gets the new
+   * table and columns. No session of before the upgrade waits for a first
+   * step, whether its turn runs or not: its next step is no reload (the
+   * review before 1.1.0-rc7: a late step of an idle session was one).
+   */
+  test("migration 31 adds the costs by kind and by cause; no old session waits for a first step", () => {
+    const path = tempDb()
+    const old = openStore(path, MIGRATIONS.slice(0, 30))
+    old.run(
+      "INSERT INTO hosts (id, machine, directory, instance, first_seen, " +
+        "last_seen) VALUES ('m:1', 'm', '/w', 'i', 1, 1)",
+    )
+    for (const [id, busy] of [
+      ["ses_busy", 1],
+      ["ses_idle", 0],
+    ] as const)
+      old.run(
+        "INSERT INTO sessions (id, host_id, created_at, last_seen, busy, " +
+          "turn_event_at) VALUES (?, 'm:1', 1, 1, ?, 5)",
+        [id, busy],
+      )
+    old.run(
+      "INSERT INTO agents (id, session_id, registered_at, last_active, " +
+        "model) VALUES ('a:b', 'ses_busy', 1, 1, 'claude-agent/fable')",
+    )
+    old.run(
+      "INSERT INTO wake_stats (agent_id, name, day, due, turns, usd, steps) " +
+        "VALUES ('a:b', 'hourly', '2026-11-26', 3, 2, 1.5, 9)",
+    )
+    old.run(
+      "INSERT INTO turn_work (session_id, ref, cause, at) " +
+        "VALUES ('ses_busy', 'ses_kid', 'msg_1', 1)",
+    )
+    expect(schemaVersion(old)).toBe(30)
+    old.close()
+    const db = openStore(path)
+    expect(schemaVersion(db)).toBeGreaterThanOrEqual(31)
+    expect(
+      db
+        .query(
+          "SELECT id, turn_kind, turn_steps, turn_event_at, " +
+            "turn_event_kind FROM sessions ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: "ses_busy",
+        turn_kind: null,
+        turn_steps: 1,
+        turn_event_at: 5,
+        turn_event_kind: null,
+      },
+      {
+        id: "ses_idle",
+        turn_kind: null,
+        turn_steps: 1,
+        turn_event_at: 5,
+        turn_event_kind: null,
+      },
+    ])
+    expect(db.query("SELECT usd, reload_usd FROM wake_stats").all()).toEqual([
+      { usd: 1.5, reload_usd: 0 },
+    ])
+    expect(db.query("SELECT ref, cause, kind FROM turn_work").all()).toEqual([
+      { ref: "ses_kid", cause: "msg_1", kind: null },
+    ])
+    expect(
+      db
+        .query("SELECT model, answered_model, requested_model FROM agents")
+        .all(),
+    ).toEqual([
+      {
+        model: "claude-agent/fable",
+        answered_model: null,
+        requested_model: null,
+      },
+    ])
+    expect(db.query("SELECT COUNT(*) AS n FROM cost_parts").get()).toEqual({
+      n: 0,
+    })
+    // one row per agent, day, cause and own-or-Subagent
+    db.run(
+      "INSERT INTO cost_parts (agent_id, day, cause, sub, usd) " +
+        "VALUES ('a:b', '', 'wake', 0, 1)",
+    )
+    expect(() =>
+      db.run(
+        "INSERT INTO cost_parts (agent_id, day, cause, sub, usd) " +
+          "VALUES ('a:b', '', 'wake', 0, 1)",
+      ),
+    ).toThrow()
+    db.close()
+  })
+
   test("a failing migration leaves the database at the version before it", () => {
     const path = tempDb()
     openStore(path, ["CREATE TABLE t (a TEXT)"]).close()

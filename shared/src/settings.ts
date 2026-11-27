@@ -385,7 +385,9 @@ function compactValue(key: string, text: unknown): SettingValue {
  * pattern matches the whole model ID (case-sensitive, * for any run of
  * characters); else its default part, also while the model is not known. A
  * plain value is itself. What comes back is tokens, a share of the window
- * ("50%", "50% max 500000") or "off".
+ * ("50%", "50% max 500000") or "off". An entry whose value is none of
+ * these (a store edited by hand) does not hold: the default does, so that
+ * a bad entry never turns compaction off.
  */
 export function compactFor(
   setting: SettingValue,
@@ -399,8 +401,12 @@ export function compactFor(
     for (const part of rest) {
       const eq = part.indexOf("=")
       if (eq <= 0) continue
-      if (matchesGlob(part.slice(0, eq).trim(), model))
-        return plain(part.slice(eq + 1).trim())
+      if (!matchesGlob(part.slice(0, eq).trim(), model)) continue
+      try {
+        return compactValue("compact_at", part.slice(eq + 1).trim())
+      } catch {
+        break
+      }
     }
   return plain(first)
 }

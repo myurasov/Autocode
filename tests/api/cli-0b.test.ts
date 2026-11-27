@@ -4,6 +4,7 @@
  * owner, 2026-11-07) and the owner's (inbox, answer, pause, resume, stop-all,
  * resume-all, any agent's wakes, every message, locks).
  */
+import { Database } from "bun:sqlite"
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -611,12 +612,15 @@ describe("costs", () => {
     })
     await report(t, "m:1", [
       step("ses_1", 0.5, 60_000),
-      // by kind (1.1.0-rc7): four fifths of it cache writes, the rest output
+      // by kind (1.1.0-rc7): a turn whose one step is four fifths cache
+      // writes, the rest output
+      { type: "turn.started", session: "ses_2", by: "user" },
       {
         ...step("ses_2", 0.25, 10_000),
         tokens: { input: 0, output: 1000, read: 0, write: 4000 },
         rates: { input: 1, output: 1, read: 1, write: 1 },
       },
+      { type: "turn.ended", session: "ses_2", outcome: "succeeded" },
     ])
     const res = await cli(["costs"], asAdmin())
     expect(res.code, res.stderr).toBe(0)
@@ -697,28 +701,55 @@ describe("costs", () => {
     )
     // 1.1.0-rc7: by kind, the Subagents' part, the reload, and by what
     // started the turn; this agent's step was not split
-    expect(res.stdout).toContain("by kind, all time: not split $0.50 (100%)")
+    // (with the dollars that the split covers)
+    expect(res.stdout).toContain(
+      "by kind, all time ($0.50): not split $0.50 (100%)\n",
+    )
+    // its step was of no turn: no reload, and no "in 0 turns"
+    expect(res.stdout).toContain("Subagents $0.00 (0%); reload $0.00 (0%)\n")
+    expect(res.stdout).toMatch(
+      /STARTED BY\s+TURNS\s+SPEND\s+PER TURN\s+RELOAD\s+SUBAGENTS\nother\s+0\s+\$0\.50\s+—\s+\$0\.00\s+\$0\.00/,
+    )
+    expect(res.stdout).not.toContain("before the split was kept")
     const worker = await cli(["costs", "kaggle:worker"], asAdmin())
     expect(worker.stdout).toContain(
-      "by kind, all time: cache writes $0.20 (80%), cache reads $0.00 (0%), " +
-        "input $0.00 (0%), output $0.05 (20%)",
+      "by kind, all time ($0.25): cache writes $0.20 (80%), cache reads " +
+        "$0.00 (0%), input $0.00 (0%), output $0.05 (20%)\n",
     )
     expect(worker.stdout).toContain(
-      "Subagents $0.00 (0%); reload $0.20 (80%) in 0 turns",
+      "Subagents $0.00 (0%); reload $0.20 (80%) in 1 turn, $0.20 a turn\n",
     )
     expect(worker.stdout).toMatch(
-      /STARTED BY\s+TURNS\s+SPEND\s+PER TURN\s+RELOAD\s+SUBAGENTS\nother\s+0\s+\$0\.25\s+—\s+\$0\.20\s+\$0\.00/,
+      /STARTED BY\s+TURNS\s+SPEND\s+PER TURN\s+RELOAD\s+SUBAGENTS\nowner\s+1\s+\$0\.25\s+\$0\.25\s+\$0\.20\s+\$0\.00/,
     )
     expect(worker.stdout).toMatch(
       /\d{4}-\d\d-\d\d\s+\$0\.25\s+1\s+\$0\.20\s+\$0\.00\s+\$0\.00\s+\$0\.05\s+\$0\.00/,
     )
     // a period
     const last = await cli(["costs", "kaggle:worker", "--days", "1"], asAdmin())
-    expect(last.stdout).toContain("by kind, last day: cache writes $0.20 (80%)")
+    expect(last.stdout).toContain(
+      "by kind, last day ($0.25): cache writes $0.20 (80%)",
+    )
     expect(
       (await cli(["costs", "kaggle:worker", "--days", "0"], asAdmin())).code,
     ).toBe(1)
     expect((await cli(["costs", "kaggle:none"], asAdmin())).code).toBe(1)
+    /*
+     * Spend from before the split was kept (an upgrade from before
+     * 1.1.0-rc7) is in the total and in no kind: the output says how much
+     * (the review before 1.1.0-rc7: the reference promised it, the CLI did
+     * not say it). Here: the agent's parts taken away, as before them.
+     */
+    const db = new Database(join(t.dataDir, "autocode.db"))
+    db.run("DELETE FROM cost_parts WHERE agent_id = 'kaggle:worker'")
+    db.close()
+    const before = await cli(["costs", "kaggle:worker"], asAdmin())
+    expect(before.stdout).toContain("by kind, all time: nothing counted\n")
+    expect(before.stdout).toContain(
+      "$0.25 was spent before the split was kept (v1.1.0-rc7): it is in no " +
+        "kind\n",
+    )
+    expect(before.stdout).toContain("no turns counted")
   })
 
   test("costs account AGENT: asks for what its session spent before it registered, once", async () => {

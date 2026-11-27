@@ -9,6 +9,9 @@
  * own-or-Subagent, with one more set over all days.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   ack,
   call,
@@ -186,6 +189,101 @@ describe("costs by kind", () => {
   })
 })
 
+describe("a turn's reload", () => {
+  test("only the agent's own first step of a turn, wherever a Subagent's step comes", async () => {
+    await report(t, HOST, [
+      started("user"),
+      work("ses_kid"),
+      // the Subagent's step comes first: no reload of the agent's
+      step(0.069, {
+        sub: "ses_kid",
+        context: undefined,
+        tokens: { input: 500, output: 1000, read: 50_000, write: 10_000 },
+      }),
+      step(0.138),
+      step(0.138),
+    ])
+    expect((await one()).split).toMatchObject({
+      usd: 0.345,
+      reload_usd: 0.108,
+      turns: 1,
+    })
+  })
+
+  // The review before 1.1.0-rc7: the first step counted after a session
+  // registered was taken for its turn's first.
+  test("a session that registers during its turn: its steps count, with no turn and no reload; its next turn is whole", async () => {
+    const late = await sessionToken(t, HOST, "ses_late")
+    await report(t, HOST, [started("user", undefined, "ses_late")])
+    const res = await call(t.url, late, "POST", "/v1/agents", {
+      id: "team:late",
+    })
+    expect(res.status).toBeLessThan(300)
+    await report(t, HOST, [
+      step(0.276, { session: "ses_late" }),
+      step(0.276, { session: "ses_late" }),
+    ])
+    const view = async () =>
+      (await owner("GET", "/v1/costs/team:late")).body.split
+    expect(await view()).toMatchObject({ usd: 0.552, turns: 0, reload_usd: 0 })
+    await report(t, HOST, [
+      ended("ses_late"),
+      started("user", undefined, "ses_late"),
+      step(0.138, { session: "ses_late" }),
+    ])
+    expect(await view()).toMatchObject({
+      usd: 0.69,
+      turns: 1,
+      reload_usd: 0.108,
+    })
+  })
+
+  test("a step of no turn (an older plugin's, or one that comes late) is no reload", async () => {
+    await report(t, HOST, [step(0.138), step(0.138)])
+    expect((await one()).split).toMatchObject({
+      usd: 0.276,
+      turns: 0,
+      reload_usd: 0,
+    })
+  })
+
+  // The review before 1.1.0-rc7: after a restart the server took a batch
+  // that the plugin sent again for a new turn, with a second reload.
+  test("a turn's start that is sent again counts once, also by a server that restarted meanwhile", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "autocode-parts-"))
+    let s = await testServer({ dataDir: dir })
+    try {
+      await hello(s, HOST)
+      await registered(s, HOST, "ses_r", "team:r")
+      const batch = [
+        { ...started("user", undefined, "ses_r"), at: s.clock.now() },
+        step(0.138, { session: "ses_r" }),
+      ]
+      await report(s, HOST, batch)
+      // its reply was lost and the server restarted: the plugin sends the
+      // batch again, and the turn goes on
+      await s.stop()
+      s = await testServer({ dataDir: dir })
+      await hello(s, HOST)
+      await report(s, HOST, [...batch, step(0.138, { session: "ses_r" })])
+      const view = (await call(s.url, s.admin, "GET", "/v1/costs/team:r")).body
+      expect(view.split).toMatchObject({
+        usd: 0.276,
+        turns: 1,
+        reload_usd: 0.108,
+      })
+      // without a restart too
+      await report(s, HOST, [...batch, step(0.138, { session: "ses_r" })])
+      expect(
+        (await call(s.url, s.admin, "GET", "/v1/costs/team:r")).body.split,
+      ).toMatchObject({ usd: 0.414, turns: 1, reload_usd: 0.108 })
+    } finally {
+      await s.stop()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe("costs by what started the turn", () => {
   test("a wake, a message, the owner, and a turn nobody explained", async () => {
     // the owner types into the session
@@ -265,6 +363,87 @@ describe("costs by what started the turn", () => {
     expect(await causes()).toEqual({ wake: [2, 1.3], owner: [1, 0.2] })
     const wake = (await one()).causes[0]
     expect(wake.subagents_usd).toBe(0.4)
+    // a notice that names no work, or work that nobody reported, is the
+    // turn before it going on: here the owner's
+    await report(t, HOST, [
+      started("user"),
+      step(0.2),
+      ended(),
+      started("notice"),
+      step(0.1),
+      ended(),
+      started("notice", "sh_nobody"),
+      step(0.1),
+      ended(),
+    ])
+    expect(await causes()).toEqual({ wake: [2, 1.3], owner: [4, 0.6] })
+  })
+
+  /*
+   * The review before 1.1.0-rc7: a steer prompt that reached its session
+   * just after the turn had ended started a new turn, which counted as the
+   * owner's (about 90 such turns a week in real sessions). OpenCode
+   * announces a prompt under the ID it was given, the plugin says the ID
+   * of the prompt that started a turn, and the server knows its own.
+   */
+  test("a turn's start names its prompt: a steer prompt that started a turn is its message's, a typed one the owner's", async () => {
+    await report(t, HOST, [started("user"), step(0.5)])
+    // a message for an agent whose turn runs goes into that turn
+    await owner("POST", "/v1/messages", { to: "team:a", text: "Hello." })
+    const [steer] = await tick()
+    expect(steer.payload.delivery).toBe("steer")
+    // but the turn ended first: OpenCode starts a new one with the prompt
+    await report(t, HOST, [
+      ended(),
+      { ...started("user"), prompt: steer.payload.prompt_id },
+      step(0.25),
+      ended(),
+    ])
+    expect(await causes()).toEqual({ owner: [1, 0.5], message: [1, 0.25] })
+    // the owner types while a wake's prompt is on its way: the owner's
+    // turn starts first, and the wake's prompt starts the next one
+    await as(a, "PUT", "/v1/me/wakes/hourly", {
+      text: "The hourly pass.",
+      trigger: "every 1h",
+    })
+    t.clock.advance(60 * MIN)
+    const [wake] = await tick()
+    expect(wake.payload.text).toContain('wake "hourly"')
+    await report(t, HOST, [
+      { ...started("user"), prompt: "msg_typed_by_the_owner" },
+      step(0.125),
+      ended(),
+      { ...started("user"), prompt: wake.payload.prompt_id },
+      step(1),
+      ended(),
+    ])
+    expect(await causes()).toEqual({
+      wake: [1, 1],
+      owner: [2, 0.625],
+      message: [1, 0.25],
+    })
+    expect(
+      (await as(a, "GET", "/v1/me/wakes")).body.wakes[0].week,
+    ).toMatchObject({ turns: 1, usd: 1 })
+    // another session's prompt, and what is no ID, name nothing here
+    const b = await registered(t, HOST, "ses_b", "team:b")
+    expect(b).toBeTruthy()
+    await report(t, HOST, [
+      {
+        ...started("user", undefined, "ses_b"),
+        prompt: wake.payload.prompt_id,
+      },
+      step(0.5, { session: "ses_b" }),
+      ended("ses_b"),
+      { ...started("user", undefined, "ses_b"), prompt: { id: 1 } },
+      step(0.5, { session: "ses_b" }),
+    ])
+    expect(
+      (await owner("GET", "/v1/costs/team:b")).body.causes.map((c: any) => [
+        c.cause,
+        c.turns,
+      ]),
+    ).toEqual([["owner", 2]])
   })
 
   test("the compaction notice's turn, the turn after it, and the compaction's own cost", async () => {
@@ -274,8 +453,15 @@ describe("costs by what started the turn", () => {
     const notice = await tick()
     expect(notice[0].payload.text).toStartWith("[autocode] compaction next")
     await report(t, HOST, [started("user"), step(0.25), ended()])
-    // the compaction itself: OpenCode's records give its cost afterwards
+    // the compaction itself, a turn of OpenCode's own: its records give
+    // its cost afterwards
+    t.server.tick()
+    const asked = await instructions(t, HOST)
+    expect(asked.map((i) => i.type)).toEqual(["compact"])
+    await ack(t, HOST, asked[0].id, { ok: true })
     await report(t, HOST, [
+      started("compaction"),
+      ended(),
       {
         type: "cost.past",
         session: "ses_a",
@@ -284,7 +470,16 @@ describe("costs by what started the turn", () => {
     ])
     expect(await causes()).toEqual({
       owner: [1, 0.5],
-      compaction: [1, 0.3125],
+      compaction: [2, 0.3125],
+    })
+    // and the turn after it, which "compaction done" starts
+    t.clock.advance(2000)
+    const done = await tick()
+    expect(done[0].payload.text).toStartWith("[autocode] compaction done")
+    await report(t, HOST, [started("user"), step(0.125), ended()])
+    expect(await causes()).toEqual({
+      owner: [1, 0.5],
+      compaction: [3, 0.4375],
     })
   })
 
@@ -305,6 +500,25 @@ describe("costs by what started the turn", () => {
     expect(view.split).toMatchObject({ usd: 2, cache_write_usd: 0, turns: 0 })
     // on their own day
     expect(view.days.map((d: any) => [d.usd, d.split.usd])).toEqual([[2, 2]])
+  })
+
+  test("a step from before the days that are kept counts in the whole only", async () => {
+    await report(t, HOST, [
+      {
+        type: "cost.past",
+        session: "ses_a",
+        account: true,
+        steps: [
+          ["msg_old", t.clock.now() - 400 * DAY, 1.5],
+          ["msg_new", t.clock.now() - 2 * DAY, 0.5],
+        ],
+      },
+    ])
+    expect((await one()).split.usd).toBe(2)
+    expect((await one("?days=3660")).split.usd).toBe(0.5)
+    expect((await one()).days.map((d: any) => [d.usd, d.split.usd])).toEqual([
+      [0.5, 0.5],
+    ])
   })
 })
 
@@ -353,7 +567,20 @@ describe("where the split shows", () => {
     expect(last.causes.map((c: any) => [c.cause, c.usd])).toEqual([
       ["owner", 0.138],
     ])
-    expect((await owner("GET", "/v1/costs/team:a?days=0")).status).toBe(400)
+    // days: a whole number of days in plain digits, on both routes
+    for (const bad of ["0", "x", "1e2", "0x10", "1.0", "+5", "-1", "3661"])
+      for (const path of ["/v1/costs", "/v1/costs/team:a"])
+        expect(
+          (await owner("GET", `${path}?days=${encodeURIComponent(bad)}`))
+            .status,
+          `${path} ${bad}`,
+        ).toBe(400)
+    expect((await owner("GET", "/v1/costs/team:a?days=%207%20")).status).toBe(
+      200,
+    )
+    // an agent's session token reads neither route
+    for (const path of ["/v1/costs", "/v1/costs/team:a"])
+      expect((await as(a, "GET", path)).status, path).toBe(403)
     // the consumer token reads it too
     expect(
       (await call(t.url, t.consumer, "GET", "/v1/costs/team:a")).body.split.usd,
@@ -368,6 +595,14 @@ describe("where the split shows", () => {
   })
 
   test("the days go with history_days, the whole stays; a rename moves it, an unregistering keeps it", async () => {
+    // an agent that had the ID team:lead before, with spend of its own
+    await registered(t, HOST, "ses_b", "team:lead")
+    await report(t, HOST, [
+      started("user", undefined, "ses_b"),
+      step(0.276, { session: "ses_b" }),
+      ended("ses_b"),
+    ])
+    expect((await owner("DELETE", "/v1/agents/team:lead")).status).toBe(200)
     await report(t, HOST, [started("user"), step(0.276)])
     await owner("PATCH", "/v1/settings", {
       server: { history_days: 1, expire_after: "90d" },
@@ -379,21 +614,25 @@ describe("where the split shows", () => {
     expect(view.split).toMatchObject({ usd: 0.414, turns: 2 })
     expect(view.days.map((d: any) => d.split.usd)).toEqual([0.138])
     expect((await one("?days=31")).split.usd).toBe(0.138)
+    // the old day's numbers are gone, not only out of the list
+    expect((await one("?days=3660")).split.usd).toBe(0.138)
     // renamed: its numbers come along, and join what the new ID had
     const res = await owner("POST", "/v1/agents/team:a/rename", {
       id: "team:lead",
     })
     expect(res.status).toBe(200)
     view = (await owner("GET", "/v1/costs/team:lead")).body
-    expect(view.split).toMatchObject({ usd: 0.414, turns: 2 })
+    expect(view.split).toMatchObject({ usd: 0.69, turns: 3 })
     expect(view.causes.map((c: any) => [c.cause, c.turns, c.usd])).toEqual([
-      ["owner", 2, 0.414],
+      ["owner", 3, 0.69],
     ])
+    expect(view.days.map((d: any) => d.split.usd)).toEqual([0.138])
+    expect((await owner("GET", "/v1/costs/team:a")).status).toBe(404)
     // unregistered: kept, like its spend
     await owner("DELETE", "/v1/agents/team:lead")
     view = (await owner("GET", "/v1/costs/team:lead")).body
     expect(view.registered).toBe(false)
-    expect(view.split.usd).toBe(0.414)
+    expect(view.split.usd).toBe(0.69)
   })
 
   test("a run's steps count for the agent that started it, under their own cause", async () => {

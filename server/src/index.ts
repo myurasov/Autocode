@@ -163,7 +163,8 @@ export async function startServer(
   // time.
   const daysParam = (url: URL): number | null => {
     const text = url.searchParams.get("days")?.trim() || ""
-    const days = text ? Number(text) : null
+    // plain digits only: 1e2 and 0x10 are numbers too, and no days
+    const days = !text ? null : /^\d{1,4}$/.test(text) ? Number(text) : 0
     if (days !== null && !(Number.isInteger(days) && days >= 1 && days <= 3660))
       throw new AutocodeError(
         "bad_request",
@@ -371,6 +372,9 @@ export async function startServer(
     const run = runOf(session)
     const agent = run ?? agents.agentOfSession(session)
     if (agent) costParts.turn(costs.billTo(agent) ?? agent, run ? "run" : kind)
+    // a turn that was counted for nobody has no first step to count: the
+    // steps of a session that registers during it have no reload
+    else costParts.noFirstStep(session)
     // a turn that starts before the resume prompt went: the cut turn goes
     // on already (OpenCode resumed it itself)
     if (agent && !run) costs.uncut(agent)

@@ -14,6 +14,13 @@ import { until } from "../helpers/wait.ts"
 const oc = new OpenCode(nodes[0]!)
 const fake = new FakeModel(nodes[0]!)
 
+// A prompt's ID as Autocode's server makes it (server/src/delivery.ts).
+function promptId(now: number): string {
+  const time = Math.floor(now).toString(16).padStart(12, "0")
+  const random = crypto.randomUUID().replaceAll("-", "").slice(0, 12)
+  return `msg_${time}${random}`
+}
+
 async function ended(sessionID: string, timeoutMs = 20_000) {
   return until(
     async () => {
@@ -66,6 +73,35 @@ describe("spike check 1: in-process", () => {
       (r) => r.session === s.id && r.kind === "primary",
     )
     expect(JSON.stringify(reqs[0]?.messages)).toContain("INJECTED-BY-PLUGIN")
+  })
+
+  /*
+   * 1.1.0-rc7 (costs by cause): the plugin says which prompt started a
+   * turn. OpenCode announces each input before the turn it starts
+   * (session.inbox.enqueued), under the ID the prompt was given: the ID
+   * Autocode's server made for its prompt. A queued prompt and a steer
+   * prompt alike.
+   */
+  test("inject: the input that OpenCode announces for a prompt has the prompt's own ID", async () => {
+    const s = await oc.createSession({})
+    for (const delivery of ["queue", "steer"]) {
+      const id = promptId(Date.now())
+      const since = await probe.lastSeq()
+      const res = await probe.call("session.prompt", {
+        sessionID: s.id,
+        id,
+        text: `WITH-AN-ID ${delivery}`,
+        delivery,
+      })
+      expect(res.ok, res.error).toBe(true)
+      const announced = await until(
+        async () => (await events("session.inbox.enqueued", s.id, since))[0],
+        { what: `the ${delivery} prompt's input` },
+      )
+      expect(announced.data.data.inboxID).toBe(id)
+      expect(announced.data.data.item.type).toBe("user")
+      expect((await ended(s.id)).outcome).toBe("succeeded")
+    }
   })
 
   test("interrupt: ctx.session.interrupt ends a hanging turn as interrupted", async () => {

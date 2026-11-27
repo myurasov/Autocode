@@ -536,15 +536,25 @@ export async function costs(args: Parsed): Promise<number> {
               : "; no compaction threshold"),
         ...(s
           ? [
+              // with the dollars that the split covers
               s.usd > 0
-                ? `by kind, ${over}: ${kindsText(s)}`
+                ? `by kind, ${over} (${dollars(s.usd)}): ${kindsText(s)}`
                 : `by kind, ${over}: nothing counted`,
+              // over all time: what was spent before the split was kept
+              // is in the total and in no kind
+              ...(!res.period_days && k.total_usd - s.usd >= 0.005
+                ? [
+                    `${dollars(k.total_usd - s.usd)} was spent before the ` +
+                      "split was kept (v1.1.0-rc7): it is in no kind",
+                  ]
+                : []),
               `Subagents ${dollars(s.subagents_usd)} ` +
                 `(${part(s.subagents_usd, s.usd)}); reload ` +
-                `${dollars(s.reload_usd)} (${part(s.reload_usd, s.usd)}) in ` +
-                `${s.turns} turn${s.turns === 1 ? "" : "s"}` +
+                `${dollars(s.reload_usd)} (${part(s.reload_usd, s.usd)})` +
+                // a step of no turn has no reload: no "in 0 turns"
                 (s.turns > 0
-                  ? `, ${dollars(s.reload_usd / s.turns)} a turn`
+                  ? ` in ${s.turns} turn${s.turns === 1 ? "" : "s"}, ` +
+                    `${dollars(s.reload_usd / s.turns)} a turn`
                   : ""),
               "",
               res.causes?.length

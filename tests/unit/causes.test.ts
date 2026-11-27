@@ -118,6 +118,27 @@ describe("a step's dollars by kind", () => {
     })
   })
 
+  // The review before 1.1.0-rc7: each part was rounded to a millionth of
+  // a dollar, so a thousand small steps showed parts of 107% of the spend.
+  test("the parts add up to the step's dollars, however small the step", () => {
+    const even = { input: 1, output: 1, read: 0, write: 0 }
+    const flat = { input: 1, output: 1, read: 1, write: 1 }
+    const tiny = splitStep(0.0000016, even, flat)!
+    expect(tiny.input + tiny.output + tiny.read + tiny.write).toBeCloseTo(
+      0.0000016,
+      12,
+    )
+    expect(tiny.input).toBeCloseTo(0.0000008, 12)
+    let sum = 0
+    for (let i = 0; i < 1000; i++) {
+      const part = splitStep(0.0000149, tokens, rates)!
+      for (const usd of Object.values(part))
+        expect(usd).toBeGreaterThanOrEqual(0)
+      sum += part.input + part.output + part.read + part.write
+    }
+    expect(sum).toBeCloseTo(0.0149, 9)
+  })
+
   test("not split without tokens, without rates, or with nothing to weigh", () => {
     expect(splitStep(1, null, rates)).toBeNull()
     expect(splitStep(1, tokens, undefined)).toBeNull()

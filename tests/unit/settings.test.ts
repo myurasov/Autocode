@@ -113,6 +113,10 @@ describe("settings", () => {
     expect(compactFor("50%, a/b=40% max 90000", "a/b")).toBe("40% max 90000")
     // a stored value that is none of these reads as its default part
     expect(compactFor("50%, broken", "a/b")).toBe("50%")
+    // and an entry whose value is none of the forms (a store edited by
+    // hand) does not hold: the default does, and compaction stays on
+    for (const bad of ["broken", "5", "120%", "", "50% max", "-1"])
+      expect(compactFor(`50%, a/b=${bad}, a/*=20000`, "a/b"), bad).toBe("50%")
   })
 
   test("values are checked and normalized per key", () => {

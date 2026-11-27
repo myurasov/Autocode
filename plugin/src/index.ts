@@ -5,7 +5,7 @@
  */
 
 import { parseDuration, writeServiceRecord } from "@autocode/shared"
-import { answeredBy } from "./answered.ts"
+import { answeredBy, Said } from "./answered.ts"
 import { carryOut, formEvent, listOf, permissionEvent } from "./asks.ts"
 import { Channel, type Instruction } from "./channel.ts"
 import { runCheck } from "./checks.ts"
@@ -85,6 +85,28 @@ const ASK_EVENTS = [
 ] as const
 
 // OpenCode's events of a session's inputs: what starts a turn (1.1.0-rc2).
+// The provider whose sessions say which model answered (1.1.0-rc7).
+const ANSWERED_PROVIDER = "claude-agent"
+// How long a turn's start waits for its session's model (1.1.0-rc7).
+const MODEL_WAIT_MS = 3000
+
+// A promise's value, or nothing once the time is up.
+function within<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      () => {
+        clearTimeout(timer)
+        resolve(undefined)
+      },
+    )
+  })
+}
+
 const INBOX_EVENTS = [
   "session.inbox.enqueued",
   "session.inbox.delivered",
@@ -134,6 +156,11 @@ export default {
     // sessions spawned for runs of jobs (their turns report their reply)
     const runs = new Set<string>()
     const registered = new Map<string, string>()
+    // each session's provider, as last read (the answering model is read
+    // for the claude-agent provider's sessions only), and what was said
+    // last of each session's answering model (1.1.0-rc7)
+    const providers = new Map<string, string>()
+    const said = new Said()
     // the consumer token was replaced: after the next hello, the sessions'
     // shells get new tokens
     let renewAll = false
@@ -189,6 +216,8 @@ export default {
       active: async () => (api ? activeSessions(api) : undefined),
       onHello: (reply) => {
         registered.clear()
+        // the server may have forgotten what it was told: said anew
+        said.clear()
         for (const [session, agent] of Object.entries(reply?.registered ?? {}))
           if (typeof agent === "string") {
             registered.set(session, agent)
@@ -524,6 +553,8 @@ export default {
             registered.set(session, p.agent)
             mine.add(session)
           } else registered.delete(session)
+          // a new registration has no answering model yet: said anew
+          said.forget(session)
           // its title "@<agent ID>" (the owner, 2026-11-17); a rename that
           // fails leaves the registration as it is
           const title = agentTitle(
@@ -809,9 +840,6 @@ export default {
       }
       return known.get(key)
     }
-    // each session's provider, as last read (the answering model is read
-    // for the claude-agent provider's sessions only)
-    const providers = new Map<string, string>()
     /*
      * A session's model as a cost event says it: its ID, window, name,
      * effort and rates. Undefined for a session that cannot be read just
@@ -857,8 +885,13 @@ export default {
           rates = ratesOf([m], ref) ?? listed?.rates
         }
       }
-      if (typeof ref?.providerID === "string")
+      if (typeof ref?.providerID === "string") {
+        providers.delete(raw)
         providers.set(raw, ref.providerID)
+        // Subagents' sessions come and go: the newest are kept
+        while (providers.size > 5000)
+          providers.delete(providers.keys().next().value as string)
+      }
       return {
         ...(ref?.id ? { model: `${ref.providerID}/${ref.id}` } : {}),
         ...(limit ? { limit } : {}),
@@ -883,20 +916,23 @@ export default {
     /*
      * The model that answered (1.1.0-rc7): for a session on the
      * claude-agent provider, read from the harness's transcript when a
-     * turn ends, and said when it is another than was said last.
+     * turn ends, and said when it is another than was said last. A
+     * session on another provider has none: the server forgets it then,
+     * and so does the plugin, so that it is said again on the way back
+     * (the review before 1.1.0-rc7).
      */
-    const answeredSaid = new Map<string, string>()
     const reportAnswered = async (session: string) => {
-      if (!api || providers.get(session) !== "claude-agent") return
+      if (providers.get(session) !== ANSWERED_PROVIDER) {
+        if (providers.has(session)) said.forget(session)
+        return
+      }
+      if (!api) return
       try {
         const found = await answeredBy(
           (path) => localGet(api, path, 5000),
           session,
         )
-        if (!found) return
-        const key = `${found.model}\n${found.requested ?? ""}`
-        if (answeredSaid.get(session) === key) return
-        answeredSaid.set(session, key)
+        if (!found || !said.news(session, found)) return
         channel.report({
           type: "answered",
           session,
@@ -1066,7 +1102,7 @@ export default {
               inputs.forget(session)
               shells.forget(session)
               providers.delete(session)
-              answeredSaid.delete(session)
+              said.forget(session)
               channel.report({ type: "session.deleted", session })
               // its token is dead: no need to keep it
               void tokens.drop(session)
@@ -1112,9 +1148,14 @@ export default {
               // the session's model, said as the turn begins (1.1.0-rc7:
               // the agent's row then changes at once, not when the first
               // step ends); and which model answered, once it ended
-              const said =
+              // (within a time limit: this loop reads every session's
+              // events, and a turn's start must not wait for a slow read)
+              const now =
                 outcome === "started" && registered.has(session)
-                  ? await modelOf(session).catch(() => undefined)
+                  ? await within(
+                      modelOf(session).catch(() => undefined),
+                      MODEL_WAIT_MS,
+                    )
                   : undefined
               if (outcome !== "started" && registered.has(session))
                 void reportAnswered(session)
@@ -1163,16 +1204,16 @@ export default {
                       session,
                       at,
                       ...(starter ?? {}),
-                      ...(said?.model
+                      ...(now?.model
                         ? {
-                            model: said.model,
-                            ...(said.name === undefined
+                            model: now.model,
+                            ...(now.name === undefined
                               ? {}
-                              : { model_name: said.name }),
-                            ...(said.limit ? { limit: said.limit } : {}),
-                            ...(said.effort === undefined
+                              : { model_name: now.name }),
+                            ...(now.limit ? { limit: now.limit } : {}),
+                            ...(now.effort === undefined
                               ? {}
-                              : { effort: said.effort }),
+                              : { effort: now.effort }),
                           }
                         : {}),
                     }

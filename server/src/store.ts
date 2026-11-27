@@ -772,9 +772,13 @@ export const MIGRATIONS: string[] = [
    * steps, turns, dollars, the dollars and tokens of the four kinds, and
    * the reload (the context part of each turn's first step); the cause of
    * a session's turn and how many of its own steps the turn has had; the
-   * cause of the turn that started a work; a wake's reload. A turn that
-   * runs at the upgrade has had its first step. And the model that
-   * answered a claude-agent session, with the one asked for.
+   * cause of the turn that started a work; a wake's reload. turn_steps
+   * is 0 only while a turn that was counted for an agent waits for its
+   * first step: a session of before the upgrade, and a turn that runs at
+   * it, wait for none. The kind of the last turn event that was applied,
+   * beside its time, so that a server that restarted knows a turn's start
+   * that is sent again. And the model that answered a claude-agent
+   * session, with the one asked for.
    */
   `
   CREATE TABLE cost_parts (
@@ -797,8 +801,8 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (agent_id, day, cause, sub)
   );
   ALTER TABLE sessions ADD COLUMN turn_kind TEXT;
-  ALTER TABLE sessions ADD COLUMN turn_steps INTEGER NOT NULL DEFAULT 0;
-  UPDATE sessions SET turn_steps = 1 WHERE busy = 1;
+  ALTER TABLE sessions ADD COLUMN turn_steps INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE sessions ADD COLUMN turn_event_kind TEXT;
   ALTER TABLE turn_work ADD COLUMN kind TEXT;
   ALTER TABLE wake_stats ADD COLUMN reload_usd REAL NOT NULL DEFAULT 0;
   ALTER TABLE agents ADD COLUMN answered_model TEXT;

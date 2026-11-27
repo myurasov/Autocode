@@ -46,11 +46,21 @@ export function inputRef(item: unknown): string | undefined {
   return undefined
 }
 
-// What started a turn: the input's kind, and for a notice its work.
+/*
+ * What started a turn: the input's kind; for a notice its work; for a
+ * typed prompt its ID (1.1.0-rc7). OpenCode announces a prompt under the
+ * ID it was given, and Autocode's server gives each of its prompts one: so
+ * the server knows which of its prompts started the turn, also a steer
+ * prompt that came just after the turn it was meant for had ended.
+ */
 export interface Starter {
   by: string
   ref?: string
+  prompt?: string
 }
+
+// A prompt's ID as OpenCode and Autocode's server write them.
+const PROMPT_ID = /^[A-Za-z0-9_-]{1,200}$/
 
 // The inputs that wait in each session, oldest first.
 export class Inputs {
@@ -62,7 +72,11 @@ export class Inputs {
     if (!kind) return
     const ref = inputRef(item)
     const list = this.waiting.get(session) ?? new Map<string, Starter>()
-    list.set(id, { by: kind, ...(ref ? { ref } : {}) })
+    list.set(id, {
+      by: kind,
+      ...(ref ? { ref } : {}),
+      ...(kind === "user" && PROMPT_ID.test(id) ? { prompt: id } : {}),
+    })
     while (list.size > KEPT) list.delete(list.keys().next().value as string)
     this.waiting.set(session, list)
   }

@@ -52,8 +52,11 @@ export function stepTokens(event: any): Kinds | null {
 /*
  * A step's dollars by kind: in the proportion of tokens times rate, so the
  * four add up to what OpenCode recorded for the step, whatever tier or
- * provider's own cost it was priced by. Null (not split) without tokens,
- * without all four rates, or with nothing to weigh.
+ * provider's own cost it was priced by: three parts to a billionth of a
+ * dollar, and the largest part is what is left of the step's dollars (the
+ * review before 1.1.0-rc7: with each part rounded, many small steps' parts
+ * came to more than their spend). Null (not split) without tokens, without
+ * all four rates, or with nothing to weigh.
  */
 export function splitStep(
   usd: number,
@@ -78,12 +81,16 @@ export function splitStep(
     sum += weights[kind]
   }
   if (!(sum > 0)) return null
-  return {
-    input: round((usd * weights.input) / sum),
-    output: round((usd * weights.output) / sum),
-    read: round((usd * weights.read) / sum),
-    write: round((usd * weights.write) / sum),
+  const largest = KINDS.reduce((a, b) => (weights[b] > weights[a] ? b : a))
+  const parts = { input: 0, output: 0, read: 0, write: 0 }
+  let others = 0
+  for (const kind of KINDS) {
+    if (kind === largest) continue
+    parts[kind] = Math.round(((usd * weights[kind]) / sum) * 1e9) / 1e9
+    others += parts[kind]
   }
+  parts[largest] = Math.max(0, Math.round((usd - others) * 1e12) / 1e12)
+  return parts
 }
 
 // What a period's steps were, as the owner and the agent see it.
@@ -241,10 +248,20 @@ export class CostParts {
       this.add(agent, day, cause, false, { turns: 1 })
   }
 
+  // The session's turn was counted for nobody (no agent yet): none of its
+  // steps is a first step.
+  noFirstStep(session: string) {
+    this.db
+      .query("UPDATE sessions SET turn_steps = 1 WHERE id = ?")
+      .run(session)
+  }
+
   /*
    * Whether the step that is being counted is the first of its session's
-   * turn (its own steps only: a Subagent's are not asked about). A session
-   * the server does not know has no turn.
+   * turn (its own steps only: a Subagent's are not asked about). The count
+   * is 0 only while a turn that was counted waits for its first step: a
+   * session the server does not know, one whose turn's start was not seen,
+   * and one that registered during its turn have none.
    */
   firstStep(session: string): boolean {
     const row = this.db

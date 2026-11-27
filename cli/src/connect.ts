@@ -12,6 +12,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs"
 import { homedir } from "node:os"
@@ -109,8 +110,12 @@ export function inAgentShell(): boolean {
  * --token-file FILE (1.1.0-rc7): the token is the file's content, without
  * the white space around it, so that it does not show in the machine's
  * process list as --token "$(cat FILE)" does. From here on it counts as
- * --token. No message says what a file holds.
+ * --token. No message says what a file holds. It must be a regular file of
+ * a token's size: a device or a pipe would never end (the review before
+ * 1.1.0-rc7), so what the file is comes first, and only then its content.
  */
+const MAX_TOKEN_FILE = 4096
+
 export function tokenFromFile(args: Parsed): void {
   const file = args.flags["token-file"]
   if (file === undefined) return
@@ -118,6 +123,11 @@ export function tokenFromFile(args: Parsed): void {
     throw new CliError("give --token or --token-file, not both", 2)
   let text: string
   try {
+    const info = statSync(file)
+    if (info.isDirectory()) throw Object.assign(new Error(), { code: "EISDIR" })
+    if (!info.isFile()) throw Object.assign(new Error(), { code: "NOTFILE" })
+    if (info.size > MAX_TOKEN_FILE)
+      throw Object.assign(new Error(), { code: "TOOLARGE" })
     text = readFileSync(file, "utf8")
   } catch (err) {
     const code = (err as { code?: string }).code
@@ -128,7 +138,11 @@ export function tokenFromFile(args: Parsed): void {
           ? "it is a folder"
           : code === "EACCES"
             ? "permission denied"
-            : "it cannot be read"
+            : code === "NOTFILE"
+              ? "it is not a regular file"
+              : code === "TOOLARGE"
+                ? "it is too large to be a token"
+                : "it cannot be read"
     throw new CliError(`cannot read the token file ${file}: ${why}`, 1)
   }
   const token = text.trim()

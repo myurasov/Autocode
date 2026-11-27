@@ -994,22 +994,20 @@ function splitLines(k: any): string[] {
   const causes = (Array.isArray(k.today_causes) ? k.today_causes : []).filter(
     (c: any) => (Number(c?.usd) || 0) >= 0.005,
   )
-  if (causes.length)
-    lines.push(
-      "Today by what started the turn: " +
-        causes
-          .map((c: any, i: number) => {
-            const n = Number(c.turns) || 0
-            return (
-              `${c.cause} ${dollars(c.usd)} in ${n}` +
-              (i === 0 || causes.length === 1
-                ? ` turn${n === 1 ? "" : "s"}`
-                : "")
-            )
-          })
-          .join(", ") +
-        ".",
-    )
+  if (causes.length) {
+    // "in 9 turns" for the first that has turns, "in 7" after it; nothing
+    // for what is no turn of the session (its jobs' runs, a compaction's
+    // own cost)
+    let worded = false
+    const parts = causes.map((c: any) => {
+      const n = Number(c.turns) || 0
+      if (n <= 0) return `${c.cause} ${dollars(c.usd)}`
+      const word = worded ? "" : ` turn${n === 1 ? "" : "s"}`
+      worded = true
+      return `${c.cause} ${dollars(c.usd)} in ${n}${word}`
+    })
+    lines.push(`Today by what started the turn: ${parts.join(", ")}.`)
+  }
   return lines
 }
 

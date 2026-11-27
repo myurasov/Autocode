@@ -28,6 +28,18 @@ import type { SettingsStore } from "./settings-store.ts"
 
 const MAX_STEP_USD = 1000
 const MAX_COMPACT = 500_000
+// The largest context window taken at a plugin's word.
+const MAX_WINDOW = 100_000_000
+// A model's window from an event: a whole number of tokens, or none.
+const windowOf = (value: unknown): number | null => {
+  const n = Number(value)
+  return typeof value === "number" &&
+    Number.isInteger(n) &&
+    n > 0 &&
+    n <= MAX_WINDOW
+    ? n
+    : null
+}
 // The provider whose sessions say which model answered (1.1.0-rc7).
 const ANSWERED_PROVIDER = "claude-agent"
 // A model's name as a provider writes it.
@@ -336,7 +348,6 @@ export class Costs {
       event.context === undefined || event.context === null
         ? Number.NaN
         : Number(event.context)
-    const limit = Number(event.limit)
     const day = this.day()
     // a run's step: its own spend, and it counts for its bill_to (the owner,
     // 2026-11-09: once, in one row)
@@ -379,11 +390,7 @@ export class Costs {
           "UPDATE agents SET context_tokens = ?, " +
             "context_limit = COALESCE(?, context_limit) WHERE id = ?",
         )
-        .run(
-          context,
-          Number.isInteger(limit) && limit > 0 ? limit : null,
-          agent,
-        )
+        .run(context, windowOf(event.limit), agent)
     // the agent's model: its own session's last step (a Subagent's step,
     // with no context of the agent's, may run another model)
     this.noteModel(agent, event, Number.isInteger(context))
@@ -485,9 +492,11 @@ export class Costs {
    * step's to say.
    */
   turnModel(agent: string, event: any) {
-    if (typeof event?.model !== "string" || !event.model.trim()) return
-    const limit = Number(event.limit)
-    if (Number.isInteger(limit) && limit > 0)
+    // a model that is none: nothing of the event is taken
+    const model = typeof event?.model === "string" ? event.model.trim() : ""
+    if (!model || model.length > 200) return
+    const limit = windowOf(event.limit)
+    if (limit !== null)
       this.db
         .query("UPDATE agents SET context_limit = ? WHERE id = ?")
         .run(limit, agent)
@@ -507,12 +516,18 @@ export class Costs {
     if (!answered) return
     const asked = name(requested)
     const was = this.db
-      .query("SELECT answered_model, requested_model FROM agents WHERE id = ?")
+      .query(
+        "SELECT model, answered_model, requested_model FROM agents " +
+          "WHERE id = ?",
+      )
       .get(agent) as {
+      model: string | null
       answered_model: string | null
       requested_model: string | null
     } | null
-    if (!was) return
+    // only an agent that is on that provider has an answering model (the
+    // plugin says the session's model with each turn's start)
+    if (!was?.model?.startsWith(`${ANSWERED_PROVIDER}/`)) return
     if (was.answered_model === answered && was.requested_model === asked) return
     this.db
       .query(

@@ -6,7 +6,13 @@
  * line from the file's end. Fixtures stand for the harness's files.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import {
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -14,6 +20,7 @@ import {
   answeredIn,
   harnessHome,
   nativeOf,
+  Said,
   tailOf,
   transcriptOf,
 } from "../../plugin/src/answered.ts"
@@ -105,6 +112,25 @@ describe("which model answered, from a transcript's text", () => {
     })
   })
 
+  // The harness may write a model with its window in brackets
+  // ("claude-x[1m]"): the same model, said without them.
+  test("a model's name is said without a bracket suffix, so asked and answered do not differ by it", () => {
+    expect(
+      answeredIn(
+        answer("a-1", "claude-opus-4-8", {
+          requestedModel: "claude-opus-4-8[1m]",
+        }),
+      ),
+    ).toEqual({ model: "claude-opus-4-8", requested: "claude-opus-4-8" })
+    expect(answeredIn(answer("a-1", "claude-opus-4-8[1m]"))).toEqual({
+      model: "claude-opus-4-8",
+      requested: "claude-fable-5-2",
+    })
+    // brackets anywhere else are no model's name
+    expect(answeredIn(answer("a-1", "claude[x]-opus"))).toBeUndefined()
+    expect(answeredIn(answer("a-1", "[1m]"))).toBeUndefined()
+  })
+
   test("an older transcript says no requested model; what is no transcript says nothing", () => {
     const old = answer("a-1", "claude-opus-5-5", { requestedModel: undefined })
     expect(answeredIn(old)).toEqual({ model: "claude-opus-5-5" })
@@ -119,26 +145,53 @@ describe("which model answered, from a transcript's text", () => {
 })
 
 describe("the transcript's file", () => {
-  test("found by the harness's session under any project folder; never by a name that is no such ID", () => {
-    expect(transcriptOf(home, SESSION)).toBe(
+  test("found by the harness's session under any project folder; never by a name that is no such ID", async () => {
+    expect(await transcriptOf(home, SESSION)).toBe(
       join(home, "projects", "-home-someone-work", `${SESSION}.jsonl`),
     )
-    expect(transcriptOf(home, OTHER)).toBeUndefined()
+    expect(await transcriptOf(home, OTHER)).toBeUndefined()
     for (const bad of ["", "..", "../x", `${SESSION}/../x`, "a b", "*"])
-      expect(transcriptOf(home, bad)).toBeUndefined()
-    expect(transcriptOf(join(home, "nope"), SESSION)).toBeUndefined()
+      expect(await transcriptOf(home, bad)).toBeUndefined()
+    expect(await transcriptOf(join(home, "nope"), SESSION)).toBeUndefined()
   })
 
-  test("only the end of a long file is read", () => {
+  // The review before 1.1.0-rc7: every turn's end listed all project
+  // folders again. A file found once is looked for where it was.
+  test("where a transcript was found is kept; one that moved is looked for again", async () => {
+    const moving = mkdtempSync(join(tmpdir(), "autocode-answered-"))
+    try {
+      const [a, b] = ["a", "b"].map((x) => join(moving, "projects", x))
+      mkdirSync(a!, { recursive: true })
+      mkdirSync(b!, { recursive: true })
+      const file = `${OTHER}.jsonl`
+      writeFileSync(join(a!, file), `${answer("z", "claude-m")}\n`)
+      expect(await transcriptOf(moving, OTHER)).toBe(join(a!, file))
+      // a second file elsewhere changes nothing: the first is still there
+      writeFileSync(join(b!, file), `${answer("z", "claude-n")}\n`)
+      expect(await transcriptOf(moving, OTHER)).toBe(join(a!, file))
+      rmSync(join(a!, file))
+      expect(await transcriptOf(moving, OTHER)).toBe(join(b!, file))
+      renameSync(join(b!, file), join(a!, file))
+      expect(await transcriptOf(moving, OTHER)).toBe(join(a!, file))
+      rmSync(join(a!, file))
+      expect(await transcriptOf(moving, OTHER)).toBeUndefined()
+    } finally {
+      rmSync(moving, { recursive: true, force: true })
+    }
+  })
+
+  test("only the end of a long file is read", async () => {
     const path = join(home, "long.jsonl")
     writeFileSync(path, `${"x".repeat(5000)}\n${answer("z", "claude-m")}\n`)
-    const tail = tailOf(path, 1000) as string
+    const tail = (await tailOf(path, 1000)) as string
     expect(tail.length).toBeLessThanOrEqual(1000)
     expect(answeredIn(tail)).toEqual({
       model: "claude-m",
       requested: "claude-fable-5-2",
     })
-    expect(tailOf(join(home, "nope.jsonl"))).toBeUndefined()
+    expect(await tailOf(join(home, "nope.jsonl"))).toBeUndefined()
+    // a folder, and what is no regular file, is no transcript
+    expect(await tailOf(home)).toBeUndefined()
   })
 
   test("the harness's folder: CLAUDE_CONFIG_DIR, else .claude in the home", () => {
@@ -187,5 +240,40 @@ describe("from OpenCode's last message to the answering model", () => {
         home,
       ),
     ).rejects.toThrow("down")
+  })
+})
+
+/*
+ * The review before 1.1.0-rc7: the plugin kept what it had said for a
+ * session for ever, while the server forgets an agent's answering model
+ * when the agent leaves the claude-agent provider or registers anew: back
+ * on that provider, nothing was said again.
+ */
+describe("what was said last for a session", () => {
+  const fable = { model: "claude-fable-5-2", requested: "claude-fable-5-2" }
+
+  test("said once, again when it changes, and again once the session was forgotten", () => {
+    const said = new Said()
+    expect(said.news("ses_a", fable)).toBe(true)
+    expect(said.news("ses_a", fable)).toBe(false)
+    expect(said.news("ses_b", fable)).toBe(true)
+    expect(said.news("ses_a", { ...fable, model: "claude-opus-4-8" })).toBe(
+      true,
+    )
+    expect(said.news("ses_a", { model: "claude-opus-4-8" })).toBe(true)
+    expect(said.news("ses_a", { model: "claude-opus-4-8" })).toBe(false)
+    said.forget("ses_a")
+    expect(said.news("ses_a", { model: "claude-opus-4-8" })).toBe(true)
+    expect(said.news("ses_b", fable)).toBe(false)
+    said.clear()
+    expect(said.news("ses_b", fable)).toBe(true)
+  })
+
+  test("it keeps at most 1,000 sessions", () => {
+    const said = new Said()
+    for (let i = 0; i < 1500; i++) said.news(`ses_${i}`, fable)
+    expect(said.size).toBeLessThanOrEqual(1000)
+    // the newest are kept
+    expect(said.news("ses_1499", fable)).toBe(false)
   })
 })

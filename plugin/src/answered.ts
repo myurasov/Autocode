@@ -12,26 +12,24 @@
  * Neither the `native` field nor the transcript's layout is a published
  * interface: this module is the one place that depends on them. It reads
  * at most the end of the file, never a file whose name is not such an ID,
- * and says nothing when anything is missing.
+ * and says nothing when anything is missing. Its file work does not hold
+ * the plugin's event loop.
  */
-import {
-  closeSync,
-  existsSync,
-  fstatSync,
-  openSync,
-  readdirSync,
-  readSync,
-} from "node:fs"
+import { open, readdir, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Get } from "./past.ts"
 
 // The harness names its sessions and messages by such IDs.
 const ID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
-// A model's name as a provider writes it.
-const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/
+// A model's name as a provider writes it; the harness may add the model's
+// window in brackets ("claude-x[1m]"), which is not part of the name.
+const MODEL =
+  /^([A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199})(?:\[[A-Za-z0-9]{1,20}\])?$/
 // The most of a transcript's end that is read.
 const TAIL = 4 * 1024 * 1024
+// The most sessions whose last report, or transcript's place, is kept.
+const KEPT = 1000
 
 // The harness's own session and message behind an OpenCode message.
 export interface Native {
@@ -44,6 +42,11 @@ export interface Native {
 export interface Answered {
   model: string
   requested?: string
+}
+
+// A model's name without a bracket suffix; none for what is no name.
+function modelName(value: unknown): string | undefined {
+  return typeof value === "string" ? MODEL.exec(value)?.[1] : undefined
 }
 
 // Of an assistant message of OpenCode's: the last content block that names
@@ -84,14 +87,10 @@ export function answeredIn(
       continue
     }
     if (d?.type !== "assistant" || d.isSidechain) continue
-    const model = d.message?.model
-    if (typeof model !== "string" || !MODEL.test(model)) continue
-    const found: Answered = {
-      model,
-      ...(typeof d.requestedModel === "string" && MODEL.test(d.requestedModel)
-        ? { requested: d.requestedModel }
-        : {}),
-    }
+    const model = modelName(d.message?.model)
+    if (!model) continue
+    const requested = modelName(d.requestedModel)
+    const found: Answered = { model, ...(requested ? { requested } : {}) }
     if (message && d.uuid === message) return found
     last ??= found
     // without a message to look for, the last answer is the one
@@ -107,44 +106,58 @@ export function harnessHome(
   return env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude")
 }
 
-// The transcript of one of the harness's sessions, under whichever project
-// folder holds it; none for a name that is no session's ID.
-export function transcriptOf(
+const isFile = async (path: string) =>
+  (await stat(path).catch(() => undefined))?.isFile() === true
+
+// Where each session's transcript was found last, by its config folder.
+const places = new Map<string, string>()
+
+/*
+ * The transcript of one of the harness's sessions, under whichever project
+ * folder holds it; none for a name that is no session's ID. Where it was
+ * found is kept, so that the folders are listed once per session and not
+ * at every turn's end; a file that is no longer there is looked for again.
+ */
+export async function transcriptOf(
   home: string,
   session: string,
-): string | undefined {
+): Promise<string | undefined> {
   if (!ID.test(session)) return undefined
+  const key = `${home}\n${session}`
+  const kept = places.get(key)
+  if (kept && (await isFile(kept))) return kept
+  places.delete(key)
   const projects = join(home, "projects")
-  let folders: string[]
-  try {
-    folders = readdirSync(projects)
-  } catch {
-    return undefined
-  }
+  const folders = await readdir(projects).catch(() => [] as string[])
   for (const folder of folders) {
     const path = join(projects, folder, `${session}.jsonl`)
-    if (existsSync(path)) return path
+    if (!(await isFile(path))) continue
+    places.set(key, path)
+    while (places.size > KEPT)
+      places.delete(places.keys().next().value as string)
+    return path
   }
   return undefined
 }
 
-// The end of a file as text, at most `max` bytes of it.
-export function tailOf(path: string, max = TAIL): string | undefined {
-  let fd: number | undefined
+// The end of a regular file as text, at most `max` bytes of it.
+export async function tailOf(
+  path: string,
+  max = TAIL,
+): Promise<string | undefined> {
+  const file = await open(path, "r").catch(() => undefined)
+  if (!file) return undefined
   try {
-    fd = openSync(path, "r")
-    const size = fstatSync(fd).size
-    const length = Math.min(size, max)
+    const info = await file.stat()
+    if (!info.isFile()) return undefined
+    const length = Math.min(info.size, max)
     const buffer = Buffer.alloc(length)
-    readSync(fd, buffer, 0, length, size - length)
+    await file.read(buffer, 0, length, info.size - length)
     return buffer.toString("utf8")
   } catch {
     return undefined
   } finally {
-    if (fd !== undefined)
-      try {
-        closeSync(fd)
-      } catch {}
+    await file.close().catch(() => {})
   }
 }
 
@@ -165,7 +178,42 @@ export async function answeredBy(
   )
   const native = nativeOf(Array.isArray(res?.data) ? res.data[0] : undefined)
   if (!native) return undefined
-  const path = transcriptOf(home, native.session)
-  const text = path ? tailOf(path) : undefined
+  const path = await transcriptOf(home, native.session)
+  const text = path ? await tailOf(path) : undefined
   return text ? answeredIn(text, native.message) : undefined
+}
+
+/*
+ * What the plugin said last for each session, so that it reports the
+ * answering model only when it is another. A session is forgotten when it
+ * leaves the claude-agent provider, registers or is deleted, and all are
+ * when the plugin says hello again: the server forgets an agent's
+ * answering model at the first two, and the next answer is said anew.
+ */
+export class Said {
+  private readonly last = new Map<string, string>()
+
+  // Whether this is another than was said last for the session; it is
+  // then what was said last.
+  news(session: string, found: Answered): boolean {
+    const key = `${found.model}\n${found.requested ?? ""}`
+    if (this.last.get(session) === key) return false
+    this.last.delete(session)
+    this.last.set(session, key)
+    while (this.last.size > KEPT)
+      this.last.delete(this.last.keys().next().value as string)
+    return true
+  }
+
+  forget(session: string) {
+    this.last.delete(session)
+  }
+
+  clear() {
+    this.last.clear()
+  }
+
+  get size(): number {
+    return this.last.size
+  }
 }

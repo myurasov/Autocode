@@ -84,10 +84,21 @@ describe("what started a turn", () => {
     expect(inputs.starter("ses_b")).toBeUndefined()
     inputs.settled("ses_a", "in_1")
     expect(inputs.starter("ses_a")).toBeUndefined()
-    // a prompt, typed or Autocode's
-    inputs.enqueued("ses_a", "in_2", USER)
-    expect(inputs.starter("ses_a")).toEqual({ by: "user" })
-    inputs.settled("ses_a", "in_2")
+    // a prompt, typed or Autocode's: with its ID, which is the ID that
+    // Autocode's server gave its own prompt (1.1.0-rc7: the server then
+    // knows which prompt started the turn, a steer prompt's too)
+    inputs.enqueued("ses_a", "msg_019ac5d1f2e0a1b2c3d4e5f6", USER)
+    expect(inputs.starter("ses_a")).toEqual({
+      by: "user",
+      prompt: "msg_019ac5d1f2e0a1b2c3d4e5f6",
+    })
+    inputs.settled("ses_a", "msg_019ac5d1f2e0a1b2c3d4e5f6")
+    // an ID that is none is left out
+    for (const odd of ["", "a b", "x".repeat(201)]) {
+      inputs.enqueued("ses_a", odd, USER)
+      expect(inputs.starter("ses_a")).toEqual({ by: "user" })
+      inputs.settled("ses_a", odd)
+    }
     // one that was cancelled starts nothing
     inputs.enqueued("ses_a", "in_3", SUBAGENT)
     inputs.settled("ses_a", "in_3")
@@ -102,7 +113,7 @@ describe("what started a turn", () => {
     inputs.enqueued("ses_a", "in_2", SHELL)
     inputs.settled("ses_a", "in_2")
     // the turn ends, the next starts
-    expect(inputs.starter("ses_a")).toEqual({ by: "user" })
+    expect(inputs.starter("ses_a")).toEqual({ by: "user", prompt: "in_1" })
     inputs.settled("ses_a", "in_1")
     // two notices at once
     inputs.enqueued("ses_a", "in_3", SUBAGENT)

@@ -95,8 +95,6 @@ export class Hosts {
   // may fake).
   private readonly lastPoll = new Map<string, number>()
   private readonly waiters = new Map<string, Set<() => void>>()
-  // The last turn event applied to each session (kind and time).
-  private readonly lastEvent = new Map<string, string>()
   // Called when a registered agent's turn ends (the retries, tier 0b3).
   // `reply`: the turn's last text (tier 0f: a run's result); `background`:
   // how many of its Subagents still work (OpenCode 2.3 runs them in the
@@ -433,8 +431,13 @@ export class Hosts {
           "WHERE host_id = ? AND deleted_at IS NULL",
       )
       .all(id) as any[]) {
-      if (busy.has(r.id) && !r.busy) this.turnStarted(r.id)
-      else if (!busy.has(r.id) && r.busy) {
+      if (busy.has(r.id) && !r.busy) {
+        this.turnStarted(r.id)
+        // it runs already: its next step is not its first (1.1.0-rc7)
+        this.db
+          .query("UPDATE sessions SET turn_steps = 1 WHERE id = ?")
+          .run(r.id)
+      } else if (!busy.has(r.id) && r.busy) {
         this.db
           .query(
             "UPDATE sessions SET busy = 0, idle_since = ?, " +
@@ -453,24 +456,29 @@ export class Hosts {
   /*
    * An event older than the last one applied to the session (by the plugin's
    * own clock, `at`) is out of order and changes nothing; one without a time
-   * always applies.
+   * always applies. The same event again (a batch sent again after a lost
+   * reply) changes nothing either: the last event's kind is kept with its
+   * time in the database, so that a server that restarted meanwhile knows
+   * it too (the review before 1.1.0-rc7: it counted the turn, and its
+   * reload, a second time).
    */
   private fresh(session: string, at: unknown, kind = ""): boolean {
     if (typeof at !== "number" || !Number.isFinite(at)) return true
     const row = this.db
-      .query("SELECT turn_event_at FROM sessions WHERE id = ?")
-      .get(session) as any
+      .query("SELECT turn_event_at, turn_event_kind FROM sessions WHERE id = ?")
+      .get(session) as {
+      turn_event_at: number | null
+      turn_event_kind: string | null
+    } | null
     if (row?.turn_event_at && row.turn_event_at > at) return false
-    // the same event again (a batch sent again after a lost reply)
-    const key = `${kind}:${at}`
-    if (kind && this.lastEvent.get(session) === key) return false
-    if (kind) {
-      this.lastEvent.set(session, key)
-      if (this.lastEvent.size > 10_000) this.lastEvent.clear()
-    }
+    if (kind && row?.turn_event_at === at && row.turn_event_kind === kind)
+      return false
     this.db
-      .query("UPDATE sessions SET turn_event_at = ? WHERE id = ?")
-      .run(at, session)
+      .query(
+        "UPDATE sessions SET turn_event_at = ?, turn_event_kind = ? " +
+          "WHERE id = ?",
+      )
+      .run(at, kind || null, session)
     return true
   }
 
@@ -487,6 +495,9 @@ export class Hosts {
     ref?: unknown,
     // the event, when it says the session's model (1.1.0-rc7)
     model?: any,
+    // the ID of the typed prompt that started it, when the plugin says it
+    // (1.1.0-rc7)
+    prompt?: unknown,
   ) {
     if (!this.fresh(session, at, "started")) return
     /*
@@ -494,6 +505,15 @@ export class Hosts {
      * turn that starts while a prompt of Autocode's is on its way is that
      * prompt's, the one handed over at inject_pending_at. A prompt that
      * went into a running turn started none.
+     *
+     * Since 1.1.0-rc7 the plugin names the prompt (OpenCode announces a
+     * prompt under the ID it was given, and each prompt of Autocode's has
+     * the ID of its injection): then the turn is that injection's, or, for
+     * an ID that is none of this session's, a prompt somebody typed. So a
+     * steer prompt that came just after its turn had ended has its own
+     * turn (the review before 1.1.0-rc7: such turns counted as the
+     * owner's), and a prompt the owner types while one of Autocode's is on
+     * its way is the owner's.
      */
     const before = this.db
       .query(
@@ -506,17 +526,29 @@ export class Hosts {
       turn_kind: string | null
     } | null
     const pending = before?.inject_pending_at
-    const prompted = pending
+    const named =
+      by === "user" &&
+      typeof prompt === "string" &&
+      prompt.length > 0 &&
+      prompt.length <= 200
+    const prompted = named
       ? ((
           this.db
-            .query(
-              "SELECT id FROM injections WHERE session_id = ? " +
-                "AND created_at = ? AND reasons NOT LIKE '%\"steer\":true%' " +
-                "ORDER BY id DESC LIMIT 1",
-            )
-            .get(session, pending) as { id: string } | null
+            .query("SELECT id FROM injections WHERE id = ? AND session_id = ?")
+            .get(prompt as string, session) as { id: string } | null
         )?.id ?? null)
-      : null
+      : pending
+        ? ((
+            this.db
+              .query(
+                "SELECT id FROM injections WHERE session_id = ? " +
+                  "AND created_at = ? " +
+                  "AND reasons NOT LIKE '%\"steer\":true%' " +
+                  "ORDER BY id DESC LIMIT 1",
+              )
+              .get(session, pending) as { id: string } | null
+          )?.id ?? null)
+        : null
     /*
      * A turn that OpenCode's own notice started (1.1.0-rc2; the plugin's
      * `by`: a Subagent's result, a background shell's end) is work that the
@@ -759,6 +791,7 @@ export class Hosts {
           event.by,
           event.ref,
           typeof event.model === "string" ? event : undefined,
+          event.prompt,
         )
       } else if (event.type === "work.started") {
         try {

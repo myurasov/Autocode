@@ -343,6 +343,24 @@ describe("autocode_me compact and status", () => {
     expect(plain).toContain(
       "Today by what started the turn: owner $1.00 in 1 turn.",
     )
+    // what has no turn of the session (its jobs' runs, a compaction's own
+    // cost) says no "in 0 turns"
+    const mixed = await runMe(
+      { action: "status" },
+      me({
+        today_split: split,
+        today_causes: [
+          { cause: "run", turns: 0, usd: 9, reload_usd: 0 },
+          { cause: "owner", turns: 3, usd: 6, reload_usd: 1 },
+          { cause: "earlier", turns: 0, usd: 3, reload_usd: 0 },
+          { cause: "wake", turns: 1, usd: 2, reload_usd: 1 },
+        ],
+      }) as any,
+    )
+    expect(mixed).toContain(
+      "Today by what started the turn: run $9.00, owner $6.00 in 3 turns, " +
+        "earlier $3.00, wake $2.00 in 1.",
+    )
   })
 
   test("status without a cap, a known window or a threshold", async () => {

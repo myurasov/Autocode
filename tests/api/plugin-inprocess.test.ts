@@ -40,6 +40,8 @@ function setEnv(name: string, value: string | undefined) {
 interface ApiRequest {
   method: string
   path: string
+  // the query, when the request has one ("?type=assistant")
+  query?: string
   authorization: string
   body: any
 }
@@ -52,10 +54,15 @@ interface FakeApi {
   stop: () => void
 }
 
+// The harness's session and message behind each OpenCode session's last
+// answer (1.1.0-rc7: which model answered).
+const natives = new Map<string, { sessionID: string; messageID: string }>()
+
 /*
  * An OpenCode server's local API, as far as the plugin uses it: /api/info
- * (version and process ID, as @opencode/client's discovery reads it), and a
- * session's environment. It wants the password "pw".
+ * (version and process ID, as @opencode/client's discovery reads it), a
+ * session's environment, and its last assistant message. It wants the
+ * password "pw".
  */
 function fakeApi(): FakeApi {
   const requests: ApiRequest[] = []
@@ -70,6 +77,7 @@ function fakeApi(): FakeApi {
       requests.push({
         method: req.method,
         path: url.pathname,
+        ...(url.search ? { query: url.search } : {}),
         authorization,
         body: text ? JSON.parse(text) : undefined,
       })
@@ -82,6 +90,17 @@ function fakeApi(): FakeApi {
         /^\/api\/session\/[^/]+\/environment$/.test(url.pathname)
       )
         return new Response(null, { status: 204 })
+      // a session's last assistant message, with the harness's own session
+      // and message on its content (a claude-agent session's)
+      const message = /^\/api\/session\/([^/]+)\/message$/.exec(url.pathname)
+      if (req.method === "GET" && message) {
+        const native = natives.get(decodeURIComponent(message[1]!))
+        return Response.json({
+          data: native
+            ? [{ type: "assistant", content: [{ type: "text", native }] }]
+            : [],
+        })
+      }
       return new Response("not found", { status: 404 })
     },
   })
@@ -163,6 +182,8 @@ beforeAll(async () => {
   // inside this test's folder
   setEnv("AUTOCODE_HOME", join(root, "home"))
   setEnv("XDG_DATA_HOME", join(root, "data"))
+  // the harness's transcripts (1.1.0-rc7: which model answered)
+  setEnv("CLAUDE_CONFIG_DIR", join(root, "claude"))
   api = fakeApi()
   plugin = (await import("../../plugin/src/index.ts")).default
 })
@@ -187,12 +208,21 @@ interface Session {
   model?: { providerID: string; id: string; variant?: string }
 }
 
-// OpenCode's models, the second its default; and sessions whose read fails.
+// OpenCode's models, the second its default; and sessions whose read fails,
+// or does not come back until the test lets it.
 const MODELS = [
   { providerID: "big", id: "one", limit: { context: 1_000_000 } },
   { providerID: "small", id: "default", limit: { context: 128_000 } },
+  {
+    providerID: "claude-agent",
+    id: "fable",
+    name: "Fable 5.2",
+    limit: { context: 1_000_000 },
+    cost: [{ input: 8, output: 40, cache: { read: 0.2, write: 10 } }],
+  },
 ]
 const unreadable = new Set<string>()
+const hanging = new Map<string, Promise<void>>()
 
 interface Fake {
   tools: any[]
@@ -252,6 +282,7 @@ async function startPlugin(
     },
     session: {
       get: async ({ sessionID }: { sessionID: string }) => {
+        await hanging.get(sessionID)
         if (unreadable.has(sessionID)) throw new Error("busy")
         const s = sessions.find((x) => x.id === sessionID)
         // core's error for a missing session (in-process), not the HTTP API's
@@ -865,6 +896,22 @@ describe("the plugin in-process, tier 0b", () => {
   }
   const agentOf = async (id: string) =>
     (await call(t.url, t.admin, "GET", `/v1/agents/${id}`)).body.agent
+  // Registers a session, and waits until the plugin knows of it (it learns
+  // of a registration by an instruction): its steps count from then on.
+  const register = async (fake: Fake, session: string, id: string) => {
+    await tool(fake, "autocode_me").execute(
+      { action: "register", id },
+      { sessionID: session },
+    )
+    await until(
+      async () => {
+        const system: any[] = []
+        await fake.hooks["session.context"]!({ sessionID: session, system })
+        return system.length > 0
+      },
+      { what: `the registration of ${id} to reach the plugin` },
+    )
+  }
 
   test("inject and interrupt reach the session; inject waits behind a running turn", async () => {
     const dir = join(root, "work-0b-inject")
@@ -1018,6 +1065,230 @@ describe("the plugin in-process, tier 0b", () => {
     const failed = await agentOf("inproc:turns")
     expect(failed.last_outcome).toBe("failed")
     expect(failed.error.type).toBe("rate_limit")
+  })
+
+  /*
+   * 1.1.0-rc7, the plugin's part (the review before it: nothing ran this
+   * wiring outside Docker). A turn's start says the session's model; a
+   * turn's end, for a claude-agent session only, says which model answered,
+   * read from the harness's transcript; and it is said again after the
+   * agent left that provider and came back, since the server forgot it.
+   */
+  test("a turn's start says the session's model; a claude-agent session's turn end says which model answered, again after a provider round trip", async () => {
+    const dir = join(root, "work-rc7-model")
+    const sessions: Session[] = [
+      {
+        id: "ses_ans",
+        directory: dir,
+        model: { providerID: "claude-agent", id: "fable", variant: "max" },
+      },
+      {
+        id: "ses_big",
+        directory: dir,
+        model: { providerID: "big", id: "one" },
+      },
+    ]
+    // the harness's transcript: another model answered than was asked for
+    const harness = "29721054-a533-40cb-af6a-bad287b4b2fd"
+    const message = "333bc989-c108-41d5-a6f3-bd24742fbb4c"
+    mkdirSync(join(root, "claude", "projects", "-work"), { recursive: true })
+    writeFileSync(
+      join(root, "claude", "projects", "-work", `${harness}.jsonl`),
+      `${JSON.stringify({
+        type: "assistant",
+        uuid: message,
+        isSidechain: false,
+        requestedModel: "claude-fable-5-2",
+        message: { role: "assistant", model: "claude-opus-4-8" },
+      })}\n`,
+    )
+    for (const id of ["ses_ans", "ses_big"])
+      natives.set(id, { sessionID: harness, messageID: message })
+    const fake = await connected(() => startPlugin(dir, sessions))
+    await register(fake, "ses_ans", "inproc:answered")
+    await register(fake, "ses_big", "inproc:big")
+    const event = (type: string, session: string) => ({
+      type,
+      location: { directory: dir },
+      data: { sessionID: session },
+    })
+    const shows = (id: string, what: Record<string, unknown>) =>
+      until(
+        async () => {
+          const a = await agentOf(id)
+          return Object.entries(what).every(([k, v]) => a[k] === v)
+            ? a
+            : undefined
+        },
+        { what: `${id} to show ${JSON.stringify(what)}` },
+      )
+    // the turn starts: the model shows at once, before any step ends
+    fake.emit(event("session.execution.started", "ses_ans"))
+    const working = await shows("inproc:answered", {
+      status: "working",
+      model: "claude-agent/fable",
+    })
+    expect(working).toMatchObject({ model_name: "Fable 5.2", effort: "max" })
+    expect(working.cost).toMatchObject({
+      context_limit: 1_000_000,
+      context: null,
+    })
+    expect(working.answered_model).toBeNull()
+    // it ends: which model answered, and which was asked for
+    fake.emit(event("session.execution.succeeded", "ses_ans"))
+    await shows("inproc:answered", {
+      answered_model: "claude-opus-4-8",
+      requested_model: "claude-fable-5-2",
+    })
+    // a session on another provider: nothing is read, nothing is said
+    fake.emit(event("session.execution.started", "ses_big"))
+    await shows("inproc:big", { status: "working", model: "big/one" })
+    fake.emit(event("session.execution.succeeded", "ses_big"))
+    await shows("inproc:big", { status: "idle" })
+    await Bun.sleep(300)
+    // (its last answer is asked for with limit=1; the session's records
+    // were read page by page when it registered)
+    const lastAnswer = (session: string) =>
+      api.requests.filter(
+        (r) =>
+          r.path === `/api/session/${session}/message` &&
+          r.query === "?type=assistant&limit=1&order=desc",
+      ).length
+    expect(lastAnswer("ses_ans")).toBe(1)
+    expect(lastAnswer("ses_big")).toBe(0)
+    expect((await agentOf("inproc:big")).answered_model).toBeNull()
+    // the agent leaves the provider: the server forgets its answering model
+    sessions[0]!.model = { providerID: "big", id: "one" }
+    fake.emit(event("session.execution.started", "ses_ans"))
+    await shows("inproc:answered", { model: "big/one", answered_model: null })
+    fake.emit(event("session.execution.succeeded", "ses_ans"))
+    await shows("inproc:answered", { status: "idle" })
+    // and comes back: the same answer is said again
+    sessions[0]!.model = { providerID: "claude-agent", id: "fable" }
+    fake.emit(event("session.execution.started", "ses_ans"))
+    await shows("inproc:answered", { model: "claude-agent/fable" })
+    fake.emit(event("session.execution.succeeded", "ses_ans"))
+    await shows("inproc:answered", {
+      answered_model: "claude-opus-4-8",
+      requested_model: "claude-fable-5-2",
+    })
+  })
+
+  // The review before 1.1.0-rc7: the plugin's one event loop waited for
+  // the session's model at a turn's start, however long that took.
+  test("a turn's start does not wait for a session that cannot be read in time: it is said without the model", async () => {
+    const dir = join(root, "work-rc7-slow")
+    const sessions: Session[] = [
+      {
+        id: "ses_slow",
+        directory: dir,
+        model: { providerID: "big", id: "one" },
+      },
+      { id: "ses_quick", directory: dir },
+    ]
+    const fake = await connected(() => startPlugin(dir, sessions))
+    await register(fake, "ses_slow", "inproc:slow")
+    await register(fake, "ses_quick", "inproc:quick")
+    let release = () => {}
+    hanging.set("ses_slow", new Promise<void>((resolve) => (release = resolve)))
+    try {
+      const event = (type: string, session: string) => ({
+        type,
+        location: { directory: dir },
+        data: { sessionID: session },
+      })
+      fake.emit(event("session.execution.started", "ses_slow"))
+      // another session's turn, behind it in the same stream
+      fake.emit(event("session.execution.started", "ses_quick"))
+      await until(
+        async () => (await agentOf("inproc:quick")).status === "working",
+        { timeoutMs: 10_000, what: "the turn behind the slow read" },
+      )
+      const slow = await agentOf("inproc:slow")
+      expect(slow.status).toBe("working")
+      expect(slow.model).toBeNull()
+    } finally {
+      hanging.delete("ses_slow")
+      release()
+    }
+  })
+
+  /*
+   * The review before 1.1.0-rc7: a steer prompt that reached its session
+   * just after the turn had ended started a new turn, which counted as the
+   * owner's. OpenCode announces a prompt under the ID it was given (pinned
+   * on real OpenCode by tests/plugin/spike-1-inprocess.test.ts): the plugin
+   * says it with the turn's start, and the turn is that message's.
+   */
+  test("the plugin says which prompt started a turn: a steer prompt that came after its turn ended is its message's turn", async () => {
+    const dir = join(root, "work-rc7-steer")
+    const fake = await connected(() =>
+      startPlugin(dir, [{ id: "ses_steer", directory: dir }]),
+    )
+    await register(fake, "ses_steer", "inproc:steer")
+    const event = (type: string, data = {}) => ({
+      type,
+      location: { directory: dir },
+      data: { sessionID: "ses_steer", ...data },
+    })
+    const step = (n: number) =>
+      event("session.step.ended", {
+        cost: 0.25,
+        tokens: { input: 1000 },
+        assistantMessageID: `msg_steer_step${n}`,
+      })
+    const typed = (id: string, delivery: string) =>
+      event("session.inbox.enqueued", {
+        inboxID: id,
+        item: { type: "user", payload: { text: "x" }, delivery },
+      })
+    const causes = async () =>
+      (
+        (await call(t.url, t.admin, "GET", "/v1/costs/inproc:steer")).body
+          .causes as any[]
+      ).map((c) => [c.cause, c.turns, c.usd])
+    // the owner types: a turn
+    fake.emit(typed("msg_typed_by_the_owner_1", "queue"))
+    fake.emit(event("session.execution.started"))
+    fake.emit(
+      event("session.inbox.delivered", { inboxID: "msg_typed_by_the_owner_1" }),
+    )
+    fake.emit(step(1))
+    await until(
+      async () => (await agentOf("inproc:steer")).status === "working",
+      { what: "the agent to be working" },
+    )
+    // a message for it goes into the running turn: a steer prompt
+    await call(t.url, t.admin, "POST", "/v1/messages", {
+      to: "inproc:steer",
+      text: "Hello.",
+    })
+    const steer = await until(
+      () => {
+        t.server.tick()
+        return fake.calls.find(
+          (c) =>
+            c.kind === "prompt" &&
+            c.input.sessionID === "ses_steer" &&
+            c.input.delivery === "steer",
+        )
+      },
+      { what: "the steer prompt" },
+    )
+    // but the turn ended first: OpenCode starts a new one with the prompt
+    fake.emit(event("session.execution.succeeded"))
+    fake.emit(typed(steer.input.id, "steer"))
+    fake.emit(event("session.execution.started"))
+    fake.emit(event("session.inbox.delivered", { inboxID: steer.input.id }))
+    fake.emit(step(2))
+    fake.emit(event("session.execution.succeeded"))
+    await until(async () => (await causes()).length === 2, {
+      what: "the second turn's step",
+    })
+    expect(await causes()).toEqual([
+      ["message", 1, 0.25],
+      ["owner", 1, 0.25],
+    ])
   })
 
   /*

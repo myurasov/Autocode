@@ -509,8 +509,52 @@ describe("autocode CLI", () => {
         own,
       )
       expect(many.code).toBe(1)
+      /*
+       * The review before 1.1.0-rc7: the file was read whatever it was. A
+       * token is a small regular file: what is none (a device, a pipe,
+       * which would never end) or too large is refused before it is read.
+       */
+      const started = Date.now()
+      const device = await cli(
+        ["hosts", "--token-file", "/dev/zero"],
+        { AUTOCODE_URL: t.url },
+        own,
+      )
+      expect(device.code).toBe(1)
+      expect(device.stderr).toContain("/dev/zero")
+      expect(device.stderr).toContain("not a regular file")
+      const pipe = join(own, "pipe.token")
+      expect(Bun.spawnSync(["mkfifo", pipe]).exitCode).toBe(0)
+      const fifo = await cli(
+        ["hosts", "--token-file", pipe],
+        { AUTOCODE_URL: t.url },
+        own,
+      )
+      expect(fifo.code).toBe(1)
+      expect(fifo.stderr).toContain("not a regular file")
+      expect(Date.now() - started).toBeLessThan(15_000)
+      const large = join(own, "large.token")
+      writeFileSync(large, `${t.admin}${" ".repeat(5000)}`)
+      const big = await cli(
+        ["hosts", "--token-file", large],
+        { AUTOCODE_URL: t.url },
+        own,
+      )
+      expect(big.code).toBe(1)
+      expect(big.stderr).toContain("too large")
       // no message ever shows what a file holds
-      for (const r of [plain, inbox, both, missing, folder, none, many]) {
+      for (const r of [
+        plain,
+        inbox,
+        both,
+        missing,
+        folder,
+        none,
+        many,
+        device,
+        fifo,
+        big,
+      ]) {
         expect(r.stderr).not.toContain(t.admin)
         expect(r.stderr).not.toContain(t.consumer)
       }
