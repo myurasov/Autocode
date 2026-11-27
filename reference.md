@@ -1126,6 +1126,7 @@ Autocode counts each agent's spend, can cap it per day, and compacts long sessio
   cap. They include agents that have unregistered. `autocode costs` also shows the context; in the web UI the
   context is on the Agents tab.
 - **What the agent sees.** `autocode_me action=status` shows its spend today and in total, its cap and what is left,
+  today's spend by kind and by what started the turn (see [Where the Money Goes](#where-the-money-goes)),
   and its context with its compaction threshold.
 - **The cap.** `daily_usd` caps an agent's spend per day. It is off by default.
 - **The warning.** At `cap_warn` of the cap (90%) the agent gets `[autocode] cost warning`, once a day.
@@ -1532,8 +1533,8 @@ are those of `autocode --help`.
 | `autocode info` | the server's ID and version, and the oldest OpenCode it works with |
 | `autocode hosts` | hosts: ID, machine, folder, online, OpenCode process, shell values, OpenCode version, plugin version, last seen |
 | `autocode agents [PATTERN]` | agents: ID, status, machine, spend today, context as a share of the threshold, last activity, description |
-| `autocode costs [--match PATTERN] [--days N]` | every agent's spend today and in total, cap and what is left, context and threshold, with a totals row. Unregistered agents too. `--days N` makes the totals cover the last N days |
-| `autocode costs AGENT` | one agent's spend, cap and context, and its spend per day |
+| `autocode costs [--match PATTERN] [--days N]` | every agent's spend today and in total, cap and what is left, context and threshold, its shares by kind (`WRITE`, `READ`, `IN`, `OUT`) and its Subagents' dollars, with a totals row. Unregistered agents too. `--days N` makes the totals and the shares cover the last N days |
+| `autocode costs AGENT [--days N]` | one agent's spend, cap and context; its spend by kind, its Subagents' part and its reload; its spend by what started the turn; and each day with its kinds. `--days N`: the split and the causes over the last N days, not all time (see [Where the Money Goes](#where-the-money-goes)) |
 | `autocode costs account AGENT` | count what the agent's session spent before it was first registered. For an agent that registered before v1.1.0-rc3; a later registration does it by itself (see [Spend and the Daily Cap](#spend-and-the-daily-cap)) |
 | **Agents** | |
 | `autocode agents register AGENT --session SESSION [--description TEXT] [--force]` | give a session an agent ID. `--force` takes the ID from a session that still exists |
@@ -1545,7 +1546,7 @@ are those of `autocode --help`.
 | `autocode stop-all` | pause every agent and interrupt every running turn, Subagents' too |
 | `autocode resume-all` | end the pauses that `stop-all` made. Agents that you paused yourself stay paused |
 | **Wakes** | |
-| `autocode wakes [AGENT]` | every wake, or one agent's: agent, name, trigger, next, check, turns and cost in the last 7 days, last set, text |
+| `autocode wakes [AGENT]` | every wake, or one agent's: agent, name, trigger, next, check, turns, cost and reload in the last 7 days, last set, text |
 | `autocode wake set AGENT NAME --trigger TRIGGER --text TEXT [--check COMMAND] [--check-timeout DURATION]` | set or replace a wake. `--check-timeout`: the check's own time limit, at most `check_timeout_max` |
 | `autocode wake cancel AGENT NAME` | remove a wake |
 | `autocode fire AGENT WAKE [--text TEXT]` | deliver a wake now. It skips its check. The prompt says that the owner fired it |

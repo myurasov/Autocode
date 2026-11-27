@@ -417,6 +417,8 @@ export async function settings(args: Parsed): Promise<number> {
 
 // "7 DAYS", "1 DAY".
 const daysText = (n: number) => `${n} DAY${n === 1 ? "" : "S"}`
+// "day" for one, "7 days" for more: after "last".
+const daysWord = (n: number) => (n === 1 ? "day" : `${n} days`)
 
 // Tier 0g: money to the cent, tokens with separators, a share to a tenth.
 const dollars = (n: unknown) => `$${Number(n).toFixed(2)}`
@@ -425,6 +427,47 @@ const tokens = (n: unknown) =>
 const share = (n: unknown) =>
   n === null || n === undefined ? "—" : `${Number(n).toFixed(1)}%`
 const cap = (k: any) => (k.daily_usd === "off" ? "off" : dollars(k.daily_usd))
+
+/*
+ * The spend by kind (1.1.0-rc7): a part's share of the dollars the split
+ * knows, as a whole percentage; a dash without any.
+ */
+const part = (usd: unknown, of: unknown) =>
+  Number(of) > 0 ? `${Math.round((Number(usd) / Number(of)) * 100)}%` : "—"
+const KINDS: [string, string][] = [
+  ["cache writes", "cache_write_usd"],
+  ["cache reads", "cache_read_usd"],
+  ["input", "input_usd"],
+  ["output", "output_usd"],
+]
+// What of a split's dollars no kind has: steps that could not be split.
+const unsplit = (s: any) =>
+  Math.max(
+    0,
+    s.usd - s.cache_write_usd - s.cache_read_usd - s.input_usd - s.output_usd,
+  )
+// The four kinds' shares for the list; dashes where nothing was split.
+function kindShares(s: any): string[] {
+  const split = s.usd - unsplit(s)
+  return KINDS.map(([, key]) => (split >= 0.005 ? part(s[key], s.usd) : "—"))
+}
+// "cache writes $0.20 (80%), ..., not split $0.10 (5%)": the kinds that the
+// split has, and what is not split when that is a cent or more.
+function kindsText(s: any): string {
+  const rest = unsplit(s)
+  const split = s.usd - rest
+  return [
+    ...(split >= 0.005 || rest < 0.005
+      ? KINDS.map(
+          ([name, key]) =>
+            `${name} ${dollars(s[key])} (${part(s[key], s.usd)})`,
+        )
+      : []),
+    ...(rest >= 0.005
+      ? [`not split ${dollars(rest)} (${part(rest, s.usd)})`]
+      : []),
+  ].join(", ")
+}
 const left = (k: any) => (k.left_usd === null ? "—" : dollars(k.left_usd))
 
 /*
@@ -432,7 +475,11 @@ const left = (k: any) => (k.left_usd === null ? "—" : dollars(k.left_usd))
  * it, its context and its compaction threshold with the share used (tier 0g),
  * unregistered ones with spend too, filtered by --match, with the totals;
  * --days X: the total over the last X days;
- * `costs AGENT`: one agent's, with its spend per day.
+ * `costs AGENT`: one agent's, with its spend per day. By kind (1.1.0-rc7):
+ * the list shows each agent's shares of cache writes, cache reads, input
+ * and output and its Subagents' dollars; `costs AGENT [--days X]` says the
+ * split, the reload, the spend by what started the turn and each day's
+ * kinds.
  */
 export async function costs(args: Parsed): Promise<number> {
   const [agent, target] = args.words
@@ -453,8 +500,19 @@ export async function costs(args: Parsed): Promise<number> {
     return 0
   }
   if (agent) {
-    const res = await c.call("GET", `/v1/costs/${encodeURIComponent(agent)}`)
+    const period = args.flags.days as string | undefined
+    const res = await c.call(
+      "GET",
+      `/v1/costs/${encodeURIComponent(agent)}` +
+        (period ? `?days=${encodeURIComponent(period)}` : ""),
+    )
     const k = res.cost
+    // by kind and by what started the turn (1.1.0-rc7); an older server
+    // says neither
+    const s = res.split
+    const over = res.period_days
+      ? `last ${daysWord(res.period_days)}`
+      : "all time"
     print(args, res, () =>
       [
         res.agent.startsWith("job:")
@@ -476,6 +534,41 @@ export async function costs(args: Parsed): Promise<number> {
             (k.compact_at
               ? `; threshold ${tokens(k.compact_at)}: ${share(k.context_share)}`
               : "; no compaction threshold"),
+        ...(s
+          ? [
+              s.usd > 0
+                ? `by kind, ${over}: ${kindsText(s)}`
+                : `by kind, ${over}: nothing counted`,
+              `Subagents ${dollars(s.subagents_usd)} ` +
+                `(${part(s.subagents_usd, s.usd)}); reload ` +
+                `${dollars(s.reload_usd)} (${part(s.reload_usd, s.usd)}) in ` +
+                `${s.turns} turn${s.turns === 1 ? "" : "s"}` +
+                (s.turns > 0
+                  ? `, ${dollars(s.reload_usd / s.turns)} a turn`
+                  : ""),
+              "",
+              res.causes?.length
+                ? table(
+                    res.causes.map((x: any) => [
+                      x.cause,
+                      String(x.turns),
+                      dollars(x.usd),
+                      x.turns > 0 ? dollars(x.usd / x.turns) : "—",
+                      dollars(x.reload_usd),
+                      dollars(x.subagents_usd),
+                    ]),
+                    [
+                      "STARTED BY",
+                      "TURNS",
+                      "SPEND",
+                      "PER TURN",
+                      "RELOAD",
+                      "SUBAGENTS",
+                    ],
+                  )
+                : "no turns counted",
+            ]
+          : []),
         "",
         res.days.length
           ? table(
@@ -483,8 +576,22 @@ export async function costs(args: Parsed): Promise<number> {
                 d.day,
                 dollars(d.usd),
                 String(d.steps),
+                ...(d.split
+                  ? [
+                      dollars(d.split.cache_write_usd),
+                      dollars(d.split.cache_read_usd),
+                      dollars(d.split.input_usd),
+                      dollars(d.split.output_usd),
+                      dollars(d.split.subagents_usd),
+                    ]
+                  : []),
               ]),
-              ["DAY", "SPEND", "STEPS"],
+              [
+                "DAY",
+                "SPEND",
+                "STEPS",
+                ...(s ? ["WRITE", "READ", "IN", "OUT", "SUBAGENTS"] : []),
+              ],
             )
           : "no spend kept",
         `days in ${res.timezone}`,
@@ -514,6 +621,10 @@ export async function costs(args: Parsed): Promise<number> {
                 tokens(a.context),
                 tokens(a.compact_at),
                 share(a.context_share),
+                // by kind (1.1.0-rc7), as shares of what the split knows
+                ...(a.split
+                  ? [...kindShares(a.split), dollars(a.split.subagents_usd)]
+                  : []),
               ]),
               // the totals of what is listed
               [
@@ -526,6 +637,9 @@ export async function costs(args: Parsed): Promise<number> {
                 "",
                 "",
                 "",
+                ...(t.split
+                  ? [...kindShares(t.split), dollars(t.split.subagents_usd)]
+                  : []),
               ],
             ],
             [
@@ -538,6 +652,7 @@ export async function costs(args: Parsed): Promise<number> {
               "CONTEXT",
               "THRESHOLD",
               "SHARE",
+              ...(t.split ? ["WRITE", "READ", "IN", "OUT", "SUBAGENTS"] : []),
             ],
           )
         : match

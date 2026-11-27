@@ -261,6 +261,90 @@ describe("autocode_me compact and status", () => {
     )
   })
 
+  // 1.1.0-rc7: what today's dollars were, and what started the turns.
+  test("status says today's spend by kind, the Subagents' part, and by what started the turn", async () => {
+    const me = (cost: Record<string, unknown>) => async () => ({
+      registered: true,
+      session: "ses_a",
+      agent: { id: "team:a", status: "idle", machine: "m1" },
+      server: {
+        id: "s",
+        time: "2026-10-28T12:00:00.000Z",
+        timezone: "America/Los_Angeles",
+      },
+      settings: { min_interval: "1m" },
+      wakes: { count: 0, next: null },
+      waiting: 0,
+      cost: { today_usd: 20, total_usd: 40, daily_usd: "off", ...cost },
+    })
+    const split = {
+      usd: 20,
+      cache_write_usd: 9,
+      cache_read_usd: 5.8,
+      input_usd: 0.2,
+      output_usd: 4.8,
+      subagents_usd: 3.2,
+      reload_usd: 6,
+      turns: 18,
+    }
+    const causes = [
+      { cause: "owner", turns: 9, usd: 12, reload_usd: 1.5 },
+      { cause: "message", turns: 7, usd: 5, reload_usd: 2 },
+      { cause: "wake", turns: 2, usd: 3, reload_usd: 2.5 },
+      { cause: "earlier", turns: 0, usd: 0.001, reload_usd: 0 },
+    ]
+    const text = await runMe(
+      { action: "status" },
+      me({ today_split: split, today_causes: causes }) as any,
+    )
+    expect(text).toContain(
+      "Today by kind: cache writes $9.00 (45%), cache reads $5.80 (29%), " +
+        "new input $0.20 (1%), output $4.80 (24%); not split $0.20 (1%). " +
+        "Your Subagents: $3.20 (16%). Reloading the context at the start " +
+        "of turns: $6.00 (30%).",
+    )
+    expect(text).toContain(
+      "Today by what started the turn: owner $12.00 in 9 turns, message " +
+        "$5.00 in 7, wake $3.00 in 2.",
+    )
+    // nothing to say: no lines; an older server says neither
+    const none = await runMe(
+      { action: "status" },
+      me({
+        today_split: { ...split, usd: 0 },
+        today_causes: [],
+      }) as any,
+    )
+    expect(none).not.toContain("Today by")
+    expect(await runMe({ action: "status" }, me({}) as any)).not.toContain(
+      "Today by",
+    )
+    // all of it one kind's, nothing else: said plainly
+    const plain = await runMe(
+      { action: "status" },
+      me({
+        today_split: {
+          usd: 1,
+          cache_write_usd: 0,
+          cache_read_usd: 0,
+          input_usd: 0,
+          output_usd: 0,
+          subagents_usd: 0,
+          reload_usd: 0,
+          turns: 1,
+        },
+        today_causes: [{ cause: "owner", turns: 1, usd: 1, reload_usd: 0 }],
+      }) as any,
+    )
+    expect(plain).toContain(
+      "Today by kind: not split $1.00 (100%; the model has no prices in " +
+        "OpenCode's list).",
+    )
+    expect(plain).toContain(
+      "Today by what started the turn: owner $1.00 in 1 turn.",
+    )
+  })
+
   test("status without a cap, a known window or a threshold", async () => {
     const call = async () => ({
       registered: true,

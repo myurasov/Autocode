@@ -239,9 +239,10 @@ describe("owner commands", () => {
     expect(all.stdout).toMatch(/test -f todo \(up to 5m\)/)
     // 1.1.0: what each wake cost in the last 7 days
     expect(all.stdout).toMatch(
-      /AGENT\s+NAME\s+TRIGGER\s+NEXT\s+CHECK\s+TURNS 7D\s+COST 7D\s+LAST SET\s+TEXT/,
+      /AGENT\s+NAME\s+TRIGGER\s+NEXT\s+CHECK\s+TURNS 7D\s+COST 7D\s+RELOAD 7D\s+LAST SET\s+TEXT/,
     )
-    expect(all.stdout).toMatch(/\(up to 5m\)\s+0\s+\$0\.00\s+\d{4}-/)
+    // and of it, what reloaded the context (1.1.0-rc7)
+    expect(all.stdout).toMatch(/\(up to 5m\)\s+0\s+\$0\.00\s+\$0\.00\s+\d{4}-/)
     // when each was last set, in the machine's local time
     expect(all.stdout).toMatch(
       /kaggle:lead\s+standup\s+.*\d{4}-\d\d-\d\d \d\d:\d\d [A-Z]{3,5}\s+Standup\./,
@@ -610,7 +611,12 @@ describe("costs", () => {
     })
     await report(t, "m:1", [
       step("ses_1", 0.5, 60_000),
-      step("ses_2", 0.25, 10_000),
+      // by kind (1.1.0-rc7): four fifths of it cache writes, the rest output
+      {
+        ...step("ses_2", 0.25, 10_000),
+        tokens: { input: 0, output: 1000, read: 0, write: 4000 },
+        rates: { input: 1, output: 1, read: 1, write: 1 },
+      },
     ])
     const res = await cli(["costs"], asAdmin())
     expect(res.code, res.stderr).toBe(0)
@@ -625,6 +631,12 @@ describe("costs", () => {
       "CONTEXT",
       "THRESHOLD",
       "SHARE",
+      // 1.1.0-rc7: the spend by kind, as shares, and the Subagents' dollars
+      "WRITE",
+      "READ",
+      "IN",
+      "OUT",
+      "SUBAGENTS",
     ])
     const lead = lines.find((l) => l.startsWith("kaggle:lead "))
     expect(lead?.split(/\s+/)).toEqual([
@@ -637,8 +649,17 @@ describe("costs", () => {
       "60,000",
       "100,000",
       "60.0%",
+      // its step said neither tokens nor rates: not split
+      "—",
+      "—",
+      "—",
+      "—",
+      "$0.00",
     ])
     expect(res.stdout).toMatch(/kaggle:worker\s+idle\s+\$0\.25\s+off\s+—/)
+    expect(res.stdout).toMatch(
+      /^kaggle:worker .*\s80%\s+0%\s+0%\s+20%\s+\$0\.00$/m,
+    )
     // the totals of what is listed (the owner, 2026-11-08)
     expect(lines.at(-2)?.split(/\s+/).slice(0, 3)).toEqual([
       "TOTAL",
@@ -672,8 +693,31 @@ describe("costs", () => {
       /context 60,000 tokens of 200,000; threshold 100,000: 60\.0%/,
     )
     expect(res.stdout).toMatch(
-      /DAY\s+SPEND\s+STEPS\n\d{4}-\d\d-\d\d\s+\$0\.50\s+1/,
+      /DAY\s+SPEND\s+STEPS\s+WRITE\s+READ\s+IN\s+OUT\s+SUBAGENTS\n\d{4}-\d\d-\d\d\s+\$0\.50\s+1\s/,
     )
+    // 1.1.0-rc7: by kind, the Subagents' part, the reload, and by what
+    // started the turn; this agent's step was not split
+    expect(res.stdout).toContain("by kind, all time: not split $0.50 (100%)")
+    const worker = await cli(["costs", "kaggle:worker"], asAdmin())
+    expect(worker.stdout).toContain(
+      "by kind, all time: cache writes $0.20 (80%), cache reads $0.00 (0%), " +
+        "input $0.00 (0%), output $0.05 (20%)",
+    )
+    expect(worker.stdout).toContain(
+      "Subagents $0.00 (0%); reload $0.20 (80%) in 0 turns",
+    )
+    expect(worker.stdout).toMatch(
+      /STARTED BY\s+TURNS\s+SPEND\s+PER TURN\s+RELOAD\s+SUBAGENTS\nother\s+0\s+\$0\.25\s+—\s+\$0\.20\s+\$0\.00/,
+    )
+    expect(worker.stdout).toMatch(
+      /\d{4}-\d\d-\d\d\s+\$0\.25\s+1\s+\$0\.20\s+\$0\.00\s+\$0\.00\s+\$0\.05\s+\$0\.00/,
+    )
+    // a period
+    const last = await cli(["costs", "kaggle:worker", "--days", "1"], asAdmin())
+    expect(last.stdout).toContain("by kind, last day: cache writes $0.20 (80%)")
+    expect(
+      (await cli(["costs", "kaggle:worker", "--days", "0"], asAdmin())).code,
+    ).toBe(1)
     expect((await cli(["costs", "kaggle:none"], asAdmin())).code).toBe(1)
   })
 

@@ -75,9 +75,12 @@ Look
                              version
   agents [PATTERN]           agents: status, spend today, context
   costs [--match PATTERN] [--days N]
-                             every agent's spend, daily cap and context;
-                             --days N: the total over the last N days
-  costs AGENT                one agent's spend, with its spend per day
+                             every agent's spend, daily cap and context,
+                             its shares by kind (cache writes, cache
+                             reads, input, output) and its Subagents';
+                             --days N: over the last N days
+  costs AGENT [--days N]     one agent's spend: by kind, by what started
+                             the turn, and per day
   costs account AGENT        count what its session spent before it
                              registered (once; for an agent that registered
                              before v1.1.0-rc3)

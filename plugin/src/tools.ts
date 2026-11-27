@@ -384,7 +384,7 @@ export async function runMe(
         )
       // spend today and in total, the cap and what is left, the context and
       // its share of the compaction threshold (tiers 0e, 0g)
-      if (me.cost) lines.push(costLine(me.cost))
+      if (me.cost) lines.push(costLine(me.cost), ...splitLines(me.cost))
       // open questions, permissions and approvals (tier 0d)
       if (me.asks?.length)
         lines.push(
@@ -951,6 +951,69 @@ function costLine(k: any): string {
 }
 
 /*
+ * What status says of today's spend by kind and by cause (1.1.0-rc7; an
+ * older server says neither, and a day with no spend has nothing to say):
+ * the four kinds' dollars and shares, what could not be split, the
+ * Subagents' part and the reload; then the causes with a cent or more.
+ */
+function splitLines(k: any): string[] {
+  const s = k?.today_split
+  const total = Number(s?.usd) || 0
+  if (!s || total < 0.005) return []
+  const share = (usd: unknown) =>
+    `${Math.round(((Number(usd) || 0) / total) * 100)}%`
+  const kinds: [string, unknown][] = [
+    ["cache writes", s.cache_write_usd],
+    ["cache reads", s.cache_read_usd],
+    ["new input", s.input_usd],
+    ["output", s.output_usd],
+  ]
+  const known = kinds.reduce((n, [, usd]) => n + (Number(usd) || 0), 0)
+  const rest = Math.max(0, total - known)
+  const none = known < 0.005
+  let line = "Today by kind: "
+  if (none)
+    line +=
+      `not split ${dollars(rest)} (100%; the model has no prices in ` +
+      "OpenCode's list)."
+  else
+    line +=
+      kinds
+        .map(([name, usd]) => `${name} ${dollars(usd)} (${share(usd)})`)
+        .join(", ") +
+      (rest >= 0.005 ? `; not split ${dollars(rest)} (${share(rest)})` : "") +
+      "."
+  const sub = Number(s.subagents_usd) || 0
+  if (sub >= 0.005) line += ` Your Subagents: ${dollars(sub)} (${share(sub)}).`
+  const reload = Number(s.reload_usd) || 0
+  if (reload >= 0.005)
+    line +=
+      " Reloading the context at the start of turns: " +
+      `${dollars(reload)} (${share(reload)}).`
+  const lines = [line]
+  const causes = (Array.isArray(k.today_causes) ? k.today_causes : []).filter(
+    (c: any) => (Number(c?.usd) || 0) >= 0.005,
+  )
+  if (causes.length)
+    lines.push(
+      "Today by what started the turn: " +
+        causes
+          .map((c: any, i: number) => {
+            const n = Number(c.turns) || 0
+            return (
+              `${c.cause} ${dollars(c.usd)} in ${n}` +
+              (i === 0 || causes.length === 1
+                ? ` turn${n === 1 ? "" : "s"}`
+                : "")
+            )
+          })
+          .join(", ") +
+        ".",
+    )
+  return lines
+}
+
+/*
  * What a wake cost in the last 7 days (1.1.0): the turns its prompts
  * started and their dollars, and how often it fell due and its check
  * skipped it; "" for a wake with nothing to say yet.
@@ -959,8 +1022,15 @@ function weekOf(w: any): { turns: string; counts: string } | null {
   const k = w?.week
   if (!k || !(k.due || k.skipped || k.turns || k.usd)) return null
   const n = Number(k.turns) || 0
+  // of it, what its turns' first steps cost to load the context
+  // (1.1.0-rc7)
+  const reload = Number(k.reload_usd) || 0
   return {
-    turns: `${n} turn${n === 1 ? "" : "s"}, ${dollars(k.usd)}`,
+    turns:
+      `${n} turn${n === 1 ? "" : "s"}, ${dollars(k.usd)}` +
+      (reload >= 0.005
+        ? `, ${dollars(reload)} of it to reload the context`
+        : ""),
     counts: `due ${Number(k.due) || 0}, skipped ${Number(k.skipped) || 0}`,
   }
 }

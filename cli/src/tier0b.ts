@@ -59,6 +59,11 @@ function wakeTable(wakes: any[]): string {
       // started, and their dollars
       String(w.week?.turns ?? ""),
       w.week ? `$${Number(w.week.usd).toFixed(2)}` : "",
+      // of it, what its turns' first steps cost to load the context
+      // (1.1.0-rc7)
+      w.week?.reload_usd === undefined
+        ? ""
+        : `$${Number(w.week.reload_usd).toFixed(2)}`,
       local(w.updated_at),
       String(w.text).split("\n")[0] ?? "",
     ]),
@@ -70,6 +75,7 @@ function wakeTable(wakes: any[]): string {
       "CHECK",
       "TURNS 7D",
       "COST 7D",
+      "RELOAD 7D",
       "LAST SET",
       "TEXT",
     ],

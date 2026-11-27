@@ -519,7 +519,7 @@ test("the reference says what each wake costs, where it shows and what is not co
   for (const part of [
     "### What a Wake Costs",
     "**Last 7 Days**",
-    "| `autocode wakes [AGENT]` | every wake, or one agent's: agent, name, trigger, next, check, turns and cost in the last 7 days, last set, text |",
+    "| `autocode wakes [AGENT]` | every wake, or one agent's: agent, name, trigger, next, check, turns, cost and reload in the last 7 days, last set, text |",
     // 1.1.0-rc2 (the owner, 2026-11-20: "can we fix that?"): such a turn
     // counts for the wake before it
     "| turns | the turns that its prompts started, and the turns that OpenCode started by itself for work they began |",

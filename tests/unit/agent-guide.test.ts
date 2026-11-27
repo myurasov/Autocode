@@ -651,7 +651,15 @@ describe("autocode_wake", () => {
       trigger: "every 1h",
       next: "2026-10-28T13:00:00.000Z",
       due: "2026-10-28T13:00:00.000Z",
-      week: { due: 118, skipped: 1, turns: 117, usd: 225.214 },
+      // 1.1.0-rc7: of it, what its turns' first steps cost to load the
+      // context
+      week: {
+        due: 118,
+        skipped: 1,
+        turns: 117,
+        usd: 225.214,
+        reload_usd: 171.5,
+      },
     })
     const quiet = wake({
       name: "quiet",
@@ -664,14 +672,15 @@ describe("autocode_wake", () => {
     })
     const list = (await runWake({ action: "list" }, call)).split("\n")
     expect(list[1]).toEndWith(
-      "; last 7 days: 117 turns, $225.21 (due 118, skipped 1)",
+      "; last 7 days: 117 turns, $225.21, $171.50 of it to reload the " +
+        "context (due 118, skipped 1)",
     )
     expect(list[3]).toBe(
       "quiet: fire-only; runs only when fired; last set 2026-10-28 05:00 PDT",
     )
     expect(await runWake({ action: "show", name: "hourly" }, call)).toContain(
-      "Last 7 days: 117 turns, $225.21; it fell due 118 times, and its " +
-        "check skipped 1.",
+      "Last 7 days: 117 turns, $225.21, $171.50 of it to reload the " +
+        "context; it fell due 118 times, and its check skipped 1.",
     )
     expect(await runWake({ action: "show", name: "quiet" }, call)).toContain(
       "Last 7 days: no turns.",

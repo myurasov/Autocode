@@ -179,7 +179,9 @@ More:
   (your Subagents' steps too, however long they work, and the turns
   that followed by themselves when a Subagent's result or a background
   command's end came: each counts for the wake whose turn started that
-  work), how often it fell due and how often its check skipped it. A
+  work), what of those dollars went to reloading your context when
+  its turns started, how often it fell due and how often its check
+  skipped it. A
   wake that costs much and
   mostly finds nothing to do belongs in a check (see Checks);
   `show` one whole; `cancel` removes a wake and any of its runs still
@@ -422,6 +424,18 @@ submission, a refresh of shared data.
   compaction threshold and its share. The owner sees the same, live.
   Every prompt from Autocode says today's spend and your context in
   its last line, so a wake's turn needs no status call for them.
+- `autocode_me status` also says what today's dollars were: cache
+  writes (context written to the provider's cache: new context, and
+  old context whose cache had expired), cache reads (context read back
+  from it, each step), new input and output; your Subagents' part; and
+  the spend by what started the turn (`wake`, `message`, `owner`,
+  `compaction`, `job`, `ask`, `retry`; `run` is your jobs' runs). The
+  first step of a turn loads your whole context: that is the turn's
+  reload. A turn that starts after the provider's cache has expired
+  pays for writing all of it again, so a few long turns cost less than
+  many short ones far apart, and a small context makes every step and
+  every start cheaper. A Subagent runs on your model unless you name
+  another: name a cheaper one for reading and mechanical work.
 - At `cap_warn` of the cap (90% unless the owner set another) you get
   `[autocode] cost warning`, once a day. Past the cap you are paused
   after the turn that passed it: nothing is injected until the next day
