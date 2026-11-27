@@ -37,7 +37,7 @@ import {
 } from './costs-page';
 
 // A period's spend by kind (1.1.0-rc7): $10, of which $4.50 cache writes,
-// $2.90 cache reads, $0.10 input, $2.00 output and $0.50 not split; $3.10
+// $2.90 cache reads, $0.10 input, $2.00 output, $0.50 uncategorized; $3.10
 // of it the Subagents'.
 const SPLIT: CostSplit = {
   usd: 10,
@@ -731,7 +731,7 @@ describe('CostsPage', () => {
     expect(bar.querySelector('.tip')!.getAttribute('aria-hidden')).toBe('true');
     expect(bar.getAttribute('aria-label')).toBe(
       'Cache Writes $4.50 (45%), Cache Reads $2.90 (29%), Input $0.10 (1%), ' +
-        'Output $2.00 (20%), Not Split $0.50 (5%)',
+        'Output $2.00 (20%), Uncategorized $0.50 (5%)',
     );
     expect([...bar.querySelectorAll('.tip .line')].map((x) => text(x))).toEqual(
       [
@@ -739,7 +739,7 @@ describe('CostsPage', () => {
         'Cache Reads$2.9029%',
         'Input$0.101%',
         'Output$2.0020%',
-        'Not Split$0.505%',
+        'Uncategorized$0.505%',
       ],
     );
     // the period's total is more than the split knows: said under the parts
@@ -894,7 +894,7 @@ describe('CostsPage', () => {
         input_usd: 0,
         output_usd: 0,
       }).at(-1),
-    ).toEqual({ key: 'rest', label: 'Not Split', usd: 10, share: 100 });
+    ).toEqual({ key: 'rest', label: 'Uncategorized', usd: 10, share: 100 });
     for (const none of [undefined, null, { ...SPLIT, usd: 0 }])
       expect(splitParts(none)).toEqual([]);
     expect(subagentsText(SPLIT)).toBe('$3.10 (31%)');

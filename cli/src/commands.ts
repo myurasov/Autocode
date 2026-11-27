@@ -451,8 +451,8 @@ function kindShares(s: any): string[] {
   const split = s.usd - unsplit(s)
   return KINDS.map(([, key]) => (split >= 0.005 ? part(s[key], s.usd) : "—"))
 }
-// "cache writes $0.20 (80%), ..., not split $0.10 (5%)": the kinds that the
-// split has, and what is not split when that is a cent or more.
+// "cache writes $0.20 (80%), ..., uncategorized $0.10 (5%)": the kinds that
+// the split has, and what no kind has when that is a cent or more.
 function kindsText(s: any): string {
   const rest = unsplit(s)
   const split = s.usd - rest
@@ -464,7 +464,7 @@ function kindsText(s: any): string {
         )
       : []),
     ...(rest >= 0.005
-      ? [`not split ${dollars(rest)} (${part(rest, s.usd)})`]
+      ? [`uncategorized ${dollars(rest)} (${part(rest, s.usd)})`]
       : []),
   ].join(", ")
 }

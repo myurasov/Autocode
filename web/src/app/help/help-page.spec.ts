@@ -1094,6 +1094,9 @@ describe('HelpPage', () => {
       'Split is one bar per agent: its spend by kind over the period',
       'cache writes in amber, cache reads in blue, input in grey and ' +
         'output in green',
+      // the owner, 2026-11-27: its name, and a grey of its own
+      'what could not be divided into kinds is Uncategorized, in a ' +
+        'lighter grey on the dark theme and a darker one on the light',
       'Hover over the bar, or tab to it, for the dollars and the share of ' +
         'each',
       "Subagents is the part that ran in the agent's Subagents' sessions",
@@ -1107,6 +1110,9 @@ describe('HelpPage', () => {
         "spends to keep the session's cache alive between turns",
       'They count toward the daily cap',
       "the pause stops turns, not OpenCode's warming",
+      // the owner, 2026-11-27: "can we give it more obvious name"
+      "a step of a model without prices in OpenCode's list is counted " +
+        'whole, as Uncategorized',
     ])
       expect(outside, part).toContain(part);
     // where the money goes, in words the owner can act on

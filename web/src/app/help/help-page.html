@@ -572,7 +572,9 @@
         Input: new input outside the cache. Output: the model's answer and
         its thinking. A step's dollars are divided in the proportion of its
         tokens of each kind times the model's price for that kind; a step of
-        a model without prices in OpenCode's list is counted, not split.
+        a model without prices in OpenCode's list is counted whole, as
+        Uncategorized. So are a compaction's own cost and what a session
+        spent before it registered.
       </li>
       <li>
         By Subagents: the steps that ran in a Subagent's session. A Subagent
@@ -1921,8 +1923,10 @@ autocode job set daily-report --host HOST --model MODEL \
       <li>
         Split is one bar per agent: its spend by kind over the period, with
         cache writes in amber, cache reads in blue, input in grey and output
-        in green; what could not be split stays the bar's own grey. Hover
-        over the bar, or tab to it, for the dollars and the share of each.
+        in green; what could not be divided into kinds is Uncategorized, in
+        a lighter grey on the dark theme and a darker one on the light.
+        Hover over the bar, or tab to it, for the dollars and the share of
+        each.
         See
         <a routerLink="/help" fragment="spend">{{ sec.spend.label }}</a>.
       </li>

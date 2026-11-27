@@ -1161,8 +1161,9 @@ spend three ways: by kind, by Subagents, and by what started the turn.
   as OpenCode's model list has it. The four parts add up to what OpenCode recorded for the step.
 - **It is an estimate where a step was priced otherwise:** by a price tier for a large context, or by a cost
   that the provider reported itself. The proportions then follow the list prices.
-- **Not split.** A step of a model without prices in OpenCode's list counts in full but has no parts. So do the
-  steps from before a session registered, and a compaction's own cost.
+- **Uncategorized.** A step of a model without prices in OpenCode's list counts in full but has no parts. So do
+  the steps from before a session registered, and a compaction's own cost. These dollars show as **Uncategorized**:
+  a grey part at the end of the Split bar, and `uncategorized` in `autocode costs AGENT` and `autocode_me status`.
 - **Spend from before v1.1.0-rc7** is in the totals and in no split: the numbers here start with that version.
 
 **Subagents.** The steps that ran in a Subagent's session, in dollars and as a share.

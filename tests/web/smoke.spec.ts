@@ -2323,7 +2323,7 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Details sho
       "Input",
       "Output",
       // the fixture's other steps said no tokens
-      "Not Split",
+      "Uncategorized",
     ].slice(0, await tip.locator(".line").count()),
   )
   await expect(tip.locator(".line").first()).toHaveText(
@@ -2523,10 +2523,12 @@ function contrast(a: number[], b: number[]): number {
  * on details button, so its visually vertically centered" (it sat 2 px
  * under the middle of the label: on the baseline less 2 px, as a group
  * heading's chevron) and "in split col make "not split" more distinct from
- * bg color" (it had the bar's own background). Both are read from pictures
- * of the page.
+ * bg color" (it had the bar's own background), then, of the hatch that
+ * followed: "make it light grey color (on dark), dark grey (on ligh
+ * theme), instead of striped grey", under the name Uncategorized. Both are
+ * read from pictures of the page.
  */
-test("Costs: the Details button's arrow sits at the middle of its label; Not Split is hatched, apart from the row", async ({
+test("Costs: the Details button's arrow sits at the middle of its label; Uncategorized is a grey of its own, apart from the row and from new input", async ({
   browser,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -2612,33 +2614,50 @@ test("Costs: the Details button's arrow sits at the middle of its label; Not Spl
   ).toBeLessThanOrEqual(1.1)
   await button.click()
   /*
-   * Not Split: hatched, so it is told apart from the row behind it and
-   * from the solid grey of new input, in both themes; the tip's key for
-   * it is hatched the same way.
+   * Uncategorized (it was Not Split): one flat grey, light on the dark
+   * theme and dark on the light one, well apart from the row behind it and
+   * from the grey of new input; the tip's key for it has the same color.
    */
   const bar = row.locator("td.split .split-bar")
   const rest = bar.locator(".seg.rest")
   await expect(rest).toBeVisible()
-  for (const theme of ["one", "the other"]) {
+  const rgb = (css: string) => (css.match(/\d+/g) ?? []).slice(0, 3).map(Number)
+  const color = (of: Locator) =>
+    of.evaluate((e) => {
+      const css = getComputedStyle(e)
+      return { color: css.backgroundColor, image: css.backgroundImage }
+    })
+  for (const turn of ["one theme", "the other"]) {
     await page.mouse.move(5, 5)
+    const dark = await page.evaluate(() =>
+      document.documentElement.classList.contains("dark"),
+    )
+    const theme = `${turn} (${dark ? "dark" : "light"})`
     const behind = (
       await seenIn(blank, await row.locator("td.split").screenshot())
     ).background
     const seen = await seenIn(blank, await rest.screenshot())
-    const apart = seen.colors.filter((c) => contrast(c, behind) >= 3.5)
-    const share = apart.reduce((n, c) => n + c[3]!, 0)
+    // one flat color: the commonest is nearly all of the part (its
+    // picture may take in a row of pixels beside the 8 of the bar; the
+    // hatch had 56%)
+    expect(seen.colors[0]![3], theme).toBeGreaterThanOrEqual(0.8)
+    expect(contrast(seen.background, behind), theme).toBeGreaterThanOrEqual(3.5)
+    // light grey on dark, dark grey on light
+    const [r, g, b] = seen.background
+    expect(Math.max(r!, g!, b!) - Math.min(r!, g!, b!), theme).toBeLessThan(30)
+    if (dark) expect(Math.min(r!, g!, b!), theme).toBeGreaterThan(150)
+    else expect(Math.max(r!, g!, b!), theme).toBeLessThan(100)
+    // not hatched, and the tip's key is the same
+    const own = await color(rest)
+    expect(own.image, theme).toBe("none")
+    expect(rgb(own.color), theme).toEqual(seen.background)
+    expect(await color(bar.locator(".tip .key.rest")), theme).toEqual(own)
+    // apart from new input's grey
+    const input = await color(bar.locator(".tip .key.input"))
     expect(
-      share,
-      `${theme}: ${JSON.stringify(seen.colors.slice(0, 4))}`,
-    ).toBeGreaterThanOrEqual(0.2)
-    // not one flat color: the row's own would say nothing, new input's
-    // would be taken for input
-    expect(share, theme).toBeLessThanOrEqual(0.7)
-    for (const part of [rest, bar.locator(".tip .key.rest")])
-      expect(
-        await part.evaluate((e) => getComputedStyle(e).backgroundImage),
-        theme,
-      ).toContain("repeating-linear-gradient")
+      contrast(rgb(own.color), rgb(input.color)),
+      theme,
+    ).toBeGreaterThanOrEqual(1.8)
     await page.getByRole("button", { name: "Light or dark" }).click()
   }
   await context.close()

@@ -703,7 +703,7 @@ describe("costs", () => {
     // started the turn; this agent's step was not split
     // (with the dollars that the split covers)
     expect(res.stdout).toContain(
-      "by kind, all time ($0.50): not split $0.50 (100%)\n",
+      "by kind, all time ($0.50): uncategorized $0.50 (100%)\n",
     )
     // its step was of no turn: no reload, and no "in 0 turns"
     expect(res.stdout).toContain("Subagents $0.00 (0%); reload $0.00 (0%)\n")

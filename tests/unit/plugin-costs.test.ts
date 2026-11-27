@@ -299,7 +299,8 @@ describe("autocode_me compact and status", () => {
     )
     expect(text).toContain(
       "Today by kind: cache writes $9.00 (45%), cache reads $5.80 (29%), " +
-        "new input $0.20 (1%), output $4.80 (24%); not split $0.20 (1%). " +
+        "new input $0.20 (1%), output $4.80 (24%); uncategorized $0.20 " +
+        "(1%). " +
         "Your Subagents: $3.20 (16%). Reloading the context at the start " +
         "of turns: $6.00 (30%).",
     )
@@ -337,8 +338,8 @@ describe("autocode_me compact and status", () => {
       }) as any,
     )
     expect(plain).toContain(
-      "Today by kind: not split $1.00 (100%; the model has no prices in " +
-        "OpenCode's list).",
+      "Today by kind: uncategorized $1.00 (100%; the model has no prices " +
+        "in OpenCode's list).",
     )
     expect(plain).toContain(
       "Today by what started the turn: owner $1.00 in 1 turn.",

@@ -96,7 +96,8 @@ export function splitParts(s: CostSplit | null | undefined): SplitPart[] {
     ['output', 'Output', s.output_usd],
   ];
   const rest = Math.max(0, s.usd - kinds.reduce((n, k) => n + k[2], 0));
-  if (rest >= 0.005) kinds.push(['rest', 'Not Split', rest]);
+  // what no kind has (the owner, 2026-11-27: it was called Not Split)
+  if (rest >= 0.005) kinds.push(['rest', 'Uncategorized', rest]);
   return kinds.map(([key, label, usd]) => ({
     key,
     label,

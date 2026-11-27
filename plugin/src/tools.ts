@@ -953,7 +953,7 @@ function costLine(k: any): string {
 /*
  * What status says of today's spend by kind and by cause (1.1.0-rc7; an
  * older server says neither, and a day with no spend has nothing to say):
- * the four kinds' dollars and shares, what could not be split, the
+ * the four kinds' dollars and shares, what no kind has (uncategorized), the
  * Subagents' part and the reload; then the causes with a cent or more.
  */
 function splitLines(k: any): string[] {
@@ -974,14 +974,16 @@ function splitLines(k: any): string[] {
   let line = "Today by kind: "
   if (none)
     line +=
-      `not split ${dollars(rest)} (100%; the model has no prices in ` +
+      `uncategorized ${dollars(rest)} (100%; the model has no prices in ` +
       "OpenCode's list)."
   else
     line +=
       kinds
         .map(([name, usd]) => `${name} ${dollars(usd)} (${share(usd)})`)
         .join(", ") +
-      (rest >= 0.005 ? `; not split ${dollars(rest)} (${share(rest)})` : "") +
+      (rest >= 0.005
+        ? `; uncategorized ${dollars(rest)} (${share(rest)})`
+        : "") +
       "."
   const sub = Number(s.subagents_usd) || 0
   if (sub >= 0.005) line += ` Your Subagents: ${dollars(sub)} (${share(sub)}).`

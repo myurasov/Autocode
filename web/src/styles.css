@@ -889,11 +889,13 @@ table.costs .graph > .col:focus-visible .tip {
 /*
  * Split (1.1.0-rc7): the period's spend by kind as one bar, 110 px wide and
  * 8 px high: cache writes amber (the part a warm cache or a smaller context
- * saves), cache reads blue, new input grey, output green, what could not be
- * split hatched (the owner, 2026-11-27: "make "not split" more distinct from
- * bg color"; it had the bar's own background, hardly apart from the row's:
- * now lines across it, darker than new input's solid grey and unlike the
- * row). Its parts with their dollars and shares
+ * saves), cache reads blue, new input grey, output green, and what could not
+ * be divided into kinds, Uncategorized, in a grey of its own (the owner,
+ * 2026-11-27: "make "not split" more distinct from bg color", then, of a
+ * hatch: "make it light grey color (on dark), dark grey (on ligh theme),
+ * instead of striped grey"): the label color, dark on the light theme and
+ * light on the dark one, apart from the row and from new input's fainter
+ * grey. Its parts with their dollars and shares
  * show at once beside it, on hover and on focus: left of the bar and
  * centred on it, where the frame (which clips what leaves it) has room in
  * the first row and in the totals row alike.
@@ -937,11 +939,7 @@ table.costs .tip .key.output {
 }
 table.costs .split-bar .rest,
 table.costs .tip .key.rest {
-  background: repeating-linear-gradient(
-    135deg,
-    var(--fg-dim) 0 1.5px,
-    var(--soft) 1.5px 4px
-  );
+  background: var(--fg-label);
 }
 table.costs tr.gone .split-bar .seg {
   opacity: 0.55;
