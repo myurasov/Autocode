@@ -714,7 +714,8 @@ describe('CostsPage', () => {
       'td.split .split-bar',
     ) as HTMLElement;
     expect(
-      [...bar.querySelectorAll(':scope > .seg')].map((x) => [
+      // the parts sit in a box of their own, clipped to the bar's ends
+      [...bar.querySelectorAll(':scope > .segs > .seg')].map((x) => [
         [...x.classList].filter((c) => c !== 'seg').join(' '),
         (x as HTMLElement).style.width,
       ]),

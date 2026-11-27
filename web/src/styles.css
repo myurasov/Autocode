@@ -907,19 +907,30 @@ table.costs th.split {
 }
 table.costs .split-bar {
   position: relative;
-  display: flex;
+  display: block;
   width: 110px;
   height: 8px;
   background: var(--soft);
   border-radius: 2px;
   outline: none;
 }
+/*
+ * Its parts sit in a box that is clipped to the bar's rounded ends (the
+ * owner, 2026-11-27: "that split bar does not have rounded corders on the
+ * right"). Rounding the first and the last part would not do: a part
+ * narrower than the corner leaves its end square. The tip is beside this
+ * box, not in it, so it is not clipped.
+ */
+table.costs .split-bar .segs {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  overflow: hidden;
+}
 table.costs .split-bar .seg {
   display: block;
   height: 100%;
-}
-table.costs .split-bar .seg:first-child {
-  border-radius: 2px 0 0 2px;
 }
 table.costs .split-bar .write,
 table.costs .tip .key.write {

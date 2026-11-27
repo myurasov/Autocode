@@ -389,9 +389,15 @@
         tabindex="0"
         [attr.aria-label]="splitLabel(parts)"
       >
-        @for (p of parts; track p.key) {
-          <span [class]="'seg ' + p.key" [style.width]="p.share + '%'"></span>
-        }
+        <!-- the parts, clipped to the bar's rounded ends -->
+        <span class="segs">
+          @for (p of parts; track p.key) {
+            <span
+              [class]="'seg ' + p.key"
+              [style.width]="p.share + '%'"
+            ></span>
+          }
+        </span>
         <span class="tip" aria-hidden="true">
           @for (p of parts; track p.key) {
             <span class="line"

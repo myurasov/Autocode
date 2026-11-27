@@ -2303,7 +2303,7 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Details sho
   const sizes = await bar.evaluate((el: HTMLElement) => ({
     bar: el.getBoundingClientRect().width,
     cell: el.closest("td")!.getBoundingClientRect().width,
-    segments: [...el.querySelectorAll(":scope > .seg")].reduce(
+    segments: [...el.querySelectorAll(":scope > .segs > .seg")].reduce(
       (n, seg) => n + seg.getBoundingClientRect().width,
       0,
     ),
@@ -2519,16 +2519,70 @@ function contrast(a: number[], b: number[]): number {
 }
 
 /*
+ * Which corners of what a picture shows on a background are cut, as a
+ * rounded end's are: the corner pixel of the box around its ink has the
+ * background's color.
+ */
+async function cutCorners(
+  blank: Page,
+  png: Buffer,
+  behind: number[],
+): Promise<{ tl: boolean; tr: boolean; bl: boolean; br: boolean }> {
+  return blank.evaluate(
+    async ({ data, behind }) => {
+      const img = new Image()
+      img.src = `data:image/png;base64,${data}`
+      await img.decode()
+      const canvas = document.createElement("canvas")
+      canvas.width = img.width
+      canvas.height = img.height
+      const g = canvas.getContext("2d")!
+      g.drawImage(img, 0, 0)
+      const { width, height } = canvas
+      const px = g.getImageData(0, 0, width, height).data
+      const ink = (x: number, y: number) => {
+        const i = (y * width + x) * 4
+        return (
+          Math.max(
+            Math.abs(px[i]! - behind[0]!),
+            Math.abs(px[i + 1]! - behind[1]!),
+            Math.abs(px[i + 2]! - behind[2]!),
+          ) > 40
+        )
+      }
+      let [x0, y0, x1, y1] = [width, height, -1, -1]
+      for (let y = 0; y < height; y++)
+        for (let x = 0; x < width; x++)
+          if (ink(x, y)) {
+            x0 = Math.min(x0, x)
+            y0 = Math.min(y0, y)
+            x1 = Math.max(x1, x)
+            y1 = Math.max(y1, y)
+          }
+      return {
+        tl: !ink(x0, y0),
+        tr: !ink(x1, y0),
+        bl: !ink(x0, y1),
+        br: !ink(x1, y1),
+      }
+    },
+    { data: png.toString("base64"), behind },
+  )
+}
+
+/*
  * The owner, 2026-11-27, of the Costs tab: "fix vertical alignment of arrow
  * on details button, so its visually vertically centered" (it sat 2 px
  * under the middle of the label: on the baseline less 2 px, as a group
  * heading's chevron) and "in split col make "not split" more distinct from
  * bg color" (it had the bar's own background), then, of the hatch that
  * followed: "make it light grey color (on dark), dark grey (on ligh
- * theme), instead of striped grey", under the name Uncategorized. Both are
- * read from pictures of the page.
+ * theme), instead of striped grey", under the name Uncategorized; and "that
+ * split bar does not have rounded corders on the right" (only its first
+ * part was rounded, and that one only when it was wider than the corner).
+ * All are read from pictures of the page.
  */
-test("Costs: the Details button's arrow sits at the middle of its label; Uncategorized is a grey of its own, apart from the row and from new input", async ({
+test("Costs: the Details button's arrow sits at the middle of its label; Uncategorized is a grey of its own, apart from the row and from new input; the Split bar is round at both ends", async ({
   browser,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -2652,6 +2706,11 @@ test("Costs: the Details button's arrow sits at the middle of its label; Uncateg
     expect(own.image, theme).toBe("none")
     expect(rgb(own.color), theme).toEqual(seen.background)
     expect(await color(bar.locator(".tip .key.rest")), theme).toEqual(own)
+    // round at both ends: the corners of the bar's picture are the row's
+    expect(
+      await cutCorners(blank, await bar.screenshot(), behind),
+      theme,
+    ).toEqual({ tl: true, tr: true, bl: true, br: true })
     // apart from new input's grey
     const input = await color(bar.locator(".tip .key.input"))
     expect(
@@ -2660,6 +2719,18 @@ test("Costs: the Details button's arrow sits at the middle of its label; Uncateg
     ).toBeGreaterThanOrEqual(1.8)
     await page.getByRole("button", { name: "Light or dark" }).click()
   }
+  // however wide its first and last parts are: the parts sit in a box of
+  // their own, which is clipped to the bar's rounded ends
+  expect(
+    await bar.locator(".segs").evaluate((e) => {
+      const css = getComputedStyle(e)
+      return [
+        css.overflow,
+        css.borderRadius,
+        e.querySelectorAll(":scope > .seg").length > 0,
+      ]
+    }),
+  ).toEqual(["hidden", "2px", true])
   await context.close()
 })
 
