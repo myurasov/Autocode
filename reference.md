@@ -208,7 +208,7 @@ What it does:
 4. Prints where the tokens are. The first start creates `~/.autocode/admin.token` and `~/.autocode/consumer.token`,
    both readable only by you (mode 0600).
 
-It worked if the last lines say `server home v1.1.0-rc7-... answers at http://127.0.0.1:4848` and name the two token
+It worked if the last lines say `server home v1.1.0-... answers at http://127.0.0.1:4848` and name the two token
 files.
 
 | Flag | Meaning | Without it |
@@ -312,7 +312,7 @@ use, and the host is then offline: see
 1. Open `http://machine-a:4848/` in a browser, with your server's address. Sign in with the admin token: the
    content of `~/.autocode/admin.token` on the server machine.
 2. `autocode info` prints the server's ID and version, like
-   `server home, autocode v1.1.0-rc7-build1, for OpenCode v2.3.0 or later, at http://127.0.0.1:4848`, with your build's
+   `server home, autocode v1.1.0-build1, for OpenCode v2.3.0 or later, at http://127.0.0.1:4848`, with your build's
    number.
 3. `systemctl --user status autocode` shows the service running. Its log: `journalctl --user -u autocode`.
 4. `autocode hosts` lists one line per machine and folder, as in [Connect Each Machine](#connect-each-machine).

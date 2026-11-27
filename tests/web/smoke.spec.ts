@@ -256,7 +256,7 @@ test("admin: Agents shows smoke:agent under machine smoke, Hosts its host", asyn
   page,
 }) => {
   await signIn(page, admin)
-  await expect(page.locator("header h1")).toHaveText("Autocode v1.1.0-rc7-dev")
+  await expect(page.locator("header h1")).toHaveText("Autocode v1.1.0-dev")
   await expect(page.locator("header .who")).toHaveText("admin")
   await expect(page.locator("nav a")).toHaveText([
     "Hosts",
@@ -3903,9 +3903,9 @@ test("layout: the header shows the favicon before the title", async ({
   const icon = title.locator("svg.logo")
   await expect(icon).toBeVisible()
   await expect(icon).toHaveAttribute("aria-hidden", "true")
-  await expect(title).toHaveText("Autocode v1.1.0-rc7-dev")
+  await expect(title).toHaveText("Autocode v1.1.0-dev")
   await expect(page.getByRole("heading", { level: 1 })).toHaveAccessibleName(
-    "Autocode v1.1.0-rc7-dev",
+    "Autocode v1.1.0-dev",
   )
   // The same triangle as the favicon.
   const href = await page.locator('link[rel="icon"]').getAttribute("href")
@@ -4365,7 +4365,7 @@ test("the header shows v before the version; the title stays Autocode", async ({
   page,
 }) => {
   await signIn(page, admin)
-  await expect(page.locator("header .server")).toHaveText("v1.1.0-rc7-dev")
+  await expect(page.locator("header .server")).toHaveText("v1.1.0-dev")
   for (const tab of TABS) {
     await openTab(page, tab)
     await expect(page).toHaveTitle("Autocode")
