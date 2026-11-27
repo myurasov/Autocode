@@ -33,11 +33,11 @@ afterAll(async () => {
 
 describe("the version", () => {
   test("is the release plus the build number, or -dev", () => {
-    // 1.1.1, a fix release: the plugin's agent line on every request made
-    // with a session's context (the owner, 2026-11-27: "fix and release
-    // 1.1.1 now"); the build counter keeps counting
-    expect(RELEASE).toBe("1.1.1")
-    expect(versionOf(RELEASE, "98")).toBe("1.1.1-build98")
+    // 1.1.2: cache warming counted in Costs (the owner, 2026-11-27: "yes
+    // as 1.1.2"), and two changes to the Costs tab's look; the build
+    // counter keeps counting
+    expect(RELEASE).toBe("1.1.2")
+    expect(versionOf(RELEASE, "99")).toBe("1.1.2-build99")
     expect(versionOf("0.1.0", "7")).toBe("0.1.0-build7")
     expect(versionOf("0.1.0", "")).toBe("0.1.0-dev")
     expect(versionOf("0.1.0")).toBe("0.1.0-dev")
