@@ -1392,7 +1392,7 @@ The CLI takes its server's address from the first of these that is set: the flag
 
 It takes its token from the first of these:
 
-1. the flag `--token`;
+1. the flag `--token`, or `--token-file FILE` for a token kept in a file (see below);
 2. the variable `AUTOCODE_TOKEN`. In an agent's shell it holds the session token;
 3. the admin token of the client config;
 4. the file `~/.autocode/admin.token`, when the server's address is this machine's own: `127.0.0.1`, `localhost`
@@ -1403,6 +1403,17 @@ It takes its token from the first of these:
 So on the server machine your commands work after the plain `plugin install --url http://127.0.0.1:4848` of
 [Connect Each Machine](#connect-each-machine), without `--admin-token-file`. In an agent's shell only 1 and 2
 count: the CLI never acts there with the owner's token or the consumer token.
+
+**A token from a file.** `--token-file FILE` takes the token from a file: its content, without the white space
+around it. Use it in scripts in place of `--token "$(cat FILE)"`, which shows the token for a moment in the
+machine's process list.
+
+- **It counts as `--token`**, also in an agent's shell, and goes before `AUTOCODE_TOKEN`.
+- **Both flags together** are wrong usage (exit 2).
+- **A file that is missing, unreadable or empty**, or that holds more than one word, is an error that names the
+  file and never what it holds.
+- **The CLI does not expand `~`** in the path (your shell does, in `--token-file ~/x` but not in
+  `--token-file=~/x`), and it does not check the file's mode: keep it readable by you only (`chmod 600`).
 
 With an expected server ID, the CLI checks the server's ID before it sends a token. The expected ID is `--server-id`,
 else `AUTOCODE_SERVER_ID`, else the `server_id` of the client config when the address is the client config's too.
@@ -1419,6 +1430,7 @@ are those of `autocode --help`.
 | `--json` | | print the data as JSON, not as a table |
 | `--url URL` | `AUTOCODE_URL` | the server's address |
 | `--token TOKEN` | `AUTOCODE_TOKEN` | the token to use |
+| `--token-file FILE` | | the token to use, read from a file |
 | `--server-id ID` | `AUTOCODE_SERVER_ID` | refuse a server that has another ID |
 | | `AUTOCODE_HOME` | the Autocode home, in place of `~/.autocode` |
 | | `AUTOCODE_CONFIG` | the client config file, in place of `client.json` in the home |
@@ -1505,7 +1517,7 @@ CLI acts as that session's agent. It never uses the owner's token or the consume
 
 - It has `me`, `fire` and `send`: see [Shell Values and Scripts](#shell-values-and-scripts).
 - The machine's set-up commands also work: `info`, `serve`, `install`, `uninstall`, `plugin`.
-- Every other command is refused, unless you pass a token with `--token`.
+- Every other command is refused, unless you pass a token with `--token` or `--token-file`.
 - **`!` commands.** A command that you type yourself in that session's TUI, after a `!`, runs in the same kind of
   shell once the session has run a shell. There you act as the agent too.
 
@@ -2355,7 +2367,7 @@ the checks of wakes.
    the folder again, in a server that it can reach.
 2. **If it says `yes`:** the Autocode server could not be reached when that shell started, or the host is marked
    "too old". Open a new shell once the host is online.
-3. **Meanwhile,** a script can pass a token with `--token`.
+3. **Meanwhile,** a script can pass a token with `--token-file` or `--token`.
 
 ### Lines in the Plugin's Log
 

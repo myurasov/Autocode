@@ -432,6 +432,95 @@ describe("autocode CLI", () => {
     }
   })
 
+  // 1.1.0-rc7: a token given as --token "$(cat FILE)" shows in the
+  // machine's process list; --token-file keeps it out of the command line.
+  test("--token-file reads the token from a file, where --token is taken", async () => {
+    const own = mkdtempSync(join(tmpdir(), "autocode-cli-home-"))
+    try {
+      const file = join(own, "admin.token")
+      writeFileSync(file, `  ${t.admin}\n\n`, { mode: 0o600 })
+      // with no config and no environment, as the owner
+      const plain = await cli(
+        ["hosts", "--json", "--token-file", file],
+        {
+          AUTOCODE_URL: t.url,
+        },
+        own,
+      )
+      expect(plain.code).toBe(0)
+      expect(plain.stdout).toContain("m:1")
+      // in an agent's shell it decides like --token, and goes before
+      // AUTOCODE_TOKEN (a session's token cannot list hosts' owners' view)
+      const session = await sessionToken(t, "m:1", "ses_1")
+      const shell = {
+        AUTOCODE_URL: t.url,
+        AUTOCODE_TOKEN: session,
+        OPENCODE_SESSION_ID: "ses_1",
+      }
+      const inbox = await cli(
+        ["inbox", "--json", `--token-file=${file}`],
+        shell,
+        own,
+      )
+      expect(inbox.code).toBe(0)
+      expect((await cli(["inbox", "--json"], shell, own)).code).toBe(2)
+      // both flags: wrong usage, before any request
+      const both = await cli(
+        ["hosts", "--token", t.admin, "--token-file", file],
+        { AUTOCODE_URL: "http://127.0.0.1:9" },
+        own,
+      )
+      expect(both.code).toBe(2)
+      expect(both.stderr).toContain("not both")
+      // a file that is not there, a folder, an empty file, two words
+      const missing = await cli(
+        ["hosts", "--token-file", join(own, "nope.token")],
+        { AUTOCODE_URL: t.url },
+        own,
+      )
+      expect(missing.code).toBe(1)
+      expect(missing.stderr).toContain(join(own, "nope.token"))
+      const folder = await cli(
+        ["hosts", "--token-file", own],
+        {
+          AUTOCODE_URL: t.url,
+        },
+        own,
+      )
+      expect(folder.code).toBe(1)
+      const empty = join(own, "empty.token")
+      writeFileSync(empty, "  \n")
+      const none = await cli(
+        ["hosts", "--token-file", empty],
+        {
+          AUTOCODE_URL: t.url,
+        },
+        own,
+      )
+      expect(none.code).toBe(1)
+      expect(none.stderr).toContain("empty")
+      const two = join(own, "two.token")
+      writeFileSync(two, `${t.admin}\n${t.consumer}\n`)
+      const many = await cli(
+        ["hosts", "--token-file", two],
+        {
+          AUTOCODE_URL: t.url,
+        },
+        own,
+      )
+      expect(many.code).toBe(1)
+      // no message ever shows what a file holds
+      for (const r of [plain, inbox, both, missing, folder, none, many]) {
+        expect(r.stderr).not.toContain(t.admin)
+        expect(r.stderr).not.toContain(t.consumer)
+      }
+      // the usage names the flag
+      expect((await cli(["help"])).stdout).toContain("--token-file FILE")
+    } finally {
+      rmSync(own, { recursive: true, force: true })
+    }
+  })
+
   test("the CLI checks the server ID it expects before it sends a token", async () => {
     const own = mkdtempSync(join(tmpdir(), "autocode-cli-home-"))
     const seen: string[] = []

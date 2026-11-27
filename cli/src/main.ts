@@ -24,7 +24,7 @@ import {
   settings,
   token,
 } from "./commands.ts"
-import { autocodeHome, inAgentShell } from "./connect.ts"
+import { autocodeHome, inAgentShell, tokenFromFile } from "./connect.ts"
 import webFiles from "./generated/web.ts"
 import { install, uninstall } from "./install.ts"
 import { pluginInstall, pluginUninstall } from "./plugin.ts"
@@ -178,11 +178,14 @@ Flags Everywhere
   --json                     print the data as JSON, not as a table
   --url URL                  the server's address
   --token TOKEN              the token to use
+  --token-file FILE          the token to use, read from a file (it then
+                             does not show in the process list)
   --server-id ID             refuse a server that has another ID
 
 Environment
   AUTOCODE_URL               the server's address, without --url
-  AUTOCODE_TOKEN             the token to use, without --token
+  AUTOCODE_TOKEN             the token to use, without --token and
+                             --token-file
   AUTOCODE_SERVER_ID         the server ID to expect, without --server-id
   AUTOCODE_HOME              the Autocode home, in place of ~/.autocode
   AUTOCODE_CONFIG            the client config, in place of client.json
@@ -194,6 +197,8 @@ AGENT is an agent's ID, like kaggle:lead. PATTERN matches IDs with *, like
 kaggle:*; several are separated by commas.
 Exit codes: 0 done, 1 refused or failed, 2 wrong usage, 3 server unreachable.`
 
+// The machine's own setup: no token of the CLI's is used.
+const SETUP_COMMANDS = new Set(["serve", "install", "uninstall", "plugin"])
 // What a script in an agent's shell may run.
 const SHELL_COMMANDS = new Set([
   "me",
@@ -277,10 +282,14 @@ async function main(argv: string[]): Promise<number> {
     return 0
   }
   const args = parseArgs(rest)
+  // --token-file counts as --token (not for the machine's own setup
+  // commands, which take no token)
+  if (!SETUP_COMMANDS.has(command)) tokenFromFile(args)
   /*
    * A script in an agent's shell acts as that agent with me, fire and send
-   * only (the owner, 2026-11-07); a token passed with --token decides for
-   * itself, and the machine's own setup commands stay.
+   * only (the owner, 2026-11-07); a token passed with --token or
+   * --token-file decides for itself, and the machine's own setup commands
+   * stay.
    */
   if (inAgentShell() && !args.flags.token && !SHELL_COMMANDS.has(command))
     throw new CliError(

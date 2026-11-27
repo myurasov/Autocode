@@ -1,7 +1,8 @@
 /*
- * Where the CLI finds its server and token: flags, then the environment (the
- * plugin sets AUTOCODE_URL and AUTOCODE_TOKEN in agent shells), then the client
- * config file, then the server's own admin token file; in an agent's shell only
+ * Where the CLI finds its server and token: flags (--token, or --token-file
+ * for a token kept in a file), then the environment (the plugin sets
+ * AUTOCODE_URL and AUTOCODE_TOKEN in agent shells), then the client config
+ * file, then the server's own admin token file; in an agent's shell only
  * the first two. With an expected server ID, the server's ID is checked before
  * any token is sent. Also the Autocode home (AUTOCODE_HOME, else ~/.autocode),
  * which holds everything of an install, and the client config in it.
@@ -102,6 +103,42 @@ export function inAgentShell(): boolean {
   return Boolean(
     process.env.OPENCODE_SESSION_ID || process.env.AUTOCODE_SESSION,
   )
+}
+
+/*
+ * --token-file FILE (1.1.0-rc7): the token is the file's content, without
+ * the white space around it, so that it does not show in the machine's
+ * process list as --token "$(cat FILE)" does. From here on it counts as
+ * --token. No message says what a file holds.
+ */
+export function tokenFromFile(args: Parsed): void {
+  const file = args.flags["token-file"]
+  if (file === undefined) return
+  if (args.flags.token !== undefined)
+    throw new CliError("give --token or --token-file, not both", 2)
+  let text: string
+  try {
+    text = readFileSync(file, "utf8")
+  } catch (err) {
+    const code = (err as { code?: string }).code
+    const why =
+      code === "ENOENT"
+        ? "no such file"
+        : code === "EISDIR"
+          ? "it is a folder"
+          : code === "EACCES"
+            ? "permission denied"
+            : "it cannot be read"
+    throw new CliError(`cannot read the token file ${file}: ${why}`, 1)
+  }
+  const token = text.trim()
+  if (!token) throw new CliError(`the token file ${file} is empty`, 1)
+  if (/\s/.test(token))
+    throw new CliError(
+      `the token file ${file} must hold one token and nothing else`,
+      1,
+    )
+  args.flags.token = token
 }
 
 export function connect(args: Parsed): Connection {
