@@ -21,9 +21,12 @@ export interface WakeWeek {
   skipped: number
   turns: number
   usd: number
+  // of usd, what its turns' first steps cost to load the context
+  // (1.1.0-rc7)
+  reload_usd: number
 }
 
-const NONE: WakeWeek = { due: 0, skipped: 0, turns: 0, usd: 0 }
+const NONE: WakeWeek = { due: 0, skipped: 0, turns: 0, usd: 0, reload_usd: 0 }
 // to a millionth of a dollar
 const round = (n: number) => Math.round(n * 1e6) / 1e6
 
@@ -43,15 +46,18 @@ export class WakeStats {
     name: string,
     field: "due" | "skipped" | "turns" | "steps",
     usd = 0,
+    reload = 0,
   ) {
     this.db
       .query(
-        `INSERT INTO wake_stats (agent_id, name, day, ${field}, usd)
-         VALUES (?, ?, ?, 1, ?)
+        `INSERT INTO wake_stats (agent_id, name, day, ${field}, usd,
+           reload_usd)
+         VALUES (?, ?, ?, 1, ?, ?)
          ON CONFLICT (agent_id, name, day) DO UPDATE SET
-           ${field} = ${field} + 1, usd = usd + excluded.usd`,
+           ${field} = ${field} + 1, usd = usd + excluded.usd,
+           reload_usd = reload_usd + excluded.reload_usd`,
       )
-      .run(agent, name, this.day(), usd)
+      .run(agent, name, this.day(), usd, reload)
   }
 
   // A wake fell due (by its time, or by idle time).
@@ -90,9 +96,10 @@ export class WakeStats {
   /*
    * A model step of a session, counted once by the caller: it belongs to
    * the wakes of the prompt that started the session's last turn, in equal
-   * shares. A turn the owner started has no such prompt.
+   * shares. A turn the owner started has no such prompt. `reload`: of a
+   * turn's first step, what it cost to load the context (1.1.0-rc7).
    */
-  step(session: string, usd: number, sub?: unknown) {
+  step(session: string, usd: number, sub?: unknown, reload = 0) {
     // a Subagent's step (`sub`, its own session) is its work's: the prompt
     // of the turn that started the Subagent, whatever turn runs now
     const own = sub === undefined ? undefined : this.work?.causeOf(session, sub)
@@ -105,7 +112,13 @@ export class WakeStats {
     const cause = row?.turn_cause ? this.cause(row.turn_cause) : null
     if (!cause) return
     for (const name of cause.wakes)
-      this.add(cause.agent, name, "steps", usd / cause.wakes.length)
+      this.add(
+        cause.agent,
+        name,
+        "steps",
+        usd / cause.wakes.length,
+        reload / cause.wakes.length,
+      )
   }
 
   // Every wake's last 7 days (one agent's), by agent and name.
@@ -114,7 +127,7 @@ export class WakeStats {
     const rows = this.db
       .query(
         `SELECT agent_id, name, SUM(due) AS due, SUM(skipped) AS skipped,
-           SUM(turns) AS turns, SUM(usd) AS usd
+           SUM(turns) AS turns, SUM(usd) AS usd, SUM(reload_usd) AS reload
          FROM wake_stats WHERE day >= ?${agent ? " AND agent_id = ?" : ""}
          GROUP BY agent_id, name`,
       )
@@ -126,6 +139,7 @@ export class WakeStats {
         skipped: r.skipped,
         turns: r.turns,
         usd: round(r.usd),
+        reload_usd: round(r.reload),
       })
     return (a, name) => by.get(`${a}\n${name}`) ?? { ...NONE }
   }

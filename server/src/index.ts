@@ -27,7 +27,9 @@ import {
 } from "@autocode/shared"
 import { Agents } from "./agents.ts"
 import { Asks } from "./asks.ts"
+import { promptCause } from "./causes.ts"
 import { ensureDataDir, resolveServerId, tailscaleAddress } from "./config.ts"
+import { addSplits, CostParts, splitStep, stepTokens } from "./cost-parts.ts"
 import { Costs } from "./costs.ts"
 import { Delivery } from "./delivery.ts"
 import { History } from "./history.ts"
@@ -157,6 +159,18 @@ export async function startServer(
     takeoverGraceMs: options.takeoverGraceMs,
   })
   const tz = () => String(settings.value("timezone")) || "UTC"
+  // ?days=X of the cost routes: the last X days, today included; none: all
+  // time.
+  const daysParam = (url: URL): number | null => {
+    const text = url.searchParams.get("days")?.trim() || ""
+    const days = text ? Number(text) : null
+    if (days !== null && !(Number.isInteger(days) && days >= 1 && days <= 3660))
+      throw new AutocodeError(
+        "bad_request",
+        "days must be a whole number of days from 1",
+      )
+    return days
+  }
   const wakes = new Wakes(db, history, now, tz, (agent) =>
     parseDuration(
       String(
@@ -324,12 +338,42 @@ export async function startServer(
   wakes.stats = wakeStats
   wakes.notify = (agent, subject, text) => messages.notice(agent, subject, text)
   delivery.stats = wakeStats
-  hosts.onTurnStarted = (session, cause) => {
+  /*
+   * Costs by kind and by cause (1.1.0-rc7): a turn, and each step, counts
+   * for the agent it is billed to under what started the turn; a run's
+   * turns and steps are the cause `run` of the agent it counts for.
+   */
+  const costParts = new CostParts(db, (at) => costs.day(at), now)
+  const runOf = (session: string) =>
+    (
+      db.query("SELECT id FROM runs WHERE session_id = ?").get(session) as {
+        id: string
+      } | null
+    )?.id
+  const turnKind = (session: string) =>
+    (
+      db.query("SELECT turn_kind FROM sessions WHERE id = ?").get(session) as {
+        turn_kind: string | null
+      } | null
+    )?.turn_kind ?? "other"
+  hosts.promptKind = (injection) => {
+    const row = db
+      .query("SELECT reasons FROM injections WHERE id = ?")
+      .get(injection) as { reasons: string } | null
+    try {
+      return promptCause(JSON.parse(row?.reasons ?? "null"))
+    } catch {
+      return "other"
+    }
+  }
+  hosts.onTurnStarted = (session, cause, kind) => {
     wakeStats.turnStarted(cause)
+    const run = runOf(session)
+    const agent = run ?? agents.agentOfSession(session)
+    if (agent) costParts.turn(costs.billTo(agent) ?? agent, run ? "run" : kind)
     // a turn that starts before the resume prompt went: the cut turn goes
     // on already (OpenCode resumed it itself)
-    const agent = agents.agentOfSession(session)
-    if (agent) costs.uncut(agent)
+    if (agent && !run) costs.uncut(agent)
   }
   // the work that outlives its turn (1.1.0-rc2, exact attribution): a
   // notice's turn and a Subagent's steps go by the turn that started it
@@ -338,6 +382,7 @@ export async function startServer(
   hosts.onWorkStarted = (session, ref, parent) =>
     turnWork.started(session, ref, parent)
   hosts.workCause = (session, ref) => turnWork.causeOf(session, ref)
+  hosts.workKind = (session, ref) => turnWork.kindOf(session, ref)
   costs.instruction = (id) => hosts.instruction(id)
   hosts.onTurnEnded = (agent, outcome, error, reply, background) => {
     retries.turnEnded(agent, outcome, error)
@@ -395,16 +440,35 @@ export async function startServer(
     const session = String(event.session)
     // a run's session counts as its run, also once the run ended and its
     // agent went (its last step comes after its finish: review of rc2)
-    const run = (
-      db.query("SELECT id FROM runs WHERE session_id = ?").get(session) as {
-        id: string
-      } | null
-    )?.id
+    const run = runOf(session)
     const agent = run ?? agents.agentOfSession(session)
     if (!agent) return
     const counted = costs.step(agent, event)
-    // an agent's own turn: the step is its prompt's wakes' too (1.1.0)
-    if (counted !== null && !run) wakeStats.step(session, counted, event.sub)
+    if (counted !== null) {
+      /*
+       * By kind and by cause (1.1.0-rc7). A Subagent's step has the cause
+       * of the turn that started the Subagent; the first own step of a
+       * turn is what the turn cost to load the context.
+       */
+      const sub = event.sub !== undefined && event.sub !== null
+      const tokens = stepTokens(event)
+      const split = splitStep(counted, tokens, event.rates)
+      const first = !sub && costParts.firstStep(session)
+      const reload = first && split ? split.input + split.read + split.write : 0
+      costParts.step(costs.billTo(agent) ?? agent, {
+        cause: run
+          ? "run"
+          : ((sub ? turnWork.kindOf(session, event.sub) : undefined) ??
+            turnKind(session)),
+        sub,
+        usd: counted,
+        tokens,
+        split,
+        reload,
+      })
+      // an agent's own turn: the step is its prompt's wakes' too (1.1.0)
+      if (!run) wakeStats.step(session, counted, event.sub, reload)
+    }
     if (run)
       db.query("UPDATE runs SET cost = ? WHERE id = ?").run(
         costs.runCost(run),
@@ -419,14 +483,23 @@ export async function startServer(
    */
   hosts.onPastCost = (event) => {
     const session = String(event.session)
-    const run = (
-      db.query("SELECT id FROM runs WHERE session_id = ?").get(session) as {
-        id: string
-      } | null
-    )?.id
+    const run = runOf(session)
     const agent = run ?? agents.agentOfSession(session)
     if (!agent) return
-    costs.past(agent, session, event.steps, event.account === true)
+    // by cause (1.1.0-rc7): a run's, the steps from before the session
+    // registered, or a compaction's own cost; none of them is split
+    const cause = run
+      ? "run"
+      : event.account === true
+        ? "earlier"
+        : "compaction"
+    costs.past(
+      agent,
+      session,
+      event.steps,
+      event.account === true,
+      (payer, usd, day) => costParts.step(payer, { cause, usd, day }),
+    )
     if (run)
       db.query("UPDATE runs SET cost = ? WHERE id = ?").run(
         costs.runCost(run),
@@ -944,7 +1017,13 @@ export async function startServer(
                 // its open messages and reports in the owner's Inbox, which
                 // it may close once they no longer matter (1.1.0-rc4)
                 inbox: inbox.of(agent),
-                cost: costs.view(agent),
+                cost: {
+                  ...costs.view(agent),
+                  // today's spend by kind and by what started the turn
+                  // (1.1.0-rc7)
+                  today_split: costParts.split(agent, 1),
+                  today_causes: costParts.causes(agent, 1),
+                },
               }
             : {}),
         }
@@ -1194,22 +1273,15 @@ export async function startServer(
         "every agent's spend (today, total), daily cap and what is left, " +
         "context and its share of the compaction threshold, its last 7 " +
         "days (oldest first), unregistered ones with spend too; ?match= an " +
-        "agent pattern; ?days= the total over the last days; the totals " +
-        "(tier 0g)",
+        "agent pattern; ?days= the total over the last days; the totals; " +
+        "each row and the totals with `split`: the period's spend by kind " +
+        "(cache writes, cache reads, input, output), the Subagents' part, " +
+        "the reload and the turns (1.1.0-rc7)",
       handler: ({ url }) => {
         const match = url.searchParams.get("match")?.trim() || null
         const pattern = match ? parsePattern(match) : null
         // ?days=X: Total and the totals over the last X days (the owner)
-        const daysText = url.searchParams.get("days")?.trim() || ""
-        const days = daysText ? Number(daysText) : null
-        if (
-          days !== null &&
-          !(Number.isInteger(days) && days >= 1 && days <= 3660)
-        )
-          throw new AutocodeError(
-            "bad_request",
-            "days must be a whole number of days from 1",
-          )
+        const days = daysParam(url)
         // the runs' own IDs count for their bill_to's rows: no row of their
         // own (the owner, 2026-11-09)
         const runIds = new Set(
@@ -1227,6 +1299,8 @@ export async function startServer(
           .filter((id) => !runIds.has(id))
           .filter((id) => !pattern || matchesPattern(pattern, id))
           .sort()
+        // by kind (1.1.0-rc7), over the same period as the total
+        const splitOf = costParts.splits(days)
         const rows = ids
           .map((id) => {
             const x = live.get(id)
@@ -1246,6 +1320,7 @@ export async function startServer(
                 : { total_usd: costs.totalOver(id, days) }),
               // the Costs tab's Last 7 Days (the owner, 2026-11-09)
               week: costs.week(id),
+              split: splitOf(id),
             }
           })
           // in a period, a gone agent that spent nothing in it drops out
@@ -1263,6 +1338,7 @@ export async function startServer(
             agents: rows.length,
             today_usd: sum("today_usd"),
             total_usd: sum("total_usd"),
+            split: addSplits(rows.map((r) => r.split)),
           },
         }
       },
@@ -1273,9 +1349,12 @@ export async function startServer(
       access: ["admin", "consumer"],
       summary:
         "one agent's spend and context, with its spend per day, newest first " +
-        "(also after it unregistered; tier 0g)",
-      handler: ({ params }) => {
+        "(also after it unregistered; tier 0g); `split` and `causes` (the " +
+        "spend by what started the turn), over ?days= or all time, and each " +
+        "day's `split` (1.1.0-rc7)",
+      handler: ({ params, url }) => {
         const id = String(params.agent)
+        const days = daysParam(url)
         // a run's own ID has no costs of its own (they count for its bill_to)
         const isRun = !!db.query("SELECT 1 FROM runs WHERE id = ?").get(id)
         const registered =
@@ -1288,7 +1367,13 @@ export async function startServer(
           day: costs.day(),
           timezone: tz(),
           cost: costs.view(id),
-          days: costs.days(id),
+          days: (() => {
+            const of = costParts.days(id)
+            return costs.days(id).map((d) => ({ ...d, split: of(d.day) }))
+          })(),
+          period_days: days,
+          split: costParts.split(id, days),
+          causes: costParts.causes(id, days),
         }
       },
     },
@@ -1995,6 +2080,7 @@ export async function startServer(
     }
     asks.trim(days)
     costs.trim(days)
+    costParts.trim(days)
     wakeStats.trim(days)
     turnWork.trim(days)
     trimAliases(db, now() - days * 86_400_000)

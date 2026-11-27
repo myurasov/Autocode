@@ -181,6 +181,7 @@ describe("renaming an agent in place", () => {
       skipped: 0,
       turns: 1,
       usd: 0.5,
+      reload_usd: 0,
     })
     expect(
       (await owner("GET", "/v1/costs")).body.agents.map((x: any) => x.agent),

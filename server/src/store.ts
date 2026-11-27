@@ -765,6 +765,45 @@ export const MIGRATIONS: string[] = [
   UPDATE asks SET routed = 'allow' WHERE routed = 'approve';
   UPDATE asks SET routed = 'auto_answer' WHERE routed = 'auto';
   `,
+  /*
+   * 31 (1.1.0-rc7; the owner, 2026-11-27: "implement 1, 8, 9, 6"). Costs by
+   * kind and by cause: per agent, day (empty: all days, kept past
+   * history_days), cause (what started the turn) and own-or-Subagent, the
+   * steps, turns, dollars, the dollars and tokens of the four kinds, and
+   * the reload (the context part of each turn's first step); the cause of
+   * a session's turn and how many of its own steps the turn has had; the
+   * cause of the turn that started a work; a wake's reload. A turn that
+   * runs at the upgrade has had its first step. And the model that
+   * answered a claude-agent session, with the one asked for.
+   */
+  `
+  CREATE TABLE cost_parts (
+    agent_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    cause TEXT NOT NULL,
+    sub INTEGER NOT NULL DEFAULT 0,
+    steps INTEGER NOT NULL DEFAULT 0,
+    turns INTEGER NOT NULL DEFAULT 0,
+    usd REAL NOT NULL DEFAULT 0,
+    input_usd REAL NOT NULL DEFAULT 0,
+    output_usd REAL NOT NULL DEFAULT 0,
+    cache_read_usd REAL NOT NULL DEFAULT 0,
+    cache_write_usd REAL NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    reload_usd REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (agent_id, day, cause, sub)
+  );
+  ALTER TABLE sessions ADD COLUMN turn_kind TEXT;
+  ALTER TABLE sessions ADD COLUMN turn_steps INTEGER NOT NULL DEFAULT 0;
+  UPDATE sessions SET turn_steps = 1 WHERE busy = 1;
+  ALTER TABLE turn_work ADD COLUMN kind TEXT;
+  ALTER TABLE wake_stats ADD COLUMN reload_usd REAL NOT NULL DEFAULT 0;
+  ALTER TABLE agents ADD COLUMN answered_model TEXT;
+  ALTER TABLE agents ADD COLUMN requested_model TEXT;
+  `,
 ]
 
 export function schemaVersion(db: Database): number {

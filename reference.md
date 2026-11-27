@@ -676,6 +676,7 @@ that comes to, per wake, for the last 7 days: today and the six days before.
 | skipped | how often its check skipped it, with exit 1. A skipped run costs nothing |
 | turns | the turns that its prompts started, and the turns that OpenCode started by itself for work they began |
 | dollars | the model steps of those turns, and of the Subagents they started, however long those work |
+| reload | of the dollars, what the first step of each turn cost to load the context: see [Where the Money Goes](#where-the-money-goes) |
 
 Where it shows: `autocode_wake action=list` and `action=show` for the agent; `autocode wakes` and the Wakes tab's
 **Last 7 Days** for you.
@@ -1135,6 +1136,69 @@ Autocode counts each agent's spend, can cap it per day, and compacts long sessio
 
 To cap one agent at $20 a day: `autocode settings set daily_usd 20 --agent kaggle:lead`. To stop an agent that
 spends too much right now, see [Stop an Agent That Overspends](#stop-an-agent-that-overspends).
+
+### Where the Money Goes
+
+Most of what a long-lived agent spends is not its answers. Each model step reads the whole conversation again,
+and a turn that starts after the provider's cache has expired writes it to the cache again. Autocode shows the
+spend three ways: by kind, by Subagents, and by what started the turn.
+
+**By kind.** Each step's dollars are divided among four kinds:
+
+| Kind | What it is |
+|---|---|
+| cache writes | context written to the provider's prompt cache: new context, and old context whose cache expired |
+| cache reads | context read back from the cache, at a fraction of the input price |
+| input | new input that is neither read from the cache nor written to it |
+| output | the model's answer and its thinking |
+
+- **How a step is divided.** In the proportion of its tokens of each kind times the model's price for that kind,
+  as OpenCode's model list has it. The four parts add up to what OpenCode recorded for the step.
+- **It is an estimate where a step was priced otherwise:** by a price tier for a large context, or by a cost
+  that the provider reported itself. The proportions then follow the list prices.
+- **Not split.** A step of a model without prices in OpenCode's list counts in full but has no parts. So do the
+  steps from before a session registered, a compaction's own cost, and all spend from before v1.1.0-rc7.
+
+**Subagents.** The steps that ran in a Subagent's session, in dollars and as a share.
+
+**By what started the turn.** Every turn has one cause, and its steps count under it:
+
+| Cause | The turn was started by |
+|---|---|
+| `wake` | a prompt that carried a wake |
+| `message` | a prompt that carried a message, and no wake |
+| `owner` | something typed into the session: by you in the TUI, or by another program |
+| `compaction` | the notice before a compaction, or `compaction done`; a compaction's own cost counts here too |
+| `job` | the result or the failure of a job's run |
+| `ask` | an ask that was answered or closed, or an ask sent to the agent to answer |
+| `retry` | a retry after a failed turn, or the resume prompt after a cut one |
+| `run` | no turn of the agent's session: the steps of its jobs' runs, which count for it |
+| `earlier` | no turn either: the steps from before the session registered |
+| `other` | another notice of Autocode's (a lock, a cost warning), or a start that the plugin could not explain |
+
+- **Work that outlives its turn keeps its cause.** A turn that OpenCode starts by itself, when a Subagent's
+  result comes or a background command ends, counts under the cause of the turn that started that work. So do a
+  Subagent's own steps.
+- **A prompt that carries several things** counts by the first of these: the compaction notice, a retry, a wake,
+  a message, a job's result, an ask, any other notice.
+
+**Reload.** The first model step of a turn loads the conversation before anything is done. Its dollars for
+cache writes, cache reads and input are the turn's reload. A turn that starts while the cache is warm reloads
+cheaply; one that starts cold pays for a cache write of the whole context. The reload is added up per cause and
+per wake, so you see which turns pay mostly to get started.
+
+**Where it shows:**
+
+- **The Costs tab:** a **Split** bar and a **Subagents** column for each agent, over the period of **Days**. An
+  agent's **Days** button opens **What Started the Turns** and its spend per day by kind.
+- **`autocode costs`:** the shares by kind and the Subagents' dollars; `autocode costs AGENT` adds the causes and
+  each day.
+- **The Wakes tab, `autocode wakes` and `autocode_wake action=list`:** each wake's reload in its last 7 days.
+- **`autocode_me action=status`:** the agent's own spend today, by kind and by what started the turn.
+
+The numbers start with v1.1.0-rc7. Over a period that reaches back before it, the split covers the part it knows,
+and says how many dollars that is. Like the total, the split over all time outlives `history_days`; the split
+per day goes with the spend per day.
 
 ### Compaction
 

@@ -165,17 +165,45 @@ export function renameAgent(
     run("DELETE FROM cost_totals WHERE agent_id = ?", from)
     run(
       `INSERT INTO wake_stats
-         (agent_id, name, day, due, skipped, turns, usd, steps)
-         SELECT ?, name, day, due, skipped, turns, usd, steps
+         (agent_id, name, day, due, skipped, turns, usd, steps, reload_usd)
+         SELECT ?, name, day, due, skipped, turns, usd, steps, reload_usd
          FROM wake_stats WHERE agent_id = ?
        ON CONFLICT (agent_id, name, day) DO UPDATE SET
          due = due + excluded.due, skipped = skipped + excluded.skipped,
          turns = turns + excluded.turns, usd = usd + excluded.usd,
-         steps = steps + excluded.steps`,
+         steps = steps + excluded.steps,
+         reload_usd = reload_usd + excluded.reload_usd`,
       to,
       from,
     )
     run("DELETE FROM wake_stats WHERE agent_id = ?", from)
+    // its spend by kind and by cause (1.1.0-rc7), the same way
+    run(
+      `INSERT INTO cost_parts
+         (agent_id, day, cause, sub, steps, turns, usd, input_usd,
+          output_usd, cache_read_usd, cache_write_usd, input_tokens,
+          output_tokens, cache_read_tokens, cache_write_tokens, reload_usd)
+         SELECT ?, day, cause, sub, steps, turns, usd, input_usd,
+          output_usd, cache_read_usd, cache_write_usd, input_tokens,
+          output_tokens, cache_read_tokens, cache_write_tokens, reload_usd
+         FROM cost_parts WHERE agent_id = ?
+       ON CONFLICT (agent_id, day, cause, sub) DO UPDATE SET
+         steps = steps + excluded.steps, turns = turns + excluded.turns,
+         usd = usd + excluded.usd,
+         input_usd = input_usd + excluded.input_usd,
+         output_usd = output_usd + excluded.output_usd,
+         cache_read_usd = cache_read_usd + excluded.cache_read_usd,
+         cache_write_usd = cache_write_usd + excluded.cache_write_usd,
+         input_tokens = input_tokens + excluded.input_tokens,
+         output_tokens = output_tokens + excluded.output_tokens,
+         cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens,
+         cache_write_tokens =
+           cache_write_tokens + excluded.cache_write_tokens,
+         reload_usd = reload_usd + excluded.reload_usd`,
+      to,
+      from,
+    )
+    run("DELETE FROM cost_parts WHERE agent_id = ?", from)
     // the jobs it set, their runs' records, and where results go
     for (const j of jobs) {
       if (j.new === j.old) continue

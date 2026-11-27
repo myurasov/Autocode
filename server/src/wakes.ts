@@ -203,6 +203,7 @@ export class Wakes {
         skipped: 0,
         turns: 0,
         usd: 0,
+        reload_usd: 0,
       },
     }
   }

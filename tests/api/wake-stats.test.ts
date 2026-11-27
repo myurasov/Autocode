@@ -89,7 +89,11 @@ async function week(name: string) {
     (w: any) => w.agent === "team:a" && w.name === name,
   )
   expect(all?.week).toEqual(mine?.week)
-  return mine?.week
+  if (!mine?.week) return mine?.week
+  // the reload (1.1.0-rc7) has its own tests: tests/api/cost-parts.test.ts
+  const { reload_usd, ...rest } = mine.week
+  expect(reload_usd).toBe(0)
+  return rest
 }
 
 beforeEach(async () => {

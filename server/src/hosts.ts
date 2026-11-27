@@ -14,6 +14,7 @@ import {
   opencodeTooOldText,
   VERSION,
 } from "@autocode/shared"
+import { unpromptedCause } from "./causes.ts"
 import type { History } from "./history.ts"
 import { revokeSessionTokens } from "./tokens.ts"
 
@@ -118,7 +119,14 @@ export class Hosts {
   // A session's turn started: from which prompt of Autocode's (an
   // injection's ID; for a turn that OpenCode's own notice started, the
   // prompt of the turn before it), or null for the owner's (1.1.0).
-  onTurnStarted: (session: string, cause: string | null) => void = () => {}
+  // `kind`: what started it, a cause's name (1.1.0-rc7).
+  onTurnStarted: (session: string, cause: string | null, kind: string) => void =
+    () => {}
+  // What a prompt of Autocode's (an injection) gives the turn it starts,
+  // and what started the turn that started a known work (1.1.0-rc7).
+  promptKind: (injection: string) => string = () => "other"
+  workKind: (session: string, ref: unknown) => string | undefined = () =>
+    undefined
   // Work that outlives its turn (1.1.0-rc2, exact attribution): the plugin
   // reported one, and the prompt of the turn that started a known one
   // (null: no prompt's turn did; undefined: not known).
@@ -483,12 +491,13 @@ export class Hosts {
      */
     const before = this.db
       .query(
-        "SELECT inject_pending_at, turn_cause FROM sessions " +
+        "SELECT inject_pending_at, turn_cause, turn_kind FROM sessions " +
           "WHERE id = ? AND deleted_at IS NULL",
       )
       .get(session) as {
       inject_pending_at: number | null
       turn_cause: string | null
+      turn_kind: string | null
     } | null
     const pending = before?.inject_pending_at
     const prompted = pending
@@ -525,16 +534,32 @@ export class Hosts {
           ? worked
           : (before?.turn_cause ?? null)
         : null)
+    /*
+     * What started the turn (1.1.0-rc7, costs by cause): its prompt's
+     * cause; for a turn that OpenCode's notice started, the cause of the
+     * turn that started the work, else of the turn before it; else what
+     * the plugin says: a typed prompt is the owner's.
+     */
+    let kind = "other"
+    try {
+      kind = prompted
+        ? this.promptKind(prompted)
+        : by === "notice"
+          ? ((worked !== undefined ? this.workKind(session, ref) : undefined) ??
+            before?.turn_kind ??
+            "other")
+          : unpromptedCause(by)
+    } catch {}
     const res = this.db
       .query(
         "UPDATE sessions SET busy = 1, turn_started_at = ?, " +
-          "inject_pending_at = NULL, turn_cause = ? " +
-          "WHERE id = ? AND deleted_at IS NULL",
+          "inject_pending_at = NULL, turn_cause = ?, turn_kind = ?, " +
+          "turn_steps = 0 WHERE id = ? AND deleted_at IS NULL",
       )
-      .run(this.now(), cause, session)
+      .run(this.now(), cause, kind, session)
     if (!res.changes) return
     try {
-      this.onTurnStarted(session, cause)
+      this.onTurnStarted(session, cause, kind)
     } catch {}
   }
 

@@ -29,6 +29,7 @@ import {
   type Trigger,
   triggerEnd,
 } from "@autocode/shared"
+import { promptCause } from "./causes.ts"
 import type { CompactDue, CostView } from "./costs.ts"
 import type { History } from "./history.ts"
 import { type Hosts, refusedAsOld } from "./hosts.ts"
@@ -968,7 +969,7 @@ export class Delivery {
       ...(steer ? { delivery: "steer" } : {}),
     })
     if (!steer) this.costs?.injected(row.id)
-    const summary = {
+    const carried = {
       header: reasons,
       wakes: wakes.map((w) => w.wake),
       messages: messages.map((m) => m.id),
@@ -979,6 +980,8 @@ export class Delivery {
       // into a running turn (the owner, 2026-11-09)
       ...(steer ? { steer: true } : {}),
     }
+    // what the turn it starts counts as (1.1.0-rc7, costs by cause)
+    const summary = { ...carried, cause: promptCause(carried) }
     const kept = [
       ...wakes.map((w) => ({
         kind: "wake",

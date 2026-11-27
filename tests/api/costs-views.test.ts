@@ -70,7 +70,8 @@ describe("an agent's spend and context", () => {
     expect((await owner("GET", "/v1/agents/team:a")).body.agent.cost).toEqual(
       view,
     )
-    expect((await as(a, "GET", "/v1/me")).body.cost).toEqual(view)
+    // the agent's own view adds today's split (1.1.0-rc7)
+    expect((await as(a, "GET", "/v1/me")).body.cost).toMatchObject(view)
     // the next day: today starts over, the total does not
     t.clock.advance(DAY)
     await report(t, HOST, [step(0.1, 40_000)])
@@ -522,7 +523,11 @@ describe("unregistered agents and days", () => {
     expect(two.agents.map((x: any) => [x.agent, x.total_usd])).toEqual([
       ["team:a", 0.25],
     ])
-    expect(two.totals).toEqual({ agents: 1, today_usd: 0.25, total_usd: 0.25 })
+    expect(two.totals).toMatchObject({
+      agents: 1,
+      today_usd: 0.25,
+      total_usd: 0.25,
+    })
     // all time without days; bad days refused
     expect((await owner("GET", "/v1/costs")).body.days).toBeNull()
     expect((await owner("GET", "/v1/costs?days=0")).status).toBe(400)
@@ -550,9 +555,15 @@ describe("GET /v1/costs", () => {
     const one = (await owner("GET", "/v1/costs/team:a")).body
     expect(one.agent).toBe("team:a")
     expect(one.cost).toMatchObject({ today_usd: 0.05, total_usd: 0.35 })
+    // each day with its split (1.1.0-rc7; tests/api/cost-parts.test.ts)
     expect(one.days).toEqual([
-      { day: all.day, usd: 0.05, steps: 1 },
-      { day: expect.any(String), usd: 0.3, steps: 1 },
+      { day: all.day, usd: 0.05, steps: 1, split: expect.any(Object) },
+      {
+        day: expect.any(String),
+        usd: 0.3,
+        steps: 1,
+        split: expect.any(Object),
+      },
     ])
     expect(one.days[1].day < one.days[0].day).toBe(true)
   })
@@ -666,9 +677,17 @@ describe("GET /v1/costs", () => {
     await owner("DELETE", "/v1/agents/team:b")
     const team = (await owner("GET", "/v1/costs?match=team:*")).body
     expect(team.agents.map((x: any) => x.agent)).toEqual(["team:a", "team:b"])
-    expect(team.totals).toEqual({ agents: 2, today_usd: 0.1, total_usd: 0.85 })
+    expect(team.totals).toMatchObject({
+      agents: 2,
+      today_usd: 0.1,
+      total_usd: 0.85,
+    })
     const all = (await owner("GET", "/v1/costs")).body
-    expect(all.totals).toEqual({ agents: 3, today_usd: 0.1, total_usd: 1.85 })
+    expect(all.totals).toMatchObject({
+      agents: 3,
+      today_usd: 0.1,
+      total_usd: 1.85,
+    })
     const list = (await owner("GET", "/v1/costs?match=team:a,other:*")).body
     expect(list.agents.map((x: any) => x.agent)).toEqual(["other:c", "team:a"])
     const bad = await owner("GET", "/v1/costs?match=bad pattern!")

@@ -33,17 +33,42 @@ export class TurnWork {
     if (typeof session !== "string" || !ref_ok(ref)) return
     const row = this.db
       .query(
-        "SELECT turn_cause FROM sessions WHERE id = ? AND deleted_at IS NULL",
+        "SELECT turn_cause, turn_kind FROM sessions " +
+          "WHERE id = ? AND deleted_at IS NULL",
       )
-      .get(session) as { turn_cause: string | null } | null
+      .get(session) as {
+      turn_cause: string | null
+      turn_kind: string | null
+    } | null
     if (!row) return
     const from = ref_ok(parent) ? this.causeOf(session, parent) : undefined
+    // what started that turn (1.1.0-rc7), taken the same way
+    const kind = ref_ok(parent) ? this.kindOf(session, parent) : undefined
     this.db
       .query(
-        "INSERT OR IGNORE INTO turn_work (session_id, ref, cause, at) " +
-          "VALUES (?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO turn_work (session_id, ref, cause, at, kind) " +
+          "VALUES (?, ?, ?, ?, ?)",
       )
-      .run(session, ref, from !== undefined ? from : row.turn_cause, this.now())
+      .run(
+        session,
+        ref,
+        from !== undefined ? from : row.turn_cause,
+        this.now(),
+        from !== undefined ? (kind ?? null) : row.turn_kind,
+      )
+  }
+
+  /*
+   * What started the turn that started a work (a cause's name, 1.1.0-rc7):
+   * undefined for work that was never reported, or reported before causes
+   * were kept.
+   */
+  kindOf(session: string, ref: unknown): string | undefined {
+    if (!ref_ok(ref)) return undefined
+    const row = this.db
+      .query("SELECT kind FROM turn_work WHERE session_id = ? AND ref = ?")
+      .get(session, ref) as { kind: string | null } | null
+    return row?.kind ?? undefined
   }
 
   /*

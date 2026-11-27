@@ -830,6 +830,9 @@ export class Costs {
     // the report of an accounting (History adds these up), not a
     // compaction's cost
     accounting = false,
+    // each step that counted: its dollars and its day (null for one older
+    // than the days kept, which goes to the total only), for the payer
+    filed?: (payer: string, usd: number, day: string | null) => void,
   ): number {
     if (!Array.isArray(steps)) return 0
     const now = this.now()
@@ -887,6 +890,9 @@ export class Costs {
         tally.steps += 1
         tally.usd += usd
       }
+      try {
+        filed?.(payer, usd, day >= kept ? day : null)
+      } catch {}
       counted += 1
     }
     if (counted && !payer.startsWith("job:")) {
