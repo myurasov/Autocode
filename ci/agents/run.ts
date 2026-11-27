@@ -36,7 +36,13 @@ import {
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
-import { afterFire, fireOnlyWake, misuseOf, readJsonc } from "./checks.ts"
+import {
+  afterFire,
+  fireOnlyWake,
+  misuseOf,
+  providerBlocks,
+  readJsonc,
+} from "./checks.ts"
 import { workHours } from "./schedule.ts"
 
 const root = resolve(import.meta.dir, "../..")
@@ -189,16 +195,13 @@ function opencodeConfig(): unknown {
   const file = join(homedir(), ".config/opencode/opencode.jsonc")
   const owner = readJsonc(readFileSync(file, "utf8"))
   const providers = new Set(models.map((m) => m.model.split("/")[0]!))
-  const provider: Record<string, unknown> = {}
-  for (const p of providers)
-    if (owner.provider?.[p]) provider[p] = owner.provider[p]
-    else throw new Error(`the owner's OpenCode config has no provider ${p}`)
   return {
     $schema: "https://opencode.ai/config.json",
     model: models[0]?.model,
     update: "disable",
     share: "disabled",
-    provider,
+    // from `providers` or the older `provider`, where the owner keeps it
+    ...providerBlocks(owner, providers),
     ...(owner.yolo !== undefined ? { yolo: owner.yolo } : {}),
     ...(owner.permissions ? { permissions: owner.permissions } : {}),
   }

@@ -283,7 +283,13 @@ describe("a wake's cost with a turn that OpenCode's own notice starts", () => {
         (await admin("GET", "/v1/wakes")).wakes.find(
           (w: any) => w.agent === sub && w.name === "pass",
         )?.week
-      expect(await week()).toEqual({ due: 0, skipped: 0, turns: 0, usd: 0 })
+      expect(await week()).toEqual({
+        due: 0,
+        skipped: 0,
+        turns: 0,
+        usd: 0,
+        reload_usd: 0,
+      })
       await admin("POST", `/v1/agents/${enc(sub)}/wakes/pass/fire`)
       // the agent's $0.021 and $0.011, the Subagent's $0.301 and $0.351 in
       // the background, then, in the turn its result starts, $0.025
@@ -306,6 +312,10 @@ describe("a wake's cost with a turn that OpenCode's own notice starts", () => {
       expect(after.turns).toBe(2)
       expect(after.usd).toBeLessThan(expected + 0.01)
       expect(after.due).toBe(0)
+      // of it, what its two turns' first steps cost to load the context
+      // (1.1.0-rc7): the input of each, a fraction of the dollars
+      expect(after.reload_usd).toBeGreaterThan(0)
+      expect(after.reload_usd).toBeLessThan(0.01)
     } finally {
       await admin("DELETE", `/v1/agents/${enc(sub)}`).catch(() => {})
     }

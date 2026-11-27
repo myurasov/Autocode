@@ -56,6 +56,35 @@ export function misuseOf(calls: Call[], allowFire = false): string | null {
 }
 
 /*
+ * The provider blocks that the suite's models need, from the owner's
+ * OpenCode config: each provider from the key that holds it, `providers`
+ * (OpenCode 2's) before the older `provider`, and under that same key, so
+ * that its entry keeps the shape its key expects. A provider under neither
+ * is an error that names it; nothing of a block is logged.
+ */
+export function providerBlocks(
+  owner: any,
+  names: Iterable<string>,
+): { provider?: Record<string, unknown>; providers?: Record<string, unknown> } {
+  const out: Record<"provider" | "providers", Record<string, unknown>> = {
+    provider: {},
+    providers: {},
+  }
+  for (const name of names) {
+    const key = (["providers", "provider"] as const).find(
+      (k) => owner?.[k]?.[name] !== undefined && owner[k][name] !== null,
+    )
+    if (!key)
+      throw new Error(`the owner's OpenCode config has no provider ${name}`)
+    out[key][name] = owner[key][name]
+  }
+  return {
+    ...(Object.keys(out.provider).length ? { provider: out.provider } : {}),
+    ...(Object.keys(out.providers).length ? { providers: out.providers } : {}),
+  }
+}
+
+/*
  * JSON with comments (// to the line's end, /* ... *\/) and trailing commas,
  * as OpenCode reads its config; strings are kept as they are.
  */

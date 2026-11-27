@@ -14,6 +14,7 @@ import {
   afterFire,
   fireOnlyWake,
   misuseOf,
+  providerBlocks,
   readJsonc,
 } from "../../ci/agents/checks.ts"
 
@@ -109,6 +110,43 @@ describe("readJsonc", () => {
       list: [1, 2],
       text: "keeps // and /* inside strings */ and ,} too",
     })
+  })
+})
+
+/*
+ * The owner's OpenCode config keeps its providers under `providers`
+ * (OpenCode 2's key) or under the older `provider`; a config in change has
+ * both. The real-model suite takes each provider it needs from where it
+ * is, under the same key (2026-11-27: the suite could not start after a
+ * provider moved from one key to the other).
+ */
+describe("providerBlocks", () => {
+  const owner = {
+    provider: { old: { name: "Old" }, both: { name: "Older" } },
+    providers: { fresh: { name: "Fresh" }, both: { name: "Newer" } },
+  }
+
+  test("each provider from the key that holds it, the newer key first", () => {
+    expect(providerBlocks(owner, ["old", "fresh", "both"])).toEqual({
+      provider: { old: { name: "Old" } },
+      providers: { fresh: { name: "Fresh" }, both: { name: "Newer" } },
+    })
+    // a key with nothing to hold is left out
+    expect(providerBlocks(owner, ["old"])).toEqual({
+      provider: { old: { name: "Old" } },
+    })
+    expect(providerBlocks(owner, ["fresh"])).toEqual({
+      providers: { fresh: { name: "Fresh" } },
+    })
+    expect(providerBlocks(owner, [])).toEqual({})
+  })
+
+  test("a provider the config has under neither key is named in the error", () => {
+    expect(() => providerBlocks(owner, ["old", "missing"])).toThrow(
+      "the owner's OpenCode config has no provider missing",
+    )
+    expect(() => providerBlocks({}, ["x"])).toThrow("no provider x")
+    expect(() => providerBlocks(null, ["x"])).toThrow("no provider x")
   })
 })
 
