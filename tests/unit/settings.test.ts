@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   builtinDefaults,
+  compactFor,
   currentValue,
   normalizeLayers,
   normalizeSetting,
@@ -57,6 +58,61 @@ describe("settings", () => {
     ])
       expect(gone in d, gone).toBe(false)
     expect(d.listen).toBe("localhost,tailscale:4848")
+  })
+
+  // 1.1.0-rc7: one provider charges about double for one model above a
+  // context size; that line is the model's, not the agent's.
+  test("compact_at takes thresholds for models after its default", () => {
+    const set = "50% max 500000, */gpt-6.2-*=250000, x/*=off"
+    expect(
+      normalizeSetting(
+        "compact_at",
+        " 50% max 500000 ,  */gpt-6.2-* = 250000,x/*=off ",
+      ),
+    ).toBe(set)
+    expect(normalizeSetting("compact_at", "300000, a/b=40%")).toBe(
+      "300000, a/b=40%",
+    )
+    expect(normalizeSetting("compact_at", "off, a/b:c@d+e_f.g=20000")).toBe(
+      "off, a/b:c@d+e_f.g=20000",
+    )
+    // a plain value is stored as it always was
+    expect(normalizeSetting("compact_at", "300000")).toBe(300000)
+    expect(normalizeSetting("compact_at", "50% max 500000")).toBe(
+      "50% max 500000",
+    )
+    const many = Array.from({ length: 21 }, (_, i) => `m/${i}=20000`)
+    for (const bad of [
+      // no default; no pattern; a space or a comma's rest; too few tokens
+      "a/b=250000",
+      "50%, =250000",
+      "50%, a b=250000",
+      "50%, a/b=5",
+      "50%, a/b",
+      "50%, a/b=250000=1",
+      "50%,",
+      "50%, a/b=120%",
+      "50%, a$b=250000",
+      `50%, ${"x".repeat(201)}=250000`,
+      `50%, ${many.join(", ")}`,
+    ])
+      expect(() => normalizeSetting("compact_at", bad)).toThrow()
+    // the refusal says which entry
+    expect(() => normalizeSetting("compact_at", "50%, a/b=5")).toThrow("a/b")
+    // which value holds for a model: the first entry that matches, the
+    // whole ID, case-sensitive; else the default
+    expect(compactFor(set, "hub/openai/gpt-6.2-astra")).toBe(250000)
+    expect(compactFor(set, "x/y")).toBe("off")
+    expect(compactFor(set, "hub/claude")).toBe("50% max 500000")
+    expect(compactFor(set, null)).toBe("50% max 500000")
+    expect(compactFor(300000, "any/model")).toBe(300000)
+    expect(compactFor("off", "any/model")).toBe("off")
+    expect(compactFor("50%, a/*=100000, a/b=200000", "a/b")).toBe(100000)
+    expect(compactFor("50%, A/b=100000", "a/b")).toBe("50%")
+    expect(compactFor("50%, gpt=100000", "x/gpt-6")).toBe("50%")
+    expect(compactFor("50%, a/b=40% max 90000", "a/b")).toBe("40% max 90000")
+    // a stored value that is none of these reads as its default part
+    expect(compactFor("50%, broken", "a/b")).toBe("50%")
   })
 
   test("values are checked and normalized per key", () => {

@@ -637,6 +637,18 @@
       says what else it takes. For example, for one agent:
     </p>
     <pre>autocode settings set compact_at 90% --agent kaggle:lead</pre>
+    <p>
+      Thresholds for models may follow the default, each as
+      <code>PATTERN=VALUE</code>. The pattern is a model's ID as the Agents
+      tab shows it, with <code>*</code> for any run of characters; the first
+      entry that matches the agent's model holds, else the default. Use it
+      where a provider charges more per step above some context size for
+      one model:
+    </p>
+    <pre>
+autocode settings set compact_at \
+  '50% max 500000, */gpt-6.2-*=250000' --agent kaggle:lead</pre
+    >
 
     <h3 id="retries">
       <span class="n">{{ sec.retries.n }}</span> {{ sec.retries.label }}
@@ -2156,7 +2168,8 @@ autocode settings --agent kaggle:lead</pre
             compact a session once its context passes this size: a number of
             tokens (10000 or more), a share of the model's window
             (<code>90%</code>), a share with a limit
-            (<code>50% max 500000</code>), or off; the agent is told first.
+            (<code>50% max 500000</code>), or off; thresholds for models may
+            follow; the agent is told first.
             See
             <a routerLink="/help" fragment="compaction"
               >{{ sec.compaction.label }}</a

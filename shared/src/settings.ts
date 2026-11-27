@@ -7,7 +7,7 @@
 import { formatDuration, parseDuration } from "./durations.ts"
 import { AutocodeError } from "./errors.ts"
 import { isReservedId, isValidId } from "./ids.ts"
-import { matchesPattern, parsePattern } from "./patterns.ts"
+import { matchesGlob, matchesPattern, parsePattern } from "./patterns.ts"
 
 // Server-wide defaults, overridable by rules for ID patterns (first match wins)
 // and per agent. Keys with scope "server" exist only server-wide.
@@ -123,7 +123,9 @@ export const SETTINGS: Record<string, SettingDef> = {
     default: "50% max 500000",
     help:
       "compact between turns past this context size: tokens, a " +
-      "percentage of the window (with max N, at most N tokens), or off",
+      "percentage of the window (with max N, at most N tokens), or off; " +
+      "thresholds for models may follow, the first that matches the " +
+      "agent's model holds (50% max 500000, */gpt-6.2-*=250000)",
   },
   check_timeout: {
     kind: "duration",
@@ -351,6 +353,58 @@ function percent(key: string, text: string): string {
   return `${n}%`
 }
 
+// A model's ID as OpenCode writes it (provider/model), with * wildcards.
+const COMPACT_MODEL = /^[A-Za-z0-9._:/@+*-]{1,200}$/
+const MAX_COMPACT_MODELS = 20
+
+// One compaction threshold: tokens, a share of the window, or off.
+function compactValue(key: string, text: unknown): SettingValue {
+  if (text === "off") return "off"
+  if (typeof text === "number" || /^\d+$/.test(String(text))) {
+    const n = Number(text)
+    // OpenCode's system prompt and tools alone are about 10k tokens
+    if (!Number.isInteger(n) || n < 10_000)
+      fail(key, "expected at least 10000 tokens")
+    return n
+  }
+  const m = /^(\d{1,3}%)(?:\s+max\s+(\d+))?$/.exec(String(text))
+  if (!m)
+    fail(
+      key,
+      "expected tokens, a percentage (50%), a percentage with a cap " +
+        "(50% max 500000), or off; thresholds for models may follow " +
+        "(50% max 500000, */gpt-6.2-*=250000)",
+    )
+  const p = percent(key, m[1] ?? "")
+  return m[2] ? `${p} max ${Number(m[2])}` : p
+}
+
+/*
+ * The compaction threshold that holds for a model (1.1.0-rc7): of a
+ * compact_at value with thresholds for models, the first entry whose
+ * pattern matches the whole model ID (case-sensitive, * for any run of
+ * characters); else its default part, also while the model is not known. A
+ * plain value is itself. What comes back is tokens, a share of the window
+ * ("50%", "50% max 500000") or "off".
+ */
+export function compactFor(
+  setting: SettingValue,
+  model: string | null | undefined,
+): SettingValue {
+  if (typeof setting !== "string" || !setting.includes(",")) return setting
+  const [first = "", ...rest] = setting.split(",").map((part) => part.trim())
+  const plain = (text: string): SettingValue =>
+    /^\d+$/.test(text) ? Number(text) : text
+  if (model)
+    for (const part of rest) {
+      const eq = part.indexOf("=")
+      if (eq <= 0) continue
+      if (matchesGlob(part.slice(0, eq).trim(), model))
+        return plain(part.slice(eq + 1).trim())
+    }
+  return plain(first)
+}
+
 export function normalizeSetting(key: string, value: unknown): SettingValue {
   const def = settingDef(key)
   if (!def) fail(key, "no such setting")
@@ -416,23 +470,41 @@ export function normalizeSetting(key: string, value: unknown): SettingValue {
     case "percent":
       return percent(key, String(text))
     case "compact": {
-      if (text === "off") return "off"
-      if (typeof text === "number" || /^\d+$/.test(String(text))) {
-        const n = Number(text)
-        // OpenCode's system prompt and tools alone are about 10k tokens
-        if (!Number.isInteger(n) || n < 10_000)
-          fail(key, "expected at least 10000 tokens")
-        return n
-      }
-      const m = /^(\d{1,3}%)(?:\s+max\s+(\d+))?$/.exec(String(text))
-      if (!m)
+      if (typeof text !== "string" || !text.includes(","))
+        return compactValue(key, text)
+      /*
+       * Thresholds for models after the default (1.1.0-rc7):
+       * "50% max 500000, <model pattern>=250000, ...".
+       */
+      const [first = "", ...rest] = text.split(",").map((part) => part.trim())
+      if (first.includes("="))
         fail(
           key,
-          "expected tokens, a percentage (50%), a percentage with a cap " +
-            "(50% max 500000), or off",
+          "the first part is the default threshold, without a model " +
+            `(got ${JSON.stringify(first)})`,
         )
-      const p = percent(key, m[1] ?? "")
-      return m[2] ? `${p} max ${Number(m[2])}` : p
+      if (rest.length > MAX_COMPACT_MODELS)
+        fail(key, `at most ${MAX_COMPACT_MODELS} thresholds for models`)
+      const entries = rest.map((part) => {
+        const eq = part.indexOf("=")
+        const pattern = eq < 0 ? "" : part.slice(0, eq).trim()
+        if (!COMPACT_MODEL.test(pattern))
+          fail(
+            key,
+            "a threshold for a model is written PATTERN=VALUE, the pattern " +
+              "a model's ID (provider/model) with * wildcards " +
+              `(got ${JSON.stringify(part)})`,
+          )
+        try {
+          return `${pattern}=${compactValue(key, part.slice(eq + 1).trim())}`
+        } catch (err) {
+          return fail(
+            key,
+            `for ${pattern}: ${(err as Error).message.replace(`${key}: `, "")}`,
+          )
+        }
+      })
+      return [String(compactValue(key, first)), ...entries].join(", ")
     }
     case "bool":
       if (text === true || text === "true" || text === "on") return true

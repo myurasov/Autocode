@@ -126,6 +126,43 @@ describe("an agent's spend and context", () => {
     expect(cost.compact_at).toBe(500_000)
   })
 
+  // 1.1.0-rc7: a threshold for the sessions on a model, after the default.
+  test("compact_at by model: the entry of the agent's model holds, and follows its model", async () => {
+    const set = "50% max 500000, */gpt-6.2-*=30000"
+    const patched = await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { compact_at: ` ${set.replace("=", " = ")} ` } },
+    })
+    expect(patched.status).toBe(200)
+    expect(
+      (await owner("GET", "/v1/settings?agent=team:a")).body.values.compact_at,
+    ).toBe(set)
+    // no model known yet: the default (no window either: its cap)
+    let cost = (await owner("GET", "/v1/agents/team:a")).body.agent.cost
+    expect(cost.compact_at).toBe(500_000)
+    // on another model: the default, 50% of its window
+    await report(t, HOST, [step(0.01, 40_000)])
+    cost = (await owner("GET", "/v1/agents/team:a")).body.agent.cost
+    expect(cost).toMatchObject({ compact_at: 100_000, context_share: 40 })
+    // on a model of the entry: its threshold, from that step on
+    await report(t, HOST, [
+      { ...step(0.01, 40_000), model: "hub/openai/gpt-6.2-astra" },
+    ])
+    cost = (await owner("GET", "/v1/agents/team:a")).body.agent.cost
+    expect(cost).toMatchObject({ compact_at: 30_000, context_share: 133.3 })
+    expect((await as(a, "GET", "/v1/me")).body.cost.compact_at).toBe(30_000)
+    // and back
+    await report(t, HOST, [step(0.01, 40_000)])
+    cost = (await owner("GET", "/v1/agents/team:a")).body.agent.cost
+    expect(cost.compact_at).toBe(100_000)
+    // a bad entry is refused, and says which
+    const bad = await owner("PATCH", "/v1/settings", {
+      agents: { "team:a": { compact_at: "50%, a/b=5" } },
+    })
+    expect(bad.status).toBe(400)
+    expect(bad.body.error.code).toBe("bad_setting")
+    expect(bad.body.error.message).toContain("a/b")
+  })
+
   test("what is left is never below zero", async () => {
     await owner("PATCH", "/v1/settings", {
       agents: { "team:a": { daily_usd: 1 } },

@@ -50,3 +50,9 @@ export function matchesPattern(
 ): boolean {
   return parsePattern(pattern).some((item) => itemMatches(item, id))
 }
+
+// Whether a text matches a pattern with * wildcards, whatever its
+// characters (a model's ID has slashes): the whole text, case-sensitive.
+export function matchesGlob(pattern: string, text: string): boolean {
+  return itemMatches(pattern, text)
+}

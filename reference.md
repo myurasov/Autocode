@@ -1152,6 +1152,25 @@ of the session with a summary. Autocode starts it between turns, once the contex
 
 If the model's window is not known, a share counts as its `max`, or as 500,000 tokens.
 
+**By model.** A provider may charge more per step above some context size for one model only. So the value may
+carry thresholds for models after its default:
+
+```sh
+autocode settings set compact_at \
+  '50% max 500000, */gpt-6.2-*=250000' --agent kaggle:lead
+```
+
+- **Each entry is `PATTERN=VALUE`.** The pattern is a model's ID as the Agents tab shows it (`provider/model`),
+  with `*` for any run of characters. It must match the whole ID, in the same letter case. The value takes the
+  forms of the table above.
+- **The first entry that matches the agent's model holds.** With none, or before the agent's model is known, the
+  default holds: the part before the first comma.
+- **It follows the model.** An agent that changes models is measured against its new model's entry from its next
+  turn on.
+- **It is still one setting.** The agent's own value, else the first matching rule, else the server's: only the
+  entries of the value that wins are looked at. At most 20 entries.
+- **What shows** on the Agents tab and in `autocode_me status` is the number of tokens that holds now.
+
 **What happens, in order:**
 
 1. **The agent is told first:** `[autocode] compaction next`, with its context and the threshold. The notice is
@@ -1837,7 +1856,7 @@ clears that value again.
 | `retry_attempts` | agent | `0` | the most retries in a row before Autocode stops and tells you. 0: no limit |
 | `daily_usd` | agent | `off` | the agent's cost cap per day, in dollars: `12.50` or `$12.50`, or `off` |
 | `cap_warn` | agent | `90%` | warn the agent at this share of its cap |
-| `compact_at` | agent | `50% max 500000` | compact a session past this context size (see [Compaction](#compaction)) |
+| `compact_at` | agent | `50% max 500000` | compact a session past this context size; thresholds for models may follow (see [Compaction](#compaction)) |
 | `expire_after` | agent | `14d` | unregister an agent this long after its session's last turn. `0`: never |
 | `host_expire_after` | server | `1d` | forget a host this long after it was last heard from, once it is offline and nothing needs it. `0`: never (see [What the Database Keeps](#what-the-database-keeps)) |
 | `report_close_after` | server | `7d` | close a report in the Inbox this long after it came. `0`: never (see [Reports](#reports)) |
