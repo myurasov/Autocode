@@ -89,7 +89,7 @@ cd Autocode
 ci/dist.sh
 ```
 
-It worked if the last line names the build, like `build 1: v1.1.0-rc6-build1`. The binary is `dist/autocode`, for the
+It worked if the last line names the build, like `build 1: v1.1.0-rc7-build1`. The binary is `dist/autocode`, for the
 CPU of the machine that built it. With `AUTOCODE_TARGETS=all` the build also makes `dist/autocode-linux-x64` (for
 `x86_64`), `dist/autocode-linux-arm64` (for `aarch64`) and `dist/autocode-darwin-arm64` (for a Mac). A clone gives the
 `main` branch, the newest code. To build a release, check out its tag before `ci/dist.sh`: `git tag` lists them.
