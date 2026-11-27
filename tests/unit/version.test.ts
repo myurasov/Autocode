@@ -33,11 +33,11 @@ afterAll(async () => {
 
 describe("the version", () => {
   test("is the release plus the build number, or -dev", () => {
-    // 1.1.0, the seventh release candidate's code under its final name
-    // (the owner, 2026-11-27: "re-tag ... as v1.1.0, publish a release");
-    // the build counter keeps counting
-    expect(RELEASE).toBe("1.1.0")
-    expect(versionOf(RELEASE, "97")).toBe("1.1.0-build97")
+    // 1.1.1, a fix release: the plugin's agent line on every request made
+    // with a session's context (the owner, 2026-11-27: "fix and release
+    // 1.1.1 now"); the build counter keeps counting
+    expect(RELEASE).toBe("1.1.1")
+    expect(versionOf(RELEASE, "98")).toBe("1.1.1-build98")
     expect(versionOf("0.1.0", "7")).toBe("0.1.0-build7")
     expect(versionOf("0.1.0", "")).toBe("0.1.0-dev")
     expect(versionOf("0.1.0")).toBe("0.1.0-dev")
