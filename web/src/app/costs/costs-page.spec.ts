@@ -213,8 +213,15 @@ describe('CostsPage', () => {
     expect(text(page.querySelector('footer'))).toBe('Updated 0s ago.');
   });
 
-  it("a click on Days shows an agent's spend per day, newest first; again hides it", async () => {
+  // The button is called Details (the owner, 2026-11-27: "rename Days
+  // button on cost to Details"): it opens what started the turns too.
+  it("a click on Details shows an agent's spend per day, newest first; again hides it", async () => {
     const page = await open();
+    expect(
+      [...page.querySelectorAll('table.costs td.actions button')].map((b) =>
+        text(b),
+      ),
+    ).toEqual(['Details', 'Details', 'Details']);
     const days = () =>
       page.querySelector('tr.days[data-agent="kaggle:lead"]') as HTMLElement;
     expect(days()).toBeNull();

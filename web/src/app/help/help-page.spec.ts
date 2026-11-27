@@ -1082,10 +1082,10 @@ describe('HelpPage', () => {
       'unregistered',
       'Agent filters by agent ID',
       'the total of what is listed',
-      // the two things called Days, told apart
+      // the Days field, and the row's button (Details since 1.1.0)
       'Enter a number in the Days field above the table: Total and the ' +
         'totals row then count only that many last days',
-      "The Days button in a row opens that agent's spend per day",
+      "The Details button in a row opens that agent's spend per day",
       'The Unregistered box, on by default, keeps the unregistered agents ' +
         'that spent something',
       "right of Refresh is when the data was read, in the server's time " +

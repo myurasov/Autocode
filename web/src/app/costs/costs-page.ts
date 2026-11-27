@@ -5,7 +5,7 @@
  * owner, 2026-11-09, in place of Left Today; its context is on the Agents
  * tab), refreshed every 5 s (one
  * refresh at a time) so it follows each model step, with when the data was
- * read. Days shows an agent's spend per day, newest first; agent IDs link to
+ * read. Details shows an agent's spend per day, newest first; agent IDs link to
  * the Agents page. Unregistered agents with spend show too, marked; the Agent
  * filter (an ID pattern, kept in the address) applies a second after the last
  * key; a totals row adds up what is listed (the owner, 2026-11-08). The
@@ -15,7 +15,7 @@
  * the last X days (empty: all time). By kind and by cause (1.1.0-rc7): a
  * Split bar per agent (cache writes, cache reads, input, output, and what
  * could not be split, of the period's spend) with its dollars on hover, the
- * Subagents' part, and under Days what started the agent's turns and each
+ * Subagents' part, and under Details what started the agent's turns and each
  * day's kinds.
  */
 

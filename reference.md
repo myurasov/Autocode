@@ -1193,7 +1193,7 @@ per wake, so you see which turns pay mostly to get started.
 **Where it shows:**
 
 - **The Costs tab:** a **Split** bar and a **Subagents** column for each agent, over the period of **Days**. An
-  agent's **Days** button opens **What Started the Turns** and its spend per day by kind.
+  agent's **Details** button opens **What Started the Turns** and its spend per day by kind.
 - **`autocode costs`:** the shares by kind and the Subagents' dollars; `autocode costs AGENT` adds the causes and
   each day.
 - **The Wakes tab, `autocode wakes` and `autocode_wake action=list`:** each wake's reload in its last 7 days.
@@ -1865,7 +1865,7 @@ tab are days in the server's zone.
 - An agent's total includes the runs it paid for; the tooltip says how much of it. Runs that no agent started
   have their job's row, `job:<name>`, with status `job`; its ID leads to the job (see
   [Whom a Run's Cost Counts For](#whom-a-runs-cost-counts-for)).
-- **Days**, in a row, shows that row's spend per day.
+- **Details**, in a row, shows what started that row's turns and its spend per day.
 - The **Agent** filter; the **Days** field, which makes the totals cover the last X days (empty: all time); and the
   **Unregistered** box, on by default. Job rows always show.
 - The totals row adds up what is shown. Each cost is in one row only, so nothing is counted twice.

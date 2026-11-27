@@ -4,10 +4,10 @@
   agent's status (its dot, as on Agents; unregistered ones with spend too,
   marked), spend
   today, its daily cap (a bar of the share spent), its last 7 days (a bar per
-  day, its value on hover), its total and Days for its spend per day (the
+  day, its value on hover), its total and Details for its spend per day (the
   agent a link led to, ?agent=, highlighted); a totals row; and when the list
   last loaded. By kind and by cause (1.1.0-rc7): each agent's Split bar and
-  its Subagents' part over the period; under Days, what started its turns
+  its Subagents' part over the period; under Details, what started its turns
   and each day's kinds.
 -->
 
@@ -170,7 +170,7 @@
             [attr.aria-expanded]="open() === a.agent"
             (click)="toggle(a.agent)"
           >
-            Days
+            Details
           </button>
         </td>
       </tr>

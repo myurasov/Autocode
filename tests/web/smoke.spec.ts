@@ -2250,7 +2250,7 @@ test("Costs: hovering a day of Last 7 Days shows its value at once", async ({
  * Subagents' part, and under Days what started its turns and each day's
  * kinds.
  */
-test("Costs: the Split bar's parts show at once on hover; Subagents; Days shows what started the turns", async ({
+test("Costs: the Split bar's parts show at once on hover; Subagents; Details shows what started the turns", async ({
   page,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -2373,8 +2373,8 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Days shows 
   await expect(
     page.locator("table.costs tfoot tr.totals td.split .split-bar"),
   ).toBeVisible()
-  // Days: what started the turns, above the days with their kinds
-  await row.getByRole("button", { name: "Days", exact: true }).click()
+  // Details: what started the turns, above the days with their kinds
+  await row.getByRole("button", { name: "Details", exact: true }).click()
   const open = page.locator('table.costs tr.days[data-agent="smoke:agent"]')
   await expect(open.locator(".causes-title")).toHaveText(
     /^\s*What Started the Turns\s+All Time\s*$/,
@@ -2404,7 +2404,7 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Days shows 
   // with the days open the page still fits
   expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
   // a table of one agent: its row's tip and the totals row's are whole too
-  await row.getByRole("button", { name: "Days", exact: true }).click()
+  await row.getByRole("button", { name: "Details", exact: true }).click()
   await page.locator("#cost-match").fill("smoke:agent")
   await expect(page.locator("table.costs tbody tr[data-agent]")).toHaveCount(1)
   await whole(bar, "the only row")
@@ -2474,7 +2474,7 @@ test("Costs: spend and context live, an agent's days, and the Agents column", as
     await expect(
       page.locator("table.costs tbody tr[data-agent]").first(),
     ).toHaveAttribute("data-agent", /^smoke:/)
-    await row.getByRole("button", { name: "Days", exact: true }).click()
+    await row.getByRole("button", { name: "Details", exact: true }).click()
     const days = page.locator('tr.days[data-agent="smoke:agent"]')
     await expect(
       days.locator("table.cost-days tbody tr").first(),
@@ -3102,7 +3102,7 @@ test("the sort arrow has room in its heading: never in the cell's right padding"
         // an agent's days: a table of its own, with amounts at the right
         const days = page
           .locator('table.costs tr[data-agent="smoke:agent"]')
-          .getByRole("button", { name: "Days", exact: true })
+          .getByRole("button", { name: "Details", exact: true })
         if ((await days.getAttribute("aria-expanded")) !== "true")
           await days.click()
         await expect(days).toHaveAttribute("aria-expanded", "true")
@@ -5285,9 +5285,9 @@ test("Agents: a machine's group folds on a click and stays folded after a reload
 
 // The owner, 2026-11-09: "make expand/collapse markers and animation like
 // they are on group expansion": the forms' title lines and the Costs tab's
-// Days button show the group headings' chevron, turned the same way when
+// Details button show the group headings' chevron, turned the same way when
 // closed and open, with the same turn.
-test("expand/collapse markers: the forms and Days have the group headings' chevron and turn", async ({
+test("expand/collapse markers: the forms and Details have the group headings' chevron and turn", async ({
   page,
 }) => {
   type Look = {
@@ -5349,7 +5349,7 @@ test("expand/collapse markers: the forms and Days have the group headings' chevr
     expect(await look(summary, "::before"), tab).toEqual(closed)
     // a form's marker sits on its title's baseline (the owner, 2026-11-17:
     // "make details.panel>summary:before vertical align 0px"); a group's
-    // chevron and the Days button keep theirs, 2 px below
+    // chevron and the Details button keep theirs, 2 px below
     expect(
       await summary.evaluate(
         (e) => getComputedStyle(e, "::before").verticalAlign,
@@ -5364,7 +5364,7 @@ test("expand/collapse markers: the forms and Days have the group headings' chevr
   await openTab(page, "Costs")
   const days = page
     .locator('table.costs tr[data-agent="smoke:agent"]')
-    .getByRole("button", { name: "Days", exact: true })
+    .getByRole("button", { name: "Details", exact: true })
   await settled(days, closed.transform)
   expect(await look(days, "::before")).toEqual(closed)
   expect(
