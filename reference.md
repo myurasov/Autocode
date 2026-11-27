@@ -1622,6 +1622,7 @@ by one kind, or by a group such as `wake.*`.
 | `agent.refused` | a registration was refused: `id_taken` or `session_has_id` |
 | `agent.changed` | an agent's description changed |
 | `agent.renamed` | an agent was renamed in place. The data has its old ID (`from`), its new one (`to`) and who did it (`by`: `owner` or `self`) |
+| `agent.model` | an agent's model or effort became another than the last one known (`model`, `effort`, `was_model`, `was_effort`); or, for a session of the `claude-agent` provider, the model that answered became another or is not the one asked for (`answered`, `requested`, `was_answered`) |
 | `agent.unregistered`, `agent.expired` | an agent was unregistered, and the data says by whom; `expire_after` passed, and the agent was unregistered |
 | `agent.paused`, `agent.resumed` | an agent was paused; its pause was ended. The data says by whom |
 | `stop_all`, `resume_all` | Stop All and Resume All |
@@ -1766,10 +1767,19 @@ tab are days in the server's zone.
 **Agents**
 
 - One row per agent, grouped by machine: status, model, effort, spend, context, host, folder, session, times.
-- **Model** is the model that the agent's last step ran: its provider in grey, a slash and the model, like
-  `claude-agent/fable`. Hover for its name where OpenCode has one, like `Fable 5.2`. The name comes from the
-  agents' steps, so it is there once one agent has run that model. A `claude-agent` model also shows its version,
-  taken from that name: `claude-agent/fable (5.2)`.
+- **Model** is the model that the agent's session is set to, as of its last turn's start or step: its provider in
+  grey, a slash and the model, like `claude-agent/fable`. Hover for its name where OpenCode has one, like
+  `Fable 5.2`. The name comes from the agents' steps, so it is there once one agent has run that model. A
+  `claude-agent` model also shows its version, taken from that name: `claude-agent/fable (5.2)`.
+  - **When it changes,** History gets `agent.model` with the old and the new model and effort.
+  - **Which model answered.** OpenCode records the model that was asked for. For a `claude-agent` session,
+    Autocode also reads from Claude Code's own transcript which model answered the last turn: the tooltip says
+    `answered by claude-fable-5-2`. If that is not the model that was asked for, a second line in amber under the
+    model says so, and History gets `agent.model`.
+  - **This reading is best effort.** It uses two things that neither tool publishes as an interface: a field of
+    OpenCode's messages and the place of Claude Code's transcripts. If either changes, the page simply stops
+    showing the answering model. It needs OpenCode's local API: see
+    [A Host Is Marked "no shell values"](#a-host-is-marked-no-shell-values).
 - **Effort** is how hard the model is set to think, like `high` or `max`. OpenCode calls it the model's variant.
   It is empty when the model runs with its default. You set it in OpenCode, not in Autocode.
 - **Spend** is today and in total. A click shows the agent on the Costs tab.

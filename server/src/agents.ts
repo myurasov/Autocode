@@ -41,7 +41,8 @@ const SELECT = `
          a.model,
          COALESCE(a.model_name, (SELECT n.name FROM model_names n
                                  WHERE n.model = a.model)) AS model_name,
-         a.effort, s.host_id, s.directory,
+         a.effort, a.answered_model, a.requested_model,
+         s.host_id, s.directory,
          s.deleted_at, s.busy,
          s.idle_since, s.last_outcome, h.machine, h.online,
          EXISTS (SELECT 1 FROM asks k WHERE k.agent_id = a.id
@@ -69,6 +70,10 @@ export interface AgentView {
   model_name?: string | null
   // its model's variant (high, max...), when it runs with one
   effort?: string | null
+  // for a claude-agent session: which model answered last, and which was
+  // asked for (1.1.0-rc7)
+  answered_model?: string | null
+  requested_model?: string | null
   // its last turn failed (tier 0b3)
   error?: ErrorView
 }
@@ -144,6 +149,10 @@ export class Agents {
       model_name: row.model_name ?? null,
       // and its effort, the model's variant (the owner, 2026-11-17)
       effort: row.effort ?? null,
+      // which model answered a claude-agent session, and which was asked
+      // for (1.1.0-rc7)
+      answered_model: row.answered_model ?? null,
+      requested_model: row.requested_model ?? null,
       ...(row.error ? { error: errorView(row) } : {}),
       ...this.extra(row.id),
     }

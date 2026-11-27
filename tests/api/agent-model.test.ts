@@ -1,0 +1,235 @@
+/*
+ * An agent's model as the server learns it (1.1.0-rc7): at a turn's start
+ * already, not only when its first step ends; History says when it changed
+ * (agent.model); and for a claude-agent session, which model answered and
+ * which was asked for.
+ */
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import {
+  ack,
+  call,
+  hello,
+  instructions,
+  registered,
+  report,
+  type TestServer,
+  testServer,
+} from "../helpers/server.ts"
+
+let t: TestServer
+const HOST = "m:1"
+
+const owner = (method: string, path: string, body?: unknown) =>
+  call(t.url, t.admin, method, path, body)
+const agent = async () => (await owner("GET", "/v1/agents/team:a")).body.agent
+const changes = async () =>
+  (await owner("GET", "/v1/history?kind=agent.model")).body.history
+    .map((h: any) => [h.agent, h.data])
+    .reverse()
+
+let steps = 0
+const step = (more: Record<string, unknown> = {}) => ({
+  type: "cost",
+  session: "ses_a",
+  usd: 0.01,
+  context: 1000,
+  limit: 200_000,
+  model: "fake/main",
+  model_name: "Main 1",
+  effort: "high",
+  step: `st_${++steps}`,
+  ...more,
+})
+const started = (more: Record<string, unknown> = {}) => ({
+  type: "turn.started",
+  session: "ses_a",
+  by: "user",
+  ...more,
+})
+
+beforeEach(async () => {
+  steps = 0
+  t = await testServer()
+  await hello(t, HOST)
+  await registered(t, HOST, "ses_a", "team:a")
+  for (const i of await instructions(t, HOST)) await ack(t, HOST, i.id)
+})
+afterEach(() => t.stop())
+
+describe("the model at a turn's start", () => {
+  test("a turn's start says the session's model: the agent shows it before any step ends", async () => {
+    await report(t, HOST, [
+      started({
+        model: "hub/kimi-k3",
+        model_name: "Kimi K3",
+        limit: 256_000,
+        effort: "max",
+      }),
+    ])
+    expect(await agent()).toMatchObject({
+      model: "hub/kimi-k3",
+      model_name: "Kimi K3",
+      effort: "max",
+      status: "working",
+    })
+    expect((await agent()).cost.context_limit).toBe(256_000)
+    // the context is a step's to say
+    expect((await agent()).cost.context).toBeNull()
+    // a start that says no model (the session could not be read, an older
+    // plugin) keeps what is known
+    await report(t, HOST, [
+      { type: "turn.ended", session: "ses_a", outcome: "succeeded" },
+      started(),
+    ])
+    expect(await agent()).toMatchObject({ model: "hub/kimi-k3", effort: "max" })
+    // "" says the model runs with no effort; a missing name keeps the name
+    await report(t, HOST, [
+      { type: "turn.ended", session: "ses_a", outcome: "succeeded" },
+      started({ model: "hub/kimi-k3", effort: "" }),
+    ])
+    expect(await agent()).toMatchObject({
+      model: "hub/kimi-k3",
+      model_name: "Kimi K3",
+      effort: null,
+    })
+  })
+
+  test("History says agent.model when the model or the effort becomes another; not for the first one", async () => {
+    await report(t, HOST, [started(), step()])
+    expect(await changes()).toEqual([])
+    // the same again: nothing
+    await report(t, HOST, [
+      step(),
+      started({ model: "fake/main", effort: "high" }),
+    ])
+    expect(await changes()).toEqual([])
+    // another model at a turn's start; another effort at a step
+    await report(t, HOST, [
+      started({ model: "hub/kimi-k3", model_name: "Kimi K3", effort: "high" }),
+      step({ model: "hub/kimi-k3", model_name: "Kimi K3", effort: "max" }),
+      // a Subagent's step on another model changes nothing of the agent's
+      step({ model: "fake/small", context: undefined, sub: "ses_kid" }),
+    ])
+    expect(await changes()).toEqual([
+      [
+        "team:a",
+        {
+          model: "hub/kimi-k3",
+          effort: "high",
+          was_model: "fake/main",
+          was_effort: "high",
+        },
+      ],
+      [
+        "team:a",
+        {
+          model: "hub/kimi-k3",
+          effort: "max",
+          was_model: "hub/kimi-k3",
+          was_effort: "high",
+        },
+      ],
+    ])
+  })
+})
+
+describe("the model that answered", () => {
+  const answered = (model: unknown, requested?: unknown) => ({
+    type: "answered",
+    session: "ses_a",
+    model,
+    ...(requested === undefined ? {} : { requested }),
+  })
+
+  test("the agent's views carry the answering model and the one asked for; History says when they differ or change", async () => {
+    await report(t, HOST, [started({ model: "claude-agent/fable" })])
+    expect(await agent()).toMatchObject({
+      answered_model: null,
+      requested_model: null,
+    })
+    await report(t, HOST, [answered("claude-fable-5-2", "claude-fable-5-2")])
+    expect(await agent()).toMatchObject({
+      answered_model: "claude-fable-5-2",
+      requested_model: "claude-fable-5-2",
+    })
+    const row = (await owner("GET", "/v1/costs")).body.agents[0]
+    expect(row).toMatchObject({
+      answered_model: "claude-fable-5-2",
+      requested_model: "claude-fable-5-2",
+    })
+    // as asked, and the first one known: nothing to record
+    expect(await changes()).toEqual([])
+    // another model answers than the one asked for
+    await report(t, HOST, [
+      answered("claude-opus-4-8", "claude-fable-5-2"),
+      // said again: once
+      answered("claude-opus-4-8", "claude-fable-5-2"),
+    ])
+    expect(await agent()).toMatchObject({
+      answered_model: "claude-opus-4-8",
+      requested_model: "claude-fable-5-2",
+    })
+    // and back
+    await report(t, HOST, [answered("claude-fable-5-2", "claude-fable-5-2")])
+    expect(await changes()).toEqual([
+      [
+        "team:a",
+        {
+          answered: "claude-opus-4-8",
+          requested: "claude-fable-5-2",
+          was_answered: "claude-fable-5-2",
+        },
+      ],
+      [
+        "team:a",
+        {
+          answered: "claude-fable-5-2",
+          requested: "claude-fable-5-2",
+          was_answered: "claude-opus-4-8",
+        },
+      ],
+    ])
+  })
+
+  test("a first answer by another model than asked is recorded; one without a requested model is kept without it", async () => {
+    await report(t, HOST, [answered("claude-opus-5", "claude-fable-5-2")])
+    expect(await changes()).toEqual([
+      [
+        "team:a",
+        {
+          answered: "claude-opus-5",
+          requested: "claude-fable-5-2",
+          was_answered: null,
+        },
+      ],
+    ])
+    await report(t, HOST, [answered("claude-opus-5")])
+    expect(await agent()).toMatchObject({
+      answered_model: "claude-opus-5",
+      requested_model: null,
+    })
+  })
+
+  test("what is no model's name is passed over; the two go when the agent moves to another provider", async () => {
+    await report(t, HOST, [answered("claude-fable-5-2", "claude-fable-5-2")])
+    for (const bad of ["", 3, null, "x".repeat(300), "a b", "<synthetic>"])
+      await report(t, HOST, [answered(bad, "claude-fable-5-2")])
+    expect(await agent()).toMatchObject({
+      answered_model: "claude-fable-5-2",
+      requested_model: "claude-fable-5-2",
+    })
+    // a session nobody registered says nothing
+    await report(t, HOST, [{ ...answered("claude-x"), session: "ses_nobody" }])
+    // on the claude-agent provider they stay; on another they go
+    await report(t, HOST, [started({ model: "claude-agent/fable" })])
+    expect((await agent()).answered_model).toBe("claude-fable-5-2")
+    await report(t, HOST, [
+      { type: "turn.ended", session: "ses_a", outcome: "succeeded" },
+      started({ model: "hub/kimi-k3" }),
+    ])
+    expect(await agent()).toMatchObject({
+      answered_model: null,
+      requested_model: null,
+    })
+  })
+})

@@ -124,6 +124,10 @@ export class Hosts {
     () => {}
   // What a prompt of Autocode's (an injection) gives the turn it starts,
   // and what started the turn that started a known work (1.1.0-rc7).
+  // The session's model, said with a turn's start; and which model
+  // answered a claude-agent session (1.1.0-rc7).
+  onTurnModel: (event: any) => void = () => {}
+  onAnswered: (event: any) => void = () => {}
   promptKind: (injection: string) => string = () => "other"
   workKind: (session: string, ref: unknown) => string | undefined = () =>
     undefined
@@ -481,6 +485,8 @@ export class Hosts {
     at?: unknown,
     by?: unknown,
     ref?: unknown,
+    // the event, when it says the session's model (1.1.0-rc7)
+    model?: any,
   ) {
     if (!this.fresh(session, at, "started")) return
     /*
@@ -561,6 +567,10 @@ export class Hosts {
     try {
       this.onTurnStarted(session, cause, kind)
     } catch {}
+    if (model)
+      try {
+        this.onTurnModel(model)
+      } catch {}
   }
 
   private turnEnded(
@@ -743,7 +753,13 @@ export class Hosts {
         typeof event.session === "string"
       ) {
         this.active(event.session)
-        this.turnStarted(event.session, event.at, event.by, event.ref)
+        this.turnStarted(
+          event.session,
+          event.at,
+          event.by,
+          event.ref,
+          typeof event.model === "string" ? event : undefined,
+        )
       } else if (event.type === "work.started") {
         try {
           this.onWorkStarted(event.session, event.ref, event.parent)
@@ -777,6 +793,13 @@ export class Hosts {
         this.active(event.session)
         try {
           this.onCost(event)
+        } catch {}
+      } else if (
+        event.type === "answered" &&
+        typeof event.session === "string"
+      ) {
+        try {
+          this.onAnswered(event)
         } catch {}
       } else if (
         event.type === "cost.past" &&

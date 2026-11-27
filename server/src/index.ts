@@ -383,6 +383,18 @@ export async function startServer(
     turnWork.started(session, ref, parent)
   hosts.workCause = (session, ref) => turnWork.causeOf(session, ref)
   hosts.workKind = (session, ref) => turnWork.kindOf(session, ref)
+  // the session's model as its turn starts, and the model that answered
+  // (1.1.0-rc7): an agent's own, not a run's
+  hosts.onTurnModel = (event) => {
+    const session = String(event.session)
+    const agent = runOf(session) ? undefined : agents.agentOfSession(session)
+    if (agent) costs.turnModel(agent, event)
+  }
+  hosts.onAnswered = (event) => {
+    const session = String(event.session)
+    const agent = runOf(session) ? undefined : agents.agentOfSession(session)
+    if (agent) costs.answered(agent, event.model, event.requested)
+  }
   costs.instruction = (id) => hosts.instruction(id)
   hosts.onTurnEnded = (agent, outcome, error, reply, background) => {
     retries.turnEnded(agent, outcome, error)
@@ -1314,6 +1326,8 @@ export async function startServer(
               ...(job ? { job } : {}),
               ...(x?.machine ? { machine: x.machine } : {}),
               model: x?.model ?? null,
+              answered_model: x?.answered_model ?? null,
+              requested_model: x?.requested_model ?? null,
               ...view,
               ...(days === null
                 ? {}

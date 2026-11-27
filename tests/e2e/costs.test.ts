@@ -184,6 +184,28 @@ describe("a Subagent's cost", () => {
         (a: any) => a.agent,
       )
       expect(rows).not.toContain(child)
+      /*
+       * By kind and by cause (1.1.0-rc7), from real OpenCode's steps: the
+       * plugin said each step's tokens and the model's rates, so the
+       * dollars are split; the Subagent's steps are told apart; and both
+       * turns, the typed prompt's and the one that the Subagent's result
+       * started, are the owner's, with the Subagent's steps.
+       */
+      const parts = await admin("GET", `/v1/costs/${enc(sub)}`)
+      expect(parts.split.usd).toBeCloseTo(parts.cost.total_usd, 6)
+      expect(parts.split.subagents_usd).toBeGreaterThan(0.65)
+      expect(parts.split.subagents_usd).toBeLessThan(0.67)
+      expect(parts.split.output_usd).toBeGreaterThan(0.6)
+      expect(parts.split.output_tokens).toBeGreaterThanOrEqual(352_000)
+      expect(parts.split.reload_usd).toBeGreaterThan(0)
+      const typed = parts.causes.find((c: any) => c.cause === "owner")
+      expect(typed.turns).toBeGreaterThanOrEqual(2)
+      expect(typed.subagents_usd).toBeCloseTo(parts.split.subagents_usd, 6)
+      // and the agent's model is known with its name
+      const row = (await admin("GET", "/v1/costs")).agents.find(
+        (a: any) => a.agent === sub,
+      )
+      expect(row.model).toMatch(/\/main$/)
     } finally {
       await admin("DELETE", `/v1/agents/${enc(sub)}`).catch(() => {})
     }

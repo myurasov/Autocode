@@ -5,6 +5,7 @@
  */
 
 import { parseDuration, writeServiceRecord } from "@autocode/shared"
+import { answeredBy } from "./answered.ts"
 import { carryOut, formEvent, listOf, permissionEvent } from "./asks.ts"
 import { Channel, type Instruction } from "./channel.ts"
 import { runCheck } from "./checks.ts"
@@ -16,7 +17,7 @@ import {
   processOf,
   readClientConfig,
 } from "./config.ts"
-import { costEvent, nameOf, windowOf } from "./costs.ts"
+import { costEvent, type Kinds, nameOf, ratesOf, windowOf } from "./costs.ts"
 import { sessionIsGone } from "./errors.ts"
 import {
   agentLine,
@@ -788,8 +789,11 @@ export default {
      * A model step's cost and context (tier 0e): a Subagent's counts for its
      * top-level session; the context is the top-level session's own.
      */
-    // each model's window and name, from OpenCode's list
-    const known = new Map<string, { limit: number; name?: string }>()
+    // each model's window, name and rates, from OpenCode's list
+    const known = new Map<
+      string,
+      { limit: number; name?: string; rates?: Kinds }
+    >()
     const modelFor = async (ref: any) => {
       const key = `${ref?.providerID}/${ref?.id}`
       if (!known.has(key)) {
@@ -797,35 +801,32 @@ export default {
         const n = windowOf(models, ref)
         // a failed list is asked again next time
         if (n === undefined) return undefined
-        known.set(key, { limit: n, name: nameOf(models, ref) })
+        known.set(key, {
+          limit: n,
+          name: nameOf(models, ref),
+          rates: ratesOf(models, ref),
+        })
       }
       return known.get(key)
     }
-    const onStep = async (event: any) => {
-      const data = event?.data ?? {}
-      const raw = data.sessionID
-      if (typeof raw !== "string" || !ours(event, raw)) return
-      const session = await askSession(raw)
-      if (!registered.has(session)) return
-      /*
-       * A session that cannot be read just now says nothing of its model:
-       * the step's cost and context go out alone, and the server keeps the
-       * last model, window and effort (the review before 1.0.0: it was taken
-       * for OpenCode's default model, whose smaller window then started a
-       * compaction).
-       */
+    // each session's provider, as last read (the answering model is read
+    // for the claude-agent provider's sessions only)
+    const providers = new Map<string, string>()
+    /*
+     * A session's model as a cost event says it: its ID, window, name,
+     * effort and rates. Undefined for a session that cannot be read just
+     * now: it says nothing of its model, and the server keeps the last
+     * model, window and effort (the review before 1.0.0: it was taken for
+     * OpenCode's default model, whose smaller window then started a
+     * compaction).
+     */
+    const modelOf = async (raw: string) => {
       let read = true
       const info = await ctx.session.get({ sessionID: raw }).catch(() => {
         read = false
         return undefined
       })
-      if (!read) {
-        const bare = costEvent(session, data, {}, raw)
-        if (!bare) return
-        if (session !== raw) bare.context = undefined as any
-        channel.report(bare)
-        return
-      }
+      if (!read) return undefined
       // a session without a model of its own runs OpenCode's default one
       let ref = info?.model
       // its effort: the session's model variant, "" when it has none (the
@@ -839,6 +840,7 @@ export default {
       let limit = found?.limit
       // its name as OpenCode's list has it (the owner, 2026-11-17)
       let name = found?.name
+      let rates = found?.rates
       if (!ref) {
         const def = await ctx.model.default({}).catch(() => undefined)
         const m =
@@ -852,23 +854,58 @@ export default {
               : await modelFor(ref)
           limit = Number.isFinite(n) && n > 0 ? n : listed?.limit
           name = typeof m.name === "string" ? m.name.trim() : listed?.name
+          rates = ratesOf([m], ref) ?? listed?.rates
         }
       }
-      const report = costEvent(
-        session,
-        data,
-        {
-          ...(ref?.id ? { model: `${ref.providerID}/${ref.id}` } : {}),
-          ...(limit ? { limit } : {}),
-          ...(name === undefined ? {} : { name }),
-          ...(effort === undefined ? {} : { effort }),
-        },
-        raw,
-      )
+      if (typeof ref?.providerID === "string")
+        providers.set(raw, ref.providerID)
+      return {
+        ...(ref?.id ? { model: `${ref.providerID}/${ref.id}` } : {}),
+        ...(limit ? { limit } : {}),
+        ...(name === undefined ? {} : { name }),
+        ...(effort === undefined ? {} : { effort }),
+        ...(rates ? { rates } : {}),
+      }
+    }
+    const onStep = async (event: any) => {
+      const data = event?.data ?? {}
+      const raw = data.sessionID
+      if (typeof raw !== "string" || !ours(event, raw)) return
+      const session = await askSession(raw)
+      if (!registered.has(session)) return
+      // the step's own session's model: a Subagent's for its step
+      const report = costEvent(session, data, (await modelOf(raw)) ?? {}, raw)
       if (!report) return
       // a Subagent's context is not its parent's
       if (session !== raw) report.context = undefined as any
       channel.report(report)
+    }
+    /*
+     * The model that answered (1.1.0-rc7): for a session on the
+     * claude-agent provider, read from the harness's transcript when a
+     * turn ends, and said when it is another than was said last.
+     */
+    const answeredSaid = new Map<string, string>()
+    const reportAnswered = async (session: string) => {
+      if (!api || providers.get(session) !== "claude-agent") return
+      try {
+        const found = await answeredBy(
+          (path) => localGet(api, path, 5000),
+          session,
+        )
+        if (!found) return
+        const key = `${found.model}\n${found.requested ?? ""}`
+        if (answeredSaid.get(session) === key) return
+        answeredSaid.set(session, key)
+        channel.report({
+          type: "answered",
+          session,
+          model: found.model,
+          ...(found.requested ? { requested: found.requested } : {}),
+        })
+      } catch (err) {
+        log(`answering model of ${session}: ${(err as Error).message}`)
+      }
     }
     /*
      * OpenCode 2.3 runs Subagents in the background: a session's turn ends
@@ -1028,6 +1065,8 @@ export default {
               working.forget(session)
               inputs.forget(session)
               shells.forget(session)
+              providers.delete(session)
+              answeredSaid.delete(session)
               channel.report({ type: "session.deleted", session })
               // its token is dead: no need to keep it
               void tokens.drop(session)
@@ -1070,6 +1109,15 @@ export default {
               if (outcome !== "started") await steps.get(session)
               // OpenCode's own time of the event orders them at the server
               const at = Number(event.created) || Date.now()
+              // the session's model, said as the turn begins (1.1.0-rc7:
+              // the agent's row then changes at once, not when the first
+              // step ends); and which model answered, once it ended
+              const said =
+                outcome === "started" && registered.has(session)
+                  ? await modelOf(session).catch(() => undefined)
+                  : undefined
+              if (outcome !== "started" && registered.has(session))
+                void reportAnswered(session)
               // a compaction's turn: its cost is read when the turn ends
               if (outcome === "started") {
                 if (starter?.by === "compaction") compacting.set(session, at)
@@ -1110,7 +1158,24 @@ export default {
                   channel.report({ type: "work.started", session, ref })
               channel.report(
                 outcome === "started"
-                  ? { type: "turn.started", session, at, ...(starter ?? {}) }
+                  ? {
+                      type: "turn.started",
+                      session,
+                      at,
+                      ...(starter ?? {}),
+                      ...(said?.model
+                        ? {
+                            model: said.model,
+                            ...(said.name === undefined
+                              ? {}
+                              : { model_name: said.name }),
+                            ...(said.limit ? { limit: said.limit } : {}),
+                            ...(said.effort === undefined
+                              ? {}
+                              : { effort: said.effort }),
+                          }
+                        : {}),
+                    }
                   : {
                       type: "turn.ended",
                       session,

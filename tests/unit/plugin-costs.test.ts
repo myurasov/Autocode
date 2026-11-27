@@ -5,7 +5,7 @@
  * the turn, and status says the spend and the cap.
  */
 import { describe, expect, test } from "bun:test"
-import { costEvent, nameOf, windowOf } from "../../plugin/src/costs.ts"
+import { costEvent, nameOf, ratesOf, windowOf } from "../../plugin/src/costs.ts"
 import { guideText, helpText, TOPICS } from "../../plugin/src/guide.ts"
 import { ME_TOOL, runMe } from "../../plugin/src/tools.ts"
 
@@ -38,9 +38,92 @@ describe("cost events", () => {
       step: "msg_1",
       usd: 0.0123,
       context: 53_200,
+      // by kind (1.1.0-rc7): the cache's reads and writes apart
+      tokens: { input: 1200, output: 300, read: 50_000, write: 2000 },
       model: "fake/main",
       limit: 200_000,
     })
+  })
+
+  // 1.1.0-rc7: what a step's dollars are (cache writes, cache reads, new
+  // input, output), from its tokens and the model's prices.
+  test("a step says its tokens by kind, reasoning with the output, and the model's rates", () => {
+    const data = {
+      ...STEP.data,
+      tokens: {
+        input: 2,
+        output: 1101,
+        reasoning: 1178,
+        cache: { read: 656_650, write: 1422 },
+      },
+    }
+    const rates = { input: 5, output: 25, read: 0.5, write: 6.25 }
+    expect(
+      costEvent("ses_a", data, { model: "fake/main", rates }),
+    ).toMatchObject({
+      context: 658_074,
+      tokens: { input: 2, output: 2279, read: 656_650, write: 1422 },
+      rates,
+    })
+    // no rates known: the tokens alone
+    const bare = costEvent("ses_a", data, { model: "fake/main" })!
+    expect(bare.tokens).toEqual({
+      input: 2,
+      output: 2279,
+      read: 656_650,
+      write: 1422,
+    })
+    expect("rates" in bare).toBe(false)
+    // tokens that are no numbers count as none
+    expect(
+      costEvent(
+        "ses_a",
+        { ...STEP.data, tokens: { input: "x", output: -3, cache: {} } },
+        {},
+      )!.tokens,
+    ).toEqual({ input: 0, output: 0, read: 0, write: 0 })
+  })
+
+  test("a model's rates from OpenCode's list: the entry without a tier, dollars per million tokens", () => {
+    const base = { input: 3, output: 15, cache: { read: 0.3, write: 3.75 } }
+    const tier = {
+      tier: { type: "context", size: 200_000 },
+      input: 6,
+      output: 22.5,
+      cache: { read: 0.6, write: 7.5 },
+    }
+    const models = [
+      { providerID: "fake", id: "tiers", cost: [tier, base] },
+      { providerID: "fake", id: "only-tiers", cost: [tier] },
+      { providerID: "fake", id: "plain", cost: base },
+      { providerID: "fake", id: "free", cost: [] },
+      {
+        providerID: "fake",
+        id: "zero",
+        cost: [{ ...base, input: 0, output: 0, cache: { read: 0, write: 0 } }],
+      },
+      {
+        providerID: "fake",
+        id: "odd",
+        cost: [{ input: "3", output: 15, cache: {} }],
+      },
+      { providerID: "fake", id: "none" },
+    ]
+    const want = { input: 3, output: 15, read: 0.3, write: 3.75 }
+    const of = (id: string) => ratesOf(models, { providerID: "fake", id })
+    expect(of("tiers")).toEqual(want)
+    // only tiers: the first one
+    expect(of("only-tiers")).toEqual({
+      input: 6,
+      output: 22.5,
+      read: 0.6,
+      write: 7.5,
+    })
+    // an older shape: one entry, not a list
+    expect(of("plain")).toEqual(want)
+    for (const id of ["free", "zero", "odd", "none", "missing"])
+      expect(of(id)).toBeUndefined()
+    expect(ratesOf(models, undefined)).toBeUndefined()
   })
 
   // The owner, 2026-11-17: "add col in agents tab for model effort": the

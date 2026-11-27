@@ -28,6 +28,10 @@ import type { SettingsStore } from "./settings-store.ts"
 
 const MAX_STEP_USD = 1000
 const MAX_COMPACT = 500_000
+// The provider whose sessions say which model answered (1.1.0-rc7).
+const ANSWERED_PROVIDER = "claude-agent"
+// A model's name as a provider writes it.
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/
 
 export interface CostNotice {
   agent: string
@@ -382,6 +386,19 @@ export class Costs {
         )
     // the agent's model: its own session's last step (a Subagent's step,
     // with no context of the agent's, may run another model)
+    this.noteModel(agent, event, Number.isInteger(context))
+    this.warn(payer)
+    return amount
+  }
+
+  /*
+   * What a step, or a turn's start, says of a model: its name by its ID
+   * for every model (a Subagent's too), and for the agent's own session its
+   * model, that model's name and its effort. History says agent.model when
+   * the agent's model or effort becomes another than the last one known
+   * (1.1.0-rc7; not for its first model, and not for a run).
+   */
+  private noteModel(agent: string, event: any, own: boolean) {
     const model = typeof event.model === "string" ? event.model.trim() : ""
     // each model's name by its ID, from any step (a Subagent's too), for
     // the jobs' models (the owner, 2026-11-17): "" forgets it
@@ -401,14 +418,29 @@ export class Costs {
           .run(model, name)
       else this.db.query("DELETE FROM model_names WHERE model = ?").run(model)
     }
-    if (model && model.length <= 200 && Number.isInteger(context)) {
-      // another model: the last one's name is not its name
+    if (!own) return
+    const was = this.db
+      .query("SELECT model, effort FROM agents WHERE id = ?")
+      .get(agent) as { model: string | null; effort: string | null } | null
+    if (!was) return
+    if (model && model.length <= 200) {
+      /*
+       * Another model: the last one's name is not its name. An agent that
+       * leaves the claude-agent provider has no answering model any more.
+       */
       this.db
         .query(
           "UPDATE agents SET model_name = CASE WHEN model IS ? " +
             "THEN model_name ELSE NULL END, model = ? WHERE id = ?",
         )
         .run(model, model, agent)
+      if (!model.startsWith(`${ANSWERED_PROVIDER}/`))
+        this.db
+          .query(
+            "UPDATE agents SET answered_model = NULL, " +
+              "requested_model = NULL WHERE id = ?",
+          )
+          .run(agent)
       // its name as OpenCode's model list has it (the owner, 2026-11-17:
       // "Fable 5.2" for claude-agent/fable): "" says the list has none; a
       // step that does not say it keeps the name
@@ -422,15 +454,87 @@ export class Costs {
     }
     // and its effort, the model's variant (the owner, 2026-11-17): "" says
     // the model runs with none; a step that does not say it keeps the last
-    if (typeof event.effort === "string" && Number.isInteger(context)) {
+    if (typeof event.effort === "string") {
       const effort = event.effort.trim()
       if (effort.length <= 100)
         this.db
           .query("UPDATE agents SET effort = ? WHERE id = ?")
           .run(effort || null, agent)
     }
-    this.warn(payer)
-    return amount
+    if (!was.model || this.billTo(agent)) return
+    const now = this.db
+      .query("SELECT model, effort FROM agents WHERE id = ?")
+      .get(agent) as { model: string | null; effort: string | null }
+    if (now.model !== was.model || now.effort !== was.effort)
+      this.history.record("agent.model", {
+        agent,
+        data: {
+          model: now.model,
+          effort: now.effort,
+          was_model: was.model,
+          was_effort: was.effort,
+        },
+      })
+  }
+
+  /*
+   * A turn started, and its plugin said the session's model with it
+   * (1.1.0-rc7; the owner's report of 2026-11-24: after a switch the page
+   * showed the old model until the first step ended): the agent's model,
+   * name, effort and window change as the turn begins. The context is a
+   * step's to say.
+   */
+  turnModel(agent: string, event: any) {
+    if (typeof event?.model !== "string" || !event.model.trim()) return
+    const limit = Number(event.limit)
+    if (Number.isInteger(limit) && limit > 0)
+      this.db
+        .query("UPDATE agents SET context_limit = ? WHERE id = ?")
+        .run(limit, agent)
+    this.noteModel(agent, event, true)
+  }
+
+  /*
+   * Which model answered an agent's claude-agent session, and which was
+   * asked for (1.1.0-rc7; the plugin reads them from the harness's
+   * transcript when a turn ends). History says agent.model when the
+   * answering model becomes another, or is not the one asked for.
+   */
+  answered(agent: string, model: unknown, requested: unknown) {
+    const name = (v: unknown) =>
+      typeof v === "string" && MODEL_NAME.test(v) ? v : null
+    const answered = name(model)
+    if (!answered) return
+    const asked = name(requested)
+    const was = this.db
+      .query("SELECT answered_model, requested_model FROM agents WHERE id = ?")
+      .get(agent) as {
+      answered_model: string | null
+      requested_model: string | null
+    } | null
+    if (!was) return
+    if (was.answered_model === answered && was.requested_model === asked) return
+    this.db
+      .query(
+        "UPDATE agents SET answered_model = ?, requested_model = ? " +
+          "WHERE id = ?",
+      )
+      .run(answered, asked, agent)
+    const changed = !!was.answered_model && was.answered_model !== answered
+    const differs = !!asked && asked !== answered
+    if (
+      changed ||
+      (differs &&
+        !(was.answered_model === answered && was.requested_model === asked))
+    )
+      this.history.record("agent.model", {
+        agent,
+        data: {
+          answered,
+          requested: asked,
+          was_answered: was.answered_model,
+        },
+      })
   }
 
   // The notice at cap_warn, once a day.
