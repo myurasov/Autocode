@@ -261,6 +261,22 @@ nav a.on {
   z-index: 2;
 }
 /*
+ * Where the row may wrap (1.1.0-rc7), a tab on an upper line has no frame
+ * under it: the tabs stand apart from the frame as closed boxes of one
+ * height, and the active one is marked by its colours and a strong top
+ * edge.
+ */
+@media (max-width: 800px) {
+  nav {
+    margin-bottom: 0.4rem;
+  }
+  nav a.on {
+    border-bottom: 1px solid var(--border);
+    padding-top: 0.45rem;
+    box-shadow: inset 0 2px 0 var(--fg-dim);
+  }
+}
+/*
  * The Inbox tab while something waits for the owner (the owner, 2026-11-20:
  * "red-pink hilight at the top of inbox tab when it has messages for us"):
  * its top 3 px in the logo's pink-red, the top border and 2 px drawn inside
@@ -862,7 +878,9 @@ table.costs .graph > .col:focus-visible .tip {
  * 8 px high: cache writes amber (the part a warm cache or a smaller context
  * saves), cache reads blue, new input grey, output green, what could not be
  * split in the bar's own background. Its parts with their dollars and shares
- * show at once above it, on hover and on focus.
+ * show at once beside it, on hover and on focus: left of the bar and
+ * centred on it, where the frame (which clips what leaves it) has room in
+ * the first row and in the totals row alike.
  */
 table.costs td.split,
 table.costs th.split {
@@ -915,8 +933,9 @@ table.costs .split-bar:focus .seg {
 table.costs .split-bar .tip {
   display: none;
   position: absolute;
-  bottom: calc(100% + 5px);
-  right: 0;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 3;
   padding: 4px 8px;
   white-space: nowrap;
@@ -955,9 +974,12 @@ table.costs .split-bar .tip .share,
 table.costs .split-bar .tip .of {
   color: var(--fg-dim);
 }
+/* The last line wraps at the width of the lines above it. */
 table.costs .split-bar .tip .of {
   display: block;
   margin-top: 2px;
+  white-space: normal;
+  width: calc(10px + 13.5rem + 18px);
 }
 table.costs td.subagents {
   white-space: nowrap;
@@ -1481,6 +1503,10 @@ label.check {
   }
   nav a {
     padding: 0.35rem 0.6rem;
+  }
+  /* the active tab too: every tab has one height here (1.1.0-rc7) */
+  nav a.on {
+    padding-top: 0.35rem;
   }
   #frame {
     padding: 0.7rem;

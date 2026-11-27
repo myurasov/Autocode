@@ -2319,15 +2319,50 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Days shows 
     /^Cache Writes\$\d+\.\d\d\d+%$/,
   )
   await expect(tip.locator(".of")).toHaveText(/^of \$\d+\.\d\d/)
-  // whole, in the frame, above the bar
-  const [frame, shown, at] = [
-    (await page.locator("#frame").boundingBox())!,
-    (await tip.boundingBox())!,
-    (await bar.boundingBox())!,
-  ]
-  expect(shown.x).toBeGreaterThanOrEqual(frame.x)
-  expect(shown.x + shown.width).toBeLessThanOrEqual(frame.x + frame.width)
-  expect(shown.y + shown.height).toBeLessThanOrEqual(at.y + 0.5)
+  /*
+   * Whole inside the frame, which clips what leaves it (the review before
+   * 1.1.0-rc7: above the bar it was cut in the first row): left of the bar
+   * and centred on it. In this row, in the first row, and in the totals
+   * row; the frame gets no scroll bar for it.
+   */
+  const whole = async (of: typeof bar, where: string) => {
+    await of.hover()
+    const shown = of.locator(".tip")
+    await expect(shown, where).toBeVisible({ timeout: 300 })
+    const [frame, box, at] = [
+      (await page.locator("#frame").boundingBox())!,
+      (await shown.boundingBox())!,
+      (await of.boundingBox())!,
+    ]
+    expect(box.x, where).toBeGreaterThanOrEqual(frame.x)
+    expect(box.y, where).toBeGreaterThanOrEqual(frame.y)
+    expect(box.y + box.height, where).toBeLessThanOrEqual(
+      frame.y + frame.height,
+    )
+    // left of the bar, centred on it, no wider than its lines
+    expect(box.x + box.width, where).toBeLessThanOrEqual(at.x)
+    expect(
+      Math.abs(box.y + box.height / 2 - (at.y + at.height / 2)),
+      where,
+    ).toBeLessThanOrEqual(1.5)
+    expect(box.width, where).toBeLessThan(300)
+    expect(
+      await page
+        .locator("#frame")
+        .evaluate((el) => el.scrollHeight - el.clientHeight),
+      where,
+    ).toBeLessThanOrEqual(0)
+  }
+  await whole(bar, "smoke:agent's row")
+  await whole(
+    page.locator("table.costs tbody tr td.split .split-bar").first(),
+    "the first row",
+  )
+  await whole(
+    page.locator("table.costs tfoot tr.totals td.split .split-bar"),
+    "the totals row",
+  )
+  await bar.hover()
   await page.mouse.move(5, 5)
   await expect(tip).toBeHidden()
   // by the keyboard too
@@ -2368,6 +2403,15 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Days shows 
   ])
   // with the days open the page still fits
   expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
+  // a table of one agent: its row's tip and the totals row's are whole too
+  await row.getByRole("button", { name: "Days", exact: true }).click()
+  await page.locator("#cost-match").fill("smoke:agent")
+  await expect(page.locator("table.costs tbody tr[data-agent]")).toHaveCount(1)
+  await whole(bar, "the only row")
+  await whole(
+    page.locator("table.costs tfoot tr.totals td.split .split-bar"),
+    "the totals row under one row",
+  )
 })
 
 // Tier 0g (the owner, 2026-11-08): the Costs tab follows a model step live
@@ -3700,6 +3744,37 @@ for (const width of [740, 600]) {
     }
     if (width === 600)
       expect(new Set(tabs.map((t) => t.bottom)).size).toBeGreaterThan(1)
+    /*
+     * Where the row may wrap, a tab on an upper line has no frame under
+     * it: every tab is a closed box of one height, apart from the frame,
+     * and the active one keeps its own bottom edge.
+     */
+    await openTab(page, "Hosts")
+    const boxes = await page
+      .locator("nav")
+      .first()
+      .locator("a")
+      .evaluateAll((all) =>
+        all.map((a) => {
+          const style = getComputedStyle(a)
+          return {
+            on: a.classList.contains("on"),
+            height: Math.round(a.getBoundingClientRect().height),
+            bottom: style.borderBottomWidth,
+            edge: style.borderBottomColor,
+            side: style.borderLeftColor,
+          }
+        }),
+      )
+    expect(boxes.filter((b) => b.on).length).toBe(1)
+    expect(new Set(boxes.map((b) => b.height)).size).toBe(1)
+    for (const b of boxes) {
+      expect(b.bottom).toBe("1px")
+      expect(b.edge).toBe(b.side)
+    }
+    const nav = (await page.locator("nav").first().boundingBox())!
+    const frame = (await page.locator("#frame").boundingBox())!
+    expect(frame.y - (nav.y + nav.height)).toBeGreaterThanOrEqual(4)
     // the header fits too
     const header = (await page.locator("header.top").boundingBox())!
     expect(header.x + header.width).toBeLessThanOrEqual(width)

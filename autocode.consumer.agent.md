@@ -429,9 +429,11 @@ submission, a refresh of shared data.
   old context whose cache had expired), cache reads (context read back
   from it, each step), new input and output; your Subagents' part; and
   the spend by what started the turn (`wake`, `message`, `owner`,
-  `compaction`, `job`, `ask`, `retry`; `run` is your jobs' runs). The
-  first step of a turn loads your whole context: that is the turn's
-  reload. A turn that starts after the provider's cache has expired
+  `compaction`, `job`, `ask`, `retry`; `run` is your jobs' runs,
+  `earlier` what your session spent before it registered, `other`
+  any other notice of Autocode's and a turn whose start is not
+  known). The first step of a turn loads your whole context: that is
+  the turn's reload. A turn that starts after the provider's cache has expired
   pays for writing all of it again, so a few long turns cost less than
   many short ones far apart, and a small context makes every step and
   every start cheaper. A Subagent runs on your model unless you name

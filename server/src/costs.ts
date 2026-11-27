@@ -291,8 +291,9 @@ export class Costs {
    * compact_at in tokens for an agent whose model has this window: a number,
    * a share of the window (at most its "max N" when it has one: the default
    * is "50% max 500000"), or null (off); of a value with thresholds for
-   * models, the one that holds for the agent's model. A share alone is that share, not
-   * capped (the owner, 2026-11-08: "90%" of a 1,000,000 window is 900,000).
+   * models, the one that holds for the agent's model. A share alone is
+   * that share, not capped (the owner, 2026-11-08: "90%" of a 1,000,000
+   * window is 900,000).
    * Without a known window a share is its max, or MAX_COMPACT (the final
    * review: a long session must not go without compaction for want of it).
    */

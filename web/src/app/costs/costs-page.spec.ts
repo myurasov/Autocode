@@ -719,6 +719,9 @@ describe('CostsPage', () => {
       ['rest', '5%'],
     ]);
     expect(bar.getAttribute('tabindex')).toBe('0');
+    // an image with a label, to a screen reader; its tip is for the eye
+    expect(bar.getAttribute('role')).toBe('img');
+    expect(bar.querySelector('.tip')!.getAttribute('aria-hidden')).toBe('true');
     expect(bar.getAttribute('aria-label')).toBe(
       'Cache Writes $4.50 (45%), Cache Reads $2.90 (29%), Input $0.10 (1%), ' +
         'Output $2.00 (20%), Not Split $0.50 (5%)',

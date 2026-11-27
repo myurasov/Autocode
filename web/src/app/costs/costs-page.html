@@ -376,14 +376,16 @@
 
 <!--
   Split (1.1.0-rc7): one bar, a segment per kind in its share of the split's
-  dollars; the parts with their dollars and shares show at once above it on
+  dollars; the parts with their dollars and shares show at once beside it on
   hover and on focus, as Last 7 Days does.
 -->
 <ng-template #bar let-split let-total="total">
   @if (splitParts(split); as parts) {
     @if (parts.length) {
+      <!-- an image to a screen reader: its label says the parts -->
       <span
         class="split-bar"
+        role="img"
         tabindex="0"
         [attr.aria-label]="splitLabel(parts)"
       >

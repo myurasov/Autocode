@@ -1158,7 +1158,8 @@ spend three ways: by kind, by Subagents, and by what started the turn.
 - **It is an estimate where a step was priced otherwise:** by a price tier for a large context, or by a cost
   that the provider reported itself. The proportions then follow the list prices.
 - **Not split.** A step of a model without prices in OpenCode's list counts in full but has no parts. So do the
-  steps from before a session registered, a compaction's own cost, and all spend from before v1.1.0-rc7.
+  steps from before a session registered, and a compaction's own cost.
+- **Spend from before v1.1.0-rc7** is in the totals and in no split: the numbers here start with that version.
 
 **Subagents.** The steps that ran in a Subagent's session, in dollars and as a share.
 
@@ -1184,7 +1185,8 @@ spend three ways: by kind, by Subagents, and by what started the turn.
   a message, a job's result, an ask, any other notice.
 
 **Reload.** The first model step of a turn loads the conversation before anything is done. Its dollars for
-cache writes, cache reads and input are the turn's reload. A turn that starts while the cache is warm reloads
+cache writes, cache reads and input are the turn's reload. Only a turn that Autocode saw start has one: the turn
+in which a session registers has none. A turn that starts while the cache is warm reloads
 cheaply; one that starts cold pays for a cache write of the whole context. The reload is added up per cause and
 per wake, so you see which turns pay mostly to get started.
 
@@ -1197,9 +1199,9 @@ per wake, so you see which turns pay mostly to get started.
 - **The Wakes tab, `autocode wakes` and `autocode_wake action=list`:** each wake's reload in its last 7 days.
 - **`autocode_me action=status`:** the agent's own spend today, by kind and by what started the turn.
 
-The numbers start with v1.1.0-rc7. Over a period that reaches back before it, the split covers the part it knows,
-and says how many dollars that is. Like the total, the split over all time outlives `history_days`; the split
-per day goes with the spend per day.
+The numbers start with v1.1.0-rc7. Over a period that reaches back before it, the split covers the part it knows:
+the Split bar's tip and `autocode costs AGENT` say how many dollars that is, and how many were spent before it.
+Like the total, the split over all time outlives `history_days`; the split per day goes with the spend per day.
 
 ### Compaction
 
@@ -1495,7 +1497,8 @@ machine's process list.
 - **It counts as `--token`**, also in an agent's shell, and goes before `AUTOCODE_TOKEN`.
 - **Both flags together** are wrong usage (exit 2).
 - **A file that is missing, unreadable or empty**, or that holds more than one word, is an error that names the
-  file and never what it holds.
+  file and never what it holds. So is what is no regular file (a folder, a pipe, a device) and a file of more than
+  4,096 bytes.
 - **The CLI does not expand `~`** in the path (your shell does, in `--token-file ~/x` but not in
   `--token-file=~/x`), and it does not check the file's mode: keep it readable by you only (`chmod 600`).
 
