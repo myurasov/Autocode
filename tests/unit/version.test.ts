@@ -33,11 +33,11 @@ afterAll(async () => {
 
 describe("the version", () => {
   test("is the release plus the build number, or -dev", () => {
-    // 1.1.2: cache warming counted in Costs (the owner, 2026-11-27: "yes
-    // as 1.1.2"), and two changes to the Costs tab's look; the build
-    // counter keeps counting
-    expect(RELEASE).toBe("1.1.2")
-    expect(versionOf(RELEASE, "99")).toBe("1.1.2-build99")
+    // 1.1.3 (the owner, 2026-11-27: "ok, release 1.1.3"): what no kind
+    // has is called Uncategorized, and the Split bar is round at both
+    // ends; the build counter keeps counting
+    expect(RELEASE).toBe("1.1.3")
+    expect(versionOf(RELEASE, "102")).toBe("1.1.3-build102")
     expect(versionOf("0.1.0", "7")).toBe("0.1.0-build7")
     expect(versionOf("0.1.0", "")).toBe("0.1.0-dev")
     expect(versionOf("0.1.0")).toBe("0.1.0-dev")
