@@ -2245,9 +2245,9 @@ test("Costs: hovering a day of Last 7 Days shows its value at once", async ({
 /*
  * 1.1.0-rc7 (the owner, 2026-11-27, from a review of real sessions: cache
  * writes were about half of the spend and nothing showed it): each agent's
- * spend by kind as one bar whose parts show at once on hover, its
- * Subagents' part, and under Days what started its turns and each day's
- * kinds.
+ * spend by kind as one bar whose parts show at once on hover, and under
+ * Details what started its turns and each day's kinds. The table had a
+ * Subagents column until 1.1.4.
  */
 test("Costs: the Split bar's parts show at once on hover; no Subagents column; Details shows what started the turns", async ({
   page,
@@ -2428,9 +2428,11 @@ test("Costs: the Split bar's parts show at once on hover; no Subagents column; D
     // the owner, 2026-11-28: each day's cache warming
     "Warming",
   ])
+  // today's: the ping above, a cent or more (an absent number would
+  // show as $0.00)
   await expect(
     open.locator("table.cost-days tbody tr").first().locator("td").last(),
-  ).toHaveText(/^\s*\$\d+\.\d\d\s*$/)
+  ).toHaveText(/^\s*\$(?!0\.00)\d+\.\d\d\s*$/)
   // with the days open the page still fits
   expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
   // a table of one agent: its row's tip and the totals row's are whole too

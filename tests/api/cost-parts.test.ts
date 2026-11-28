@@ -749,11 +749,15 @@ describe("costs outside the steps: cache warming", () => {
     ])
     // a period of one day has that day's
     expect((await one("?days=1")).split.warming_usd).toBe(0.046105)
+    // the list: each agent's own, and the totals add them up
+    await registered(t, HOST, "ses_c", "team:c")
+    await report(t, HOST, [usage(0.01, { session: "ses_c" })])
     const list = (await owner("GET", "/v1/costs")).body
-    expect(
-      list.agents.find((x: any) => x.agent === "team:a").split.warming_usd,
-    ).toBe(0.08221)
-    expect(list.totals.split.warming_usd).toBe(0.08221)
+    const warmed = (agent: string) =>
+      list.agents.find((x: any) => x.agent === agent).split.warming_usd
+    expect(warmed("team:a")).toBe(0.08221)
+    expect(warmed("team:c")).toBe(0.01)
+    expect(list.totals.split.warming_usd).toBe(0.09221)
     // the agent's own status: today's, with the requests it took
     const me = (await as(a, "GET", "/v1/me")).body.cost
     expect(me.today_split.warming_usd).toBe(0.046105)
@@ -765,7 +769,7 @@ describe("costs outside the steps: cache warming", () => {
     expect(
       (await as(b, "GET", "/v1/me")).body.cost.today_split.warming_usd,
     ).toBe(0)
-    // a run's ping is the run's cause, not warming
+    // and it is what the causes say of warming
     expect((await causes()).warming).toEqual([0, 0.08221])
   })
 
@@ -885,6 +889,8 @@ describe("costs outside the steps: cache warming", () => {
     await sessionToken(t, HOST, "ses_run")
     await report(t, HOST, [usage(0.002, { session: "ses_run" })])
     expect(await causes()).toEqual({ run: [0, 0.002] })
+    // the runs' cause, so no warming dollars in the split
+    expect((await one()).split).toMatchObject({ usd: 0.002, warming_usd: 0 })
     const runs = (await owner("GET", "/v1/runs?job=mail")).body.runs
     expect(runs[0].cost).toBe(0.002)
   })

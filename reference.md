@@ -1558,7 +1558,7 @@ are those of `autocode --help`.
 | `autocode hosts` | hosts: ID, machine, folder, online, OpenCode process, shell values, OpenCode version, plugin version, last seen |
 | `autocode agents [PATTERN]` | agents: ID, status, machine, spend today, context as a share of the threshold, last activity, description |
 | `autocode costs [--match PATTERN] [--days N]` | every agent's spend today and in total, cap and what is left, context and threshold, its shares by kind (`WRITE`, `READ`, `IN`, `OUT`) and its Subagents' dollars, with a totals row. Unregistered agents too. `--days N` makes the totals and the shares cover the last N days |
-| `autocode costs AGENT [--days N]` | one agent's spend, cap and context; its spend by kind, its Subagents' part and its reload; its spend by what started the turn; and each day with its kinds. `--days N`: the split and the causes over the last N days, not all time (see [Where the Money Goes](#where-the-money-goes)) |
+| `autocode costs AGENT [--days N]` | one agent's spend, cap and context; its spend by kind, its Subagents' part and its reload; its spend by what started the turn; and each day with its kinds, its Subagents' part and its cache warming. `--days N`: the split and the causes over the last N days, not all time (see [Where the Money Goes](#where-the-money-goes)) |
 | `autocode costs account AGENT` | count what the agent's session spent before it was first registered. For an agent that registered before v1.1.0-rc3; a later registration does it by itself (see [Spend and the Daily Cap](#spend-and-the-daily-cap)) |
 | **Agents** | |
 | `autocode agents register AGENT --session SESSION [--description TEXT] [--force]` | give a session an agent ID. `--force` takes the ID from a session that still exists |
