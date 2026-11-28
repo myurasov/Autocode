@@ -7,7 +7,7 @@
 
 // The first release candidate (the owner, 2026-11-09). Build numbers keep
 // counting across releases: the counter is never reset.
-export const RELEASE = "1.1.3"
+export const RELEASE = "1.1.4"
 
 declare const AUTOCODE_BUILD: string | undefined
 
