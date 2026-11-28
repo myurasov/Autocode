@@ -29,6 +29,9 @@
   --accent-soft: #f3f9e8;
   /* The favicon's pink-red. */
   --tint: #e8436e;
+  /* Output in the Costs tab's Split bar: a pastel yellow, a little deeper
+     on the light theme, where it lies on white. */
+  --pastel-yellow: #edd15c;
   /* The weight of every bold text (the owner, 2026-11-02). */
   --bold: 500;
   /* The dropdowns' arrow. */
@@ -56,6 +59,7 @@ html.dark {
   --ok: #4c9;
   --idle: #6cf;
   --warn: #d9a03c;
+  --pastel-yellow: #f2de8a;
   --err: #e77;
   --accent-soft: #22301a;
   --chevron: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%239aa4ae' stroke-width='1.5'/></svg>");
@@ -888,14 +892,16 @@ table.costs .graph > .col:focus-visible .tip {
 }
 /*
  * Split (1.1.0-rc7): the period's spend by kind as one bar, 110 px wide and
- * 8 px high: cache writes amber (the part a warm cache or a smaller context
- * saves), cache reads blue, new input grey, output green, and what could not
- * be divided into kinds, Uncategorized, in a grey of its own (the owner,
- * 2026-11-27: "make "not split" more distinct from bg color", then, of a
- * hatch: "make it light grey color (on dark), dark grey (on ligh theme),
- * instead of striped grey"): the label color, dark on the light theme and
- * light on the dark one, apart from the row and from new input's fainter
- * grey. Its parts with their dollars and shares
+ * 8 px high: cache writes pink-red (the part a warm cache or a smaller
+ * context saves; the favicon's color), cache reads blue, new input green,
+ * output pastel yellow (the owner, 2026-11-28: "make cache writes on spl;it
+ * bar pink-red, input - green, output pastel yellow"; they were amber, grey
+ * and green), and what could not be divided into kinds, Uncategorized, in a
+ * grey of its own (the owner, 2026-11-27: "make "not split" more distinct
+ * from bg color", then, of a hatch: "make it light grey color (on dark),
+ * dark grey (on ligh theme), instead of striped grey"): the label color,
+ * dark on the light theme and light on the dark one, apart from the row.
+ * Its parts with their dollars and shares
  * show at once beside it, on hover and on focus: left of the bar and
  * centred on it, where the frame (which clips what leaves it) has room in
  * the first row and in the totals row alike.
@@ -934,7 +940,7 @@ table.costs .split-bar .seg {
 }
 table.costs .split-bar .write,
 table.costs .tip .key.write {
-  background: var(--warn);
+  background: var(--tint);
 }
 table.costs .split-bar .read,
 table.costs .tip .key.read {
@@ -942,11 +948,11 @@ table.costs .tip .key.read {
 }
 table.costs .split-bar .input,
 table.costs .tip .key.input {
-  background: var(--fg-faint);
+  background: var(--ok);
 }
 table.costs .split-bar .output,
 table.costs .tip .key.output {
-  background: var(--ok);
+  background: var(--pastel-yellow);
 }
 table.costs .split-bar .rest,
 table.costs .tip .key.rest {
@@ -1009,9 +1015,6 @@ table.costs .split-bar .tip .of {
   margin-top: 2px;
   white-space: normal;
   width: calc(10px + 13.5rem + 18px);
-}
-table.costs td.subagents {
-  white-space: nowrap;
 }
 /* What Started the Turns, over an agent's days. */
 table.costs .causes-title {

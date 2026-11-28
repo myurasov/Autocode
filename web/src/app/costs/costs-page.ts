@@ -14,9 +14,9 @@
  * the Agents tab with its own box on; "X days" makes Total and the totals
  * the last X days (empty: all time). By kind and by cause (1.1.0-rc7): a
  * Split bar per agent (cache writes, cache reads, input, output, and what
- * could not be split, of the period's spend) with its dollars on hover, the
- * Subagents' part, and under Details what started the agent's turns and each
- * day's kinds.
+ * could not be split, of the period's spend) with its dollars on hover, and
+ * under Details what started the agent's turns and each day's kinds, with
+ * the Subagents' part of each.
  */
 
 import { NgTemplateOutlet } from '@angular/common';
@@ -109,15 +109,6 @@ export function splitParts(s: CostSplit | null | undefined): SplitPart[] {
 // A share as a whole percentage.
 export function percentText(share: number): string {
   return `${Math.round(share)}%`;
-}
-
-// The Subagents' part of a split: its dollars and its share; '' for none.
-export function subagentsText(s: CostSplit | null | undefined): string {
-  if (!s || !(s.usd > 0)) return '';
-  return (
-    `${costText(s.subagents_usd)} ` +
-    `(${percentText((s.subagents_usd / s.usd) * 100)})`
-  );
 }
 
 // What started a turn, as the page calls each cause.
@@ -226,7 +217,6 @@ export class CostsPage {
       today: { number: (a) => a.today_usd },
       cap: { number: (a) => (a.daily_usd === 'off' ? null : a.daily_usd) },
       total: { number: (a) => a.total_usd },
-      subagents: { number: (a) => a.split?.subagents_usd ?? null },
     },
     by: 'agent',
   });
@@ -293,7 +283,6 @@ export class CostsPage {
   protected readonly weekBars = weekBars;
   protected readonly splitParts = splitParts;
   protected readonly percentText = percentText;
-  protected readonly subagentsText = subagentsText;
   protected readonly causeText = causeText;
 
   protected readonly causeTurns = causeTurns;

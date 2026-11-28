@@ -1212,8 +1212,9 @@ per wake, so you see which turns pay mostly to get started.
 
 **Where it shows:**
 
-- **The Costs tab:** a **Split** bar and a **Subagents** column for each agent, over the period of **Days**. An
-  agent's **Details** button opens **What Started the Turns** and its spend per day by kind.
+- **The Costs tab:** a **Split** bar for each agent, over the period of **Days**. An agent's **Details** button
+  opens **What Started the Turns** and its spend per day by kind. Both say the Subagents' part: of each cause, and
+  of each day.
 - **`autocode costs`:** the shares by kind and the Subagents' dollars; `autocode costs AGENT` adds the causes and
   each day.
 - **The Wakes tab, `autocode wakes` and `autocode_wake action=list`:** each wake's reload in its last 7 days.

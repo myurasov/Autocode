@@ -1923,17 +1923,14 @@ autocode job set daily-report --host HOST --model MODEL \
       </li>
       <li>
         Split is one bar per agent: its spend by kind over the period, with
-        cache writes in amber, cache reads in blue, input in grey and output
-        in green; what could not be divided into kinds is Uncategorized, in
+        cache writes in pink-red, cache reads in blue, input in green and
+        output in pastel yellow; what could not be divided into kinds is
+        Uncategorized, in
         a lighter grey on the dark theme and a darker one on the light.
         Hover over the bar, or tab to it, for the dollars and the share of
         each.
         See
         <a routerLink="/help" fragment="spend">{{ sec.spend.label }}</a>.
-      </li>
-      <li>
-        Subagents is the part that ran in the agent's Subagents' sessions:
-        its dollars and its share.
       </li>
       <li>
         The Details button in a row opens that agent's spend per day, newest

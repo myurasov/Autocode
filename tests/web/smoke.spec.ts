@@ -2153,9 +2153,8 @@ test("layout: the Costs tab's Last 7 Days is a bar per day right after Daily Cap
     "Daily Cap",
     "Last 7 Days",
     /^\s*(Total|Last \d+ Days?)\s*$/,
-    // 1.1.0-rc7
+    // 1.1.0-rc7; no Subagents column since 1.1.4 (the owner, 2026-11-28)
     "Split",
-    "Subagents",
     "",
   ])
   const row = page.locator('table.costs tr[data-agent="smoke:agent"]')
@@ -2250,7 +2249,7 @@ test("Costs: hovering a day of Last 7 Days shows its value at once", async ({
  * Subagents' part, and under Days what started its turns and each day's
  * kinds.
  */
-test("Costs: the Split bar's parts show at once on hover; Subagents; Details shows what started the turns", async ({
+test("Costs: the Split bar's parts show at once on hover; no Subagents column; Details shows what started the turns", async ({
   page,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -2379,7 +2378,9 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Details sho
   // by the keyboard too
   await bar.focus()
   await expect(tip).toBeVisible({ timeout: 300 })
-  await expect(row.locator("td.subagents")).toHaveText(/^\$\d+\.\d\d \(\d+%\)$/)
+  // the Subagents' part has no column in this table (it shows under
+  // Details, per cause and per day)
+  await expect(page.locator("table.costs .subagents")).toHaveCount(0)
   // the totals row has its own
   await expect(
     page.locator("table.costs tfoot tr.totals td.split .split-bar"),
@@ -2593,9 +2594,11 @@ async function cutCorners(
  * theme), instead of striped grey", under the name Uncategorized; and "that
  * split bar does not have rounded corders on the right" (only its first
  * part was rounded, and that one only when it was wider than the corner).
- * All are read from pictures of the page.
+ * All are read from pictures of the page. And the kinds' colors (the
+ * owner, 2026-11-28: "make cache writes on spl;it bar pink-red, input -
+ * green, output pastel yellow"; they were amber, grey and green).
  */
-test("Costs: the Details button's arrow sits at the middle of its label; Uncategorized is a grey of its own, apart from the row and from new input; the Split bar is round at both ends", async ({
+test("Costs: the Details button's arrow sits at the middle of its label; the Split bar's colors: cache writes pink-red, cache reads blue, input green, output pastel yellow, Uncategorized a grey of its own; the bar is round at both ends", async ({
   browser,
 }) => {
   const api = await request.newContext({ baseURL: base, timeout: 10_000 })
@@ -2611,6 +2614,21 @@ test("Costs: the Details button's arrow sits at the middle of its label; Uncateg
           source: "generate",
           ref: `look-${Date.now()}`,
           usd: 0.6,
+        },
+        // and spend of all four kinds, a good part of the bar each
+        {
+          type: "cost.usage",
+          session: "ses_smoke1",
+          source: "generate",
+          ref: `look-kinds-${Date.now()}`,
+          usd: 1.2,
+          tokens: {
+            input: 100_000,
+            output: 20_000,
+            read: 1_000_000,
+            write: 80_000,
+          },
+          rates: { input: 3, output: 15, read: 0.3, write: 3.75 },
         },
       ],
     },
@@ -2682,8 +2700,8 @@ test("Costs: the Details button's arrow sits at the middle of its label; Uncateg
   await button.click()
   /*
    * Uncategorized (it was Not Split): one flat grey, light on the dark
-   * theme and dark on the light one, well apart from the row behind it and
-   * from the grey of new input; the tip's key for it has the same color.
+   * theme and dark on the light one, well apart from the row behind it;
+   * the tip's key for it has the same color.
    */
   const bar = row.locator("td.split .split-bar")
   const rest = bar.locator(".seg.rest")
@@ -2724,12 +2742,40 @@ test("Costs: the Details button's arrow sits at the middle of its label; Uncateg
       await cutCorners(blank, await bar.screenshot(), behind),
       theme,
     ).toEqual({ tl: true, tr: true, bl: true, br: true })
-    // apart from new input's grey
-    const input = await color(bar.locator(".tip .key.input"))
-    expect(
-      contrast(rgb(own.color), rgb(input.color)),
-      theme,
-    ).toBeGreaterThanOrEqual(1.8)
+    /*
+     * The kinds' colors, in the bar and in the tip's keys alike: cache
+     * writes the favicon's pink-red, cache reads the sky blue of an idle
+     * agent's dot, input the green of a working one, output a pastel
+     * yellow; each well apart from every other and from Uncategorized.
+     */
+    const kinds: Record<string, number[]> = {}
+    for (const kind of ["write", "read", "input", "output", "rest"]) {
+      const part = await color(bar.locator(`.seg.${kind}`))
+      expect(part.image, `${theme} ${kind}`).toBe("none")
+      expect(
+        await color(bar.locator(`.tip .key.${kind}`)),
+        `${theme} ${kind}`,
+      ).toEqual(part)
+      kinds[kind] = rgb(part.color)
+    }
+    expect(kinds.write, theme).toEqual([232, 67, 110])
+    expect(kinds.read, theme).toEqual(dark ? [102, 204, 255] : [17, 136, 204])
+    expect(kinds.input, theme).toEqual(dark ? [68, 204, 153] : [34, 170, 119])
+    // pastel yellow: light, red and green high and near each other, blue
+    // well under them but not gone
+    const [yr, yg, yb] = kinds.output as [number, number, number]
+    expect(yr, `${theme} ${kinds.output}`).toBeGreaterThanOrEqual(225)
+    expect(yg, `${theme} ${kinds.output}`).toBeGreaterThanOrEqual(195)
+    expect(yr - yg, `${theme} ${kinds.output}`).toBeLessThanOrEqual(40)
+    expect(yg - yb, `${theme} ${kinds.output}`).toBeGreaterThanOrEqual(70)
+    expect(yb, `${theme} ${kinds.output}`).toBeGreaterThanOrEqual(80)
+    const names = Object.keys(kinds)
+    for (const [i, a] of names.entries())
+      for (const b of names.slice(i + 1))
+        expect(
+          Math.max(...kinds[a]!.map((v, n) => Math.abs(v - kinds[b]![n]!))),
+          `${theme}: ${a} ${kinds[a]} and ${b} ${kinds[b]}`,
+        ).toBeGreaterThanOrEqual(60)
     await page.getByRole("button", { name: "Light or dark" }).click()
   }
   // however wide its first and last parts are: the parts sit in a box of

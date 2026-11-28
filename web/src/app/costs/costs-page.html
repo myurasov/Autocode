@@ -6,9 +6,10 @@
   today, its daily cap (a bar of the share spent), its last 7 days (a bar per
   day, its value on hover), its total and Details for its spend per day (the
   agent a link led to, ?agent=, highlighted); a totals row; and when the list
-  last loaded. By kind and by cause (1.1.0-rc7): each agent's Split bar and
-  its Subagents' part over the period; under Details, what started its turns
-  and each day's kinds.
+  last loaded. By kind and by cause (1.1.0-rc7): each agent's Split bar over
+  the period; under Details, what started its turns and each day's kinds,
+  with the Subagents' part of each (the table had a Subagents column until
+  1.1.4: the owner, 2026-11-28, "rm subagents col on costs tab").
 -->
 
 <div class="toolbar">
@@ -78,20 +79,12 @@
       <th class="num total" appSort="total" [sorting]="sorting">
         {{ periodTitle() }}
       </th>
-      <!-- the period's spend by kind, and its Subagents' part (1.1.0-rc7) -->
+      <!-- the period's spend by kind (1.1.0-rc7) -->
       <th
         class="split"
         title="The period's spend by kind: cache writes, cache reads, input and output"
       >
         Split
-      </th>
-      <th
-        class="num subagents"
-        appSort="subagents"
-        [sorting]="sorting"
-        title="The steps that ran in its Subagents' sessions"
-      >
-        Subagents
       </th>
       <th></th>
     </tr>
@@ -162,7 +155,6 @@
             "
           />
         </td>
-        <td class="num subagents">{{ subagentsText(a.split) }}</td>
         <td class="actions">
           <button
             type="button"
@@ -176,7 +168,7 @@
       </tr>
       @if (open() === a.agent) {
         <tr class="days" [attr.data-agent]="a.agent">
-          <td colspan="9">
+          <td colspan="8">
             @if (daysError()) {
               <span class="errmsg" role="alert">{{ daysError() }}</span>
             } @else if (perDay(); as d) {
@@ -315,7 +307,7 @@
       }
     } @empty {
       <tr>
-        <td class="muted" colspan="9">
+        <td class="muted" colspan="8">
           @if (!view()) {
             Loading...
           } @else if (match()) {
@@ -328,7 +320,7 @@
     }
     <!-- at most 25 rows, then "..." for 25 more (the owner, 2026-11-09) -->
     @if (page().left) {
-      <tr app-more [columns]="9" [left]="page().left" (more)="paging.more('costs')"></tr>
+      <tr app-more [columns]="8" [left]="page().left" (more)="paging.more('costs')"></tr>
     }
   </tbody>
   @if (rows().length) {
@@ -356,7 +348,6 @@
             "
           />
         </td>
-        <td class="num subagents">{{ subagentsText(totals().split) }}</td>
         <td></td>
       </tr>
     </tfoot>

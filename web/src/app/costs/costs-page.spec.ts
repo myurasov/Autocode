@@ -32,7 +32,6 @@ import {
   shareText,
   splitParts,
   splitSum,
-  subagentsText,
   weekBars,
   weekTotals,
 } from './costs-page';
@@ -174,9 +173,10 @@ describe('CostsPage', () => {
       'Daily Cap',
       'Last 7 Days',
       'Total',
-      // 1.1.0-rc7: the period's spend by kind, and the Subagents' part
+      // 1.1.0-rc7: the period's spend by kind. The Subagents' part had a
+      // column here until 1.1.4 (the owner, 2026-11-28: "rm subagents col
+      // on costs tab"); it shows under Details
       'Split',
-      'Subagents',
       '',
     ]);
     expect(cell(page, 'kaggle:lead', 'today')).toBe('$1.50');
@@ -268,15 +268,7 @@ describe('CostsPage', () => {
     const heads = [...page.querySelectorAll('table.costs > thead th')];
     expect(
       heads.filter((h) => h.querySelector('button.sort')).map((h) => text(h)),
-    ).toEqual([
-      'Agent',
-      'Status',
-      'Today',
-      'Daily Cap',
-      'Total',
-      // 1.1.0-rc7
-      'Subagents',
-    ]);
+    ).toEqual(['Agent', 'Status', 'Today', 'Daily Cap', 'Total']);
     const total = heads.find((h) => text(h) === 'Total')!;
     (total.querySelector('button.sort') as HTMLButtonElement).click();
     await settle(fixture);
@@ -702,10 +694,12 @@ describe('CostsPage', () => {
   /*
    * 1.1.0-rc7 (the owner, 2026-11-27, from a review of real sessions: cache
    * writes were about half of the spend and nothing showed it): each agent's
-   * spend by kind as one bar, its parts on hover and focus; the Subagents'
-   * part; the totals row adds them up; a dash where nothing is known.
+   * spend by kind as one bar, its parts on hover and focus; the totals row
+   * adds them up; a dash where nothing is known. The Subagents' part had a
+   * column of its own beside it until 1.1.4 (the owner, 2026-11-28: "rm
+   * subagents col on costs tab").
    */
-  it('Split: a bar per agent of its spend by kind, the parts in its tip; Subagents: their dollars and share', async () => {
+  it('Split: a bar per agent of its spend by kind, the parts in its tip; no Subagents column', async () => {
     const start = view();
     start.agents[0]!.split = SPLIT;
     // nothing counted in the period
@@ -752,25 +746,23 @@ describe('CostsPage', () => {
     );
     // no browser tooltip: the page's own tip shows at once
     expect(bar.getAttribute('title')).toBeNull();
-    expect(cell(page, 'kaggle:lead', 'subagents')).toBe('$3.10 (31%)');
     // nothing counted in the period, and an older server's row: a dash
     expect(cell(page, 'kaggle:worker', 'split')).toBe('—');
-    expect(cell(page, 'kaggle:worker', 'subagents')).toBe('');
     expect(cell(page, 'old:one', 'split')).toBe('—');
     // the totals row adds up what is listed
     const totals = page.querySelector('table.costs tfoot tr.totals')!;
     expect(
       (totals.querySelector('td.split .seg.write') as HTMLElement).style.width,
     ).toBe('45%');
-    expect(text(totals.querySelector('td.subagents'))).toBe('$3.10 (31%)');
-    // by Subagents, largest first
-    (
-      page.querySelector('table.costs thead th.subagents button') as HTMLElement
-    ).click();
-    await settle(fixture);
-    expect(
-      page.querySelector('table.costs tbody tr')!.getAttribute('data-agent'),
-    ).toBe('kaggle:lead');
+    // no Subagents column: not in the header, the rows or the totals row
+    expect(page.querySelector('table.costs .subagents')).toBeNull();
+    // every row has the header's cells, the totals row one less (its
+    // first spans Agent and Status)
+    const count = (tr: Element | null) =>
+      tr?.querySelectorAll(':scope > *').length;
+    expect(count(page.querySelector('table.costs thead tr'))).toBe(8);
+    expect(count(row(page, 'kaggle:lead'))).toBe(8);
+    expect(count(totals)).toBe(7);
   });
 
   it('Days: what started its turns over the period, above its days with their kinds', async () => {
@@ -831,6 +823,11 @@ describe('CostsPage', () => {
     ) as HTMLElement;
     expect(text(opened.querySelector('.causes-title'))).toBe(
       'What Started the Turns Last 7 Days',
+    );
+    // it spans the table's eight columns (nine until 1.1.4, with the
+    // Subagents column)
+    expect(opened.querySelector(':scope > td')!.getAttribute('colspan')).toBe(
+      '8',
     );
     const rows = (table: string) =>
       [...opened.querySelectorAll(`table.${table} tbody tr`)].map((tr) =>
@@ -897,7 +894,7 @@ describe('CostsPage', () => {
     ]);
   });
 
-  it('a split as its parts, the Subagents as text, a cause by its name, splits added up', () => {
+  it('a split as its parts, a cause by its name, splits added up', () => {
     expect(splitParts(SPLIT).map((p) => [p.key, p.usd, p.share])).toEqual([
       ['write', 4.5, 45],
       ['read', 2.9, 29],
@@ -925,10 +922,6 @@ describe('CostsPage', () => {
     ).toEqual({ key: 'rest', label: 'Uncategorized', usd: 10, share: 100 });
     for (const none of [undefined, null, { ...SPLIT, usd: 0 }])
       expect(splitParts(none)).toEqual([]);
-    expect(subagentsText(SPLIT)).toBe('$3.10 (31%)');
-    expect(subagentsText({ ...SPLIT, subagents_usd: 0 })).toBe('$0.00 (0%)');
-    expect(subagentsText(undefined)).toBe('');
-    expect(subagentsText({ ...SPLIT, usd: 0 })).toBe('');
     expect(
       ['wake', 'message', 'owner', 'compaction', 'job', 'ask', 'retry'].map(
         causeText,

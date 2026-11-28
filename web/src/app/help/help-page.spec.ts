@@ -1093,17 +1093,25 @@ describe('HelpPage', () => {
         'and zone',
       // 1.1.0-rc7: by kind, by Subagents, by what started the turn
       'Split is one bar per agent: its spend by kind over the period',
-      'cache writes in amber, cache reads in blue, input in grey and ' +
-        'output in green',
+      // the owner, 2026-11-28: pink-red, green and pastel yellow
+      'cache writes in pink-red, cache reads in blue, input in green ' +
+        'and output in pastel yellow',
       // the owner, 2026-11-27: its name, and a grey of its own
       'what could not be divided into kinds is Uncategorized, in a ' +
         'lighter grey on the dark theme and a darker one on the light',
       'Hover over the bar, or tab to it, for the dollars and the share of ' +
         'each',
-      "Subagents is the part that ran in the agent's Subagents' sessions",
       'above them, What Started the Turns',
     ])
       expect(costs, part).toContain(part);
+    // 1.1.4: the table has no Subagents column (the owner, 2026-11-28);
+    // their part shows under Details
+    expect(costs).not.toContain(
+      "Subagents is the part that ran in the agent's Subagents' sessions",
+    );
+    expect(costs).toContain(
+      "the reload and the Subagents' part, over the period of the Days field",
+    );
     // 1.1.2: what a session spends between its turns
     const outside = section(page, 'spend');
     for (const part of [
