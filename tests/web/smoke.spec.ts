@@ -2402,11 +2402,19 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Details sho
   await expect(typed.first()).toHaveText("Owner")
   // its Subagent's step counts under the turn that started it
   await expect(typed.last()).toHaveText(/^\$0\.[1-9]\d$/)
-  // 1.1.2: cache warming is a row of its own, with no turns, no reload
-  // and no Subagents' part
+  // 1.1.2: cache warming is a row of its own, with no reload and no
+  // Subagents' part; its requests show as its turns, with the dollars a
+  // request (the owner, 2026-11-28)
   await expect(
     open.locator('table.cost-causes tr[data-cause="warming"] td'),
-  ).toHaveText(["Cache Warming", "0", /^\$\d+\.\d\d$/, "—", "$0.00", "$0.00"])
+  ).toHaveText([
+    "Cache Warming",
+    /^[1-9]\d*$/,
+    /^\$\d+\.\d\d$/,
+    /^\$\d+\.\d\d$/,
+    "$0.00",
+    "$0.00",
+  ])
   await expect(open.locator("table.cost-days thead th")).toHaveText([
     "Day",
     "Spend",
@@ -2416,7 +2424,12 @@ test("Costs: the Split bar's parts show at once on hover; Subagents; Details sho
     "Input",
     "Output",
     "Subagents",
+    // the owner, 2026-11-28: each day's cache warming
+    "Warming",
   ])
+  await expect(
+    open.locator("table.cost-days tbody tr").first().locator("td").last(),
+  ).toHaveText(/^\s*\$\d+\.\d\d\s*$/)
   // with the days open the page still fits
   expect(await overflow(page)).toEqual({ frame: 0, page: 0 })
   // a table of one agent: its row's tip and the totals row's are whole too

@@ -95,6 +95,9 @@ export interface CostSplit {
   input_tokens: number;
   output_tokens: number;
   subagents_usd: number;
+  // of usd, OpenCode's cache warming between the turns (1.1.3 and later
+  // servers say it)
+  warming_usd?: number;
   reload_usd: number;
   turns: number;
 }

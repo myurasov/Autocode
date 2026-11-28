@@ -592,7 +592,8 @@
         requests leave no message, and each reads the whole conversation
         from the cache. Autocode counts them since v1.1.2, while its plugin
         runs. They count toward the daily cap, and a paused agent's session
-        is still warmed: the pause stops turns, not OpenCode's warming.
+        is still warmed: the pause stops turns, not OpenCode's warming. Its
+        Turns are its requests, and its Per Turn the dollars a request.
       </li>
       <li>
         Reload: the first step of a turn loads the whole conversation: that
@@ -1936,8 +1937,9 @@ autocode job set daily-report --host HOST --model MODEL \
       </li>
       <li>
         The Details button in a row opens that agent's spend per day, newest
-        first: Day, Spend and Steps, and each day's dollars by kind and for
-        Subagents; above them, What Started the Turns: for each cause the
+        first: Day, Spend and Steps, and each day's dollars by kind, for
+        Subagents and for cache warming; above them, What Started the Turns:
+        for each cause the
         turns, the spend, the spend per turn, the reload and the Subagents'
         part, over the period of the Days field.
       </li>

@@ -22,12 +22,13 @@ import {
   type,
 } from '../../testing/helpers';
 import { FILTER_DELAY_MS } from '../agents/agents-page';
-import type { AgentCost, CostSplit, CostsView } from '../api';
+import type { AgentCost, CostCause, CostSplit, CostsView } from '../api';
 import { contains } from '../filter';
 import {
   COSTS_REFRESH_MS,
   CostsPage,
   causeText,
+  causeTurns,
   shareText,
   splitParts,
   splitSum,
@@ -50,6 +51,8 @@ const SPLIT: CostSplit = {
   input_tokens: 20_000,
   output_tokens: 100_000,
   subagents_usd: 3.1,
+  // of usd, OpenCode's cache warming between the turns
+  warming_usd: 0.2,
   reload_usd: 4,
   turns: 20,
 };
@@ -813,8 +816,9 @@ describe('CostsPage', () => {
         cause('owner', 4, 3),
         cause('run', 0, 0.8),
         cause('ask', 1, 0.25),
-        // 1.1.2: OpenCode's cache warming, no turn of the agent's
-        cause('warming', 0, 0.2),
+        // 1.1.2: OpenCode's cache warming, no turn of the agent's: its
+        // four requests show as its turns (the owner, 2026-11-28)
+        { ...cause('warming', 0, 0.2), steps: 4 },
       ],
       days: [
         { day: '2026-11-08', usd: 1.5, steps: 30, split: SPLIT },
@@ -850,24 +854,47 @@ describe('CostsPage', () => {
       'Owner | 4 | $3.00 | $0.75 | $1.50 | $0.30',
       'Job Runs | 0 | $0.80 | — | $0.40 | $0.08',
       'Ask | 1 | $0.25 | $0.25 | $0.13 | $0.03',
-      'Cache Warming | 0 | $0.20 | — | $0.10 | $0.02',
+      'Cache Warming | 4 | $0.20 | $0.05 | $0.10 | $0.02',
     ]);
     // each day with its kinds; a day without a split: zeros
     const days = [...opened.querySelectorAll('table.cost-days tbody tr')].map(
       (tr) => [...tr.querySelectorAll('td')].map((td) => text(td)).join(' | '),
     );
+    // each day's kinds, its Subagents' part, and its cache warming (the
+    // owner, 2026-11-28: "add warming col to spend by day table")
     expect(days).toEqual([
-      '08-Nov-26 | $1.50 | 30 | $4.50 | $2.90 | $0.10 | $2.00 | $3.10',
-      '07-Nov-26 | $8.50 | 210 | $0.00 | $0.00 | $0.00 | $0.00 | $0.00',
+      '08-Nov-26 | $1.50 | 30 | $4.50 | $2.90 | $0.10 | $2.00 | $3.10 | $0.20',
+      '07-Nov-26 | $8.50 | 210 | $0.00 | $0.00 | $0.00 | $0.00 | $0.00 | $0.00',
     ]);
-    // by Turns
+    expect(
+      [...opened.querySelectorAll('table.cost-days thead th')].map((th) =>
+        text(th),
+      ),
+    ).toEqual([
+      'Day',
+      'Spend',
+      'Steps',
+      'Cache Writes',
+      'Cache Reads',
+      'Input',
+      'Output',
+      'Subagents',
+      'Warming',
+    ]);
+    // by Turns: Cache Warming's requests are its turns there too
     (
       opened.querySelector(
         'table.cost-causes thead th:nth-child(2) button',
       ) as HTMLElement
     ).click();
     await settle(fixture);
-    expect(rows('cost-causes')[0]).toMatch(/^Wake \| 8 /);
+    expect(rows('cost-causes').map((r) => r.split(' | ')[0])).toEqual([
+      'Wake',
+      'Owner',
+      'Cache Warming',
+      'Ask',
+      'Job Runs',
+    ]);
   });
 
   it('a split as its parts, the Subagents as text, a cause by its name, splits added up', () => {
@@ -923,6 +950,13 @@ describe('CostsPage', () => {
     ]);
     // 1.1.2: what a session spends between its turns
     expect(causeText('warming')).toBe('Cache Warming');
+    // its requests are what its row shows as turns (the owner,
+    // 2026-11-28: "its ok if we show number of warming requests as
+    // turns"); every other cause shows its turns
+    const row = { cause: 'warming', turns: 0, steps: 4 } as CostCause;
+    expect(causeTurns(row)).toBe(4);
+    expect(causeTurns({ ...row, cause: 'run' })).toBe(0);
+    expect(causeTurns({ ...row, cause: 'wake', turns: 3 })).toBe(3);
     expect(splitSum([SPLIT, undefined, SPLIT])).toMatchObject({
       usd: 20,
       cache_write_usd: 9,

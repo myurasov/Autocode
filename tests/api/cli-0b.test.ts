@@ -697,7 +697,7 @@ describe("costs", () => {
       /context 60,000 tokens of 200,000; threshold 100,000: 60\.0%/,
     )
     expect(res.stdout).toMatch(
-      /DAY\s+SPEND\s+STEPS\s+WRITE\s+READ\s+IN\s+OUT\s+SUBAGENTS\n\d{4}-\d\d-\d\d\s+\$0\.50\s+1\s/,
+      /DAY\s+SPEND\s+STEPS\s+WRITE\s+READ\s+IN\s+OUT\s+SUBAGENTS\s+WARMING\n\d{4}-\d\d-\d\d\s+\$0\.50\s+1\s/,
     )
     // 1.1.0-rc7: by kind, the Subagents' part, the reload, and by what
     // started the turn; this agent's step was not split
@@ -750,6 +750,59 @@ describe("costs", () => {
         "kind\n",
     )
     expect(before.stdout).toContain("no turns counted")
+  })
+
+  /*
+   * The owner, 2026-11-28, of the Costs tab's Details, which this prints
+   * too: "its ok if we show number of warming requests as turns" and "add
+   * warming col to spend by day table". A warming request is no turn of
+   * the agent's: its row said 0 turns and no dollars a turn.
+   */
+  test("costs AGENT: cache warming's requests are its row's turns, and each day says its warming dollars", async () => {
+    await registered(t, "m:1", "ses_warm", "kaggle:warm")
+    const ping = (ref: string) => ({
+      type: "cost.usage",
+      session: "ses_warm",
+      source: "generate",
+      ref,
+      usd: 0.04,
+      tokens: { input: 0, output: 0, read: 200_000, write: 0 },
+      rates: { input: 1, output: 1, read: 0.2, write: 1 },
+    })
+    await report(t, "m:1", [
+      { type: "turn.started", session: "ses_warm", by: "user" },
+      {
+        ...step("ses_warm", 0.5, 10_000),
+        tokens: { input: 0, output: 1000, read: 0, write: 4000 },
+        rates: { input: 1, output: 1, read: 1, write: 1 },
+      },
+      { type: "turn.ended", session: "ses_warm", outcome: "succeeded" },
+      ping("evt_w1"),
+      ping("evt_w2"),
+      ping("evt_w3"),
+    ])
+    const res = await cli(["costs", "kaggle:warm"], asAdmin())
+    expect(res.code, res.stderr).toBe(0)
+    // three requests, $0.04 each
+    expect(res.stdout).toMatch(
+      /STARTED BY\s+TURNS\s+SPEND\s+PER TURN\s+RELOAD\s+SUBAGENTS\nowner\s+1\s+\$0\.50\s+\$0\.50\s+\$0\.40\s+\$0\.00\nwarming\s+3\s+\$0\.12\s+\$0\.04\s+\$0\.00\s+\$0\.00\n/,
+    )
+    // the day: its kinds, its Subagents' part, its warming
+    expect(res.stdout).toMatch(
+      /DAY\s+SPEND\s+STEPS\s+WRITE\s+READ\s+IN\s+OUT\s+SUBAGENTS\s+WARMING\n\d{4}-\d\d-\d\d\s+\$0\.62\s+4\s+\$0\.40\s+\$0\.12\s+\$0\.00\s+\$0\.10\s+\$0\.00\s+\$0\.12\n/,
+    )
+    // the turns of the split are the agent's own: the reload is a turn's
+    expect(res.stdout).toContain("in 1 turn, $0.40 a turn\n")
+    // the data says what it is: no turns, three steps
+    const json = JSON.parse(
+      (await cli(["costs", "kaggle:warm", "--json"], asAdmin())).stdout,
+    )
+    expect(json.causes.find((c: any) => c.cause === "warming")).toMatchObject({
+      turns: 0,
+      steps: 3,
+      usd: 0.12,
+    })
+    expect(json.split.warming_usd).toBe(0.12)
   })
 
   test("costs account AGENT: asks for what its session spent before it registered, once", async () => {

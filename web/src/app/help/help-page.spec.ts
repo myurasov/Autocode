@@ -1086,6 +1086,7 @@ describe('HelpPage', () => {
       'Enter a number in the Days field above the table: Total and the ' +
         'totals row then count only that many last days',
       "The Details button in a row opens that agent's spend per day",
+      "each day's dollars by kind, for Subagents and for cache warming",
       'The Unregistered box, on by default, keeps the unregistered agents ' +
         'that spent something',
       "right of Refresh is when the data was read, in the server's time " +
@@ -1110,6 +1111,8 @@ describe('HelpPage', () => {
         "spends to keep the session's cache alive between turns",
       'They count toward the daily cap',
       "the pause stops turns, not OpenCode's warming",
+      // the owner, 2026-11-28
+      'Its Turns are its requests',
       // the owner, 2026-11-27: "can we give it more obvious name"
       "a step of a model without prices in OpenCode's list is counted " +
         'whole, as Uncategorized',

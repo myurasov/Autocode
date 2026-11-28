@@ -559,14 +559,20 @@ export async function costs(args: Parsed): Promise<number> {
               "",
               res.causes?.length
                 ? table(
-                    res.causes.map((x: any) => [
-                      x.cause,
-                      String(x.turns),
-                      dollars(x.usd),
-                      x.turns > 0 ? dollars(x.usd / x.turns) : "—",
-                      dollars(x.reload_usd),
-                      dollars(x.subagents_usd),
-                    ]),
+                    res.causes.map((x: any) => {
+                      // cache warming starts no turn: its requests show
+                      // as its turns (the owner, 2026-11-28)
+                      const turns =
+                        x.cause === "warming" ? (x.steps ?? 0) : x.turns
+                      return [
+                        x.cause,
+                        String(turns),
+                        dollars(x.usd),
+                        turns > 0 ? dollars(x.usd / turns) : "—",
+                        dollars(x.reload_usd),
+                        dollars(x.subagents_usd),
+                      ]
+                    }),
                     [
                       "STARTED BY",
                       "TURNS",
@@ -593,6 +599,9 @@ export async function costs(args: Parsed): Promise<number> {
                       dollars(d.split.input_usd),
                       dollars(d.split.output_usd),
                       dollars(d.split.subagents_usd),
+                      // each day's cache warming (an older server says
+                      // none)
+                      dollars(d.split.warming_usd ?? 0),
                     ]
                   : []),
               ]),
@@ -600,7 +609,9 @@ export async function costs(args: Parsed): Promise<number> {
                 "DAY",
                 "SPEND",
                 "STEPS",
-                ...(s ? ["WRITE", "READ", "IN", "OUT", "SUBAGENTS"] : []),
+                ...(s
+                  ? ["WRITE", "READ", "IN", "OUT", "SUBAGENTS", "WARMING"]
+                  : []),
               ],
             )
           : "no spend kept",

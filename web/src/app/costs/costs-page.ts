@@ -139,6 +139,16 @@ export function causeText(cause: string): string {
   return CAUSES[cause] ?? cause;
 }
 
+/*
+ * The turns a cause's row shows. Cache warming starts no turn of the
+ * agent's: its row shows its requests there (the owner, 2026-11-28: "its ok
+ * if we show number of warming requests as turns"), and so the dollars a
+ * request under Per Turn. The split's own turns stay the agent's.
+ */
+export function causeTurns(c: CostCause): number {
+  return c.cause === 'warming' ? c.steps : c.turns;
+}
+
 // The days of several agents added up by day, oldest first.
 export function weekTotals(weeks: CostDay[][]): CostDay[] {
   const sum = new Map<string, number>();
@@ -224,9 +234,11 @@ export class CostsPage {
   protected readonly causeSorting = new Sorting<CostCause>('cost-causes', {
     columns: {
       cause: { text: (c) => causeText(c.cause) },
-      turns: { number: (c) => c.turns },
+      turns: { number: (c) => causeTurns(c) },
       usd: { number: (c) => c.usd },
-      turn: { number: (c) => (c.turns > 0 ? c.usd / c.turns : null) },
+      turn: {
+        number: (c) => (causeTurns(c) > 0 ? c.usd / causeTurns(c) : null),
+      },
       reload: { number: (c) => c.reload_usd },
       subagents: { number: (c) => c.subagents_usd },
     },
@@ -284,10 +296,13 @@ export class CostsPage {
   protected readonly subagentsText = subagentsText;
   protected readonly causeText = causeText;
 
-  // A cause's dollars per turn: none without a turn (a run's steps, the
-  // steps from before the session registered).
+  protected readonly causeTurns = causeTurns;
+
+  // A cause's dollars per turn (cache warming's: per request): none without
+  // a turn (a run's steps, the steps from before the session registered).
   protected perTurn(c: CostCause): string {
-    return c.turns > 0 ? costText(c.usd / c.turns) : '—';
+    const turns = causeTurns(c);
+    return turns > 0 ? costText(c.usd / turns) : '—';
   }
 
   // What a bar says to a screen reader: its parts in words.

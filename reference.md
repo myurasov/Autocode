@@ -1195,6 +1195,10 @@ spend three ways: by kind, by Subagents, and by what started the turn.
   session's totals: what they rise by while no turn runs. Any other request that a plugin makes with the
   session's context between turns counts here too.
   - **It is no activity:** Last Active, the status and the context stay as they are.
+  - **Its row shows its requests as turns.** On the Costs tab's Details and in `autocode costs AGENT`, the
+    Turns of `warming` are its requests, and its Per Turn the dollars a request. They are no turns of the agent:
+    the data (`--json`) says `turns: 0` and the requests as `steps`, and the turns of a period stay the agent's.
+  - **Each day says it.** The spend per day has a Warming column beside the kinds and Subagents.
   - **It counts toward `daily_usd`.** A paused agent's session is still warmed: the pause stops turns, not
     OpenCode's warming. Turn `warming` off in OpenCode's config for a model that must not spend while paused.
   - **Not counted:** warming requests made while the plugin did not run, or before the session registered; and

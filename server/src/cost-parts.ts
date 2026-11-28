@@ -107,6 +107,9 @@ export interface CostSplit {
   output_tokens: number
   // of usd, the Subagents' steps
   subagents_usd: number
+  // of usd, OpenCode's cache warming between the turns (the cause
+  // `warming`; the owner, 2026-11-28: a column of each day's)
+  warming_usd: number
   // of usd, the context part of each turn's first step
   reload_usd: number
   turns: number
@@ -137,6 +140,8 @@ const SUMS = `
   COALESCE(SUM(input_tokens), 0) AS input_tokens,
   COALESCE(SUM(output_tokens), 0) AS output_tokens,
   COALESCE(SUM(CASE WHEN sub = 1 THEN usd ELSE 0 END), 0) AS subagents_usd,
+  COALESCE(SUM(CASE WHEN cause = 'warming' THEN usd ELSE 0 END), 0)
+    AS warming_usd,
   COALESCE(SUM(reload_usd), 0) AS reload_usd,
   COALESCE(SUM(turns), 0) AS turns,
   COALESCE(SUM(steps), 0) AS steps`
@@ -153,6 +158,7 @@ function splitOf(r: any): CostSplit {
     input_tokens: r?.input_tokens ?? 0,
     output_tokens: r?.output_tokens ?? 0,
     subagents_usd: round(r?.subagents_usd ?? 0),
+    warming_usd: round(r?.warming_usd ?? 0),
     reload_usd: round(r?.reload_usd ?? 0),
     turns: r?.turns ?? 0,
   }

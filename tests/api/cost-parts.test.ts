@@ -122,6 +122,7 @@ describe("costs by kind", () => {
       input_tokens: 1000,
       output_tokens: 2000,
       subagents_usd: 0,
+      warming_usd: 0,
       // the turn's first step: what it cost to load the context
       reload_usd: 0.216,
       turns: 1,
@@ -732,6 +733,40 @@ describe("costs outside the steps: cache warming", () => {
     expect(
       me.today_causes.find((c: any) => c.cause === "warming"),
     ).toMatchObject({ usd: 0.07221, turns: 0 })
+  })
+
+  // The owner, 2026-11-28: "add warming col to spend by day table".
+  test("a split says its warming dollars: each day's, the period's, the list's and its totals', and the agent's own of today", async () => {
+    await report(t, HOST, [started("user"), step(0.138), ended()])
+    await report(t, HOST, [usage(0.036105)])
+    t.clock.advance(DAY)
+    await report(t, HOST, [usage(0.036105), usage(0.01)])
+    const view = await one()
+    expect(view.split.warming_usd).toBe(0.08221)
+    expect(view.days.map((d: any) => [d.usd, d.split.warming_usd])).toEqual([
+      [0.046105, 0.046105],
+      [0.174105, 0.036105],
+    ])
+    // a period of one day has that day's
+    expect((await one("?days=1")).split.warming_usd).toBe(0.046105)
+    const list = (await owner("GET", "/v1/costs")).body
+    expect(
+      list.agents.find((x: any) => x.agent === "team:a").split.warming_usd,
+    ).toBe(0.08221)
+    expect(list.totals.split.warming_usd).toBe(0.08221)
+    // the agent's own status: today's, with the requests it took
+    const me = (await as(a, "GET", "/v1/me")).body.cost
+    expect(me.today_split.warming_usd).toBe(0.046105)
+    expect(
+      me.today_causes.find((c: any) => c.cause === "warming"),
+    ).toMatchObject({ usd: 0.046105, turns: 0, steps: 2 })
+    // an agent without warming says none
+    const b = await registered(t, HOST, "ses_b", "team:b")
+    expect(
+      (await as(b, "GET", "/v1/me")).body.cost.today_split.warming_usd,
+    ).toBe(0)
+    // a run's ping is the run's cause, not warming
+    expect((await causes()).warming).toEqual([0, 0.08221])
   })
 
   test("a ping of a model without prices counts in full and is not split", async () => {

@@ -223,7 +223,16 @@
                     @for (c of causeRows(d.causes); track c.cause) {
                       <tr [attr.data-cause]="c.cause">
                         <td>{{ causeText(c.cause) }}</td>
-                        <td class="num">{{ c.turns }}</td>
+                        <!-- cache warming's requests show as its turns -->
+                        <td
+                          class="num"
+                          [attr.title]="
+                            c.cause === 'warming'
+                              ? 'Warming requests: no turns of the agent'
+                              : null
+                          "
+                          >{{ causeTurns(c) }}</td
+                        >
                         <td class="num">{{ costText(c.usd) }}</td>
                         <td class="num">{{ perTurn(c) }}</td>
                         <td class="num">{{ costText(c.reload_usd) }}</td>
@@ -251,6 +260,9 @@
                         <th class="num">Input</th>
                         <th class="num">Output</th>
                         <th class="num">Subagents</th>
+                        <!-- each day's cache warming (the owner,
+                             2026-11-28) -->
+                        <th class="num">Warming</th>
                       }
                     </tr>
                   </thead>
@@ -276,13 +288,16 @@
                           <td class="num">
                             {{ costText(x.split?.subagents_usd ?? 0) }}
                           </td>
+                          <td class="num">
+                            {{ costText(x.split?.warming_usd ?? 0) }}
+                          </td>
                         }
                       </tr>
                     }
                     @if (dayRows(d.days).left) {
                       <tr
                         app-more
-                        [columns]="d.split ? 8 : 3"
+                        [columns]="d.split ? 9 : 3"
                         [left]="dayRows(d.days).left"
                         (more)="paging.more('days')"
                       ></tr>
